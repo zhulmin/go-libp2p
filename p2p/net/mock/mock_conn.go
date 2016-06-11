@@ -147,3 +147,7 @@ func (c *conn) RemotePeer() peer.ID {
 func (c *conn) RemotePublicKey() ic.PubKey {
 	return c.remotePubKey
 }
+
+func (c *conn) SetRemotePeer(id peer.ID) {
+	c.remote = id
+}

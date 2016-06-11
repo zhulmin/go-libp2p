@@ -1,11 +1,14 @@
 package identify
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
 	semver "github.com/coreos/go-semver/semver"
 	ggio "github.com/gogo/protobuf/io"
+	ci "github.com/ipfs/go-libp2p-crypto"
+	"github.com/ipfs/go-libp2p-peer"
 	pstore "github.com/ipfs/go-libp2p-peerstore"
 	host "github.com/ipfs/go-libp2p/p2p/host"
 	mstream "github.com/ipfs/go-libp2p/p2p/metrics/stream"
@@ -150,6 +153,16 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c inet.Conn) {
 		mes.Protocols[i] = string(p)
 	}
 
+	if c.RemotePeer() == "" {
+		pubk := ids.Host.Peerstore().PubKey(ids.Host.ID())
+		data, err := pubk.Bytes()
+		if err != nil {
+			log.Error("marshaling our public key: ", err)
+		} else {
+			mes.PublicKey = data
+		}
+	}
+
 	// observed address so other side is informed of their
 	// "public" address, at least in relation to us.
 	mes.ObservedAddr = c.RemoteMultiaddr().Bytes()
@@ -169,8 +182,34 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c inet.Conn) {
 	mes.AgentVersion = &av
 }
 
+func checkPubKeyID(mes *pb.Identify, c inet.Conn) error {
+	if len(mes.PublicKey) == 0 {
+		return fmt.Errorf("remote peer has no ID and no public key was sent")
+	}
+
+	pubk, err := ci.UnmarshalPublicKey(mes.PublicKey)
+	if err != nil {
+		return err
+	}
+
+	pid, err := peer.IDFromPublicKey(pubk)
+	if err != nil {
+		return err
+	}
+
+	c.SetRemotePeer(pid)
+	return nil
+}
+
 func (ids *IDService) consumeMessage(mes *pb.Identify, c inet.Conn) {
 	p := c.RemotePeer()
+
+	if p == "" {
+		err := checkPubKeyID(mes, c)
+		if err != nil {
+			log.Warning("no peerID set: ", err)
+		}
+	}
 
 	// mes.Protocols
 

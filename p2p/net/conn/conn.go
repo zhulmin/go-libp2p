@@ -128,6 +128,10 @@ func (c *singleConn) Write(buf []byte) (int, error) {
 	return c.maconn.Write(buf)
 }
 
+func (c *singleConn) SetRemotePeer(id peer.ID) {
+	c.remote = id
+}
+
 // ID returns the ID of a given Conn.
 func ID(c Conn) string {
 	l := fmt.Sprintf("%s/%s", c.LocalMultiaddr(), c.LocalPeer().Pretty())
