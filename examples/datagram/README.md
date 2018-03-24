@@ -5,51 +5,27 @@ I'm using it to test out interfaces and conventions, and also to produce working
 
 For now it's going to be the simplest possible echo server/client.
 
-## Additions
+## New packages
 
-package p2phost
-type MsgHandler func(peer.ID, protocol.ID, []byte)
-type Host interface {
-  MsgMux() *msmux.MultigramMuxer
-  SetMsgHandler(protocol.ID, inet.MsgHandler)
-  SetMsgHandlerMatch(protocol.ID, func(string) bool, MsgHandler)
-  RemoveMsgHandler(protocol.ID)
-  WriteMsg(context.Context, peer.ID, ...protocol.ID, []byte)
-}
-
-package p2pswarm
-type MsgHandler func(peer.ID, []byte)
-func (s *Swarm) AddPacketTransport(p2ptransport.PacketTransport) {}
-func (s *Swarm) SetMsgHandler(MsgHandler) {}
-func (s *Swarm) MsgHandler() MsgHandler {}
-
-package p2piconn
-type PacketConn interface {}
-
-package p2pnet
-
-package p2pstream
-func NoOpMsgHandler(msg []byte, peeridOrConn) {}
-
-package p2ptransport
-
-package udptransport
-
-package manet
-
-## TODO
-
-- [ ] go-multiaddr-net datagram support
-- [ ] go-libp2p-transport datagram support
-- [ ] go-udp-transport
-- [ ] go-peerstream datagram support
-- [ ] go-libp2p-swarm datagram support
 - [ ] go-multigram
-- [ ] go-shs vs. go-dtls vs. go-cryptoauth
-- [ ] label-based switch
-- [ ] overlay routing interfaces
+- [ ] go-multigram-select
+- [ ] go-libp2p-wireguard
+- [ ] go-udp-transport
 
 
-## PR
+## Affected packages
 
-This PR adds APIs for message-based communication
+- [x] go-multiaddr-net  (manet.PacketConn)
+- [ ] go-libp2p-transport  (tptiface.PacketTransport/Dialer/Conn)
+- [ ] go-libp2p-swarm  (sw.AddPacketTransport(), sw.SetPacketHandler(), sw.WritePacket())
+- [ ] go-libp2p-host  (hostiface.SetPacketHandler(), hostiface.WritePacket())
+- [ ] go-libp2p-net  (netiface.PacketHandler)
+
+
+## About wireguard-go
+
+- Looks good, but way too tightly coupled
+- main.go, device.go
+- send.go, receive.go
+- device routines/queues and peer routines/queues
+- split up: packetconn, cli+uapi+tun+routing

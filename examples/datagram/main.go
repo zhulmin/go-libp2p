@@ -16,7 +16,6 @@ func fatal(i interface{}) {
 	os.Exit(1)
 }
 
-// XXX unrewritten broken because jbenet/go-stream-muxer is out of date
 // TODO move to libp2p org: go-stream-muxer go-smux-multistream go-smux-spdystream go-smux-yamux
 // TODO multigram will live in BasicHost, for now it's only swarm
 
@@ -44,18 +43,17 @@ func main() {
 		fatal(err)
 	}
 
-	// Conn as argument, for WriteMsg()?
-	s.SetMsgHandler(func(msg []byte, p peer.ID) {
-		fmt.Printf("got message from %s: %s\n", p, string(msg))
+	s.SetPacketHandler(func(pkt *[]byte, p peer.ID) {
+		fmt.Printf("got message from %s: %s\n", p, pkt)
 
-		_, err = s.WriteMsg(msg, p)
+		_, err = s.WritePacket(pkt, p)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 	})
 
-	s.WriteMsg("hey bob", QmBob)
+	// s.WritePacket("hey bob", QmBob)
 
 	// Wait forever
 	<-make(chan bool)
