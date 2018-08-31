@@ -12,7 +12,6 @@ import (
 	host "github.com/libp2p/go-libp2p-host"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
-	multistream "github.com/multiformats/go-multistream"
 )
 
 var log = logging.Logger("ping")
@@ -61,12 +60,12 @@ func (ps *PingService) PingHandler(s inet.Stream) {
 // It first attempts to use ping/2.0.0, and falls back to ping/1.0.0
 // if the peer doesn't support it yet.
 func (ps *PingService) Ping(ctx context.Context, p peer.ID) (<-chan time.Duration, error) {
-	s, err := ps.Host.NewStream(ctx, p, ID)
-	if err == multistream.ErrNotSupported {
-		return ps.PingLegacy(ctx, p)
-	}
+	s, err := ps.Host.NewStream(ctx, p, ID, IDLegacy)
 	if err != nil {
 		return nil, err
+	}
+	if s.Protocol() == IDLegacy {
+		return ps.PingLegacy(ctx, p)
 	}
 
 	out := make(chan time.Duration)
