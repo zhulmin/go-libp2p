@@ -1,4 +1,4 @@
-package relay
+package relay_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	libp2p "github.com/libp2p/go-libp2p"
+	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
@@ -27,8 +28,8 @@ import (
 func init() {
 	autonat.AutoNATIdentifyDelay = 500 * time.Millisecond
 	autonat.AutoNATBootDelay = 1 * time.Second
-	BootDelay = 1 * time.Second
-	AdvertiseBootDelay = 1 * time.Millisecond
+	relay.BootDelay = 1 * time.Second
+	relay.AdvertiseBootDelay = 1 * time.Millisecond
 	manet.Private4 = []*net.IPNet{}
 }
 
