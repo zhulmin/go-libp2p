@@ -1,4 +1,4 @@
-package relay_test
+package relay
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"time"
 
 	libp2p "github.com/libp2p/go-libp2p"
-	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
@@ -16,7 +15,6 @@ import (
 	autonatpb "github.com/libp2p/go-libp2p-autonat/pb"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	host "github.com/libp2p/go-libp2p-host"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
@@ -29,8 +27,8 @@ import (
 func init() {
 	autonat.AutoNATIdentifyDelay = 500 * time.Millisecond
 	autonat.AutoNATBootDelay = 1 * time.Second
-	relay.BootDelay = 1 * time.Second
-	relay.AdvertiseBootDelay = 1 * time.Millisecond
+	BootDelay = 1 * time.Second
+	AdvertiseBootDelay = 1 * time.Millisecond
 	manet.Private4 = []*net.IPNet{}
 }
 
@@ -218,16 +216,4 @@ func TestAutoRelay(t *testing.T) {
 	if !haveRelay {
 		t.Fatal("No relay addrs pushed")
 	}
-}
-
-// godoc examples
-
-func ExampleNewAutoRelayHost() {
-	ctx := context.Background()
-	makeRouting := func(h host.Host) (routing.PeerRouting, error) {
-		return dht.New(ctx, h)
-	}
-	opts := []libp2p.Option{libp2p.EnableRelay(), libp2p.EnableAutoRelay(), libp2p.Routing(makeRouting)}
-
-	libp2p.New(ctx, opts...)
 }
