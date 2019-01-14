@@ -16,6 +16,7 @@ import (
 	autonatpb "github.com/libp2p/go-libp2p-autonat/pb"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	host "github.com/libp2p/go-libp2p-host"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
@@ -217,4 +218,16 @@ func TestAutoRelay(t *testing.T) {
 	if !haveRelay {
 		t.Fatal("No relay addrs pushed")
 	}
+}
+
+// godoc examples
+
+func ExampleNewAutoRelayHost() {
+	ctx := context.Background()
+	makeRouting := func(h host.Host) (routing.PeerRouting, error) {
+		return dht.New(ctx, h)
+	}
+	opts := []libp2p.Option{libp2p.EnableRelay(), libp2p.EnableAutoRelay(), libp2p.Routing(makeRouting)}
+
+	libp2p.New(ctx, opts...)
 }
