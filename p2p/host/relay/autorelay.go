@@ -57,8 +57,8 @@ type AutoRelayHost struct {
 }
 
 // Warning:  This function should not be used directly by clients activating
-// autorelay. NewAutoRelayHost is used internally by the libp2p.config.NewNode
-// generator. To enable autorelay, use the EnableAutoRelay Option.
+// autorelay. NewAutoRelayHost is used internally by the libp2p.New generator.
+// To enable autorelay, use the EnableAutoRelay Option.
 // https://godoc.org/github.com/libp2p/go-libp2p#EnableAutoRelay
 func NewAutoRelayHost(ctx context.Context, bhost *basic.BasicHost, discover discovery.Discoverer, router routing.PeerRouting) *AutoRelayHost {
 	h := &AutoRelayHost{
