@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	bhost "github.com/libp2p/go-libp2p/v7/p2p/host/basic"
 
 	host "github.com/libp2p/go-libp2p-host"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"

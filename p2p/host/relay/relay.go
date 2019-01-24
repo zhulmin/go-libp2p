@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
+	basic "github.com/libp2p/go-libp2p/v7/p2p/host/basic"
 
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	host "github.com/libp2p/go-libp2p-host"

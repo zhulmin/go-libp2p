@@ -7,7 +7,7 @@ import (
 	host "github.com/libp2p/go-libp2p-host"
 	peer "github.com/libp2p/go-libp2p-peer"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	bhost "github.com/libp2p/go-libp2p/v7/p2p/host/basic"
 	mux "github.com/libp2p/go-stream-muxer"
 	yamux "github.com/whyrusleeping/go-smux-yamux"
 )

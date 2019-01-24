@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
+	basic "github.com/libp2p/go-libp2p/v7/p2p/host/basic"
 
 	autonat "github.com/libp2p/go-libp2p-autonat"
 	_ "github.com/libp2p/go-libp2p-circuit"

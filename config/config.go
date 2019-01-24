@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
-	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
-	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
+	bhost "github.com/libp2p/go-libp2p/v7/p2p/host/basic"
+	relay "github.com/libp2p/go-libp2p/v7/p2p/host/relay"
+	routed "github.com/libp2p/go-libp2p/v7/p2p/host/routed"
 
 	logging "github.com/ipfs/go-log"
 	circuit "github.com/libp2p/go-libp2p-circuit"

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net"
 
-	config "github.com/libp2p/go-libp2p/config"
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	config "github.com/libp2p/go-libp2p/v7/config"
+	bhost "github.com/libp2p/go-libp2p/v7/p2p/host/basic"
 
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	crypto "github.com/libp2p/go-libp2p-crypto"

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	libp2p "github.com/libp2p/go-libp2p"
-	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
+	libp2p "github.com/libp2p/go-libp2p/v7"
+	relay "github.com/libp2p/go-libp2p/v7/p2p/host/relay"
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
