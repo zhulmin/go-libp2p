@@ -73,7 +73,8 @@ func TestPipeTransport(t *testing.T) {
 // Note: the stress tests don't work because they rely on multiple listeners
 // being able to bind the same address, usually by requesting TCP port 0 from
 // the kernel. This doesn't apply for the pipe transport. The pipe transport
-// supports one per peer ID.
+// supports one per peer ID. Furthermore, the cancel test doesn't apply, since
+// there is no latency when opening pipe transports.
 func TestPipeTransportFull(t *testing.T) {
 	privKey, pubKey, err := peertest.RandTestKeyPair(512)
 	if err != nil {
@@ -87,8 +88,7 @@ func TestPipeTransportFull(t *testing.T) {
 	listenAddrStr := fmt.Sprintf("/ipfs/%s", id.Pretty())
 	listenAddr, _ := ma.NewMultiaddr(listenAddrStr)
 	utils.SubtestBasic(t, transport, transport, listenAddr, id)
-	// utils.SubtestProtocols(t, transport, transport, listenAddr, id)
-	// utils.SubtestPingPong(t, transport, transport, listenAddr, id)
-	// utils.SubtestCancel(t, transport, transport, listenAddr, id)
-	// utils.SubtestStreamReset(t, transport, transport, listenAddr, id)
+	utils.SubtestProtocols(t, transport, transport, listenAddr, id)
+	utils.SubtestPingPong(t, transport, transport, listenAddr, id)
+	utils.SubtestStreamReset(t, transport, transport, listenAddr, id)
 }

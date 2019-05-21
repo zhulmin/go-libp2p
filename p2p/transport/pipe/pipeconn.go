@@ -76,8 +76,9 @@ func (c *PipeConn) OpenStream() (streammux.Stream, error) {
 	}
 
 	connA, connB := net.Pipe()
-	streamA := NewPipeStream(connA, connB)
-	streamB := NewPipeStream(connB, connA)
+	connC, connD := net.Pipe()
+	streamA := NewPipeStream(connA, connC)
+	streamB := NewPipeStream(connD, connB)
 	c.streams <- streamB
 	return streamA, nil
 }
