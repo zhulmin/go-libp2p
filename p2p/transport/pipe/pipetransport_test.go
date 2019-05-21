@@ -6,24 +6,22 @@ import (
 	"testing"
 	"time"
 
-	insecure "github.com/libp2p/go-conn-security/insecure"
+	peer "github.com/libp2p/go-libp2p-peer"
 	peertest "github.com/libp2p/go-libp2p-peer/test"
-	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	utils "github.com/libp2p/go-libp2p-transport/test"
 	ma "github.com/multiformats/go-multiaddr"
-	mplex "github.com/whyrusleeping/go-smux-multiplex"
 )
 
 func TestPipeTransport(t *testing.T) {
-	id, err := peertest.RandPeerID()
+	privKey, pubKey, err := peertest.RandTestKeyPair(512)
+	if err != nil {
+		t.Fatal()
+	}
+	id, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	upgrader := &tptu.Upgrader{
-		Secure: insecure.New(id),
-		Muxer:  new(mplex.Transport),
-	}
-	transport := New(upgrader)
+	transport := New(id, pubKey, privKey)
 	listenAddrStr := fmt.Sprintf("/ipfs/%s", id.Pretty())
 	listenAddr, _ := ma.NewMultiaddr(listenAddrStr)
 	listener, err := transport.Listen(listenAddr)
@@ -77,20 +75,20 @@ func TestPipeTransport(t *testing.T) {
 // the kernel. This doesn't apply for the pipe transport. The pipe transport
 // supports one per peer ID.
 func TestPipeTransportFull(t *testing.T) {
-	id, err := peertest.RandPeerID()
+	privKey, pubKey, err := peertest.RandTestKeyPair(512)
+	if err != nil {
+		t.Fatal()
+	}
+	id, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	upgrader := &tptu.Upgrader{
-		Secure: insecure.New(id),
-		Muxer:  new(mplex.Transport),
-	}
-	transport := New(upgrader)
+	transport := New(id, pubKey, privKey)
 	listenAddrStr := fmt.Sprintf("/ipfs/%s", id.Pretty())
 	listenAddr, _ := ma.NewMultiaddr(listenAddrStr)
 	utils.SubtestBasic(t, transport, transport, listenAddr, id)
-	utils.SubtestProtocols(t, transport, transport, listenAddr, id)
-	utils.SubtestPingPong(t, transport, transport, listenAddr, id)
-	utils.SubtestCancel(t, transport, transport, listenAddr, id)
-	utils.SubtestStreamReset(t, transport, transport, listenAddr, id)
+	// utils.SubtestProtocols(t, transport, transport, listenAddr, id)
+	// utils.SubtestPingPong(t, transport, transport, listenAddr, id)
+	// utils.SubtestCancel(t, transport, transport, listenAddr, id)
+	// utils.SubtestStreamReset(t, transport, transport, listenAddr, id)
 }

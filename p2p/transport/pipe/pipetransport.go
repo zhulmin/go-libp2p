@@ -3,13 +3,12 @@ package pipetransport
 import (
 	"context"
 	"fmt"
-	"net"
 
 	"sync"
 
+	ic "github.com/libp2p/go-libp2p-crypto"
 	peer "github.com/libp2p/go-libp2p-peer"
 	tpt "github.com/libp2p/go-libp2p-transport"
-	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -17,16 +16,20 @@ type PipeTransport struct {
 	mlistenchans *sync.RWMutex
 	listenchans  map[string]chan *PipeConn
 
-	upgrader *tptu.Upgrader
+	id      peer.ID
+	pubKey  ic.PubKey
+	privKey ic.PrivKey
 }
 
 var _ tpt.Transport = (*PipeTransport)(nil)
 
-func New(u *tptu.Upgrader) *PipeTransport {
+func New(id peer.ID, pubKey ic.PubKey, privKey ic.PrivKey) *PipeTransport {
 	return &PipeTransport{
 		mlistenchans: new(sync.RWMutex),
 		listenchans:  make(map[string]chan *PipeConn),
-		upgrader:     u,
+		id:           id,
+		pubKey:       pubKey,
+		privKey:      privKey,
 	}
 }
 
@@ -67,11 +70,9 @@ func (t *PipeTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID)
 		return nil, fmt.Errorf("no memorylistener for %s", raddrStr)
 	}
 
-	connA, connB := net.Pipe()
-	manetConnA := WrapNetConn(connA, raddr)
-	manetConnB := WrapNetConn(connB, raddr)
-	ch <- manetConnA
-	return t.upgrader.UpgradeOutbound(ctx, t, manetConnB, p)
+	conn := NewPipeConn(t.id, raddr, t.pubKey, t.privKey, t)
+	ch <- conn
+	return conn, nil
 }
 
 func (t *PipeTransport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
@@ -87,7 +88,6 @@ func (t *PipeTransport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 	t.listenchans[laddrStr] = ch
 
 	listener := NewPipeListener(laddr, ch, t)
-	upgradedListener := t.upgrader.UpgradeListener(t, listener)
 
-	return upgradedListener, nil
+	return listener, nil
 }

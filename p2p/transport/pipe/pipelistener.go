@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net"
 
+	tpt "github.com/libp2p/go-libp2p-transport"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr-net"
 )
 
 type PipeListener struct {
@@ -22,7 +22,7 @@ func NewPipeListener(addr ma.Multiaddr, ch chan *PipeConn, t *PipeTransport) *Pi
 	}
 }
 
-func (l *PipeListener) Accept() (manet.Conn, error) {
+func (l *PipeListener) Accept() (tpt.Conn, error) {
 	conn, ok := <-l.listench
 	if !ok {
 		return nil, fmt.Errorf("memorytransport closed")
@@ -43,4 +43,4 @@ func (l *PipeListener) Multiaddr() ma.Multiaddr {
 	return l.listenaddr
 }
 
-var _ manet.Listener = (*PipeListener)(nil)
+var _ tpt.Listener = (*PipeListener)(nil)
