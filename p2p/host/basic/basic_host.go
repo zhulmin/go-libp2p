@@ -10,12 +10,12 @@ import (
 	logging "github.com/ipfs/go-log"
 	goprocess "github.com/jbenet/goprocess"
 	goprocessctx "github.com/jbenet/goprocess/context"
+	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
 	inat "github.com/libp2p/go-libp2p-nat"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
-	protocol "github.com/libp2p/go-libp2p-protocol"
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	ping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	ma "github.com/multiformats/go-multiaddr"
@@ -354,7 +354,7 @@ func (h *BasicHost) Network() inet.Network {
 }
 
 // Mux returns the Mux multiplexing incoming streams to protocol handlers
-func (h *BasicHost) Mux() *msmux.MultistreamMuxer {
+func (h *BasicHost) Mux() protocol.Switch {
 	return h.mux
 }
 

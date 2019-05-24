@@ -10,11 +10,11 @@ import (
 
 	logging "github.com/ipfs/go-log"
 	circuit "github.com/libp2p/go-libp2p-circuit"
+	pnet "github.com/libp2p/go-libp2p-core/pnet"
 	crypto "github.com/libp2p/go-libp2p-crypto"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	host "github.com/libp2p/go-libp2p-host"
 	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
-	pnet "github.com/libp2p/go-libp2p-interface-pnet"
 	metrics "github.com/libp2p/go-libp2p-metrics"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"

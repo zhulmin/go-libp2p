@@ -9,14 +9,13 @@ import (
 
 	logging "github.com/ipfs/go-log"
 	circuit "github.com/libp2p/go-libp2p-circuit"
+	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
 	lgbl "github.com/libp2p/go-libp2p-loggables"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
-	protocol "github.com/libp2p/go-libp2p-protocol"
 	ma "github.com/multiformats/go-multiaddr"
-	msmux "github.com/multiformats/go-multistream"
 )
 
 var log = logging.Logger("routedhost")
@@ -149,7 +148,7 @@ func (rh *RoutedHost) Network() inet.Network {
 	return rh.host.Network()
 }
 
-func (rh *RoutedHost) Mux() *msmux.MultistreamMuxer {
+func (rh *RoutedHost) Mux() protocol.Switch {
 	return rh.host.Mux()
 }
 
