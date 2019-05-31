@@ -22,7 +22,7 @@ func TestPipeTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport := New(id, pubKey, privKey)
-	listenAddrStr := fmt.Sprintf("/ipfs/%s", id.Pretty())
+	listenAddrStr := fmt.Sprintf("/memory/1")
 	listenAddr, _ := ma.NewMultiaddr(listenAddrStr)
 	listener, err := transport.Listen(listenAddr)
 	if err != nil {
@@ -85,8 +85,7 @@ func TestPipeTransportFull(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport := New(id, pubKey, privKey)
-	listenAddrStr := fmt.Sprintf("/ipfs/%s", id.Pretty())
-	listenAddr, _ := ma.NewMultiaddr(listenAddrStr)
+	listenAddr, _ := ma.NewMultiaddr("/memory/1")
 	utils.SubtestBasic(t, transport, transport, listenAddr, id)
 	utils.SubtestProtocols(t, transport, transport, listenAddr, id)
 	utils.SubtestPingPong(t, transport, transport, listenAddr, id)

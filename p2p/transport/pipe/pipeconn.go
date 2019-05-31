@@ -22,17 +22,15 @@ type PipeConn struct {
 	addr      ma.Multiaddr
 	id        peer.ID
 	pubKey    ic.PubKey
-	privKey   ic.PrivKey
 	transport *PipeTransport
 }
 
-func NewPipeConn(id peer.ID, addr ma.Multiaddr, pubKey ic.PubKey, privKey ic.PrivKey, transport *PipeTransport) *PipeConn {
+func NewPipeConn(id peer.ID, addr ma.Multiaddr, pubKey ic.PubKey, transport *PipeTransport) *PipeConn {
 	return &PipeConn{
 		streams:   make(chan *PipeStream),
 		addr:      addr,
 		id:        id,
 		pubKey:    pubKey,
-		privKey:   privKey,
 		transport: transport,
 		mclosed:   new(sync.RWMutex),
 		closed:    false,
@@ -92,11 +90,11 @@ func (c *PipeConn) RemoteMultiaddr() ma.Multiaddr {
 }
 
 func (c *PipeConn) LocalPeer() peer.ID {
-	return c.id
+	return c.transport.id
 }
 
 func (c *PipeConn) LocalPrivateKey() ic.PrivKey {
-	return c.privKey
+	return c.transport.privKey
 }
 
 func (c *PipeConn) RemotePeer() peer.ID {

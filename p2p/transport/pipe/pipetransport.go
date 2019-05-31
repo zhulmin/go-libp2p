@@ -12,10 +12,17 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type PipeTransport struct {
+type listenerChans struct {
 	mlistenchans *sync.RWMutex
 	listenchans  map[string]chan *PipeConn
+}
 
+var listeners = &listenerChans{
+	mlistenchans: new(sync.RWMutex),
+	listenchans:  make(map[string]chan *PipeConn),
+}
+
+type PipeTransport struct {
 	id      peer.ID
 	pubKey  ic.PubKey
 	privKey ic.PrivKey
@@ -25,34 +32,32 @@ var _ tpt.Transport = (*PipeTransport)(nil)
 
 func New(id peer.ID, pubKey ic.PubKey, privKey ic.PrivKey) *PipeTransport {
 	return &PipeTransport{
-		mlistenchans: new(sync.RWMutex),
-		listenchans:  make(map[string]chan *PipeConn),
-		id:           id,
-		pubKey:       pubKey,
-		privKey:      privKey,
+		id:      id,
+		pubKey:  pubKey,
+		privKey: privKey,
 	}
 }
 
 func (t *PipeTransport) closeListener(addr string) {
-	t.mlistenchans.Lock()
-	defer t.mlistenchans.Unlock()
+	listeners.mlistenchans.Lock()
+	defer listeners.mlistenchans.Unlock()
 
-	ch, ok := t.listenchans[addr]
+	ch, ok := listeners.listenchans[addr]
 	if !ok {
 		return
 	}
 	close(ch)
-	delete(t.listenchans, addr)
+	delete(listeners.listenchans, addr)
 }
 
 func (t *PipeTransport) CanDial(addr ma.Multiaddr) bool {
 	protocols := addr.Protocols()
-	return len(protocols) == 1 && protocols[0].Code == ma.P_P2P
+	return len(protocols) == 1 && protocols[0].Code == ma.P_MEMORY
 }
 
 func (t *PipeTransport) Protocols() []int {
 	return []int{
-		ma.P_P2P,
+		ma.P_MEMORY,
 	}
 }
 
@@ -61,31 +66,31 @@ func (t *PipeTransport) Proxy() bool {
 }
 
 func (t *PipeTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.Conn, error) {
-	t.mlistenchans.RLock()
-	defer t.mlistenchans.RUnlock()
+	listeners.mlistenchans.RLock()
+	defer listeners.mlistenchans.RUnlock()
 	raddrStr := raddr.String()
 
-	ch, ok := t.listenchans[raddrStr]
+	ch, ok := listeners.listenchans[raddrStr]
 	if !ok {
 		return nil, fmt.Errorf("no memorylistener for %s", raddrStr)
 	}
 
-	conn := NewPipeConn(t.id, raddr, t.pubKey, t.privKey, t)
+	conn := NewPipeConn(p, raddr, t.pubKey, t)
 	ch <- conn
 	return conn, nil
 }
 
 func (t *PipeTransport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
-	t.mlistenchans.Lock()
-	defer t.mlistenchans.Unlock()
+	listeners.mlistenchans.Lock()
+	defer listeners.mlistenchans.Unlock()
 
 	laddrStr := laddr.String()
-	if _, ok := t.listenchans[laddrStr]; ok {
+	if _, ok := listeners.listenchans[laddrStr]; ok {
 		return nil, fmt.Errorf("already listening on %s", laddrStr)
 	}
 
 	ch := make(chan *PipeConn)
-	t.listenchans[laddrStr] = ch
+	listeners.listenchans[laddrStr] = ch
 
 	listener := NewPipeListener(laddr, ch, t)
 
