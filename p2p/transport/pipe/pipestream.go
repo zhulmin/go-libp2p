@@ -57,21 +57,11 @@ func (s *PipeStream) SetDeadline(t time.Time) error {
 }
 
 func (s *PipeStream) SetReadDeadline(t time.Time) error {
-	err := s.inbound.SetReadDeadline(t)
-	if err != nil {
-		return err
-	}
-	err = s.outbound.SetReadDeadline(t)
-	return err
+	return s.inbound.SetReadDeadline(t)
 }
 
 func (s *PipeStream) SetWriteDeadline(t time.Time) error {
-	err := s.inbound.SetWriteDeadline(t)
-	if err != nil {
-		return err
-	}
-	err = s.outbound.SetWriteDeadline(t)
-	return err
+	return s.outbound.SetWriteDeadline(t)
 }
 
 var _ streammux.Stream = (*PipeStream)(nil)
