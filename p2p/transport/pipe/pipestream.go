@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	mux "github.com/libp2p/go-libp2p-core/mux"
 	streammux "github.com/libp2p/go-stream-muxer"
 )
 
@@ -14,12 +15,23 @@ var ErrAlreadyHalfClosed = fmt.Errorf("tried to half close stream that was alrea
 type PipeStream struct {
 	inbound  net.Conn
 	outbound net.Conn
+	errchs   struct {
+		in  <-chan error
+		out chan<- error
+	}
 }
 
-func NewPipeStream(inbound net.Conn, outbound net.Conn) *PipeStream {
+func NewPipeStream(inbound net.Conn, outbound net.Conn, errinch <-chan error, erroutch chan<- error) *PipeStream {
 	return &PipeStream{
 		inbound:  inbound,
 		outbound: outbound,
+		errchs: struct {
+			in  <-chan error
+			out chan<- error
+		}{
+			in:  errinch,
+			out: erroutch,
+		},
 	}
 }
 
@@ -28,6 +40,7 @@ func (s *PipeStream) Close() error {
 }
 
 func (s *PipeStream) Reset() error {
+	s.errchs.out <- mux.ErrReset
 	err1 := s.inbound.Close()
 	err2 := s.outbound.Close()
 	if err1 != nil {
@@ -40,11 +53,26 @@ func (s *PipeStream) Reset() error {
 }
 
 func (s *PipeStream) Read(b []byte) (int, error) {
-	return s.inbound.Read(b)
+	n, err := s.inbound.Read(b)
+
+	select {
+	case reseterr := <-s.errchs.in:
+		return n, reseterr
+	default:
+		return n, err
+	}
 }
 
 func (s *PipeStream) Write(b []byte) (int, error) {
-	return s.outbound.Write(b)
+	n, err := s.outbound.Write(b)
+
+	select {
+	case reseterr := <-s.errchs.in:
+		return n, reseterr
+	default:
+		fmt.Println("no probs here")
+		return n, err
+	}
 }
 
 func (s *PipeStream) SetDeadline(t time.Time) error {
