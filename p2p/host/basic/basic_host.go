@@ -157,7 +157,10 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.ids = opts.IdentifyService
 	} else {
 		// we can't set this as a default above because it depends on the *BasicHost.
-		h.ids = identify.NewIDService(goprocessctx.WithProcessClosing(ctx, h.proc), h)
+		h.ids, err = identify.NewIDService(goprocessctx.WithProcessClosing(ctx, h.proc), h)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {

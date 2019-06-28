@@ -2,6 +2,7 @@ package identify
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -66,20 +67,43 @@ type IDService struct {
 	emitters     struct {
 		evtPeerProtocolsUpdated event.Emitter
 	}
+
+	cachedPublicKey []byte // cached public key.
+}
+
+func getPubKey(h host.Host) ([]byte, error) {
+	ownKey := h.Peerstore().PubKey(h.ID())
+
+	if ownKey != nil {
+		return ownKey.Bytes()
+	}
+
+	// public key is nil. We are either using insecure transport or something erratic happened.
+	// check if we're even operating in "secure mode"
+	if h.Peerstore().PrivKey(h.ID()) != nil {
+		// private key is present. But NO public key. Something bad happened.
+		return nil, fmt.Errorf("did not have own public key in Peerstore")
+	}
+	return nil, nil
 }
 
 // NewIDService constructs a new *IDService and activates it by
 // attaching its stream handler to the given host.Host.
-func NewIDService(ctx context.Context, h host.Host) *IDService {
+func NewIDService(ctx context.Context, h host.Host) (*IDService, error) {
 	s := &IDService{
 		Host:          h,
 		ctx:           ctx,
 		currid:        make(map[network.Conn]chan struct{}),
 		observedAddrs: NewObservedAddrSet(ctx),
 	}
+	var err error
+
+	s.cachedPublicKey, err = getPubKey(h)
+	if err != nil {
+		return nil, err
+	}
 
 	// handle local protocol handler updates, and push deltas to peers.
-	var err error
 	s.subscription, err = h.EventBus().Subscribe(&event.EvtLocalProtocolsUpdated{}, eventbus.BufSize(128))
 	if err != nil {
 		log.Warningf("identify service not subscribed to local protocol handlers updates; err: %s", err)
@@ -96,7 +120,7 @@ func NewIDService(ctx context.Context, h host.Host) *IDService {
 	h.SetStreamHandler(IDPush, s.pushHandler)
 	h.SetStreamHandler(IDDelta, s.deltaHandler)
 	h.Network().Notify((*netNotifiee)(s))
-	return s
+	return s, nil
 }
 
 func (ids *IDService) handleEvents() {
@@ -281,28 +305,11 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c network.Conn) {
 	for i, addr := range laddrs {
 		mes.ListenAddrs[i] = addr.Bytes()
 	}
+
 	log.Debugf("%s sent listen addrs to %s: %s", c.LocalPeer(), c.RemotePeer(), laddrs)
 
 	// set our public key
-	ownKey := ids.Host.Peerstore().PubKey(ids.Host.ID())
-
-	// check if we even have a public key.
-	if ownKey == nil {
-		// public key is nil. We are either using insecure transport or something erratic happened.
-		// check if we're even operating in "secure mode"
-		if ids.Host.Peerstore().PrivKey(ids.Host.ID()) != nil {
-			// private key is present. But NO public key. Something bad happened.
-			log.Errorf("did not have own public key in Peerstore")
-		}
-		// if neither of the key is present it is safe to assume that we are using an insecure transport.
-	} else {
-		// public key is present. Safe to proceed.
-		if kb, err := ownKey.Bytes(); err != nil {
-			log.Errorf("failed to convert key to bytes")
-		} else {
-			mes.PublicKey = kb
-		}
-	}
+	mes.PublicKey = ids.cachedPublicKey
 
 	// set protocol versions
 	pv := LibP2PVersion
