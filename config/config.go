@@ -68,6 +68,7 @@ type Config struct {
 	Routing RoutingC
 
 	EnableAutoRelay bool
+	StaticRelays    []pstore.PeerInfo
 }
 
 // NewNode constructs a new libp2p Host from the Config.
@@ -224,7 +225,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 			// advertise ourselves
 			relay.Advertise(ctx, discovery)
 		} else {
-			_ = relay.NewAutoRelay(swrm.Context(), h, discovery, router)
+			_ = relay.NewAutoRelay(swrm.Context(), h, discovery, router, cfg.StaticRelays)
 		}
 	}
 

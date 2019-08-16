@@ -244,6 +244,39 @@ func EnableAutoRelay() Option {
 	}
 }
 
+// StaticRelays configures known relays for autorelay; when this option is enabled
+// then the system will use the configured relays instead of querying the DHT to
+// discover relays
+func StaticRelays(relays []pstore.PeerInfo) Option {
+	return func(cfg *Config) error {
+		cfg.StaticRelays = relays
+		return nil
+	}
+}
+
+// DefaultRelays configures the static relays to use the known PL-operated relays
+func DefaultRelays() Option {
+	return func(cfg *Config) error {
+		for _, addr := range []string{
+			"/ip4/147.75.80.110/tcp/4001/p2p/QmbFgm5zan8P6eWWmeyfncR5feYEMPbht5b1FW1C37aQ7y",
+			"/ip4/147.75.195.153/tcp/4001/p2p/QmW9m57aiBDHAkKj9nmFSEn7ZqrcF1fZS4bipsTCHburei",
+			"/ip4/147.75.70.221/tcp/4001/p2p/Qme8g49gm3q4Acp7xWBKg3nAa9fxZ1YmyDJdyGgoG6LsXh",
+		} {
+			a, err := ma.NewMultiaddr(addr)
+			if err != nil {
+				return err
+			}
+			pi, err := pstore.InfoFromP2pAddr(a)
+			if err != nil {
+				return err
+			}
+			cfg.StaticRelays = append(cfg.StaticRelays, *pi)
+		}
+
+		return nil
+	}
+}
+
 // FilterAddresses configures libp2p to never dial nor accept connections from
 // the given addresses.
 func FilterAddresses(addrs ...*net.IPNet) Option {
