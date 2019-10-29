@@ -184,8 +184,7 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 
 	s, err := c.NewStream()
 	if err != nil {
-		log.Debugf("error opening initial stream for %s: %s", ID, err)
-		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer())
+		log.Infow("IdentifyOpenFailed", "remote_peer", c.RemotePeer())
 		c.Close()
 		return
 	}
@@ -194,7 +193,7 @@ func (ids *IDService) IdentifyConn(c network.Conn) {
 
 	// ok give the response to our handler.
 	if err := msmux.SelectProtoOrFail(ID, s); err != nil {
-		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer(), logging.Metadata{"error": err})
+		log.Infow("IdentifyOpenFailed", "remote_peer", c.RemotePeer(), "error", err)
 		s.Reset()
 		return
 	}
