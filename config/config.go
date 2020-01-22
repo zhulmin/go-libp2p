@@ -7,6 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
+	coreit "github.com/libp2p/go-libp2p-core/introspection"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -14,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/pnet"
 	"github.com/libp2p/go-libp2p-core/routing"
 
+	"github.com/libp2p/go-libp2p-introspection/introspection"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
@@ -77,6 +79,9 @@ type Config struct {
 
 	EnableAutoRelay bool
 	StaticRelays    []peer.AddrInfo
+
+	Introspector            coreit.Introspector
+	IntrospectionServerAddr string
 }
 
 // NewNode constructs a new libp2p Host from the Config.
@@ -114,18 +119,25 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		return nil, err
 	}
 
+	introspector := cfg.Introspector
+	if introspector == nil {
+		introspector = introspection.NewDefaultIntrospector()
+	}
+
 	// TODO: Make the swarm implementation configurable.
-	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter)
+	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter, introspector)
 	if cfg.Filters != nil {
 		swrm.Filters = cfg.Filters
 	}
 
 	h, err := bhost.NewHost(ctx, swrm, &bhost.HostOpts{
-		ConnManager:  cfg.ConnManager,
-		AddrsFactory: cfg.AddrsFactory,
-		NATManager:   cfg.NATManager,
-		EnablePing:   !cfg.DisablePing,
-		UserAgent:    cfg.UserAgent,
+		ConnManager:             cfg.ConnManager,
+		AddrsFactory:            cfg.AddrsFactory,
+		NATManager:              cfg.NATManager,
+		EnablePing:              !cfg.DisablePing,
+		UserAgent:               cfg.UserAgent,
+		Introspector:            introspector,
+		IntrospectionServerAddr: cfg.IntrospectionServerAddr,
 	})
 
 	if err != nil {
@@ -242,6 +254,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 	if router != nil {
 		return routed.Wrap(h, router), nil
 	}
+
 	return h, nil
 }
 

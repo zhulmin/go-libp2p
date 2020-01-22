@@ -4,21 +4,23 @@ import (
 	"context"
 	"io"
 	"net"
+	runtime2 "runtime"
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p-introspection/introspection"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
+	coreit "github.com/libp2p/go-libp2p-core/introspection"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
-	"github.com/libp2p/go-eventbus"
 	inat "github.com/libp2p/go-libp2p-nat"
 
 	logging "github.com/ipfs/go-log"
@@ -34,6 +36,8 @@ import (
 // The maximum number of address resolution steps we'll perform for a single
 // peer (for all addresses).
 const maxAddressResolution = 32
+
+var _ coreit.IntrospectorRegistry = (*BasicHost)(nil)
 
 var log = logging.Logger("basichost")
 
@@ -89,6 +93,9 @@ type BasicHost struct {
 	emitters  struct {
 		evtLocalProtocolsUpdated event.Emitter
 	}
+
+	// introspector is the host introspector used to register subsystem metric providers & fetch the current system state when asked
+	introspector coreit.Introspector
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -124,6 +131,12 @@ type HostOpts struct {
 
 	// UserAgent sets the user-agent for the host. Defaults to ClientVersion.
 	UserAgent string
+
+	// Introspector is used by host subsystems to register themselves as metrics providers & fetch the current state.
+	Introspector coreit.Introspector
+
+	// IntrospectionServerAddr is the address for the introspection server
+	IntrospectionServerAddr string
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -135,23 +148,13 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		AddrsFactory: DefaultAddrsFactory,
 		maResolver:   madns.DefaultResolver,
 		eventbus:     eventbus.NewBus(),
+		introspector: opts.Introspector,
 	}
 
 	var err error
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
 		return nil, err
 	}
-
-	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
-		if h.natmgr != nil {
-			h.natmgr.Close()
-		}
-		if h.cmgr != nil {
-			h.cmgr.Close()
-		}
-		_ = h.emitters.evtLocalProtocolsUpdated.Close()
-		return h.Network().Close()
-	})
 
 	if opts.MultistreamMuxer != nil {
 		h.mux = opts.MultistreamMuxer
@@ -191,10 +194,52 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.pings = ping.NewPingService(h)
 	}
 
+	if h.introspector == nil {
+		h.introspector = introspection.NewDefaultIntrospector()
+	}
+
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
+	// register runtime provider
+	if err := h.introspector.RegisterProviders(&coreit.ProvidersTree{Runtime: h.runtimeDataProvider()}); err != nil {
+		log.Errorf("failed to register a runtime provider, err=%s", err)
+	}
+
+	// start introspection server
+	// TODO What happens if address is not configured or not available  ?
+	// TODO How do we configure a "default address"
+	shutDownFnc := introspection.StartServer(opts.IntrospectionServerAddr, h.introspector)
+
+	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
+		if h.natmgr != nil {
+			h.natmgr.Close()
+		}
+		if h.cmgr != nil {
+			h.cmgr.Close()
+		}
+		_ = h.emitters.evtLocalProtocolsUpdated.Close()
+
+		if err := shutDownFnc(); err != nil {
+			log.Errorf("error while shutting down introspection server, err=%s", err)
+		}
+
+		return h.Network().Close()
+	})
+
 	return h, nil
+}
+
+func (h *BasicHost) runtimeDataProvider() *coreit.RuntimeProviders {
+	// TODO What is the version here ?
+	runtime := &coreit.Runtime{Implementation: "go-libp2p",
+		Platform: runtime2.GOOS,
+		PeerId:   h.ID().Pretty(),
+	}
+
+	return &coreit.RuntimeProviders{Get: func() (*coreit.Runtime, error) {
+		return runtime, nil
+	}}
 }
 
 // New constructs and sets up a new *BasicHost with given Network and options.
@@ -781,6 +826,13 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	}
 
 	return dedupAddrs(finalAddrs)
+}
+
+// TODO Do this for routed & relay hosts as well
+// RegisterProvider allows the host to be an IntrospectorRegistry. Please look at the docs for the IntrospectorRegistry
+// interface in go-libp2p-core for more details.
+func (h *BasicHost) RegisterProviders(p *coreit.ProvidersTree) error {
+	return h.introspector.RegisterProviders(p)
 }
 
 // Close shuts down the Host's services (network, etc).

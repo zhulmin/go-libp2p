@@ -5,6 +5,7 @@ package libp2p
 
 import (
 	"fmt"
+	coreit "github.com/libp2p/go-libp2p-core/introspection"
 	"net"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
@@ -189,6 +190,28 @@ func ConnectionManager(connman connmgr.ConnManager) Option {
 			return fmt.Errorf("cannot specify multiple connection managers")
 		}
 		cfg.ConnManager = connman
+		return nil
+	}
+}
+
+// Introspector configures the host to use the given introspector
+func Introspector(i coreit.Introspector) Option {
+	return func(cfg *Config) error {
+		if cfg.Introspector != nil {
+			return fmt.Errorf("cannot specify multiple introspectors")
+		}
+		cfg.Introspector = i
+		return nil
+	}
+}
+
+// IntrospectionServerAddr configures the address for the introspection server
+func IntrospectionServerAddr(addr string) Option {
+	return func(cfg *Config) error {
+		if len(cfg.IntrospectionServerAddr) != 0 {
+			return fmt.Errorf("cannot specify multiple introspection server addresses")
+		}
+		cfg.IntrospectionServerAddr = addr
 		return nil
 	}
 }
