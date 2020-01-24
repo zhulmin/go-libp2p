@@ -197,20 +197,21 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
+	// TODO What is Version ?
 	// register runtime provider
 	if err := h.introspector.RegisterProviders(&introspect.ProvidersMap{Runtime: func() (*introspect.Runtime, error) {
 		return &introspect.Runtime{Implementation: "go-libp2p",
 			Platform: runtime2.GOOS,
 			PeerId:   h.ID().Pretty(),
+			Version:  "",
 		}, nil
 	}}); err != nil {
 		log.Errorf("failed to register a runtime provider, err=%s", err)
 	}
 
+	// TODO Resolve the discussion on address
 	// start introspection server
-	// TODO What happens if address is not configured or not available  ?
-	// TODO How do we configure a "default address"
-	shutDownFnc := introspection.StartServer(h.introspector)
+	shutDownFnc := introspection.StartServer("address", h.introspector)
 
 	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
 		if h.natmgr != nil {

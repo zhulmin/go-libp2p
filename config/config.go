@@ -130,12 +130,12 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 	}
 
 	h, err := bhost.NewHost(ctx, swrm, &bhost.HostOpts{
-		ConnManager:             cfg.ConnManager,
-		AddrsFactory:            cfg.AddrsFactory,
-		NATManager:              cfg.NATManager,
-		EnablePing:              !cfg.DisablePing,
-		UserAgent:               cfg.UserAgent,
-		Introspector:            introspector,
+		ConnManager:  cfg.ConnManager,
+		AddrsFactory: cfg.AddrsFactory,
+		NATManager:   cfg.NATManager,
+		EnablePing:   !cfg.DisablePing,
+		UserAgent:    cfg.UserAgent,
+		Introspector: introspector,
 	})
 
 	if err != nil {
