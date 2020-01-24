@@ -7,7 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
-	coreit "github.com/libp2p/go-libp2p-core/introspection"
+	"github.com/libp2p/go-libp2p-core/introspect"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -80,8 +80,7 @@ type Config struct {
 	EnableAutoRelay bool
 	StaticRelays    []peer.AddrInfo
 
-	Introspector            coreit.Introspector
-	IntrospectionServerAddr string
+	Introspector introspect.Introspector
 }
 
 // NewNode constructs a new libp2p Host from the Config.
@@ -137,7 +136,6 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		EnablePing:              !cfg.DisablePing,
 		UserAgent:               cfg.UserAgent,
 		Introspector:            introspector,
-		IntrospectionServerAddr: cfg.IntrospectionServerAddr,
 	})
 
 	if err != nil {
