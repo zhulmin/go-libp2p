@@ -21,6 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
+	"github.com/libp2p/go-eventbus"
 	inat "github.com/libp2p/go-libp2p-nat"
 
 	logging "github.com/ipfs/go-log"
