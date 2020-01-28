@@ -157,13 +157,6 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.mux = opts.MultistreamMuxer
 	}
 
-	// we can't set this as a default above because it depends on the *BasicHost.
-	h.ids = identify.NewIDService(
-		goprocessctx.WithProcessClosing(ctx, h.proc),
-		h,
-		identify.UserAgent(opts.UserAgent),
-	)
-
 	if uint64(opts.NegotiationTimeout) != 0 {
 		h.negtimeout = opts.NegotiationTimeout
 	}
@@ -212,7 +205,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 
 	// TODO Resolve the discussion on address
 	// start introspection server
-	shutDownFnc := introspection.StartServer("address", h.introspector)
+	introspectClose := introspection.StartServer("address", h.introspector)
 
 	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
 		if h.natmgr != nil {
@@ -223,12 +216,19 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		}
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 
-		if err := shutDownFnc(); err != nil {
+		if err := introspectClose(); err != nil {
 			log.Errorf("error while shutting down introspection server, err=%s", err)
 		}
 
 		return h.Network().Close()
 	})
+
+	// we can't set this as a default above because it depends on the *BasicHost.
+	h.ids = identify.NewIDService(
+		goprocessctx.WithProcessClosing(ctx, h.proc),
+		h,
+		identify.UserAgent(opts.UserAgent),
+	)
 
 	return h, nil
 }
