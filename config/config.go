@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/pnet"
 	"github.com/libp2p/go-libp2p-core/routing"
 
-	"github.com/libp2p/go-libp2p-introspection/introspection"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
@@ -118,13 +117,9 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		return nil, err
 	}
 
-	introspector := cfg.Introspector
-	if introspector == nil {
-		introspector = introspection.NewDefaultIntrospector()
-	}
 
 	// TODO: Make the swarm implementation configurable.
-	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter, introspector)
+	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter, cfg.Introspector)
 	if cfg.Filters != nil {
 		swrm.Filters = cfg.Filters
 	}
@@ -135,7 +130,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		NATManager:   cfg.NATManager,
 		EnablePing:   !cfg.DisablePing,
 		UserAgent:    cfg.UserAgent,
-		Introspector: introspector,
+		Introspector: cfg.Introspector,
 	})
 
 	if err != nil {

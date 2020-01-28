@@ -184,28 +184,28 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.pings = ping.NewPingService(h)
 	}
 
-	if h.introspector == nil {
-		h.introspector = introspection.NewDefaultIntrospector()
-	}
-
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
-	// TODO What is Version ?
-	// register runtime provider
-	if err := h.introspector.RegisterProviders(&introspect.ProvidersMap{Runtime: func() (*introspect.Runtime, error) {
-		return &introspect.Runtime{Implementation: "go-libp2p",
-			Platform: runtime2.GOOS,
-			PeerId:   h.ID().Pretty(),
-			Version:  "",
-		}, nil
-	}}); err != nil {
-		log.Errorf("failed to register a runtime provider, err=%s", err)
-	}
 
-	// TODO Resolve the discussion on address
 	// start introspection server
-	introspectClose := introspection.StartServer("address", h.introspector)
+	var introspectCloseFnc func() error
+	if h.introspector != nil {
+		// TODO What is Version ?
+		// register runtime provider
+		if err := h.introspector.RegisterProviders(&introspect.ProvidersMap{Runtime: func() (*introspect.Runtime, error) {
+			return &introspect.Runtime{Implementation: "go-libp2p",
+				Platform: runtime2.GOOS,
+				PeerId:   h.ID().Pretty(),
+				Version:  "",
+			}, nil
+		}}); err != nil {
+			log.Errorf("failed to register a runtime provider, err=%s", err)
+		}
+
+		// start server
+		introspectCloseFnc = introspection.StartServer(h.introspector)
+	}
 
 	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
 		if h.natmgr != nil {
@@ -216,10 +216,11 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		}
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 
-		if err := introspectClose(); err != nil {
-			log.Errorf("error while shutting down introspection server, err=%s", err)
+		if h.introspector != nil {
+			if err := introspectCloseFnc(); err != nil {
+				log.Errorf("error while shutting down introspection server, err=%s", err)
+			}
 		}
-
 		return h.Network().Close()
 	})
 
