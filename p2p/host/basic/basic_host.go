@@ -187,7 +187,6 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
-
 	// start introspection server
 	var introspectCloseFnc func() error
 	if h.introspector != nil {
