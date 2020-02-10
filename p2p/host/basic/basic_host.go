@@ -2,20 +2,21 @@ package basichost
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
-	runtime2 "runtime"
+	"runtime"
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p-introspection/introspection"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/introspect"
+	"github.com/libp2p/go-libp2p-core/introspection"
+	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -95,7 +96,8 @@ type BasicHost struct {
 		evtLocalProtocolsUpdated event.Emitter
 	}
 
-	introspector introspect.Introspector
+	introspector          introspection.Introspector
+	introspectionEndpoint introspection.Endpoint
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -132,8 +134,13 @@ type HostOpts struct {
 	// UserAgent sets the user-agent for the host. Defaults to ClientVersion.
 	UserAgent string
 
-	// Introspector is used by host subsystems to register themselves as metrics providers & fetch the current state.
-	Introspector introspect.Introspector
+	// Introspector is used by host subsystems to register themselves as metrics
+	// providers and fetch the current state.
+	Introspector introspection.Introspector
+
+	// IntrospectionEndpoint is the introspection endpoint through which
+	// introspection data is served to clients.
+	IntrospectionEndpoint introspection.Endpoint
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -188,22 +195,28 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	net.SetStreamHandler(h.newStreamHandler)
 
 	// start introspection server
-	var introspectCloseFnc func() error
+	h.introspectionEndpoint = opts.IntrospectionEndpoint
 	if h.introspector != nil {
-		// TODO What is Version ?
-		// register runtime provider
-		if err := h.introspector.RegisterProviders(&introspect.ProvidersMap{Runtime: func() (*introspect.Runtime, error) {
-			return &introspect.Runtime{Implementation: "go-libp2p",
-				Platform: runtime2.GOOS,
-				PeerId:   h.ID().Pretty(),
-				Version:  "",
+		runtimeDataProvider := func() (*introspection_pb.Runtime, error) {
+			return &introspection_pb.Runtime{
+				Implementation: "go-libp2p",
+				Platform:       runtime.GOOS,
+				PeerId:         h.ID().Pretty(),
+				Version:        "",
 			}, nil
-		}}); err != nil {
-			log.Errorf("failed to register a runtime provider, err=%s", err)
 		}
 
-		// start server
-		introspectCloseFnc = introspection.StartServer(h.introspector)
+		// register runtime provider
+		provs := &introspection.DataProviders{Runtime: runtimeDataProvider}
+		if err := h.introspector.RegisterDataProviders(provs); err != nil {
+			log.Errorf("failed to register a runtime provider, err=%s", err)
+		}
+	}
+
+	if h.introspectionEndpoint != nil {
+		if err := h.introspectionEndpoint.Start(); err != nil {
+			return nil, fmt.Errorf("failed to start introspection endpoint: %w", err)
+		}
 	}
 
 	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
@@ -215,11 +228,12 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		}
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 
-		if h.introspector != nil {
-			if err := introspectCloseFnc(); err != nil {
-				log.Errorf("error while shutting down introspection server, err=%s", err)
+		if h.introspectionEndpoint != nil {
+			if err := h.introspectionEndpoint.Close(); err != nil {
+				log.Errorf("failed while shutting down introspection endpoint; err: %s", err)
 			}
 		}
+
 		return h.Network().Close()
 	})
 
@@ -233,8 +247,12 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	return h, nil
 }
 
-func (h *BasicHost) Introspector() introspect.Introspector {
+func (h *BasicHost) Introspector() introspection.Introspector {
 	return h.introspector
+}
+
+func (h *BasicHost) IntrospectionEndpoint() introspection.Endpoint {
+	return h.introspectionEndpoint
 }
 
 // New constructs and sets up a new *BasicHost with given Network and options.

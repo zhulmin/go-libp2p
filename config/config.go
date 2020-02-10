@@ -7,7 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/introspect"
+	"github.com/libp2p/go-libp2p-core/introspection"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -39,6 +39,10 @@ type AddrsFactory = bhost.AddrsFactory
 type NATManagerC func(network.Network) bhost.NATManager
 
 type RoutingC func(host.Host) (routing.PeerRouting, error)
+
+// IntrospectionEndpointC is a type that represents an introspection.Endpoint
+// constructor.
+type IntrospectionEndpointC func(introspection.Introspector) (introspection.Endpoint, error)
 
 // Config describes a set of settings for a libp2p node
 //
@@ -79,7 +83,8 @@ type Config struct {
 	EnableAutoRelay bool
 	StaticRelays    []peer.AddrInfo
 
-	Introspector introspect.Introspector
+	Introspector          introspection.Introspector
+	IntrospectionEndpoint IntrospectionEndpointC
 }
 
 // NewNode constructs a new libp2p Host from the Config.
@@ -123,17 +128,28 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		swrm.Filters = cfg.Filters
 	}
 
-	h, err := bhost.NewHost(ctx, swrm, &bhost.HostOpts{
+	opts := &bhost.HostOpts{
 		ConnManager:  cfg.ConnManager,
 		AddrsFactory: cfg.AddrsFactory,
 		NATManager:   cfg.NATManager,
 		EnablePing:   !cfg.DisablePing,
 		UserAgent:    cfg.UserAgent,
 		Introspector: cfg.Introspector,
-	})
+	}
+
+	if cfg.Introspector != nil && cfg.IntrospectionEndpoint != nil {
+		opts.IntrospectionEndpoint, err = cfg.IntrospectionEndpoint(cfg.Introspector)
+		if err != nil {
+			swrm.Close()
+			return nil, fmt.Errorf("failed while starting introspection endpoint: %w", err)
+		}
+	}
+
+	h, err := bhost.NewHost(ctx, swrm, opts)
 
 	if err != nil {
-		swrm.Close()
+		_ = swrm.Close()
+		_ = opts.IntrospectionEndpoint.Close()
 		return nil, err
 	}
 

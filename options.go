@@ -9,7 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/introspect"
+	"github.com/libp2p/go-libp2p-core/introspection"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -194,13 +194,27 @@ func ConnectionManager(connman connmgr.ConnManager) Option {
 	}
 }
 
-// Introspector configures the host to use the given introspector
-func Introspector(i introspect.Introspector) Option {
+// Introspector configures the host to use the given introspector, and the
+// supplied endpoint constructor.
+//
+// Example:
+//
+//  import "github.com/libp2p/go-libp2p-introspector"
+//
+//  host, err := libp2p.New(
+//	    libp2p.Introspector(
+//          introspector.NewDefaultIntrospector(),
+//          introspector.WsEndpointWithConfig(&introspector.WsEndpointConfig{}),
+//      ),
+//  )
+//
+func Introspector(i introspection.Introspector, endpointCtor config.IntrospectionEndpointC) Option {
 	return func(cfg *Config) error {
 		if cfg.Introspector != nil {
 			return fmt.Errorf("cannot specify multiple introspectors")
 		}
 		cfg.Introspector = i
+		cfg.IntrospectionEndpoint = endpointCtor
 		return nil
 	}
 }

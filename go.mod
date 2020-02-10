@@ -2,10 +2,12 @@ module github.com/libp2p/go-libp2p
 
 require (
 	github.com/gogo/protobuf v1.3.1
+	github.com/golang/protobuf v1.3.2
+	github.com/gorilla/websocket v1.4.1
 	github.com/ipfs/go-cid v0.0.4
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-ipfs-util v0.0.1
-	github.com/ipfs/go-log v0.0.1
+	github.com/ipfs/go-log v1.0.1
 	github.com/jbenet/go-cienv v0.1.0
 	github.com/jbenet/goprocess v0.1.3
 	github.com/libp2p/go-conn-security-multistream v0.1.0
@@ -13,8 +15,9 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.1.1
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
 	github.com/libp2p/go-libp2p-circuit v0.1.4
-	github.com/libp2p/go-libp2p-core v0.3.0
+	github.com/libp2p/go-libp2p-core v0.3.1-0.20200207145311-a52ff097a8de
 	github.com/libp2p/go-libp2p-discovery v0.2.0
+	github.com/libp2p/go-libp2p-introspector v0.0.3
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.1
 	github.com/libp2p/go-libp2p-nat v0.0.5
@@ -34,7 +37,10 @@ require (
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.1
 	github.com/multiformats/go-multistream v0.1.0
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/stretchr/testify v1.4.0
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
+	golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550 // indirect
 	golang.org/x/sys v0.0.0-20190922100055-0a153f010e69 // indirect
 )
 
