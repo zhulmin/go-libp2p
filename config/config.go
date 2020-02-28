@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/pnet"
 	"github.com/libp2p/go-libp2p-core/routing"
 
+	"github.com/libp2p/go-eventbus"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	relay "github.com/libp2p/go-libp2p/p2p/host/relay"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
@@ -114,13 +115,19 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		return nil, err
 	}
 
+	// create an event bus
+	eb := eventbus.NewBus()
+
 	// TODO: Make the swarm implementation configurable.
-	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter)
+	swrm, err := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter, eb)
+	if err != nil {
+		return nil, err
+	}
 	if cfg.Filters != nil {
 		swrm.Filters = cfg.Filters
 	}
 
-	h, err := bhost.NewHost(ctx, swrm, &bhost.HostOpts{
+	h, err := bhost.NewHost(ctx, swrm, eb, &bhost.HostOpts{
 		ConnManager:  cfg.ConnManager,
 		AddrsFactory: cfg.AddrsFactory,
 		NATManager:   cfg.NATManager,

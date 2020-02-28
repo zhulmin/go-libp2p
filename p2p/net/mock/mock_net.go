@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 
+	"github.com/libp2p/go-eventbus"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 
 	"github.com/jbenet/goprocess"
@@ -107,7 +108,7 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host
 		NegotiationTimeout: -1,
 	}
 
-	h, err := bhost.NewHost(mn.ctx, n, opts)
+	h, err := bhost.NewHost(mn.ctx, n, eventbus.NewBus(), opts)
 	if err != nil {
 		return nil, err
 	}

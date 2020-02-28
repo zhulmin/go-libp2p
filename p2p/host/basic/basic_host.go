@@ -127,14 +127,14 @@ type HostOpts struct {
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
-func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHost, error) {
+func NewHost(ctx context.Context, net network.Network, eb event.Bus, opts *HostOpts) (*BasicHost, error) {
 	h := &BasicHost{
 		network:      net,
 		mux:          msmux.NewMultistreamMuxer(),
 		negtimeout:   DefaultNegotiationTimeout,
 		AddrsFactory: DefaultAddrsFactory,
 		maResolver:   madns.DefaultResolver,
-		eventbus:     eventbus.NewBus(),
+		eventbus:     eb,
 	}
 
 	var err error
@@ -224,7 +224,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 		}
 	}
 
-	h, err := NewHost(context.Background(), net, hostopts)
+	h, err := NewHost(context.Background(), net, eventbus.NewBus(), hostopts)
 	if err != nil {
 		// this cannot happen with legacy options
 		// plus we want to keep the (deprecated) legacy interface unchanged
