@@ -34,6 +34,7 @@ require (
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.2
 	github.com/multiformats/go-multistream v0.1.1
+	github.com/stretchr/testify v1.4.0
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 	golang.org/x/crypto v0.0.0-20200221231518-2aa609cf4a9d // indirect
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58 // indirect

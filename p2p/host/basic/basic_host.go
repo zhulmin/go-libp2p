@@ -87,7 +87,13 @@ type BasicHost struct {
 	mx        sync.Mutex
 	lastAddrs []ma.Multiaddr
 	emitters  struct {
+		evtPeerStateChange       event.Emitter
 		evtLocalProtocolsUpdated event.Emitter
+	}
+
+	stripedPeerConnectivity [256]struct {
+		sync.Mutex
+		observedConnectedness map[peer.ID]network.Connectedness
 	}
 }
 
@@ -142,6 +148,10 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		return nil, err
 	}
 
+	if h.emitters.evtPeerStateChange, err = h.eventbus.Emitter(&event.EvtPeerConnectednessChanged{}); err != nil {
+		return nil, err
+	}
+
 	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
 		if h.natmgr != nil {
 			h.natmgr.Close()
@@ -193,6 +203,14 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
+
+	// initialize the data structures for peer connectedness notifications
+	for i := 0; i < 256; i++ {
+		h.stripedPeerConnectivity[i].observedConnectedness = make(map[peer.ID]network.Connectedness)
+	}
+
+	// register for Network notifications
+	net.Notify((*basicHostNotifiee)(h))
 
 	return h, nil
 }
