@@ -152,16 +152,52 @@ func (ids *IDService) handleEvents() {
 		}
 	}()
 
+	delta := make(map[protocol.ID]bool)
+	var active chan struct{}
 	for {
 		select {
 		case evt, more := <-sub.Out():
 			if !more {
 				return
 			}
-			ids.fireProtocolDelta(evt.(event.EvtLocalProtocolsUpdated))
+			update := evt.(event.EvtLocalProtocolsUpdated)
+			for _, p := range update.Added {
+				delta[p] = true
+			}
+			for _, p := range update.Removed {
+				delta[p] = false
+			}
+		case <-active:
+			// Signaled, stop waiting for this update to finish and
+			// check to see if we have any pending updates.
+			active = nil
 		case <-ids.ctx.Done():
 			return
 		}
+
+		// If we have no updates or have an active update, continue.
+		if len(delta) == 0 || active != nil {
+			continue
+		}
+
+		// Combine all updates.
+		var combinedEvt event.EvtLocalProtocolsUpdated
+		for p, added := range delta {
+			if added {
+				combinedEvt.Added = append(combinedEvt.Added, p)
+			} else {
+				combinedEvt.Removed = append(combinedEvt.Removed, p)
+			}
+		}
+
+		// Reset the delta, and schedule an active update.
+		delta = make(map[protocol.ID]bool)
+		active = make(chan struct{})
+
+		go func(active chan struct{}) {
+			defer close(active)
+			ids.fireProtocolDelta(combinedEvt)
+		}(active)
 	}
 }
 
