@@ -33,8 +33,14 @@ require (
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.4
 	github.com/multiformats/go-multistream v0.1.1
+	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.5.1
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 )
+
+replace github.com/libp2p/go-libp2p-core => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-core
+replace github.com/libp2p/go-libp2p-swarm => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-swarm
+replace github.com/libp2p/go-libp2p-transport-upgrader => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-transport-upgrader
+
 
 go 1.12
