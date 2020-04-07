@@ -5,8 +5,6 @@ package libp2p
 
 import (
 	"fmt"
-	"net"
-
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/metrics"
@@ -14,13 +12,13 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/pnet"
+	"github.com/pkg/errors"
 
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	config "github.com/libp2p/go-libp2p/config"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	autorelay "github.com/libp2p/go-libp2p/p2p/host/relay"
 
-	filter "github.com/libp2p/go-maddr-filter"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -302,28 +300,16 @@ func EnableNATService() Option {
 	}
 }
 
-// FilterAddresses configures libp2p to never dial nor accept connections from
-// the given addresses. FilterAddresses should be used for cases where the
-// addresses you want to deny are known ahead of time.
-func FilterAddresses(addrs ...*net.IPNet) Option {
+// ConnectionGater configures libp2p to use the given Connection Gater
+// to reject incoming/outgoing connections based om the logic implemented in the gater.
+// Note: This Option has replaced the earlier "Filters" AND "FilterAddresses" Options.
+// Please use "filter.ToConnectionGater" to configure this of you already have an instance of a "go-maddr-filter.Filter".
+func ConnectionGater(cg connmgr.ConnectionGater) Option {
 	return func(cfg *Config) error {
-		if cfg.Filters == nil {
-			cfg.Filters = filter.NewFilters()
+		if cfg.ConnectionGater != nil {
+			return errors.New("can only have one connection gater")
 		}
-		for _, addr := range addrs {
-			cfg.Filters.AddDialFilter(addr)
-		}
-		return nil
-	}
-}
-
-// Filters configures libp2p to use the given filters for accepting/denying
-// certain addresses. Filters offers more control and should be used when the
-// addresses you want to accept/deny are not known ahead of time and can
-// dynamically change.
-func Filters(filters *filter.Filters) Option {
-	return func(cfg *Config) error {
-		cfg.Filters = filters
+		cfg.ConnectionGater = cg
 		return nil
 	}
 }

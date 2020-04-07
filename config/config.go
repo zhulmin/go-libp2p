@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -28,7 +27,6 @@ import (
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 
 	logging "github.com/ipfs/go-log"
-	filter "github.com/libp2p/go-maddr-filter"
 	ma "github.com/multiformats/go-multiaddr"
 
 	blankhost "github.com/libp2p/go-libp2p-blankhost"
@@ -70,9 +68,9 @@ type Config struct {
 	Relay       bool
 	RelayOpts   []circuit.RelayOpt
 
-	ListenAddrs  []ma.Multiaddr
-	AddrsFactory bhost.AddrsFactory
-	Filters      *filter.Filters
+	ListenAddrs     []ma.Multiaddr
+	AddrsFactory    bhost.AddrsFactory
+	ConnectionGater connmgr.ConnectionGater
 
 	ConnManager connmgr.ConnManager
 	NATManager  NATManagerC
@@ -123,8 +121,8 @@ func (cfg *Config) makeSwarm(ctx context.Context) (*swarm.Swarm, error) {
 
 	// TODO: Make the swarm implementation configurable.
 	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter)
-	if cfg.Filters != nil {
-		swrm.Filters = cfg.Filters
+	if cfg.ConnectionGater != nil {
+		swrm.ConnGater = cfg.ConnectionGater
 	}
 	return swrm, nil
 }
@@ -137,7 +135,7 @@ func (cfg *Config) addTransports(ctx context.Context, h host.Host) (err error) {
 	}
 	upgrader := new(tptu.Upgrader)
 	upgrader.PSK = cfg.PSK
-	upgrader.Filters = cfg.Filters
+	upgrader.AddrConnGater = cfg.ConnectionGater
 	if cfg.Insecure {
 		upgrader.Secure = makeInsecureTransport(h.ID(), cfg.PeerKey)
 	} else {
@@ -298,7 +296,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 			SecurityTransports: cfg.SecurityTransports,
 			Insecure:           cfg.Insecure,
 			PSK:                cfg.PSK,
-			Filters:            cfg.Filters,
+			ConnectionGater:    cfg.ConnectionGater,
 			Reporter:           cfg.Reporter,
 			PeerKey:            autonatPrivKey,
 
