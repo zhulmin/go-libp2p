@@ -197,6 +197,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	// start introspection server
 	h.introspectionEndpoint = opts.IntrospectionEndpoint
 	if h.introspector != nil {
+		// event types will be added to the runtime by the introspector
 		runtimeDataProvider := func() (*introspection_pb.Runtime, error) {
 			return &introspection_pb.Runtime{
 				Implementation: "go-libp2p",

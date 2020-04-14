@@ -43,4 +43,9 @@ require (
 	golang.org/x/sys v0.0.0-20190922100055-0a153f010e69 // indirect
 )
 
+replace github.com/libp2p/go-libp2p-core => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-core
+replace github.com/libp2p/go-libp2p-introspector => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-introspector
+replace github.com/libp2p/go-libp2p-swarm => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-swarm
+
+
 go 1.12
