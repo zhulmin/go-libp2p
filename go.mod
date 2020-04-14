@@ -15,16 +15,16 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.1.1
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
 	github.com/libp2p/go-libp2p-circuit v0.1.4
-	github.com/libp2p/go-libp2p-core v0.3.1-0.20200210163958-6d6f8284b841
+	github.com/libp2p/go-libp2p-core v0.3.2-0.20200414114438-d47936597d5b
 	github.com/libp2p/go-libp2p-discovery v0.2.0
-	github.com/libp2p/go-libp2p-introspector v0.0.4
+	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200414121801-eb149715a3a3
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.1
 	github.com/libp2p/go-libp2p-nat v0.0.5
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-peerstore v0.1.4
 	github.com/libp2p/go-libp2p-secio v0.2.1
-	github.com/libp2p/go-libp2p-swarm v0.2.3-0.20200210170912-d6136d2dca3b
+	github.com/libp2p/go-libp2p-swarm v0.2.3-0.20200414115316-45c69b9f86bc
 	github.com/libp2p/go-libp2p-testing v0.1.1
 	github.com/libp2p/go-libp2p-transport-upgrader v0.1.1
 	github.com/libp2p/go-libp2p-yamux v0.2.1
@@ -42,10 +42,5 @@ require (
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 	golang.org/x/sys v0.0.0-20190922100055-0a153f010e69 // indirect
 )
-
-replace github.com/libp2p/go-libp2p-core => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-core
-replace github.com/libp2p/go-libp2p-introspector => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-introspector
-replace github.com/libp2p/go-libp2p-swarm => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-swarm
-
 
 go 1.12
