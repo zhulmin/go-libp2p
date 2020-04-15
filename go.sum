@@ -160,6 +160,8 @@ github.com/libp2p/go-libp2p-discovery v0.2.0/go.mod h1:s4VGaxYMbw4+4+tsoQTqh7wfx
 github.com/libp2p/go-libp2p-introspector v0.0.4 h1:eA5JtLI8FwFUzDRC8waCeNzDZYDbMHyvMrBcHDikXvY=
 github.com/libp2p/go-libp2p-introspector v0.0.4/go.mod h1:SkaOljzZheY14Y1DA+b+DcpBPgxmlHkQqHLz/zO7g+w=
 github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200414121801-eb149715a3a3/go.mod h1:cAYGOcvtQ8dDwWh7JNw/aIL4blT/T6k75VJuf/oGFQk=
+github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200415054041-02b3298abb98 h1:i81pfVEIkl0zoCA0snPfvW9AvmNryP44i2V7i+FX0Qw=
+github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200415054041-02b3298abb98/go.mod h1:Rj+ITkyYPNy/Da6qeFsbihCZvo7edX6NVIGMYbE/GB8=
 github.com/libp2p/go-libp2p-loggables v0.1.0 h1:h3w8QFfCt2UJl/0/NW4K829HX/0S4KD31PQ7m8UXXO8=
 github.com/libp2p/go-libp2p-loggables v0.1.0/go.mod h1:EyumB2Y6PrYjr55Q3/tiJ/o3xoDasoRYM7nOzEpoa90=
 github.com/libp2p/go-libp2p-mplex v0.2.0/go.mod h1:Ejl9IyjvXJ0T9iqUTE1jpYATQ9NM3g+OtR+EMMODbKo=

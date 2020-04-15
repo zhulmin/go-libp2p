@@ -136,7 +136,7 @@ func TestIntrospector(t *testing.T) {
 	require.NotNil(t, st)
 	assertState(require, st, h1, h2, h3, false)
 
-	// we should then periodically get a state message..lets; wait for one with traffic
+	// we should then periodically get a state message..lets wait for one with traffic
 	var st2 *introspection_pb.State
 	require.Eventually(func() bool {
 		pd = fetchProtocolWrapper(require, connection)

@@ -17,7 +17,7 @@ require (
 	github.com/libp2p/go-libp2p-circuit v0.1.4
 	github.com/libp2p/go-libp2p-core v0.3.2-0.20200414114438-d47936597d5b
 	github.com/libp2p/go-libp2p-discovery v0.2.0
-	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200414121801-eb149715a3a3
+	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200415054041-02b3298abb98
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.1
 	github.com/libp2p/go-libp2p-nat v0.0.5
