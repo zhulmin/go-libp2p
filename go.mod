@@ -15,16 +15,16 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.1.1
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
 	github.com/libp2p/go-libp2p-circuit v0.1.4
-	github.com/libp2p/go-libp2p-core v0.3.2-0.20200414114438-d47936597d5b
+	github.com/libp2p/go-libp2p-core v0.3.2-0.20200415062127-fcc117eae71a
 	github.com/libp2p/go-libp2p-discovery v0.2.0
-	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200415054041-02b3298abb98
+	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200415062639-0a20c33da5ed
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.1
 	github.com/libp2p/go-libp2p-nat v0.0.5
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-peerstore v0.1.4
 	github.com/libp2p/go-libp2p-secio v0.2.1
-	github.com/libp2p/go-libp2p-swarm v0.2.3-0.20200414115316-45c69b9f86bc
+	github.com/libp2p/go-libp2p-swarm v0.2.3-0.20200415062547-f2b463a0f478
 	github.com/libp2p/go-libp2p-testing v0.1.1
 	github.com/libp2p/go-libp2p-transport-upgrader v0.1.1
 	github.com/libp2p/go-libp2p-yamux v0.2.1
