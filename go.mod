@@ -11,20 +11,20 @@ require (
 	github.com/jbenet/go-cienv v0.1.0
 	github.com/jbenet/goprocess v0.1.3
 	github.com/libp2p/go-conn-security-multistream v0.1.0
-	github.com/libp2p/go-eventbus v0.1.0
+	github.com/libp2p/go-eventbus v0.1.1-0.20200416170853-60bdfbaef67b
 	github.com/libp2p/go-libp2p-autonat v0.1.1
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
 	github.com/libp2p/go-libp2p-circuit v0.1.4
-	github.com/libp2p/go-libp2p-core v0.3.2-0.20200415062127-fcc117eae71a
+	github.com/libp2p/go-libp2p-core v0.3.2-0.20200416180009-086efa616a18
 	github.com/libp2p/go-libp2p-discovery v0.2.0
-	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200415062639-0a20c33da5ed
+	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200416180817-cea9c00b93b6
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.1
 	github.com/libp2p/go-libp2p-nat v0.0.5
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-peerstore v0.1.4
 	github.com/libp2p/go-libp2p-secio v0.2.1
-	github.com/libp2p/go-libp2p-swarm v0.2.3-0.20200415062547-f2b463a0f478
+	github.com/libp2p/go-libp2p-swarm v0.2.3-0.20200416170506-690b776aa519
 	github.com/libp2p/go-libp2p-testing v0.1.1
 	github.com/libp2p/go-libp2p-transport-upgrader v0.1.1
 	github.com/libp2p/go-libp2p-yamux v0.2.1
@@ -33,7 +33,7 @@ require (
 	github.com/libp2p/go-tcp-transport v0.1.1
 	github.com/libp2p/go-ws-transport v0.2.0
 	github.com/miekg/dns v1.1.12 // indirect
-	github.com/multiformats/go-multiaddr v0.2.0
+	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multiaddr-net v0.1.2
 	github.com/multiformats/go-multistream v0.1.1
@@ -42,5 +42,6 @@ require (
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 	golang.org/x/sys v0.0.0-20190922100055-0a153f010e69 // indirect
 )
+
 
 go 1.12

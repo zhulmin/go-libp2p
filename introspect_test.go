@@ -160,18 +160,26 @@ func TestIntrospector(t *testing.T) {
 	require.NoError(connection.WriteMessage(websocket.BinaryMessage, bz))
 	time.Sleep(1 * time.Second)
 
-	// We get a state message when we unpause
+	// We get a runtime and state message when we unpause
 	cl = &introspection_pb.ClientSignal{Signal: introspection_pb.ClientSignal_UNPAUSE_PUSH_EMITTER}
 	bz, err = proto.Marshal(cl)
 	require.NoError(err)
 	require.NotEmpty(bz)
 	require.NoError(connection.WriteMessage(websocket.BinaryMessage, bz))
-	time.Sleep(1 * time.Second)
 
-	pd = fetchProtocolWrapper(require, connection)
-	st = pd.GetState()
-	require.NotNil(t, st)
-	assertState(require, st, h1, h2, h3, true)
+	require.Eventually(func() bool {
+		pd = fetchProtocolWrapper(require, connection)
+
+		return pd.GetRuntime() != nil && pd.GetState() == nil
+	}, 10*time.Second, 1*time.Second)
+
+	require.Eventually(func() bool {
+		pd = fetchProtocolWrapper(require, connection)
+
+		return pd.GetState() != nil && pd.GetRuntime() == nil
+	}, 10*time.Second, 1*time.Second)
+
+	assertState(require, pd.GetState(), h1, h2, h3, true)
 }
 
 func assertState(require *require.Assertions, state *introspection_pb.State, h1, h2, h3 host.Host,

@@ -215,7 +215,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	}
 
 	if h.introspectionEndpoint != nil {
-		if err := h.introspectionEndpoint.Start(); err != nil {
+		if err := h.introspectionEndpoint.Start(h.eventbus); err != nil {
 			return nil, fmt.Errorf("failed to start introspection endpoint: %w", err)
 		}
 	}
