@@ -3,6 +3,8 @@ package basichost
 import (
 	"context"
 	"fmt"
+	"github.com/libp2p/go-libp2p-core/introspection"
+	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
 	"io"
 	"net"
 	"runtime"
@@ -15,8 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/introspection"
-	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -26,8 +26,6 @@ import (
 	inat "github.com/libp2p/go-libp2p-nat"
 
 	logging "github.com/ipfs/go-log"
-	"github.com/jbenet/goprocess"
-	goprocessctx "github.com/jbenet/goprocess/context"
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -75,6 +73,13 @@ const NATPortMap Option = iota
 //  * uses an identity service to send + receive node information
 //  * uses a nat service to establish NAT port mappings
 type BasicHost struct {
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	// ensures we shutdown ONLY once
+	closeSync sync.Once
+	// keep track of resources we need to wait on before shutting down
+	refCount sync.WaitGroup
+
 	network    network.Network
 	mux        *msmux.MultistreamMuxer
 	ids        *identify.IDService
@@ -88,13 +93,12 @@ type BasicHost struct {
 
 	negtimeout time.Duration
 
-	proc goprocess.Process
-
-	mx        sync.Mutex
-	lastAddrs []ma.Multiaddr
-	emitters  struct {
+	emitters struct {
 		evtLocalProtocolsUpdated event.Emitter
+		evtLocalAddrsUpdated     event.Emitter
 	}
+
+	addrChangeChan chan struct{}
 
 	introspector          introspection.Introspector
 	introspectionEndpoint introspection.Endpoint
@@ -145,24 +149,62 @@ type HostOpts struct {
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
 func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHost, error) {
+	hostCtx, cancel := context.WithCancel(ctx)
+
 	h := &BasicHost{
-		network:      net,
-		mux:          msmux.NewMultistreamMuxer(),
-		negtimeout:   DefaultNegotiationTimeout,
-		AddrsFactory: DefaultAddrsFactory,
-		maResolver:   madns.DefaultResolver,
-		eventbus:     eventbus.NewBus(),
-		introspector: opts.Introspector,
+		network:        net,
+		mux:            msmux.NewMultistreamMuxer(),
+		negtimeout:     DefaultNegotiationTimeout,
+		AddrsFactory:   DefaultAddrsFactory,
+		maResolver:     madns.DefaultResolver,
+		eventbus:       eventbus.NewBus(),
+		introspector:   opts.Introspector,
+		addrChangeChan: make(chan struct{}, 1),
+		ctx:            hostCtx,
+		ctxCancel:      cancel,
 	}
 
 	var err error
 	if h.emitters.evtLocalProtocolsUpdated, err = h.eventbus.Emitter(&event.EvtLocalProtocolsUpdated{}); err != nil {
 		return nil, err
 	}
+	if h.emitters.evtLocalAddrsUpdated, err = h.eventbus.Emitter(&event.EvtLocalAddressesUpdated{}); err != nil {
+		return nil, err
+	}
 
 	if opts.MultistreamMuxer != nil {
 		h.mux = opts.MultistreamMuxer
 	}
+
+	// start introspection server
+	h.introspectionEndpoint = opts.IntrospectionEndpoint
+	if h.introspector != nil {
+		runtimeDataProvider := func() (*introspection_pb.Runtime, error) {
+			return &introspection_pb.Runtime{
+				Implementation: "go-libp2p",
+				Platform:       runtime.GOOS,
+				PeerId:         h.ID().Pretty(),
+				Version:        "",
+			}, nil
+		}
+
+		// register runtime provider
+		provs := &introspection.DataProviders{Runtime: runtimeDataProvider}
+		if err := h.introspector.RegisterDataProviders(provs); err != nil {
+			log.Errorf("failed to register a runtime provider, err=%s", err)
+			return nil, fmt.Errorf("failed to register a runtime provider, err-%s", err)
+		}
+	}
+
+	if h.introspectionEndpoint != nil {
+		if err := h.introspectionEndpoint.Start(h.eventbus); err != nil {
+			return nil, fmt.Errorf("failed to start introspection endpoint: %w", err)
+		}
+	}
+
+	// Start ID Service
+	// we can't set this as a default above because it depends on the *BasicHost.
+	h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
 
 	if uint64(opts.NegotiationTimeout) != 0 {
 		h.negtimeout = opts.NegotiationTimeout
@@ -193,57 +235,6 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 
 	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
-
-	// start introspection server
-	h.introspectionEndpoint = opts.IntrospectionEndpoint
-	if h.introspector != nil {
-		// event types will be added to the runtime by the introspector
-		runtimeDataProvider := func() (*introspection_pb.Runtime, error) {
-			return &introspection_pb.Runtime{
-				Implementation: "go-libp2p",
-				Platform:       runtime.GOOS,
-				PeerId:         h.ID().Pretty(),
-				Version:        "",
-			}, nil
-		}
-
-		// register runtime provider
-		provs := &introspection.DataProviders{Runtime: runtimeDataProvider}
-		if err := h.introspector.RegisterDataProviders(provs); err != nil {
-			log.Errorf("failed to register a runtime provider, err=%s", err)
-		}
-	}
-
-	if h.introspectionEndpoint != nil {
-		if err := h.introspectionEndpoint.Start(h.eventbus); err != nil {
-			return nil, fmt.Errorf("failed to start introspection endpoint: %w", err)
-		}
-	}
-
-	h.proc = goprocessctx.WithContextAndTeardown(ctx, func() error {
-		if h.natmgr != nil {
-			h.natmgr.Close()
-		}
-		if h.cmgr != nil {
-			h.cmgr.Close()
-		}
-		_ = h.emitters.evtLocalProtocolsUpdated.Close()
-
-		if h.introspectionEndpoint != nil {
-			if err := h.introspectionEndpoint.Close(); err != nil {
-				log.Errorf("failed while shutting down introspection endpoint; err: %s", err)
-			}
-		}
-
-		return h.Network().Close()
-	})
-
-	// we can't set this as a default above because it depends on the *BasicHost.
-	h.ids = identify.NewIDService(
-		goprocessctx.WithProcessClosing(ctx, h.proc),
-		h,
-		identify.UserAgent(opts.UserAgent),
-	)
 
 	return h, nil
 }
@@ -284,6 +275,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 	}
 
 	h, err := NewHost(context.Background(), net, hostopts)
+	h.Start()
 	if err != nil {
 		// this cannot happen with legacy options
 		// plus we want to keep the (deprecated) legacy interface unchanged
@@ -295,7 +287,8 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 
 // Start starts background tasks in the host
 func (h *BasicHost) Start() {
-	h.proc.Go(h.background)
+	h.refCount.Add(1)
+	go h.background()
 }
 
 // newConnHandler is the remote-opened conn handler for inet.Network
@@ -354,66 +347,82 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 	go handle(protoID, s)
 }
 
-// PushIdentify pushes an identify update through the identify push protocol
+// SignalAddressChange signals to the host that it needs to determine whether our listen addresses have recently
+// changed.
 // Warning: this interface is unstable and may disappear in the future.
-func (h *BasicHost) PushIdentify() {
-	push := false
-
-	h.mx.Lock()
-	addrs := h.Addrs()
-	if !sameAddrs(addrs, h.lastAddrs) {
-		push = true
-		h.lastAddrs = addrs
-	}
-	h.mx.Unlock()
-
-	if push {
-		h.ids.Push()
+func (h *BasicHost) SignalAddressChange() {
+	select {
+	case h.addrChangeChan <- struct{}{}:
+	default:
 	}
 }
 
-func (h *BasicHost) background(p goprocess.Process) {
+func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddressesUpdated {
+	prevmap := make(map[string]ma.Multiaddr, len(prev))
+	evt := event.EvtLocalAddressesUpdated{Diffs: true}
+	addrsAdded := false
+
+	for _, addr := range prev {
+		prevmap[string(addr.Bytes())] = addr
+	}
+	for _, addr := range current {
+		_, ok := prevmap[string(addr.Bytes())]
+		updated := event.UpdatedAddress{Address: addr}
+		if ok {
+			updated.Action = event.Maintained
+		} else {
+			updated.Action = event.Added
+			addrsAdded = true
+		}
+		evt.Current = append(evt.Current, updated)
+		delete(prevmap, string(addr.Bytes()))
+	}
+	for _, addr := range prevmap {
+		updated := event.UpdatedAddress{Action: event.Removed, Address: addr}
+		evt.Removed = append(evt.Removed, updated)
+	}
+
+	if !addrsAdded && len(evt.Removed) == 0 {
+		return nil
+	}
+
+	return &evt
+}
+
+func (h *BasicHost) background() {
+	defer h.refCount.Done()
+
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	// initialize lastAddrs
-	h.mx.Lock()
-	if h.lastAddrs == nil {
-		h.lastAddrs = h.Addrs()
-	}
-	h.mx.Unlock()
+	lastAddrs := h.Addrs()
 
 	for {
 		select {
 		case <-ticker.C:
-			h.PushIdentify()
-
-		case <-p.Closing():
+		case <-h.addrChangeChan:
+		case <-h.ctx.Done():
 			return
 		}
-	}
-}
 
-func sameAddrs(a, b []ma.Multiaddr) bool {
-	if len(a) != len(b) {
-		return false
-	}
+		//  emit an EvtLocalAddressesUpdatedEvent & a Push Identify if our listen addresses have changed.
+		addrs := h.Addrs()
+		changeEvt := makeUpdatedAddrEvent(lastAddrs, addrs)
+		if changeEvt != nil {
+			lastAddrs = addrs
+		}
 
-	bmap := make(map[string]struct{}, len(b))
-	for _, addr := range b {
-		bmap[string(addr.Bytes())] = struct{}{}
-	}
-
-	for _, addr := range a {
-		_, ok := bmap[string(addr.Bytes())]
-		if !ok {
-			return false
+		if changeEvt != nil {
+			err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
+			if err != nil {
+				log.Warnf("error emitting event for updated addrs: %s", err)
+			}
+			h.ids.Push()
 		}
 	}
-
-	return true
 }
 
 // ID returns the (local) peer.ID associated with this Host
@@ -844,14 +853,32 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
-	// You're thinking of adding some teardown logic here, right? Well
-	// don't! Add any process teardown logic to the teardown function in the
-	// constructor.
-	//
-	// This:
-	// 1. May be called multiple times.
-	// 2. May _never_ be called if the host is stopped by the context.
-	return h.proc.Close()
+	h.closeSync.Do(func() {
+		h.ctxCancel()
+		if h.natmgr != nil {
+			h.natmgr.Close()
+		}
+		if h.cmgr != nil {
+			h.cmgr.Close()
+		}
+		if h.ids != nil {
+			h.ids.Close()
+		}
+
+		_ = h.emitters.evtLocalProtocolsUpdated.Close()
+		_ = h.emitters.evtLocalAddrsUpdated.Close()
+		h.Network().Close()
+
+		if h.introspectionEndpoint != nil {
+			if err := h.introspectionEndpoint.Close(); err != nil {
+				log.Errorf("failed while shutting down introspection endpoint; err: %s", err)
+			}
+		}
+
+		h.refCount.Wait()
+	})
+
+	return nil
 }
 
 type streamWrapper struct {

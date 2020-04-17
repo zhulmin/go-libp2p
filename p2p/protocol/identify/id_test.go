@@ -17,11 +17,14 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	coretest "github.com/libp2p/go-libp2p-core/test"
 
 	blhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
+	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -35,8 +38,10 @@ func subtestIDService(t *testing.T) {
 	h1p := h1.ID()
 	h2p := h2.ID()
 
-	ids1 := identify.NewIDService(ctx, h1)
-	ids2 := identify.NewIDService(ctx, h2)
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer ids1.Close()
+	defer ids2.Close()
 
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{}) // nothing
@@ -54,6 +59,11 @@ func subtestIDService(t *testing.T) {
 	h1t2c := h1.Network().ConnsToPeer(h2p)
 	if len(h1t2c) == 0 {
 		t.Fatal("should have a conn here")
+	}
+
+	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.BufSize(16))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	ids1.IdentifyConn(h1t2c[0])
@@ -102,6 +112,13 @@ func subtestIDService(t *testing.T) {
 	// Forget the rest.
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{})
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{})
+
+	// test that we received the "identify completed" event.
+	select {
+	case <-sub.Out():
+	case <-time.After(5 * time.Second):
+		t.Fatalf("expected EvtPeerIdentificationCompleted event within 5 seconds; none received")
+	}
 }
 
 func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
@@ -191,6 +208,85 @@ func TestProtoMatching(t *testing.T) {
 	}
 }
 
+func TestLocalhostAddrFiltering(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mn := mocknet.New(ctx)
+	id1 := coretest.RandPeerIDFatal(t)
+	ps1 := pstoremem.NewPeerstore()
+	p1addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
+	p1addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/2345")
+	ps1.AddAddrs(id1, []ma.Multiaddr{p1addr1, p1addr2}, peerstore.PermanentAddrTTL)
+	p1, err := mn.AddPeerWithPeerstore(id1, ps1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id2 := coretest.RandPeerIDFatal(t)
+	ps2 := pstoremem.NewPeerstore()
+	p2addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.5/tcp/1234")
+	p2addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/3456")
+	p2addrs := []ma.Multiaddr{p2addr1, p2addr2}
+	ps2.AddAddrs(id2, p2addrs, peerstore.PermanentAddrTTL)
+	p2, err := mn.AddPeerWithPeerstore(id2, ps2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id3 := coretest.RandPeerIDFatal(t)
+	ps3 := pstoremem.NewPeerstore()
+	p3addr1, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/4567")
+	ps3.AddAddrs(id3, []ma.Multiaddr{p3addr1}, peerstore.PermanentAddrTTL)
+	p3, err := mn.AddPeerWithPeerstore(id3, ps3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1.Connect(ctx, peer.AddrInfo{
+		ID:    id2,
+		Addrs: p2addrs[0:1],
+	})
+	p3.Connect(ctx, peer.AddrInfo{
+		ID:    id2,
+		Addrs: p2addrs[1:],
+	})
+
+	ids1 := identify.NewIDService(p1)
+	ids2 := identify.NewIDService(p2)
+	ids3 := identify.NewIDService(p3)
+	defer func() {
+		ids1.Close()
+		ids2.Close()
+		ids3.Close()
+	}()
+
+	conns := p2.Network().ConnsToPeer(id1)
+	if len(conns) == 0 {
+		t.Fatal("no conns")
+	}
+	conn := conns[0]
+	ids2.IdentifyConn(conn)
+	addrs := p2.Peerstore().Addrs(id1)
+	if len(addrs) != 1 {
+		t.Fatalf("expected one addr, found %s", addrs)
+	}
+
+	conns = p3.Network().ConnsToPeer(id2)
+	if len(conns) == 0 {
+		t.Fatal("no conns")
+	}
+	conn = conns[0]
+	ids3.IdentifyConn(conn)
+	addrs = p3.Peerstore().Addrs(id2)
+	if len(addrs) != 2 {
+		t.Fatalf("expected 2 addrs for %s, found %d: %s", id2, len(addrs), addrs)
+	}
+}
+
 func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -202,8 +298,12 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 
 	h2.SetStreamHandler(protocol.TestingID, func(_ network.Stream) {})
 
-	ids1 := identify.NewIDService(ctx, h1)
-	_ = identify.NewIDService(ctx, h2)
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer func() {
+		ids1.Close()
+		ids2.Close()
+	}()
 
 	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
 		t.Fatal(err)
@@ -315,8 +415,10 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	defer h2.Close()
 	defer h1.Close()
 
-	_ = identify.NewIDService(ctx, h1)
-	ids2 := identify.NewIDService(ctx, h2)
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer ids1.Close()
+	defer ids2.Close()
 
 	// replace the original identify handler by one that blocks until we close the block channel.
 	// this allows us to control how long identify runs.

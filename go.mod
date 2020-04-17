@@ -2,46 +2,42 @@ module github.com/libp2p/go-libp2p
 
 require (
 	github.com/gogo/protobuf v1.3.1
-	github.com/golang/protobuf v1.3.2
-	github.com/gorilla/websocket v1.4.1
+	github.com/gorilla/websocket v1.4.2
 	github.com/ipfs/go-cid v0.0.5
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-ipfs-util v0.0.1
-	github.com/ipfs/go-log v1.0.1
+	github.com/ipfs/go-log v1.0.3
 	github.com/jbenet/go-cienv v0.1.0
-	github.com/jbenet/goprocess v0.1.3
+	github.com/jbenet/goprocess v0.1.4
 	github.com/libp2p/go-conn-security-multistream v0.1.0
-	github.com/libp2p/go-eventbus v0.1.1-0.20200416170853-60bdfbaef67b
-	github.com/libp2p/go-libp2p-autonat v0.1.1
+	github.com/libp2p/go-eventbus v0.1.1-0.20200417061519-63254f6c0da4
+	github.com/libp2p/go-libp2p-autonat v0.2.2
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
-	github.com/libp2p/go-libp2p-circuit v0.1.4
-	github.com/libp2p/go-libp2p-core v0.3.2-0.20200416180009-086efa616a18
-	github.com/libp2p/go-libp2p-discovery v0.2.0
-	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200416180817-cea9c00b93b6
+	github.com/libp2p/go-libp2p-circuit v0.2.1
+	github.com/libp2p/go-libp2p-core v0.5.2-0.20200417060929-6957bf8a421d
+	github.com/libp2p/go-libp2p-discovery v0.3.0
+	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200417062351-cc3f2009f930
 	github.com/libp2p/go-libp2p-loggables v0.1.0
-	github.com/libp2p/go-libp2p-mplex v0.2.1
-	github.com/libp2p/go-libp2p-nat v0.0.5
+	github.com/libp2p/go-libp2p-mplex v0.2.3
+	github.com/libp2p/go-libp2p-nat v0.0.6
 	github.com/libp2p/go-libp2p-netutil v0.1.0
-	github.com/libp2p/go-libp2p-peerstore v0.1.4
-	github.com/libp2p/go-libp2p-secio v0.2.1
-	github.com/libp2p/go-libp2p-swarm v0.2.3-0.20200416170506-690b776aa519
+	github.com/libp2p/go-libp2p-peerstore v0.2.2
+	github.com/libp2p/go-libp2p-secio v0.2.2
+	github.com/libp2p/go-libp2p-swarm v0.2.4-0.20200417062831-28eda91e270f
 	github.com/libp2p/go-libp2p-testing v0.1.1
-	github.com/libp2p/go-libp2p-transport-upgrader v0.1.1
-	github.com/libp2p/go-libp2p-yamux v0.2.1
+	github.com/libp2p/go-libp2p-tls v0.1.3
+	github.com/libp2p/go-libp2p-transport-upgrader v0.2.0
+	github.com/libp2p/go-libp2p-yamux v0.2.7
 	github.com/libp2p/go-maddr-filter v0.0.5
 	github.com/libp2p/go-stream-muxer-multistream v0.2.0
-	github.com/libp2p/go-tcp-transport v0.1.1
-	github.com/libp2p/go-ws-transport v0.2.0
-	github.com/miekg/dns v1.1.12 // indirect
+	github.com/libp2p/go-tcp-transport v0.2.0
+	github.com/libp2p/go-ws-transport v0.3.0
 	github.com/multiformats/go-multiaddr v0.2.1
 	github.com/multiformats/go-multiaddr-dns v0.2.0
-	github.com/multiformats/go-multiaddr-net v0.1.2
+	github.com/multiformats/go-multiaddr-net v0.1.4
 	github.com/multiformats/go-multistream v0.1.1
-	github.com/pkg/errors v0.9.1 // indirect
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
-	golang.org/x/sys v0.0.0-20190922100055-0a153f010e69 // indirect
 )
-
 
 go 1.12

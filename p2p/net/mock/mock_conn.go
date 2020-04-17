@@ -9,12 +9,15 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr-net"
 )
 
 // conn represents one side's perspective of a
 // live connection between two peers.
 // it goes over a particular link.
 type conn struct {
+	notifLk sync.Mutex
+
 	local  peer.ID
 	remote peer.ID
 
@@ -28,30 +31,42 @@ type conn struct {
 	link    *link
 	rconn   *conn // counterpart
 	streams list.List
-	proc    process.Process
 	stat    network.Stat
+
+	pairProc, connProc process.Process
 
 	sync.RWMutex
 }
 
-func newConn(ln, rn *peernet, l *link, dir network.Direction) *conn {
-	c := &conn{net: ln, link: l}
+func newConn(p process.Process, ln, rn *peernet, l *link, dir network.Direction) *conn {
+	c := &conn{net: ln, link: l, pairProc: p}
 	c.local = ln.peer
 	c.remote = rn.peer
 	c.stat = network.Stat{Direction: dir}
 
 	c.localAddr = ln.ps.Addrs(ln.peer)[0]
-	c.remoteAddr = rn.ps.Addrs(rn.peer)[0]
+	for _, a := range rn.ps.Addrs(rn.peer) {
+		if !manet.IsIPUnspecified(a) {
+			c.remoteAddr = a
+			break
+		}
+	}
+	if c.remoteAddr == nil {
+		c.remoteAddr = rn.ps.Addrs(rn.peer)[0]
+	}
 
 	c.localPrivKey = ln.ps.PrivKey(ln.peer)
 	c.remotePubKey = rn.ps.PubKey(rn.peer)
-
-	c.proc = process.WithTeardown(c.teardown)
+	c.connProc = process.WithParent(c.pairProc)
 	return c
 }
 
 func (c *conn) Close() error {
-	return c.proc.Close()
+	return c.pairProc.Close()
+}
+
+func (c *conn) setup() {
+	c.connProc.SetTeardown(c.teardown)
 }
 
 func (c *conn) teardown() error {
@@ -59,9 +74,14 @@ func (c *conn) teardown() error {
 		s.Reset()
 	}
 	c.net.removeConn(c)
-	c.net.notifyAll(func(n network.Notifiee) {
-		n.Disconnected(c.net, c)
-	})
+
+	go func() {
+		c.notifLk.Lock()
+		defer c.notifLk.Unlock()
+		c.net.notifyAll(func(n network.Notifiee) {
+			n.Disconnected(c.net, c)
+		})
+	}()
 	return nil
 }
 
@@ -69,18 +89,31 @@ func (c *conn) addStream(s *stream) {
 	c.Lock()
 	s.conn = c
 	c.streams.PushBack(s)
+	s.notifLk.Lock()
+	defer s.notifLk.Unlock()
 	c.Unlock()
+	c.net.notifyAll(func(n network.Notifiee) {
+		n.OpenedStream(c.net, s)
+	})
 }
 
 func (c *conn) removeStream(s *stream) {
 	c.Lock()
-	defer c.Unlock()
 	for e := c.streams.Front(); e != nil; e = e.Next() {
 		if s == e.Value {
 			c.streams.Remove(e)
-			return
+			break
 		}
 	}
+	c.Unlock()
+
+	go func() {
+		s.notifLk.Lock()
+		defer s.notifLk.Unlock()
+		s.conn.net.notifyAll(func(n network.Notifiee) {
+			n.ClosedStream(s.conn.net, s)
+		})
+	}()
 }
 
 func (c *conn) allStreams() []network.Stream {
@@ -98,18 +131,12 @@ func (c *conn) allStreams() []network.Stream {
 func (c *conn) remoteOpenedStream(s *stream) {
 	c.addStream(s)
 	c.net.handleNewStream(s)
-	c.net.notifyAll(func(n network.Notifiee) {
-		n.OpenedStream(c.net, s)
-	})
 }
 
 func (c *conn) openStream() *stream {
-	sl, sr := c.link.newStreamPair()
+	sl, sr := newStreamPair()
+	go c.rconn.remoteOpenedStream(sr)
 	c.addStream(sl)
-	c.net.notifyAll(func(n network.Notifiee) {
-		n.OpenedStream(c.net, sl)
-	})
-	c.rconn.remoteOpenedStream(sr)
 	return sl
 }
 
