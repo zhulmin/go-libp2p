@@ -253,7 +253,7 @@ func fetchProtocolWrapper(require *require.Assertions, conn *websocket.Conn) *in
 	require.NoError(err)
 	require.NotEmpty(msg)
 	pd := &introspection_pb.ProtocolDataPacket{}
-	require.NoError(proto.Unmarshal(msg, pd))
+	require.NoError(proto.Unmarshal(msg[12:], pd))
 	require.NotNil(pd.Message)
 	require.Equal(introspection.ProtoVersion, pd.Version.Version)
 	return pd
