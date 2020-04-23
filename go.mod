@@ -23,7 +23,7 @@ require (
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-peerstore v0.2.2
 	github.com/libp2p/go-libp2p-secio v0.2.2
-	github.com/libp2p/go-libp2p-swarm v0.2.4-0.20200417062831-28eda91e270f
+	github.com/libp2p/go-libp2p-swarm v0.2.4-0.20200423085602-109ffd0eb55b
 	github.com/libp2p/go-libp2p-testing v0.1.1
 	github.com/libp2p/go-libp2p-tls v0.1.3
 	github.com/libp2p/go-libp2p-transport-upgrader v0.2.0
