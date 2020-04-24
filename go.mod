@@ -14,16 +14,16 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.2.2
 	github.com/libp2p/go-libp2p-blankhost v0.1.4
 	github.com/libp2p/go-libp2p-circuit v0.2.1
-	github.com/libp2p/go-libp2p-core v0.5.2-0.20200417081628-b224967ed43f
+	github.com/libp2p/go-libp2p-core v0.5.2-0.20200424084047-616e011e7e9d
 	github.com/libp2p/go-libp2p-discovery v0.3.0
-	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200417131537-34bb938a0e36
+	github.com/libp2p/go-libp2p-introspector v0.0.5-0.20200424091613-bee588f5a69a
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.2.3
 	github.com/libp2p/go-libp2p-nat v0.0.6
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-peerstore v0.2.2
 	github.com/libp2p/go-libp2p-secio v0.2.2
-	github.com/libp2p/go-libp2p-swarm v0.2.4-0.20200423085602-109ffd0eb55b
+	github.com/libp2p/go-libp2p-swarm v0.2.4-0.20200424085444-7b9bdba85bd7
 	github.com/libp2p/go-libp2p-testing v0.1.1
 	github.com/libp2p/go-libp2p-tls v0.1.3
 	github.com/libp2p/go-libp2p-transport-upgrader v0.2.0
