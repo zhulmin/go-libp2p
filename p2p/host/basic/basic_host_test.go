@@ -583,7 +583,7 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 	}
 
 	// assert it's on the signed record
-	rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
+	rc := peerRecordFromEnvelope(t, *evt.SignedPeerRecord)
 	require.Equal(t, taddrs, rc.Addrs)
 
 	// assert it's in the peerstore
@@ -672,7 +672,7 @@ func TestHostAddrChangeDetection(t *testing.T) {
 		}
 
 		// assert it's on the signed record
-		rc := peerRecordFromEnvelope(t, evt.SignedPeerRecord)
+		rc := peerRecordFromEnvelope(t, *evt.SignedPeerRecord)
 		require.Equal(t, addrSets[i], rc.Addrs)
 
 		// assert it's in the peerstore
