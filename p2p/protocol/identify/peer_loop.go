@@ -16,6 +16,7 @@ import (
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	ggio "github.com/gogo/protobuf/io"
+	"github.com/gogo/protobuf/proto"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -97,7 +98,7 @@ func (ph *peerHandler) loop() {
 
 func (ph *peerHandler) sendDelta() error {
 	// send a push if the peer does not support the Delta protocol.
-	if !ph.peerSupportsProtos([]string{IDDelta}) {
+	if !ph.peerSupportsProtos([]string{IDDelta_1_1_0, IDDelta_1_0_0}) {
 		log.Debugw("will send push as peer does not support delta", "peer", ph.pid)
 		if err := ph.sendPush(); err != nil {
 			return fmt.Errorf("failed to send push on delta message: %w", err)
@@ -111,19 +112,27 @@ func (ph *peerHandler) sendDelta() error {
 		return nil
 	}
 
-	ds, err := ph.openStream([]string{IDDelta})
+	ds, err := ph.openStream([]string{IDDelta_1_1_0, IDDelta_1_0_0})
 	if err != nil {
 		return fmt.Errorf("failed to open delta stream: %w", err)
 	}
 
-	if err := ph.sendMessage(ds, &pb.Identify{Delta: mes}); err != nil {
+	var pms proto.Message
+	switch ds.Protocol() {
+	case IDDelta_1_1_0:
+		pms = mes
+	case IDDelta_1_0_0:
+		pms = &pb.Identify_1_0_0{Delta: mes}
+	}
+
+	if err := ph.sendMessage(ds, pms); err != nil {
 		return fmt.Errorf("failed to send delta message, %w", err)
 	}
 	return nil
 }
 
 func (ph *peerHandler) sendPush() error {
-	dp, err := ph.openStream([]string{IDPush})
+	dp, err := ph.openStream([]string{IDPush_1_1_0, IDPush_1_0_0})
 	if err == errProtocolNotSupported {
 		log.Debugw("not sending push as peer does not support protocol", "peer", ph.pid)
 		return nil
@@ -133,14 +142,16 @@ func (ph *peerHandler) sendPush() error {
 	}
 
 	conn := dp.Conn()
-	mes := &pb.Identify{}
 
 	snapshot := ph.ids.getSnapshot()
 	ph.snapshotMu.Lock()
 	ph.snapshot = snapshot
 	ph.snapshotMu.Unlock()
 
-	ph.ids.populateMessage(mes, conn, snapshot)
+	mes, err := ph.ids.mkIdentifyMsg(dp.Protocol(), conn, snapshot)
+	if err != nil {
+		return fmt.Errorf("failed to construct Identify message: %w", err)
+	}
 
 	if err := ph.sendMessage(dp, mes); err != nil {
 		return fmt.Errorf("failed to send push message: %w", err)
@@ -245,7 +256,7 @@ func (ph *peerHandler) nextDelta() *pb.Delta {
 	}
 }
 
-func (ph *peerHandler) sendMessage(s network.Stream, mes *pb.Identify) error {
+func (ph *peerHandler) sendMessage(s network.Stream, mes proto.Message) error {
 	defer helpers.FullClose(s)
 	c := s.Conn()
 	if err := ggio.NewDelimitedWriter(s).WriteMsg(mes); err != nil {

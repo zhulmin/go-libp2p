@@ -12,25 +12,46 @@ import (
 	ggio "github.com/gogo/protobuf/io"
 )
 
-const IDDelta = "/p2p/id/delta/1.0.0"
+const deltaMessageSize = 2 * 1024 // 2K
+
+// IDDelta_1_1_0 is the current Delta protocol that exchanges standalone Delta messages.
+const IDDelta_1_1_0 = "/p2p/id/delta/1.1.0"
+
+// IDDelta_1_0_0 is the legacy Delta protocol that exchanges Delta messages wrapped in an
+//  ID_1_0_0 message.
+const IDDelta_1_0_0 = "/p2p/id/delta/1.0.0"
 
 // deltaHandler handles incoming delta updates from peers.
 func (ids *IDService) deltaHandler(s network.Stream) {
-	c := s.Conn()
-
-	r := ggio.NewDelimitedReader(s, 2048)
-	mes := pb.Identify{}
-	if err := r.ReadMsg(&mes); err != nil {
-		log.Warning("error reading identify message: ", err)
+	var delta *pb.Delta
+	r := ggio.NewDelimitedReader(s, deltaMessageSize)
+	switch s.Protocol() {
+	case IDDelta_1_1_0:
+		mes := &pb.Delta{}
+		if err := r.ReadMsg(mes); err != nil {
+			log.Warning("error reading delta message: ", err)
+			s.Reset()
+			return
+		}
+		delta = mes
+	case IDDelta_1_0_0:
+		mes := pb.Identify_1_0_0{}
+		if err := r.ReadMsg(&mes); err != nil {
+			log.Warning("error reading identify delta message: ", err)
+			s.Reset()
+			return
+		}
+		delta = mes.GetDelta()
+	default:
+		log.Warnw("peer does not support delta protocol", "protocol", s.Protocol())
 		s.Reset()
 		return
 	}
 
+	c := s.Conn()
 	defer helpers.FullClose(s)
 
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
-
-	delta := mes.GetDelta()
 	if delta == nil {
 		return
 	}

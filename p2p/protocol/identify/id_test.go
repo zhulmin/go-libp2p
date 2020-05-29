@@ -517,11 +517,11 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	handler := func(s network.Stream) {
 		<-block
 		w := ggio.NewDelimitedWriter(s)
-		w.WriteMsg(&pb.Identify{Protocols: h1.Mux().Protocols()})
+		w.WriteMsg(&pb.Identify_1_1_0{Common: &pb.IdentifyCommon{Protocols: h1.Mux().Protocols()}})
 		helpers.FullClose(s)
 	}
-	h1.RemoveStreamHandler(identify.ID)
-	h1.SetStreamHandler(identify.ID, handler)
+	h1.RemoveStreamHandler(identify.ID_1_1_0)
+	h1.SetStreamHandler(identify.ID_1_1_0, handler)
 
 	// from h2 connect to h1.
 	if err := h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}); err != nil {
@@ -740,15 +740,18 @@ func TestSendPushIfDeltaNotSupported(t *testing.T) {
 	ids2.IdentifyConn(h2.Network().ConnsToPeer(h1.ID())[0])
 
 	// h1 knows h2 speaks Delta
-	sup, err := h1.Peerstore().SupportsProtocols(h2.ID(), []string{identify.IDDelta}...)
+	sup, err := h1.Peerstore().SupportsProtocols(h2.ID(), []string{identify.IDDelta_1_1_0, identify.IDDelta_1_0_0}...)
 	require.NoError(t, err)
-	require.Equal(t, []string{identify.IDDelta}, sup)
+	require.Len(t, sup, 2)
+	require.Contains(t, sup, identify.IDDelta_1_1_0)
+	require.Contains(t, sup, identify.IDDelta_1_0_0)
 
 	// h2 stops supporting Delta and that information flows to h1
-	h2.RemoveStreamHandler(identify.IDDelta)
+	h2.RemoveStreamHandler(identify.IDDelta_1_1_0)
+	h2.RemoveStreamHandler(identify.IDDelta_1_0_0)
 
 	require.Eventually(t, func() bool {
-		sup, err := h1.Peerstore().SupportsProtocols(h2.ID(), []string{identify.IDDelta}...)
+		sup, err := h1.Peerstore().SupportsProtocols(h2.ID(), []string{identify.IDDelta_1_1_0, identify.IDDelta_1_0_0}...)
 		return err == nil && len(sup) == 0
 	}, 5*time.Second, 500*time.Millisecond)
 
@@ -764,5 +767,169 @@ func TestSendPushIfDeltaNotSupported(t *testing.T) {
 	require.Eventually(t, func() bool {
 		sup, err := h2.Peerstore().SupportsProtocols(h1.ID(), []string{"rand"}...)
 		return err == nil && len(sup) == 0
+	}, 5*time.Second, 500*time.Millisecond)
+}
+
+func TestIdentifyBackwardCompatible(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+
+	h1p := h1.ID()
+	h2p := h2.ID()
+
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer ids1.Close()
+	defer ids2.Close()
+
+	// h1 supports ID_1_1_0 but h2 supports ID_1_0_0
+	h2.RemoveStreamHandler(identify.ID_1_1_0)
+	h2pi := h2.Peerstore().PeerInfo(h2p)
+	if err := h1.Connect(ctx, h2pi); err != nil {
+		t.Fatal(err)
+	}
+
+	h1t2c := h1.Network().ConnsToPeer(h2p)
+	if len(h1t2c) == 0 {
+		t.Fatal("should have a conn here")
+	}
+
+	ids1.IdentifyConn(h1t2c[0])
+	ids2.IdentifyConn(h2.Network().ConnsToPeer(h1p)[0])
+
+	ps, err := h1.Peerstore().SupportsProtocols(h2p, []string{identify.ID_1_1_0, identify.ID_1_0_0}...)
+	require.NoError(t, err)
+	require.Equal(t, []string{identify.ID_1_0_0}, ps)
+
+	ps, err = h2.Peerstore().SupportsProtocols(h1p, []string{identify.ID_1_1_0, identify.ID_1_0_0}...)
+	require.NoError(t, err)
+	require.Len(t, ps, 2)
+
+	// h1 does not have the signed record for h2 because h2 speaks ID_1_0_0
+	testKnowsAddrs(t, h1, h2p, h2.Addrs())
+	cab, ok := peerstore.GetCertifiedAddrBook(h1.Peerstore())
+	require.True(t, ok)
+	require.Nil(t, cab.GetPeerRecord(h2p))
+	testHasProtocolVersions(t, h1, h2p)
+	testHasPublicKey(t, h1, h2p, h2.Peerstore().PubKey(h2p))
+
+	// h2 has the signed record for h1 because it asks h1 to identify itself on ID_1_1_0
+	testKnowsAddrs(t, h2, h1p, h1.Addrs())
+	testHasProtocolVersions(t, h2, h1p)
+	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p))
+	testHasCertifiedAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
+}
+
+func TestPushBackWardCompatible(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, ctx))
+
+	h1p := h1.ID()
+	h2p := h2.ID()
+
+	ids1 := identify.NewIDService(h1)
+	ids2 := identify.NewIDService(h2)
+	defer ids1.Close()
+	defer ids2.Close()
+
+	// h1 supports IDPush_1_1_0 but h2 supports IDPush_1_0_0
+	h2.RemoveStreamHandler(identify.IDPush_1_1_0)
+	h2pi := h2.Peerstore().PeerInfo(h2p)
+	if err := h1.Connect(ctx, h2pi); err != nil {
+		t.Fatal(err)
+	}
+
+	h1t2c := h1.Network().ConnsToPeer(h2p)
+	if len(h1t2c) == 0 {
+		t.Fatal("should have a conn here")
+	}
+
+	ids1.IdentifyConn(h1t2c[0])
+	ids2.IdentifyConn(h2.Network().ConnsToPeer(h1p)[0])
+
+	ps, err := h1.Peerstore().SupportsProtocols(h2p, []string{identify.IDPush_1_1_0, identify.IDPush_1_0_0}...)
+	require.NoError(t, err)
+	require.Equal(t, []string{identify.IDPush_1_0_0}, ps)
+
+	ps, err = h2.Peerstore().SupportsProtocols(h1p, []string{identify.IDPush_1_1_0, identify.IDPush_1_0_0}...)
+	require.NoError(t, err)
+	require.Len(t, ps, 2)
+
+	// h1 changes it's address -> h2 gets a push but not a signed record for that address.
+	lad := ma.StringCast("/ip4/127.0.0.1/tcp/1235")
+	require.NoError(t, h1.Network().Listen(lad))
+	require.Contains(t, h1.Addrs(), lad)
+	emitAddrChangeEvt(t, h1)
+
+	require.Eventually(t, func() bool {
+		addrs := h2.Peerstore().Addrs(h1p)
+		for i := range addrs {
+			if addrs[i].Equal(lad) {
+				cab, ok := peerstore.GetCertifiedAddrBook(h2.Peerstore())
+				if !ok {
+					return false
+				}
+				rec := cab.GetPeerRecord(h1p)
+				if rec == nil {
+					return false
+				}
+				r, err := rec.Record()
+				if err != nil {
+					return false
+				}
+				signedAddrs := r.(*peer.PeerRecord).Addrs
+
+				for _, a := range signedAddrs {
+					if a.Equal(lad) {
+						return false
+					}
+				}
+
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 500*time.Millisecond)
+
+	// h2 changes it's address -> h1 gets a push and also a signed record for that address.
+	lad = ma.StringCast("/ip4/127.0.0.1/tcp/1235")
+	require.NoError(t, h2.Network().Listen(lad))
+	require.Contains(t, h2.Addrs(), lad)
+	emitAddrChangeEvt(t, h2)
+
+	require.Eventually(t, func() bool {
+		addrs := h1.Peerstore().Addrs(h2p)
+		for i := range addrs {
+			if addrs[i].Equal(lad) {
+				cab, ok := peerstore.GetCertifiedAddrBook(h1.Peerstore())
+				if !ok {
+					return false
+				}
+				rec := cab.GetPeerRecord(h2p)
+				if rec == nil {
+					return false
+				}
+				r, err := rec.Record()
+				if err != nil {
+					return false
+				}
+				signedAddrs := r.(*peer.PeerRecord).Addrs
+
+				for _, a := range signedAddrs {
+					if a.Equal(addrs[i]) {
+						return true
+					}
+				}
+
+				return false
+			}
+		}
+		return false
 	}, 5*time.Second, 500*time.Millisecond)
 }

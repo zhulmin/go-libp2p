@@ -24,7 +24,7 @@ func TestFastDisconnect(t *testing.T) {
 	defer ids.Close()
 
 	sync := make(chan struct{})
-	target.SetStreamHandler(ID, func(s network.Stream) {
+	target.SetStreamHandler(ID_1_1_0, func(s network.Stream) {
 		// Wait till the stream is setup on both sides.
 		<-sync
 
@@ -50,7 +50,7 @@ func TestFastDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := source.NewStream(ctx, target.ID(), ID)
+	s, err := source.NewStream(ctx, target.ID(), ID_1_1_0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -142,8 +142,13 @@ func TestProtocolHandlerEvents(t *testing.T) {
 	// to the test.
 	isIdentify := func(evt event.EvtLocalProtocolsUpdated) bool {
 		for _, p := range evt.Added {
-			if p == identify.ID || p == identify.IDPush {
+			switch p {
+			case identify.ID_1_1_0, identify.IDPush_1_1_0:
 				return true
+			case identify.ID_1_0_0, identify.IDPush_1_0_0:
+				return true
+			default:
+				return false
 			}
 		}
 		return false

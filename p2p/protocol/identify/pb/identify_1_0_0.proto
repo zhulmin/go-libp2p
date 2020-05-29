@@ -2,14 +2,9 @@ syntax = "proto2";
 
 package identify.pb;
 
-message Delta {
-  // new protocols now serviced by the peer.
-  repeated string added_protocols = 1;
-  // protocols dropped by the peer.
-  repeated string rm_protocols = 2;
-}
+import "identify_common.proto";
 
-message Identify {
+message Identify_1_0_0 {
 
   // protocolVersion determines compatibility between peers
   optional string protocolVersion = 5; // e.g. ipfs/1.0.0

@@ -2,6 +2,7 @@ package identify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"sync"
@@ -14,12 +15,14 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-core/record"
 
 	"github.com/libp2p/go-eventbus"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
 	ggio "github.com/gogo/protobuf/io"
+	"github.com/gogo/protobuf/proto"
 	logging "github.com/ipfs/go-log"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr-net"
@@ -28,9 +31,18 @@ import (
 
 var log = logging.Logger("net/identify")
 
-// ID is the protocol.ID of version 1.0.0 of the identify
-// service.
-const ID = "/ipfs/id/1.0.0"
+const (
+	// ID_1_1_0 is an Identify protocol that supports signed peer records and larger message sizes.
+	ID_1_1_0 = "/p2p/id/1.1.0"
+
+	// ID_1_0_0 is the legacy Identify protocol that does not support signed peer records and has smaller message sizes.
+	ID_1_0_0 = "/ipfs/id/1.0.0"
+)
+
+var (
+	legacyMessageSize     = 2 * 1024 //2K bytes
+	currentMaxMessageSize = 8 * 1024 // 8K bytes
+)
 
 // LibP2PVersion holds the current protocol version for a client running this code
 // TODO(jbenet): fix the versioning mess.
@@ -153,10 +165,15 @@ func NewIDService(h host.Host, opts ...Option) *IDService {
 		log.Warnf("identify service not emitting identification failed events; err: %s", err)
 	}
 
+	// legacy
+	h.SetStreamHandler(ID_1_0_0, s.sendIdentifyResp)
+	h.SetStreamHandler(IDPush_1_0_0, s.pushHandler)
+	h.SetStreamHandler(IDDelta_1_0_0, s.deltaHandler)
+
 	// register protocols that do not depend on peer records.
-	h.SetStreamHandler(IDDelta, s.deltaHandler)
-	h.SetStreamHandler(ID, s.sendIdentifyResp)
-	h.SetStreamHandler(IDPush, s.pushHandler)
+	h.SetStreamHandler(IDDelta_1_1_0, s.deltaHandler)
+	h.SetStreamHandler(ID_1_1_0, s.sendIdentifyResp)
+	h.SetStreamHandler(IDPush_1_1_0, s.pushHandler)
 
 	h.Network().Notify((*netNotifiee)(s))
 	return s
@@ -352,14 +369,19 @@ func (ids *IDService) identifyConn(c network.Conn, signal chan struct{}) {
 		ids.removeConn(c)
 		return
 	}
-	s.SetProtocol(ID)
 
-	// ok give the response to our handler.
-	if err = msmux.SelectProtoOrFail(ID, s); err != nil {
+	// TODO This might cause us an extra roundtrip if the remote peer does not not support
+	// ID_1_1_0 which will likely be the case when major part of the network hasn't upgraded.
+	// We should either disable this here and wait for multistream 2.0 or pay this cost.
+	protocolIDs := []string{ID_1_1_0, ID_1_0_0}
+	var selectedProto string
+	if selectedProto, err = msmux.SelectOneOf(protocolIDs, s); err != nil {
 		log.Event(context.TODO(), "IdentifyOpenFailed", c.RemotePeer(), logging.Metadata{"error": err})
 		s.Reset()
 		return
 	}
+	s.SetProtocol(protocol.ID(selectedProto))
+
 	ids.handleIdentifyResponse(s)
 }
 
@@ -395,29 +417,29 @@ func (ids *IDService) sendIdentifyResp(s network.Stream) {
 	}
 
 	ph.snapshotMu.RLock()
-	mes := &pb.Identify{}
-	ids.populateMessage(mes, c, ph.snapshot)
+	mes, err := ids.mkIdentifyMsg(s.Protocol(), c, ph.snapshot)
+	if err != nil {
+		log.Warnw("error constructing Identify response", "protocol", s.Protocol(), "err", err)
+		s.Reset()
+		return
+	}
 	w := ggio.NewDelimitedWriter(s)
 	w.WriteMsg(mes)
 
-	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
+	log.Debugf("%s sent message to %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
 }
 
 func (ids *IDService) handleIdentifyResponse(s network.Stream) {
 	c := s.Conn()
 
-	r := ggio.NewDelimitedReader(s, 2048)
-	mes := pb.Identify{}
-	if err := r.ReadMsg(&mes); err != nil {
-		log.Warning("error reading identify message: ", err)
+	if err := ids.consumeMessage(s, c, s.Protocol()); err != nil {
+		log.Warning("error consuming identify message: ", err)
 		s.Reset()
 		return
 	}
 
-	defer func() { go helpers.FullClose(s) }()
-
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
-	ids.consumeMessage(&mes, c)
+	go helpers.FullClose(s)
 }
 
 func (ids *IDService) getSnapshot() *identifySnapshot {
@@ -432,114 +454,166 @@ func (ids *IDService) getSnapshot() *identifySnapshot {
 	return snapshot
 }
 
-func (ids *IDService) populateMessage(
-	mes *pb.Identify,
+func (ids *IDService) mkIdentifyMsg(
+	protocol protocol.ID,
 	conn network.Conn,
 	snapshot *identifySnapshot,
-) {
-	remoteAddr := conn.RemoteMultiaddr()
-	localAddr := conn.LocalMultiaddr()
-
-	// set protocols this node is currently handling
-	mes.Protocols = snapshot.protocols
-
-	// observed address so other side is informed of their
-	// "public" address, at least in relation to us.
-	mes.ObservedAddr = remoteAddr.Bytes()
-
-	// populate unsigned addresses.
-	// peers that do not yet support signed addresses will need this.
-	// Note: LocalMultiaddr is sometimes 0.0.0.0
-	viaLoopback := manet.IsIPLoopback(localAddr) || manet.IsIPLoopback(remoteAddr)
-	mes.ListenAddrs = make([][]byte, 0, len(snapshot.addrs))
-	for _, addr := range snapshot.addrs {
-		if !viaLoopback && manet.IsIPLoopback(addr) {
-			continue
-		}
-		mes.ListenAddrs = append(mes.ListenAddrs, addr.Bytes())
-	}
-
-	if !ids.disableSignedPeerRecord && snapshot.record != nil {
-		recBytes, err := snapshot.record.Marshal()
-		if err != nil {
-			log.Errorf("error marshaling peer record: %v", err)
-		} else {
-			mes.SignedPeerRecord = recBytes
-			log.Debugf("%s sent peer record to %s", ids.Host.ID(), conn.RemotePeer())
-		}
-	}
-
-	// set our public key
-	ownKey := ids.Host.Peerstore().PubKey(ids.Host.ID())
-
-	// check if we even have a public key.
-	if ownKey == nil {
-		// public key is nil. We are either using insecure transport or something erratic happened.
-		// check if we're even operating in "secure mode"
-		if ids.Host.Peerstore().PrivKey(ids.Host.ID()) != nil {
-			// private key is present. But NO public key. Something bad happened.
-			log.Errorf("did not have own public key in Peerstore")
-		}
-		// if neither of the key is present it is safe to assume that we are using an insecure transport.
-	} else {
-		// public key is present. Safe to proceed.
-		if kb, err := ownKey.Bytes(); err != nil {
-			log.Errorf("failed to convert key to bytes")
-		} else {
-			mes.PublicKey = kb
-		}
-	}
-
-	// set protocol versions
+) (proto.Message, error) {
 	pv := LibP2PVersion
 	av := ids.UserAgent
-	mes.ProtocolVersion = &pv
-	mes.AgentVersion = &av
-}
+	remoteAddr := conn.RemoteMultiaddr()
+	common := &pb.IdentifyCommon{}
+	common.Protocols = snapshot.protocols
+	common.ObservedAddr = remoteAddr.Bytes()
+	common.AgentVersion = &av
+	common.ProtocolVersion = &pv
 
-func (ids *IDService) consumeMessage(mes *pb.Identify, c network.Conn) {
-	p := c.RemotePeer()
-
-	// mes.Protocols
-	ids.Host.Peerstore().SetProtocols(p, mes.Protocols...)
-
-	// mes.ObservedAddr
-	ids.consumeObservedAddress(mes.GetObservedAddr(), c)
-
-	// mes.ListenAddrs
-	laddrs := mes.GetListenAddrs()
-	lmaddrs := make([]ma.Multiaddr, 0, len(laddrs))
-	for _, addr := range laddrs {
-		maddr, err := ma.NewMultiaddrBytes(addr)
-		if err != nil {
-			log.Debugf("%s failed to parse multiaddr from %s %s", ID,
-				p, c.RemoteMultiaddr())
-			continue
+	switch protocol {
+	case IDPush_1_1_0, ID_1_1_0:
+		mes := &pb.Identify_1_1_0{}
+		mes.Common = common
+		if !ids.disableSignedPeerRecord && snapshot.record != nil {
+			recBytes, err := snapshot.record.Marshal()
+			if err != nil {
+				log.Errorf("error marshaling peer record: %v", err)
+			} else {
+				mes.SignedPeerRecord = recBytes
+				log.Debugf("%s sent peer record to %s", ids.Host.ID(), conn.RemotePeer())
+			}
 		}
-		lmaddrs = append(lmaddrs, maddr)
+		return mes, nil
+
+	case IDPush_1_0_0, ID_1_0_0:
+		localAddr := conn.LocalMultiaddr()
+		mes := &pb.Identify_1_0_0{}
+		mes.ProtocolVersion = common.ProtocolVersion
+		mes.AgentVersion = common.AgentVersion
+		mes.Protocols = common.Protocols
+		mes.ObservedAddr = common.ObservedAddr
+
+		// populate unsigned addresses.
+		// peers that do not yet support signed addresses will need this.
+		// Note: LocalMultiaddr is sometimes 0.0.0.0
+		viaLoopback := manet.IsIPLoopback(localAddr) || manet.IsIPLoopback(remoteAddr)
+		mes.ListenAddrs = make([][]byte, 0, len(snapshot.addrs))
+		for _, addr := range snapshot.addrs {
+			if !viaLoopback && manet.IsIPLoopback(addr) {
+				continue
+			}
+			mes.ListenAddrs = append(mes.ListenAddrs, addr.Bytes())
+		}
+
+		// public key
+		ownKey := ids.Host.Peerstore().PubKey(ids.Host.ID())
+		// check if we even have a public key.
+		if ownKey == nil {
+			// public key is nil. We are either using insecure transport or something erratic happened.
+			// check if we're even operating in "secure mode"
+			if ids.Host.Peerstore().PrivKey(ids.Host.ID()) != nil {
+				// private key is present. But NO public key. Something bad happened.
+				log.Errorf("did not have own public key in Peerstore")
+			}
+			// if neither of the key is present it is safe to assume that we are using an insecure transport.
+		} else {
+			// public key is present. Safe to proceed.
+			if kb, err := ownKey.Bytes(); err != nil {
+				log.Errorf("failed to convert key to bytes")
+			} else {
+				mes.PublicKey = kb
+			}
+		}
+
+		return mes, nil
+	default:
+		return nil, errors.New("protocol not supported")
 	}
 
-	// NOTE: Do not add `c.RemoteMultiaddr()` to the peerstore if the remote
-	// peer doesn't tell us to do so. Otherwise, we'll advertise it.
-	//
-	// This can cause an "addr-splosion" issue where the network will slowly
-	// gossip and collect observed but unadvertised addresses. Given a NAT
-	// that picks random source ports, this can cause DHT nodes to collect
-	// many undialable addresses for other peers.
+}
+
+func (ids *IDService) consumeMessage(s network.Stream, c network.Conn, protocol protocol.ID) error {
+	pid := c.RemotePeer()
+	var signedPeerRecord *record.Envelope
+	var unsignedListenAddresses []ma.Multiaddr
+
+	switch protocol {
+	case ID_1_1_0, IDPush_1_1_0:
+		r := ggio.NewDelimitedReader(s, currentMaxMessageSize)
+		mes := &pb.Identify_1_1_0{}
+		if err := r.ReadMsg(mes); err != nil {
+			return err
+		}
+
+		ids.Host.Peerstore().SetProtocols(pid, mes.Common.Protocols...)
+		ids.consumeObservedAddress(mes.Common.GetObservedAddr(), c)
+		ids.Host.Peerstore().Put(pid, "ProtocolVersion", mes.Common.GetProtocolVersion())
+		ids.Host.Peerstore().Put(pid, "AgentVersion", mes.Common.GetAgentVersion())
+
+		// signed record and public key
+		if mes.SignedPeerRecord != nil {
+			sr, _, err := record.ConsumeEnvelope(mes.SignedPeerRecord, peer.PeerRecordEnvelopeDomain)
+			if err != nil {
+				log.Errorf("error getting peer record from Identify message: %v", err)
+			} else {
+				pk := sr.PublicKey
+				bz, err := pk.Bytes()
+				if err != nil {
+					log.Errorw("failed to get bytes for public key", "err", err)
+				} else {
+					ids.consumeReceivedPubKey(c, bz)
+					signedPeerRecord = sr
+				}
+			}
+		} else {
+			log.Debugw("signed peer record is nil", "peer", pid, "protocol", protocol)
+		}
+
+	case ID_1_0_0, IDPush_1_0_0:
+		r := ggio.NewDelimitedReader(s, legacyMessageSize)
+		mes := &pb.Identify_1_0_0{}
+		if err := r.ReadMsg(mes); err != nil {
+			return err
+		}
+
+		ids.Host.Peerstore().SetProtocols(pid, mes.Protocols...)
+		ids.consumeObservedAddress(mes.GetObservedAddr(), c)
+		ids.Host.Peerstore().Put(pid, "ProtocolVersion", mes.GetProtocolVersion())
+		ids.Host.Peerstore().Put(pid, "AgentVersion", mes.GetAgentVersion())
+
+		// get the key from the other side. we may not have it (no-auth transport)
+		ids.consumeReceivedPubKey(c, mes.PublicKey)
+
+		// NOTE: Do not add `c.RemoteMultiaddr()` to the peerstore if the remote
+		// peer doesn't tell us to do so. Otherwise, we'll advertise it.
+		//
+		// This can cause an "addr-splosion" issue where the network will slowly
+		// gossip and collect observed but unadvertised addresses. Given a NAT
+		// that picks random source ports, this can cause DHT nodes to collect
+		// many undialable addresses for other peers.
+		// mes.ListenAddrs
+		laddrs := mes.GetListenAddrs()
+		lmaddrs := make([]ma.Multiaddr, 0, len(laddrs))
+		for _, addr := range laddrs {
+			maddr, err := ma.NewMultiaddrBytes(addr)
+			if err != nil {
+				log.Debugf("%s failed to parse multiaddr from %s %s", protocol,
+					pid, c.RemoteMultiaddr())
+				continue
+			}
+			lmaddrs = append(lmaddrs, maddr)
+		}
+		unsignedListenAddresses = lmaddrs
+		log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
+	default:
+		return fmt.Errorf("cannot recognize Identify protocol %s", protocol)
+	}
 
 	// add certified addresses for the peer, if they sent us a signed peer record
 	// otherwise use the unsigned addresses.
-	var signedPeerRecord *record.Envelope
-	signedPeerRecord, err := signedPeerRecordFromMessage(mes)
-	if err != nil {
-		log.Errorf("error getting peer record from Identify message: %v", err)
-	}
-
 	// Extend the TTLs on the known (probably) good addresses.
 	// Taking the lock ensures that we don't concurrently process a disconnect.
 	ids.addrMu.Lock()
 	ttl := peerstore.RecentlyConnectedAddrTTL
-	if ids.Host.Network().Connectedness(p) == network.Connected {
+	if ids.Host.Network().Connectedness(pid) == network.Connected {
 		ttl = peerstore.ConnectedAddrTTL
 	}
 
@@ -548,7 +622,7 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c network.Conn) {
 		peerstore.RecentlyConnectedAddrTTL,
 		peerstore.ConnectedAddrTTL,
 	} {
-		ids.Host.Peerstore().UpdateAddrs(p, ttl, peerstore.TempAddrTTL)
+		ids.Host.Peerstore().UpdateAddrs(pid, ttl, peerstore.TempAddrTTL)
 	}
 
 	// add signed addrs if we have them and the peerstore supports them
@@ -559,24 +633,14 @@ func (ids *IDService) consumeMessage(mes *pb.Identify, c network.Conn) {
 			log.Debugf("error adding signed addrs to peerstore: %v", addErr)
 		}
 	} else {
-		ids.Host.Peerstore().AddAddrs(p, lmaddrs, ttl)
+		ids.Host.Peerstore().AddAddrs(pid, unsignedListenAddresses, ttl)
 	}
 
 	// Finally, expire all temporary addrs.
-	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
+	ids.Host.Peerstore().UpdateAddrs(pid, peerstore.TempAddrTTL, 0)
 	ids.addrMu.Unlock()
 
-	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
-
-	// get protocol versions
-	pv := mes.GetProtocolVersion()
-	av := mes.GetAgentVersion()
-
-	ids.Host.Peerstore().Put(p, "ProtocolVersion", pv)
-	ids.Host.Peerstore().Put(p, "AgentVersion", av)
-
-	// get the key from the other side. we may not have it (no-auth transport)
-	ids.consumeReceivedPubKey(c, mes.PublicKey)
+	return nil
 }
 
 func (ids *IDService) consumeReceivedPubKey(c network.Conn, kb []byte) {
@@ -703,14 +767,6 @@ func addrInAddrs(a ma.Multiaddr, as []ma.Multiaddr) bool {
 		}
 	}
 	return false
-}
-
-func signedPeerRecordFromMessage(msg *pb.Identify) (*record.Envelope, error) {
-	if msg.SignedPeerRecord == nil || len(msg.SignedPeerRecord) == 0 {
-		return nil, nil
-	}
-	env, _, err := record.ConsumeEnvelope(msg.SignedPeerRecord, peer.PeerRecordEnvelopeDomain)
-	return env, err
 }
 
 // netNotifiee defines methods to be used with the IpfsDHT

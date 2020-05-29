@@ -1,0 +1,19 @@
+syntax = "proto2";
+
+package identify.pb;
+
+import "identify_common.proto";
+
+message Identify_1_1_0 {
+   optional IdentifyCommon common = 1;
+
+    // signedPeerRecord contains a serialized SignedEnvelope containing a PeerRecord, signed by the sending node.
+    // It contains listenAddrs of the peer i.e. multiaddrs the sender node listens for open connections on.
+    // Since they are signed, we can share these authenticated addrs with other peers.
+    // See github.com/libp2p/go-libp2p-core/record/pb/envelope.proto and
+    // github.com/libp2p/go-libp2p-core/peer/pb/peer_record.proto for message definitions.
+    //
+    // We also extract extract the public key of the peer from this record ((which also gives its node.ID)).
+    // We store it because we might want it if we change/disable the secure channel.
+    optional bytes signedPeerRecord = 2;
+}
