@@ -41,7 +41,7 @@ func TestIntrospector(t *testing.T) {
 
 	// create host 1 with introspect
 	h1, err := New(ctx,
-		Introspector(
+		Introspection(
 			introspector.NewDefaultIntrospector(),
 			introspector.WsServerWithConfig(&introspector.WsServerConfig{
 				ListenAddrs: []string{iaddr},

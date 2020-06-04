@@ -45,12 +45,12 @@ func NewDefaultIntrospector(host host.Host, reporter metrics.Reporter) (*Default
 
 	d := &DefaultIntrospector{
 		eventManager: newEventManager(sub.Out()),
-		host:          host,
-		bus:           bus,
-		wsub:          sub,
-		reporter:      reporter,
-		started:       time.Now(),
-		closeCh:       make(chan struct{}),
+		host:         host,
+		bus:          bus,
+		wsub:         sub,
+		reporter:     reporter,
+		started:      time.Now(),
+		closeCh:      make(chan struct{}),
 	}
 
 	d.closeWg.Add(1)

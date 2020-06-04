@@ -38,7 +38,7 @@ var (
 )
 
 type session struct {
-	server  *Server
+	server  *Endpoint
 	wsconn  *websocket.Conn
 	logger  *zap.SugaredLogger
 	writeCh chan []byte
@@ -47,8 +47,8 @@ type session struct {
 	pushingState  bool
 	paused        bool
 
-	eventCh     chan []byte
-	commandCh   chan *pb.ClientCommand
+	eventCh   chan []byte
+	commandCh chan *pb.ClientCommand
 
 	stateTicker *clock.Ticker
 
@@ -64,7 +64,7 @@ type session struct {
 	closeCh chan struct{}
 }
 
-func newSession(sv *Server, wsconn *websocket.Conn) *session {
+func newSession(sv *Endpoint, wsconn *websocket.Conn) *session {
 	ch := &session{
 		server:      sv,
 		wsconn:      wsconn,

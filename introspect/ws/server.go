@@ -27,10 +27,10 @@ type sessionEvent struct {
 	doneCh  chan struct{}
 }
 
-type Server struct {
+type Endpoint struct {
 	// state initialized by constructor
 	introspector introspection.Introspector
-	config       *ServerConfig
+	config       *EndpointConfig
 	server       *http.Server
 	clock        clock.Clock
 
@@ -55,31 +55,31 @@ type Server struct {
 	isClosed bool
 }
 
-var _ introspection.Endpoint = (*Server)(nil)
+var _ introspection.Endpoint = (*Endpoint)(nil)
 
-type ServerConfig struct {
+type EndpointConfig struct {
 	ListenAddrs []string
 	Clock       clock.Clock
 }
 
-// ServerWithConfig returns a function compatible with the
-// libp2p.Introspection constructor option, which when called, creates a
-// Server with the supplied configuration.
-func ServerWithConfig(config *ServerConfig) func(i introspection.Introspector) (introspection.Endpoint, error) {
+// EndpointWithConfig returns a function compatible with the
+// libp2p.Introspection constructor option, which when called, creates an
+// Endpoint with the supplied configuration.
+func EndpointWithConfig(config *EndpointConfig) func(i introspection.Introspector) (introspection.Endpoint, error) {
 	return func(i introspection.Introspector) (introspection.Endpoint, error) {
-		return NewServer(i, config)
+		return NewEndpoint(i, config)
 	}
 }
 
-// NewServer creates a WebSockets server to serve introspect data.
-func NewServer(introspector introspection.Introspector, config *ServerConfig) (*Server, error) {
+// NewEndpoint creates a WebSockets server to serve introspect data.
+func NewEndpoint(introspector introspection.Introspector, config *EndpointConfig) (*Endpoint, error) {
 	if introspector == nil || config == nil {
-		return nil, errors.New("none of introspect, event-bus OR config can be nil")
+		return nil, errors.New("introspector and configuration can't be nil")
 	}
 
 	mux := http.NewServeMux()
 
-	srv := &Server{
+	srv := &Endpoint{
 		introspector: introspector,
 		server:       &http.Server{Handler: mux},
 		config:       config,
@@ -107,139 +107,139 @@ func NewServer(introspector introspection.Introspector, config *ServerConfig) (*
 }
 
 // Start starts this WS server.
-func (s *Server) Start() error {
-	s.lk.Lock()
-	defer s.lk.Unlock()
+func (e *Endpoint) Start() error {
+	e.lk.Lock()
+	defer e.lk.Unlock()
 
-	if len(s.listeners) > 0 {
+	if len(e.listeners) > 0 {
 		return errors.New("failed to start WS server: already started")
 	}
-	if len(s.config.ListenAddrs) == 0 {
+	if len(e.config.ListenAddrs) == 0 {
 		return errors.New("failed to start WS server: no listen addresses supplied")
 	}
 
-	logger.Infof("WS introspection server starting, listening on %s", s.config.ListenAddrs)
+	logger.Infof("WS introspection server starting, listening on %e", e.config.ListenAddrs)
 
-	for _, addr := range s.config.ListenAddrs {
+	for _, addr := range e.config.ListenAddrs {
 		l, err := net.Listen("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("failed to start WS server: %wsvc", err)
 		}
 
 		go func() {
-			if err := s.server.Serve(l); err != http.ErrServerClosed {
-				logger.Errorf("failed to start WS server, err: %s", err)
+			if err := e.server.Serve(l); err != http.ErrServerClosed {
+				logger.Errorf("failed to start WS server, err: %e", err)
 			}
 		}()
 
-		s.listeners = append(s.listeners, l)
+		e.listeners = append(e.listeners, l)
 	}
 
 	// start the worker
-	s.controlWg.Add(1)
-	go s.worker()
+	e.controlWg.Add(1)
+	go e.worker()
 
 	return nil
 }
 
 // Close closes a WS introspect server.
-func (s *Server) Close() error {
-	s.lk.Lock()
-	defer s.lk.Unlock()
+func (e *Endpoint) Close() error {
+	e.lk.Lock()
+	defer e.lk.Unlock()
 
-	if s.isClosed {
+	if e.isClosed {
 		return nil
 	}
 
-	close(s.killSessionsCh)
+	close(e.killSessionsCh)
 
 	// wait for all connections to be dead.
-	s.connsWg.Wait()
+	e.connsWg.Wait()
 
-	close(s.closeCh)
+	close(e.closeCh)
 
 	// Close the server, which in turn closes all listeners.
-	if err := s.server.Close(); err != nil {
+	if err := e.server.Close(); err != nil {
 		return err
 	}
 
 	// cancel the context and wait for all goroutines to shut down
-	s.controlWg.Wait()
+	e.controlWg.Wait()
 
-	s.listeners = nil
-	s.sessions = nil
-	s.isClosed = true
+	e.listeners = nil
+	e.sessions = nil
+	e.isClosed = true
 	return nil
 }
 
 // ListenAddrs returns the actual listen addresses of this server.
-func (s *Server) ListenAddrs() []string {
-	s.lk.RLock()
-	defer s.lk.RUnlock()
+func (e *Endpoint) ListenAddrs() []string {
+	e.lk.RLock()
+	defer e.lk.RUnlock()
 
-	res := make([]string, 0, len(s.listeners))
-	for _, l := range s.listeners {
+	res := make([]string, 0, len(e.listeners))
+	for _, l := range e.listeners {
 		res = append(res, l.Addr().String())
 	}
 	return res
 }
 
-func (s *Server) Sessions() []*introspection.Session {
+func (e *Endpoint) Sessions() []*introspection.Session {
 	ch := make(chan []*introspection.Session)
-	s.getSessionsCh <- ch
+	e.getSessionsCh <- ch
 	return <-ch
 }
 
-func (s *Server) wsUpgrader() http.HandlerFunc {
+func (e *Endpoint) wsUpgrader() http.HandlerFunc {
 	return func(w http.ResponseWriter, rq *http.Request) {
 		upgrader.CheckOrigin = func(rq *http.Request) bool { return true }
 		wsconn, err := upgrader.Upgrade(w, rq, nil)
 		if err != nil {
-			logger.Errorf("upgrade to websocket failed, err: %s", err)
+			logger.Errorf("upgrade to websocket failed, err: %e", err)
 			return
 		}
 
 		done := make(chan struct{}, 1)
 		select {
-		case s.sessionOpenedCh <- &sessionEvent{newSession(s, wsconn), done}:
-		case <-s.closeCh:
+		case e.sessionOpenedCh <- &sessionEvent{newSession(e, wsconn), done}:
+		case <-e.closeCh:
 			_ = wsconn.Close()
 			return
 		}
 
 		select {
 		case <-done:
-		case <-s.closeCh:
+		case <-e.closeCh:
 			_ = wsconn.Close()
 			return
 		}
 	}
 }
 
-func (s *Server) worker() {
-	defer s.controlWg.Done()
+func (e *Endpoint) worker() {
+	defer e.controlWg.Done()
 
-	eventCh := s.introspector.EventChan()
+	eventCh := e.introspector.EventChan()
 	for {
 		select {
-		case rq := <-s.sessionOpenedCh:
+		case rq := <-e.sessionOpenedCh:
 			session := rq.session
-			s.sessions[session] = struct{}{}
+			e.sessions[session] = struct{}{}
 
-			s.connsWg.Add(1)
+			e.connsWg.Add(1)
 			go func() {
 				session.run()
 
 				select {
-				case s.sessionClosedCh <- &sessionEvent{session, rq.doneCh}:
-				case <-s.closeCh:
+				case e.sessionClosedCh <- &sessionEvent{session, rq.doneCh}:
+				case <-e.closeCh:
 					return
 				}
 			}()
 
-		case rq := <-s.sessionClosedCh:
-			delete(s.sessions, rq.session)
-			s.connsWg.Done()
+		case rq := <-e.sessionClosedCh:
+			delete(e.sessions, rq.session)
+			e.connsWg.Done()
 
 		case evt, more := <-eventCh:
 			if !more {
@@ -247,37 +247,37 @@ func (s *Server) worker() {
 				continue
 			}
 
-			if len(s.sessions) == 0 {
+			if len(e.sessions) == 0 {
 				continue
 			}
 
 			// generate the event and broadcast it to all sessions.
-			if err := s.broadcastEvent(evt); err != nil {
-				logger.Warnf("error while broadcasting event; err: %s", err)
+			if err := e.broadcastEvent(evt); err != nil {
+				logger.Warnf("error while broadcasting event; err: %e", err)
 			}
 
-		case fnc := <-s.evalForTest:
+		case fnc := <-e.evalForTest:
 			fnc()
 
-		case ch := <-s.getSessionsCh:
-			sessions := make([]*introspection.Session, 0, len(s.sessions))
-			for sess := range s.sessions {
+		case ch := <-e.getSessionsCh:
+			sessions := make([]*introspection.Session, 0, len(e.sessions))
+			for sess := range e.sessions {
 				sessions = append(sessions, &introspection.Session{RemoteAddr: sess.wsconn.RemoteAddr().String()})
 			}
 			ch <- sessions
 
-		case <-s.killSessionsCh:
-			for sess := range s.sessions {
+		case <-e.killSessionsCh:
+			for sess := range e.sessions {
 				sess.kill()
 			}
 
-		case <-s.closeCh:
+		case <-e.closeCh:
 			return
 		}
 	}
 }
 
-func (s *Server) broadcastEvent(evt *pb.Event) error {
+func (e *Endpoint) broadcastEvent(evt *pb.Event) error {
 	pkt := &pb.ServerMessage{
 		Version: introspection.ProtoVersionPb,
 		Payload: &pb.ServerMessage_Event{Event: evt},
@@ -288,17 +288,17 @@ func (s *Server) broadcastEvent(evt *pb.Event) error {
 		return fmt.Errorf("failed to generate enveloped event message; err: %w", err)
 	}
 
-	for sess := range s.sessions {
+	for sess := range e.sessions {
 		sess.trySendEvent(msg)
 	}
 
 	return nil
 }
 
-func (s *Server) createStateMsg() ([]byte, error) {
-	st, err := s.introspector.FetchFullState()
+func (e *Endpoint) createStateMsg() ([]byte, error) {
+	st, err := e.introspector.FetchFullState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch state, err=%s", err)
+		return nil, fmt.Errorf("failed to fetch state, err=%e", err)
 	}
 
 	pkt := &pb.ServerMessage{
@@ -309,13 +309,13 @@ func (s *Server) createStateMsg() ([]byte, error) {
 	return envelopePacket(pkt)
 }
 
-func (s *Server) createRuntimeMsg() ([]byte, error) {
-	rt, err := s.introspector.FetchRuntime()
+func (e *Endpoint) createRuntimeMsg() ([]byte, error) {
+	rt, err := e.introspector.FetchRuntime()
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch runtime mesage, err=%s", err)
+		return nil, fmt.Errorf("failed to fetch runtime mesage, err=%e", err)
 	}
 
-	rt.EventTypes = s.introspector.EventMetadata()
+	rt.EventTypes = e.introspector.EventMetadata()
 	pkt := &pb.ServerMessage{
 		Version: introspection.ProtoVersionPb,
 		Payload: &pb.ServerMessage_Runtime{Runtime: rt},

@@ -49,5 +49,5 @@ func TestServerHandlesClosedConns(t *testing.T) {
 	err := conns[0].Close()
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool { return len(server.Sessions()) == 99 }, 2 * time.Second, 100 * time.Millisecond)
+	require.Eventually(t, func() bool { return len(server.Sessions()) == 99 }, 2*time.Second, 100*time.Millisecond)
 }

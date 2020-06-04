@@ -15,12 +15,12 @@ import (
 	"github.com/libp2p/go-libp2p/introspect"
 )
 
-func createTestServer(t *testing.T) (*Server, *introspect.MockIntrospector) {
+func createTestServer(t *testing.T) (*Endpoint, *introspect.MockIntrospector) {
 	t.Helper()
 
 	mocki := introspect.NewMockIntrospector()
-	cfg := &ServerConfig{ListenAddrs: []string{"localhost:0"}, Clock: clock.NewMock()}
-	server, err := NewServer(mocki, cfg)
+	cfg := &EndpointConfig{ListenAddrs: []string{"localhost:0"}, Clock: clock.NewMock()}
+	server, err := NewEndpoint(mocki, cfg)
 	require.NoError(t, err)
 	return server, mocki
 }
@@ -30,7 +30,7 @@ type connWrapper struct {
 	t *testing.T
 }
 
-func createConn(t *testing.T, server *Server) *connWrapper {
+func createConn(t *testing.T, server *Endpoint) *connWrapper {
 	addr := fmt.Sprintf("ws://%s/introspect", server.ListenAddrs()[0])
 	conn, _, err := websocket.DefaultDialer.Dial(addr, nil)
 	require.NoError(t, err)

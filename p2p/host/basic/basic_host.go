@@ -2,31 +2,34 @@ package basichost
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/introspection"
-
-	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-
 	"github.com/libp2p/go-libp2p-core/connmgr"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/introspection"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p-core/record"
 
 	inat "github.com/libp2p/go-libp2p-nat"
+
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	"github.com/libp2p/go-eventbus"
 
 	logging "github.com/ipfs/go-log"
 
+	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr-net"
@@ -38,6 +41,9 @@ import (
 const maxAddressResolution = 32
 
 var _ host.IntrospectableHost = (*BasicHost)(nil)
+
+// addrChangeTickrInterval is the interval between two address change ticks.
+var addrChangeTickrInterval = 5 * time.Second
 
 var log = logging.Logger("basichost")
 
@@ -102,6 +108,10 @@ type BasicHost struct {
 
 	introspector          introspection.Introspector
 	introspectionEndpoint introspection.Endpoint
+
+	disableSignedPeerRecord bool
+	signKey                 crypto.PrivKey
+	caBook                  peerstore.CertifiedAddrBook
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -145,6 +155,9 @@ type HostOpts struct {
 	// IntrospectionEndpoint is the introspect endpoint through which
 	// introspect data is served to clients.
 	IntrospectionEndpoint introspection.Endpoint
+
+	// DisableSignedPeerRecord disables the generation of Signed Peer Records on this host.
+	DisableSignedPeerRecord bool
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -152,16 +165,17 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 	hostCtx, cancel := context.WithCancel(ctx)
 
 	h := &BasicHost{
-		network:        net,
-		mux:            msmux.NewMultistreamMuxer(),
-		negtimeout:     DefaultNegotiationTimeout,
-		AddrsFactory:   DefaultAddrsFactory,
-		maResolver:     madns.DefaultResolver,
-		eventbus:       eventbus.NewBus(),
-		introspector:   opts.Introspector,
-		addrChangeChan: make(chan struct{}, 1),
-		ctx:            hostCtx,
-		ctxCancel:      cancel,
+		network:                 net,
+		mux:                     msmux.NewMultistreamMuxer(),
+		negtimeout:              DefaultNegotiationTimeout,
+		AddrsFactory:            DefaultAddrsFactory,
+		maResolver:              madns.DefaultResolver,
+		eventbus:                eventbus.NewBus(),
+		introspector:            opts.Introspector,
+		addrChangeChan:          make(chan struct{}, 1),
+		ctx:                     hostCtx,
+		ctxCancel:               cancel,
+		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
 	}
 
 	var err error
@@ -172,32 +186,40 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		return nil, err
 	}
 
+	if !h.disableSignedPeerRecord {
+		cab, ok := peerstore.GetCertifiedAddrBook(net.Peerstore())
+		if !ok {
+			return nil, errors.New("peerstore should also be a certified address book")
+		}
+		h.caBook = cab
+
+		h.signKey = h.Peerstore().PrivKey(h.ID())
+		if h.signKey == nil {
+			return nil, errors.New("unable to access host key")
+		}
+
+		// persist a signed peer record for self to the peerstore.
+		rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), h.Addrs()})
+		ev, err := record.Seal(rec, h.signKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create signed record for self: %w", err)
+		}
+		if _, err := cab.ConsumePeerRecord(ev, peerstore.PermanentAddrTTL); err != nil {
+			return nil, fmt.Errorf("failed to persist signed record to peerstore: %w", err)
+		}
+	}
+
 	if opts.MultistreamMuxer != nil {
 		h.mux = opts.MultistreamMuxer
 	}
 
-	// KKK
-	/*	// start introspect server
-		h.introspectionEndpoint = opts.IntrospectionEndpoint
-		if h.introspector != nil {
-
-			// register runtime provider
-			provs := &introspection.DataProviders{Runtime: runtimeDataProvider}
-			if err := h.introspector.RegisterDataProviders(provs); err != nil {
-				log.Errorf("failed to register a runtime provider, err=%s", err)
-				return nil, fmt.Errorf("failed to register a runtime provider, err-%s", err)
-			}
-		}*/
-
-	if h.introspectionEndpoint != nil {
-		if err := h.introspectionEndpoint.Start(); err != nil {
-			return nil, fmt.Errorf("failed to start introspect endpoint: %w", err)
-		}
-	}
-
 	// Start ID Service
 	// we can't set this as a default above because it depends on the *BasicHost.
-	h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+	if h.disableSignedPeerRecord {
+		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
+	} else {
+		h.ids = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {
 		h.negtimeout = opts.NegotiationTimeout
@@ -226,10 +248,38 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.pings = ping.NewPingService(h)
 	}
 
-	net.SetConnHandler(h.newConnHandler)
 	net.SetStreamHandler(h.newStreamHandler)
 
+	// register to be notified when the network's listen addrs change,
+	// so we can update our address set and push events if needed
+	listenHandler := func(network.Network, ma.Multiaddr) {
+		h.SignalAddressChange()
+	}
+	net.Notify(&network.NotifyBundle{
+		ListenF:      listenHandler,
+		ListenCloseF: listenHandler,
+	})
+
 	return h, nil
+}
+
+func (h *BasicHost) SetIntrospection(introspector introspection.Introspector, endpoint introspection.Endpoint) error {
+	if h.introspectionEndpoint != nil {
+		if err := h.introspectionEndpoint.Close(); err != nil {
+			return fmt.Errorf("failed to close existing introspection endpoint: %w", err)
+		}
+	}
+	if h.introspector != nil {
+		if err := h.introspector.Close(); err != nil {
+			return fmt.Errorf("failed to close existing introspector: %w", err)
+		}
+	}
+	h.introspector = introspector
+	h.introspectionEndpoint = endpoint
+	if h.introspectionEndpoint == nil {
+		return nil
+	}
+	return h.introspectionEndpoint.Start()
 }
 
 func (h *BasicHost) Introspector() introspection.Introspector {
@@ -268,12 +318,12 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 	}
 
 	h, err := NewHost(context.Background(), net, hostopts)
-	h.Start()
 	if err != nil {
 		// this cannot happen with legacy options
 		// plus we want to keep the (deprecated) legacy interface unchanged
 		panic(err)
 	}
+	h.Start()
 
 	return h
 }
@@ -282,14 +332,6 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 func (h *BasicHost) Start() {
 	h.refCount.Add(1)
 	go h.background()
-}
-
-// newConnHandler is the remote-opened conn handler for inet.Network
-func (h *BasicHost) newConnHandler(c network.Conn) {
-	// Clear protocols on connecting to new peer to avoid issues caused
-	// by misremembering protocols between reconnects
-	h.Peerstore().SetProtocols(c.RemotePeer())
-	h.ids.IdentifyConn(c)
 }
 
 // newStreamHandler is the remote-opened stream handler for network.Network
@@ -382,38 +424,69 @@ func makeUpdatedAddrEvent(prev, current []ma.Multiaddr) *event.EvtLocalAddresses
 	return &evt
 }
 
+func (h *BasicHost) makeSignedPeerRecord(evt *event.EvtLocalAddressesUpdated) (*record.Envelope, error) {
+	current := make([]multiaddr.Multiaddr, 0, len(evt.Current))
+	for _, a := range evt.Current {
+		current = append(current, a.Address)
+	}
+
+	rec := peer.PeerRecordFromAddrInfo(peer.AddrInfo{h.ID(), current})
+	return record.Seal(rec, h.signKey)
+}
+
 func (h *BasicHost) background() {
 	defer h.refCount.Done()
+	var lastAddrs []ma.Multiaddr
+
+	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
+		// nothing to do if both are nil..defensive check
+		if currentAddrs == nil && lastAddrs == nil {
+			return
+		}
+
+		changeEvt := makeUpdatedAddrEvent(lastAddrs, currentAddrs)
+
+		if changeEvt == nil {
+			return
+		}
+
+		if !h.disableSignedPeerRecord {
+			// add signed peer record to the event
+			sr, err := h.makeSignedPeerRecord(changeEvt)
+			if err != nil {
+				log.Errorf("error creating a signed peer record from the set of current addresses, err=%s", err)
+				return
+			}
+			changeEvt.SignedPeerRecord = sr
+
+			// persist the signed record to the peerstore
+			if _, err := h.caBook.ConsumePeerRecord(sr, peerstore.PermanentAddrTTL); err != nil {
+				log.Errorf("failed to persist signed peer record in peer store, err=%s", err)
+				return
+			}
+		}
+
+		// emit addr change event on the bus
+		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
+			log.Warnf("error emitting event for updated addrs: %s", err)
+		}
+	}
 
 	// periodically schedules an IdentifyPush to update our peers for changes
 	// in our address set (if needed)
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(addrChangeTickrInterval)
 	defer ticker.Stop()
 
-	// initialize lastAddrs
-	lastAddrs := h.Addrs()
-
 	for {
+		curr := h.Addrs()
+		emitAddrChange(curr, lastAddrs)
+		lastAddrs = curr
+
 		select {
 		case <-ticker.C:
 		case <-h.addrChangeChan:
 		case <-h.ctx.Done():
 			return
-		}
-
-		//  emit an EvtLocalAddressesUpdatedEvent & a Push Identify if our listen addresses have changed.
-		addrs := h.Addrs()
-		changeEvt := makeUpdatedAddrEvent(lastAddrs, addrs)
-		if changeEvt != nil {
-			lastAddrs = addrs
-		}
-
-		if changeEvt != nil {
-			err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt)
-			if err != nil {
-				log.Warnf("error emitting event for updated addrs: %s", err)
-			}
-			h.ids.Push()
 		}
 	}
 }
@@ -490,48 +563,53 @@ func (h *BasicHost) RemoveStreamHandler(pid protocol.ID) {
 // to create one. If ProtocolID is "", writes no header.
 // (Threadsafe)
 func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error) {
-	pref, err := h.preferredProtocol(p, pids)
-	if err != nil {
-		return nil, err
-	}
-
-	if pref != "" {
-		return h.newStream(ctx, p, pref)
-	}
-
-	var protoStrs []string
-	for _, pid := range pids {
-		protoStrs = append(protoStrs, string(pid))
-	}
-
 	s, err := h.Network().NewStream(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 
-	selected, err := msmux.SelectOneOf(protoStrs, s)
+	// Wait for any in-progress identifies on the connection to finish. This
+	// is faster than negotiating.
+	//
+	// If the other side doesn't support identify, that's fine. This will
+	// just be a no-op.
+	select {
+	case <-h.ids.IdentifyWait(s.Conn()):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	pidStrings := protocol.ConvertToStrings(pids)
+
+	pref, err := h.preferredProtocol(p, pidStrings)
+	if err != nil {
+		_ = s.Reset()
+		return nil, err
+	}
+
+	if pref != "" {
+		s.SetProtocol(pref)
+		lzcon := msmux.NewMSSelect(s, string(pref))
+		return &streamWrapper{
+			Stream: s,
+			rw:     lzcon,
+		}, nil
+	}
+
+	selected, err := msmux.SelectOneOf(pidStrings, s)
 	if err != nil {
 		s.Reset()
 		return nil, err
 	}
+
 	selpid := protocol.ID(selected)
 	s.SetProtocol(selpid)
 	h.Peerstore().AddProtocols(p, selected)
-
 	return s, nil
 }
 
-func pidsToStrings(pids []protocol.ID) []string {
-	out := make([]string, len(pids))
-	for i, p := range pids {
-		out[i] = string(p)
-	}
-	return out
-}
-
-func (h *BasicHost) preferredProtocol(p peer.ID, pids []protocol.ID) (protocol.ID, error) {
-	pidstrs := pidsToStrings(pids)
-	supported, err := h.Peerstore().SupportsProtocols(p, pidstrs...)
+func (h *BasicHost) preferredProtocol(p peer.ID, pids []string) (protocol.ID, error) {
+	supported, err := h.Peerstore().SupportsProtocols(p, pids...)
 	if err != nil {
 		return "", err
 	}
@@ -541,21 +619,6 @@ func (h *BasicHost) preferredProtocol(p peer.ID, pids []protocol.ID) (protocol.I
 		out = protocol.ID(supported[0])
 	}
 	return out, nil
-}
-
-func (h *BasicHost) newStream(ctx context.Context, p peer.ID, pid protocol.ID) (network.Stream, error) {
-	s, err := h.Network().NewStream(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	s.SetProtocol(pid)
-
-	lzcon := msmux.NewMSSelect(s, string(pid))
-	return &streamWrapper{
-		Stream: s,
-		rw:     lzcon,
-	}, nil
 }
 
 // Connect ensures there is a connection between this host and the peer with
@@ -651,20 +714,13 @@ func (h *BasicHost) dialPeer(ctx context.Context, p peer.ID) error {
 		return err
 	}
 
-	// Clear protocols on connecting to new peer to avoid issues caused
-	// by misremembering protocols between reconnects
-	h.Peerstore().SetProtocols(p)
-
-	// identify the connection before returning.
-	done := make(chan struct{})
-	go func() {
-		h.ids.IdentifyConn(c)
-		close(done)
-	}()
-
-	// respect don contexteone
+	// TODO: Consider removing this? On one hand, it's nice because we can
+	// assume that things like the agent version are usually set when this
+	// returns. On the other hand, we don't _really_ need to wait for this.
+	//
+	// This is mostly here to preserve existing behavior.
 	select {
-	case <-done:
+	case <-h.ids.IdentifyWait(c):
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -864,7 +920,13 @@ func (h *BasicHost) Close() error {
 
 		if h.introspectionEndpoint != nil {
 			if err := h.introspectionEndpoint.Close(); err != nil {
-				log.Errorf("failed while shutting down introspect endpoint; err: %s", err)
+				log.Errorf("failed while shutting down introspection endpoint; err: %s", err)
+			}
+		}
+
+		if h.introspector != nil {
+			if err := h.introspector.Close(); err != nil {
+				log.Errorf("failed while shutting down introspectir; err: %s", err)
 			}
 		}
 

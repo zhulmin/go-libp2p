@@ -141,7 +141,7 @@ func (m *mdnsService) pollForEntries(ctx context.Context) {
 
 		err := mdns.Query(qp)
 		if err != nil {
-			log.Error("mdns lookup error: ", err)
+			log.Warnw("mdns lookup error", "error", err)
 		}
 		close(entriesCh)
 		log.Debug("mdns query complete")

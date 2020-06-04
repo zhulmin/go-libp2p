@@ -44,9 +44,9 @@ func TestPushEvents(t *testing.T) {
 		require.NotZero(t, evt.Ts)
 	}
 
-	mocki.EventCh<-EventA{String: "hello", Number: 100}
-	mocki.EventCh<-EventA{String: "hello", Number: 100}
-	mocki.EventCh<-EventB{String: "hello", Number: 100}
+	mocki.EventCh <- EventA{String: "hello", Number: 100}
+	mocki.EventCh <- EventA{String: "hello", Number: 100}
+	mocki.EventCh <- EventB{String: "hello", Number: 100}
 
 	assertEvent("EventA")
 	assertEvent("EventA")
@@ -79,7 +79,7 @@ func TestPushStopPushEvents(t *testing.T) {
 		require.NotZero(t, evt.Ts)
 	}
 
-	mocki.EventCh<-EventA{String: "hello", Number: 100}
+	mocki.EventCh <- EventA{String: "hello", Number: 100}
 	assertEvent("EventA")
 
 	// now disable the pusher and verify that we actually missed those events.
@@ -92,8 +92,8 @@ func TestPushStopPushEvents(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// these events will be missed.
-	mocki.EventCh<-EventA{String: "hello", Number: 100}
-	mocki.EventCh<-EventB{String: "hello", Number: 100}
+	mocki.EventCh <- EventA{String: "hello", Number: 100}
+	mocki.EventCh <- EventB{String: "hello", Number: 100}
 
 	// enable the pusher again
 	conn.sendCommand(&pb.ClientCommand{Id: 201, Command: pb.ClientCommand_PUSH_ENABLE, Source: pb.ClientCommand_EVENTS})
@@ -103,8 +103,8 @@ func TestPushStopPushEvents(t *testing.T) {
 	require.EqualValues(t, pb.CommandResponse_OK, resp.Result)
 
 	// these events will be received.
-	mocki.EventCh<-EventC{String: "hello", Number: 100}
-	mocki.EventCh<-EventC{String: "hello", Number: 100}
+	mocki.EventCh <- EventC{String: "hello", Number: 100}
+	mocki.EventCh <- EventC{String: "hello", Number: 100}
 
 	assertEvent("EventC")
 	assertEvent("EventC")
