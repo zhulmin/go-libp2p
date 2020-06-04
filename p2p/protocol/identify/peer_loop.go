@@ -41,6 +41,8 @@ type peerHandler struct {
 
 	pushCh  chan struct{}
 	deltaCh chan struct{}
+
+	isClosed bool
 }
 
 func newPeerHandler(pid peer.ID, ids *IDService) *peerHandler {
@@ -57,18 +59,24 @@ func newPeerHandler(pid peer.ID, ids *IDService) *peerHandler {
 	return ph
 }
 
+// should be idempotent.
 func (ph *peerHandler) start() {
-	ctx, cancel := context.WithCancel(context.Background())
-	ph.ctx = ctx
-	ph.cancel = cancel
+	if ph.isClosed {
+		ph.isClosed = false
 
-	ph.wg.Add(1)
-	go ph.loop()
+		ctx, cancel := context.WithCancel(context.Background())
+		ph.ctx = ctx
+		ph.cancel = cancel
+
+		ph.wg.Add(1)
+		go ph.loop()
+	}
 }
 
 func (ph *peerHandler) close() error {
 	ph.cancel()
 	ph.wg.Wait()
+	ph.isClosed = true
 	return nil
 }
 
