@@ -47,7 +47,7 @@ type NATManagerC func(network.Network) bhost.NATManager
 
 type RoutingC func(host.Host) (routing.PeerRouting, error)
 
-// IntrospectionEndpointC is a type that represents an introspection.Endpoint
+// IntrospectionEndpointC is a type that represents an introspect.Endpoint
 // constructor.
 type IntrospectionEndpointC func(introspection.Introspector) (introspection.Endpoint, error)
 
@@ -137,7 +137,7 @@ func (cfg *Config) makeSwarm(ctx context.Context) (*swarm.Swarm, error) {
 	}
 
 	// TODO: Make the swarm implementation configurable.
-	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter, cfg.Introspector)
+	swrm := swarm.NewSwarm(ctx, pid, cfg.Peerstore, cfg.Reporter)
 	if cfg.Filters != nil {
 		swrm.Filters = cfg.Filters
 	}
@@ -152,7 +152,7 @@ func (cfg *Config) addTransports(ctx context.Context, h host.Host) (err error) {
 	}
 	upgrader := new(tptu.Upgrader)
 	upgrader.PSK = cfg.PSK
-	upgrader.Filters = cfg.Filters
+	//upgrader.Filters = cfg.Filters
 	if cfg.Insecure {
 		upgrader.Secure = makeInsecureTransport(h.ID(), cfg.PeerKey)
 	} else {
@@ -211,7 +211,7 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		opts.IntrospectionEndpoint, err = cfg.IntrospectionEndpoint(cfg.Introspector)
 		if err != nil {
 			swrm.Close()
-			return nil, fmt.Errorf("failed while starting introspection endpoint: %w", err)
+			return nil, fmt.Errorf("failed while starting introspect endpoint: %w", err)
 		}
 	}
 

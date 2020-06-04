@@ -3,13 +3,12 @@ package basichost
 import (
 	"context"
 	"fmt"
-	"github.com/libp2p/go-libp2p-core/introspection"
-	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
 	"io"
 	"net"
-	"runtime"
 	"sync"
 	"time"
+
+	"github.com/libp2p/go-libp2p-core/introspection"
 
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -22,8 +21,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
-	"github.com/libp2p/go-eventbus"
 	inat "github.com/libp2p/go-libp2p-nat"
+
+	"github.com/libp2p/go-eventbus"
 
 	logging "github.com/ipfs/go-log"
 
@@ -142,8 +142,8 @@ type HostOpts struct {
 	// providers and fetch the current state.
 	Introspector introspection.Introspector
 
-	// IntrospectionEndpoint is the introspection endpoint through which
-	// introspection data is served to clients.
+	// IntrospectionEndpoint is the introspect endpoint through which
+	// introspect data is served to clients.
 	IntrospectionEndpoint introspection.Endpoint
 }
 
@@ -176,29 +176,22 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.mux = opts.MultistreamMuxer
 	}
 
-	// start introspection server
-	h.introspectionEndpoint = opts.IntrospectionEndpoint
-	if h.introspector != nil {
-		runtimeDataProvider := func() (*introspection_pb.Runtime, error) {
-			return &introspection_pb.Runtime{
-				Implementation: "go-libp2p",
-				Platform:       runtime.GOOS,
-				PeerId:         h.ID().Pretty(),
-				Version:        "",
-			}, nil
-		}
+	// KKK
+	/*	// start introspect server
+		h.introspectionEndpoint = opts.IntrospectionEndpoint
+		if h.introspector != nil {
 
-		// register runtime provider
-		provs := &introspection.DataProviders{Runtime: runtimeDataProvider}
-		if err := h.introspector.RegisterDataProviders(provs); err != nil {
-			log.Errorf("failed to register a runtime provider, err=%s", err)
-			return nil, fmt.Errorf("failed to register a runtime provider, err-%s", err)
-		}
-	}
+			// register runtime provider
+			provs := &introspection.DataProviders{Runtime: runtimeDataProvider}
+			if err := h.introspector.RegisterDataProviders(provs); err != nil {
+				log.Errorf("failed to register a runtime provider, err=%s", err)
+				return nil, fmt.Errorf("failed to register a runtime provider, err-%s", err)
+			}
+		}*/
 
 	if h.introspectionEndpoint != nil {
-		if err := h.introspectionEndpoint.Start(h.eventbus); err != nil {
-			return nil, fmt.Errorf("failed to start introspection endpoint: %w", err)
+		if err := h.introspectionEndpoint.Start(); err != nil {
+			return nil, fmt.Errorf("failed to start introspect endpoint: %w", err)
 		}
 	}
 
@@ -871,7 +864,7 @@ func (h *BasicHost) Close() error {
 
 		if h.introspectionEndpoint != nil {
 			if err := h.introspectionEndpoint.Close(); err != nil {
-				log.Errorf("failed while shutting down introspection endpoint; err: %s", err)
+				log.Errorf("failed while shutting down introspect endpoint; err: %s", err)
 			}
 		}
 

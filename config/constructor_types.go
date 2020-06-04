@@ -43,11 +43,11 @@ var argTypes = map[reflect.Type]constructor{
 	muxType:      func(h host.Host, u *tptu.Upgrader) interface{} { return u.Muxer },
 	securityType: func(h host.Host, u *tptu.Upgrader) interface{} { return u.Secure },
 	pskType:      func(h host.Host, u *tptu.Upgrader) interface{} { return u.PSK },
-	filtersType:  func(h host.Host, u *tptu.Upgrader) interface{} { return u.Filters },
-	peerIDType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.ID() },
-	privKeyType:  func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PrivKey(h.ID()) },
-	pubKeyType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PubKey(h.ID()) },
-	pstoreType:   func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore() },
+	//filtersType:  func(h host.Host, u *tptu.Upgrader) interface{} { return u.Filters },
+	peerIDType:  func(h host.Host, u *tptu.Upgrader) interface{} { return h.ID() },
+	privKeyType: func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PrivKey(h.ID()) },
+	pubKeyType:  func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore().PubKey(h.ID()) },
+	pstoreType:  func(h host.Host, u *tptu.Upgrader) interface{} { return h.Peerstore() },
 }
 
 func newArgTypeSet(types ...reflect.Type) map[reflect.Type]constructor {

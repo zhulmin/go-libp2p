@@ -39,7 +39,7 @@ func TestIntrospector(t *testing.T) {
 	iaddr := "127.0.0.1:0"
 	ctx := context.Background()
 
-	// create host 1 with introspector
+	// create host 1 with introspect
 	h1, err := New(ctx,
 		Introspector(
 			introspector.NewDefaultIntrospector(),
@@ -108,7 +108,7 @@ func TestIntrospector(t *testing.T) {
 	_, err = io.ReadFull(s2, buf)
 	require.NoError(err)
 
-	// create a connection with the introspection server
+	// create a connection with the introspect server
 	addrs := h1.(host.IntrospectableHost).IntrospectionEndpoint().ListenAddrs()
 	url := fmt.Sprintf("ws://%s/introspect", addrs[0])
 

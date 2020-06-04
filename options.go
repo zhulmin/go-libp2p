@@ -196,17 +196,17 @@ func ConnectionManager(connman connmgr.ConnManager) Option {
 	}
 }
 
-// Introspector configures the host to use the given introspector, and the
+// Introspector configures the host to use the given introspect, and the
 // supplied endpoint constructor.
 //
 // Example:
 //
-//  import "github.com/libp2p/go-libp2p-introspector"
+//  import "github.com/libp2p/go-libp2p-introspect"
 //
 //  host, err := libp2p.New(
 //	    libp2p.Introspector(
-//          introspector.NewDefaultIntrospector(),
-//          introspector.WsEndpointWithConfig(&introspector.WsEndpointConfig{}),
+//          introspect.NewDefaultIntrospector(),
+//          introspect.WsEndpointWithConfig(&introspect.WsEndpointConfig{}),
 //      ),
 //  )
 //
