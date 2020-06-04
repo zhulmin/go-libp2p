@@ -37,6 +37,11 @@ var (
 	}
 )
 
+type qitem struct {
+	ts      time.Time
+	payload []byte
+}
+
 type session struct {
 	server  *Endpoint
 	wsconn  *websocket.Conn
@@ -54,10 +59,7 @@ type session struct {
 
 	greeted bool
 	config  *pb.Configuration
-	q       []struct {
-		ts      time.Time
-		payload []byte
-	}
+	q       []*qitem
 
 	wg      sync.WaitGroup
 	closed  int32
@@ -128,6 +130,10 @@ func (s *session) control() {
 				s.logger.Warnf("failed to generate state message on tick; err: %s", err)
 				continue
 			}
+			if s.paused {
+				s.q = append(s.q, &qitem{time.Now(), msg})
+				continue
+			}
 			s.queueWrite(msg)
 
 		case now := <-pruneQTicker.C:
@@ -146,10 +152,7 @@ func (s *session) control() {
 				continue
 			}
 			if s.paused {
-				s.q = append(s.q, struct {
-					ts      time.Time
-					payload []byte
-				}{time.Now(), evt})
+				s.q = append(s.q, &qitem{time.Now(), evt})
 				continue
 			}
 			s.queueWrite(evt)
@@ -345,7 +348,7 @@ func (s *session) handlePushResumeCmd(cmd *pb.ClientCommand) *pb.ServerMessage {
 	}
 
 	msg := createCmdOKResp(cmd)
-	bytes, err := msg.Marshal()
+	bytes, err := envelopePacket(msg)
 	if err != nil {
 		s.logger.Warnf("failed to marshal client message; err: %s", err)
 		s.kill()

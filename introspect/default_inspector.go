@@ -32,7 +32,7 @@ type DefaultIntrospector struct {
 	closeWg sync.WaitGroup
 }
 
-func NewDefaultIntrospector(host host.Host, reporter metrics.Reporter) (*DefaultIntrospector, error) {
+func NewDefaultIntrospector(host host.Host, reporter metrics.Reporter) (introspection.Introspector, error) {
 	bus := host.EventBus()
 	if bus == nil {
 		return nil, fmt.Errorf("introspector requires a host with eventbus capability")
