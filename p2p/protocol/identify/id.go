@@ -233,7 +233,7 @@ func (ids *IDService) loop() {
 			// till we see a new connection. So, we should restart the handler.
 			// The fact that we got the handler on this channel means that it's context and handler
 			// have completed because we write the handler to this chanel only after it closed.
-			if ids.Host.Network().Connectedness(rp) == network.Connected {
+			if ph != nil && ids.Host.Network().Connectedness(rp) == network.Connected {
 				ph.start()
 			} else {
 				delete(phs, rp)
