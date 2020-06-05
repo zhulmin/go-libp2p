@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"math"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/introspection"
-	pb "github.com/libp2p/go-libp2p-core/introspection/pb"
+	"github.com/libp2p/go-libp2p-core/introspection/pb"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -30,9 +29,6 @@ type DefaultIntrospector struct {
 	wsub     event.Subscription
 	reporter metrics.Reporter
 	started  time.Time
-
-	closeCh chan struct{}
-	closeWg sync.WaitGroup
 }
 
 func NewDefaultIntrospector(host host.Host, reporter metrics.Reporter) (introspection.Introspector, error) {
@@ -53,11 +49,8 @@ func NewDefaultIntrospector(host host.Host, reporter metrics.Reporter) (introspe
 		wsub:         sub,
 		reporter:     reporter,
 		started:      time.Now(),
-		closeCh:      make(chan struct{}),
 	}
 
-	d.closeWg.Add(1)
-	go d.processEvents()
 	return d, nil
 }
 

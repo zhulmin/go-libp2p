@@ -9,7 +9,7 @@ import (
 )
 
 func TestValidConfiguration(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 
@@ -47,7 +47,7 @@ func TestValidConfiguration(t *testing.T) {
 }
 
 func TestHelloWithInvalidConfig(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 

@@ -113,7 +113,7 @@ func (s *session) control() {
 	defer s.wg.Done()
 
 	// dummy ticker that won't tick unless enabled.
-	pruneQTicker := time.NewTicker(2 * time.Second)
+	pruneQTicker := s.server.clock.Ticker(2 * time.Second)
 	defer pruneQTicker.Stop()
 	defer func() {
 		if s.pushingState {
@@ -130,7 +130,7 @@ func (s *session) control() {
 				continue
 			}
 			if s.paused {
-				s.q = append(s.q, &qitem{time.Now(), msg})
+				s.q = append(s.q, &qitem{s.server.clock.Now(), msg})
 				continue
 			}
 			s.queueWrite(msg)
@@ -151,7 +151,7 @@ func (s *session) control() {
 				continue
 			}
 			if s.paused {
-				s.q = append(s.q, &qitem{time.Now(), evt})
+				s.q = append(s.q, &qitem{s.server.clock.Now(), evt})
 				continue
 			}
 			s.queueWrite(evt)

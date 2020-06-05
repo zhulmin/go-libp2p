@@ -9,7 +9,7 @@ import (
 )
 
 func TestRequestState(t *testing.T) {
-	server, mocki := createTestServer(t)
+	server, mocki, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 
@@ -27,7 +27,7 @@ func TestRequestState(t *testing.T) {
 }
 
 func TestRequestRuntime(t *testing.T) {
-	server, mocki := createTestServer(t)
+	server, mocki, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 
@@ -45,7 +45,7 @@ func TestRequestRuntime(t *testing.T) {
 }
 
 func TestRequestEventsFails(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 

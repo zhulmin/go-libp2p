@@ -11,7 +11,7 @@ import (
 )
 
 func TestServerClose(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 
 	// create 100 connections.
@@ -35,7 +35,7 @@ func TestServerClose(t *testing.T) {
 }
 
 func TestServerHandlesClosedConns(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 
 	conns := make([]*connWrapper, 100)

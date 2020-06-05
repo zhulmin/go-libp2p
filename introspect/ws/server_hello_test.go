@@ -9,7 +9,7 @@ import (
 )
 
 func TestStartSession(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 
@@ -20,7 +20,7 @@ func TestStartSession(t *testing.T) {
 }
 
 func TestDoubleHelloFails(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 
@@ -39,7 +39,7 @@ func TestDoubleHelloFails(t *testing.T) {
 }
 
 func TestNoHelloFails(t *testing.T) {
-	server, _ := createTestServer(t)
+	server, _, _ := createTestServer(t)
 	require.NoError(t, server.Start())
 	defer server.Close()
 

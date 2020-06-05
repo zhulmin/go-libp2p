@@ -15,14 +15,15 @@ import (
 	"github.com/libp2p/go-libp2p/introspect"
 )
 
-func createTestServer(t *testing.T) (*Endpoint, *introspect.MockIntrospector) {
+func createTestServer(t *testing.T) (*Endpoint, *introspect.MockIntrospector, *clock.Mock) {
 	t.Helper()
 
+	clk := clock.NewMock()
 	mocki := introspect.NewMockIntrospector()
-	cfg := &EndpointConfig{ListenAddrs: []string{"localhost:0"}, Clock: clock.NewMock()}
+	cfg := &EndpointConfig{ListenAddrs: []string{"localhost:0"}, Clock: clk}
 	server, err := NewEndpoint(mocki, cfg)
 	require.NoError(t, err)
-	return server, mocki
+	return server, mocki, clk
 }
 
 type connWrapper struct {
@@ -30,8 +31,8 @@ type connWrapper struct {
 	t *testing.T
 }
 
-func createConn(t *testing.T, server *Endpoint) *connWrapper {
-	addr := fmt.Sprintf("ws://%s/introspect", server.ListenAddrs()[0])
+func createConn(t *testing.T, endpoint introspection.Endpoint) *connWrapper {
+	addr := fmt.Sprintf("ws://%s/introspect", endpoint.ListenAddrs()[0])
 	conn, _, err := websocket.DefaultDialer.Dial(addr, nil)
 	require.NoError(t, err)
 	return &connWrapper{conn, t}
@@ -74,7 +75,7 @@ func (cw *connWrapper) readNext() *pb.ServerMessage {
 		payload  = msg[12:]
 	)
 
-	require.EqualValues(cw.t, introspection.ProtoVersion, binary.LittleEndian.Uint32(version))
+	require.EqualValues(cw.t, ProtoVersion, binary.LittleEndian.Uint32(version))
 	require.EqualValues(cw.t, len(payload), binary.LittleEndian.Uint32(length))
 
 	// validate hash.
@@ -89,7 +90,17 @@ func (cw *connWrapper) readNext() *pb.ServerMessage {
 	require.NoError(cw.t, smsg.Unmarshal(payload))
 
 	require.NotNil(cw.t, smsg.Payload, "nil message received from server")
-	require.Equal(cw.t, introspection.ProtoVersion, smsg.Version.Version, "incorrect proto version receieved from client")
+	require.Equal(cw.t, ProtoVersion, smsg.Version.Version, "incorrect proto version receieved from client")
 
 	return smsg
+}
+
+func (cw *connWrapper) consumeCommandResponse(id uint64, result pb.CommandResponse_Result) *pb.CommandResponse {
+	msg := cw.readNext()
+	resp := msg.Payload.(*pb.ServerMessage_Response).Response
+
+	require.NotNil(cw.t, resp)
+	require.EqualValues(cw.t, id, resp.Id)
+	require.EqualValues(cw.t, result, resp.Result)
+	return resp
 }
