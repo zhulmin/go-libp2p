@@ -202,7 +202,7 @@ func ConnectionManager(connman connmgr.ConnManager) Option {
 // Example:
 //
 //  import (
-//  	"github.com/libp2p/go-libp2p/introspect"
+//      "github.com/libp2p/go-libp2p/introspect"
 //      "github.com/libp2p/go-libp2p/introspect/ws"
 //  )
 //
