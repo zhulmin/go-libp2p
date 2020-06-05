@@ -48,8 +48,6 @@ type Endpoint struct {
 	getSessionsCh   chan chan []*introspection.Session
 	stopConnsCh     chan chan struct{}
 
-	evalForTest chan func()
-
 	// state managed by locking
 	lk        sync.RWMutex
 	listeners []net.Listener
@@ -91,8 +89,7 @@ func NewEndpoint(introspector introspection.Introspector, config *EndpointConfig
 		config:       config,
 		clock:        config.Clock,
 
-		sessions:    make(map[*session]struct{}, 16),
-		evalForTest: make(chan func()),
+		sessions: make(map[*session]struct{}, 16),
 
 		sessionOpenedCh: make(chan *sessionEvent),
 		sessionClosedCh: make(chan *sessionEvent),
@@ -263,9 +260,6 @@ func (e *Endpoint) worker() {
 			if err := e.broadcastEvent(evt); err != nil {
 				logger.Warnf("error while broadcasting event; err: %e", err)
 			}
-
-		case fnc := <-e.evalForTest:
-			fnc()
 
 		case ch := <-e.getSessionsCh:
 			sessions := make([]*introspection.Session, 0, len(e.sessions))
