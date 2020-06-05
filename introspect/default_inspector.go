@@ -7,13 +7,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-eventbus"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/introspection"
 	pb "github.com/libp2p/go-libp2p-core/introspection/pb"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/libp2p/go-eventbus"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var _ introspection.Introspector = (*DefaultIntrospector)(nil)
@@ -79,31 +82,38 @@ func (d *DefaultIntrospector) FetchRuntime() (*pb.Runtime, error) {
 }
 
 func (d *DefaultIntrospector) FetchFullState() (state *pb.State, err error) {
-	s := &pb.State{}
+	var (
+		now      = time.Now()
+		netconns = d.host.Network().Conns()
+		conns    = make([]*pb.Connection, 0, len(netconns))
+		traffic  *pb.Traffic
+	)
 
-	// timestamps
-	s.StartTs = timeToUnixMillis(d.started)
-	s.InstantTs = timeToUnixMillis(time.Now())
-	d.started = time.Now()
-
-	// subsystems
-	s.Subsystems = &pb.Subsystems{}
-	s.Traffic, err = d.IntrospectGlobalTraffic()
-	if err != nil {
-		return nil, err
-	}
-
-	conns := d.host.Network().Conns()
-	s.Subsystems.Connections = make([]*pb.Connection, 0, len(conns))
-	for _, conn := range conns {
+	for _, conn := range netconns {
 		c, err := d.IntrospectConnection(conn)
 		if err != nil {
 			return nil, err
 		}
-		s.Subsystems.Connections = append(s.Subsystems.Connections, c)
+		conns = append(conns, c)
 	}
 
-	return s, nil
+	// subsystems and traffic.
+	traffic, err = d.IntrospectGlobalTraffic()
+	if err != nil {
+		return nil, err
+	}
+
+	state = &pb.State{
+		// timestamps in millis since epoch.
+		StartTs:   uint64(d.started.UnixNano() / int64(time.Millisecond)),
+		InstantTs: uint64(now.UnixNano() / int64(time.Millisecond)),
+		Subsystems: &pb.Subsystems{
+			Connections: conns,
+		},
+		Traffic: traffic,
+	}
+
+	return state, nil
 }
 
 // IntrospectGlobalTraffic introspects and returns total traffic stats for this swarm.
@@ -170,8 +180,16 @@ func (d *DefaultIntrospector) IntrospectConnection(conn network.Conn) (*pb.Conne
 	//  negotiated anywhere.
 	res.Attribs = &pb.Connection_Attributes{}
 
-	// TODO can we get the transport ID from the multiaddr?
-	res.TransportId = nil
+	// TransportId with format "ip4+tcp" or "ip6+udp+quic".
+	res.TransportId = func() []byte {
+		tptAddr, _ := peer.SplitAddr(conn.RemoteMultiaddr())
+		var str string
+		multiaddr.ForEach(tptAddr, func(c multiaddr.Component) bool {
+			str += c.Protocol().Name + "+"
+			return true
+		})
+		return []byte(str[0 : len(str)-1])
+	}()
 
 	// TODO there's the ping protocol, but that's higher than this layer.
 	//  How do we source this? We may need some kind of latency manager.
@@ -211,9 +229,8 @@ func (d *DefaultIntrospector) IntrospectStream(stream network.Stream) (*pb.Strea
 			OpenTs: openTs,
 			// TODO CloseTs.
 		},
-		// TODO Traffic: we are not tracking per-stream traffic stats at the
+		// TODO Traffic: we are not tracking per-stream traffic stats at the moment.
 		Traffic: &pb.Traffic{TrafficIn: &pb.DataGauge{}, TrafficOut: &pb.DataGauge{}},
-		// moment.
 	}
 	return res, nil
 }
@@ -227,8 +244,4 @@ func translateRole(stat network.Stat) pb.Role {
 	default:
 		return 99 // TODO placeholder value
 	}
-}
-
-func timeToUnixMillis(t time.Time) uint64 {
-	return uint64(t.UnixNano() / 1000000)
 }

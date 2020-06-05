@@ -10,12 +10,18 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p-core/introspection"
-	pb "github.com/libp2p/go-libp2p-core/introspection/pb"
+	"github.com/libp2p/go-libp2p-core/introspection/pb"
 
 	"github.com/benbjohnson/clock"
 	"github.com/gorilla/websocket"
 	logging "github.com/ipfs/go-log"
 )
+
+// ProtoVersion is the current version of the introspection protocol.
+const ProtoVersion uint32 = 1
+
+// ProtoVersionPb is the proto representation of the current introspection protocol.
+var ProtoVersionPb = &pb.Version{Version: ProtoVersion}
 
 var (
 	logger   = logging.Logger("introspection/ws-server")
@@ -279,7 +285,7 @@ func (e *Endpoint) worker() {
 
 func (e *Endpoint) broadcastEvent(evt *pb.Event) error {
 	pkt := &pb.ServerMessage{
-		Version: introspection.ProtoVersionPb,
+		Version: ProtoVersionPb,
 		Payload: &pb.ServerMessage_Event{Event: evt},
 	}
 
@@ -302,7 +308,7 @@ func (e *Endpoint) createStateMsg() ([]byte, error) {
 	}
 
 	pkt := &pb.ServerMessage{
-		Version: introspection.ProtoVersionPb,
+		Version: ProtoVersionPb,
 		Payload: &pb.ServerMessage_State{State: st},
 	}
 
@@ -317,7 +323,7 @@ func (e *Endpoint) createRuntimeMsg() ([]byte, error) {
 
 	rt.EventTypes = e.introspector.EventMetadata()
 	pkt := &pb.ServerMessage{
-		Version: introspection.ProtoVersionPb,
+		Version: ProtoVersionPb,
 		Payload: &pb.ServerMessage_Runtime{Runtime: rt},
 	}
 
@@ -338,7 +344,7 @@ func envelopePacket(pkt *pb.ServerMessage) ([]byte, error) {
 		return nil, fmt.Errorf("failed creating fnc hash digest, err: %w", err)
 	}
 
-	binary.LittleEndian.PutUint32(buf[0:4], introspection.ProtoVersion)
+	binary.LittleEndian.PutUint32(buf[0:4], ProtoVersion)
 	binary.LittleEndian.PutUint32(buf[4:8], f.Sum32())
 	binary.LittleEndian.PutUint32(buf[8:12], uint32(size))
 

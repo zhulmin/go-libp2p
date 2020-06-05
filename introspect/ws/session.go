@@ -6,8 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/introspection"
-	pb "github.com/libp2p/go-libp2p-core/introspection/pb"
+	"github.com/libp2p/go-libp2p-core/introspection/pb"
 
 	"github.com/benbjohnson/clock"
 	"github.com/gorilla/websocket"
@@ -32,7 +31,7 @@ var (
 	ConnBufferSize = 1 << 8
 
 	DefaultSessionConfig = &pb.Configuration{
-		RetentionPeriodMs:       uint64(120 * time.Second / time.Millisecond),
+		RetentionPeriodMs:       uint64(MaxRetentionPeriod / time.Millisecond),
 		StateSnapshotIntervalMs: uint64(time.Second / time.Millisecond),
 	}
 )
@@ -401,7 +400,7 @@ func (s *session) validateConfig(config pb.Configuration) *pb.Configuration {
 
 func createCmdErrorResp(cmd *pb.ClientCommand, err error) *pb.ServerMessage {
 	return &pb.ServerMessage{
-		Version: introspection.ProtoVersionPb,
+		Version: ProtoVersionPb,
 		Payload: &pb.ServerMessage_Response{
 			Response: &pb.CommandResponse{
 				Id:     cmd.Id,
@@ -414,7 +413,7 @@ func createCmdErrorResp(cmd *pb.ClientCommand, err error) *pb.ServerMessage {
 
 func createCmdOKResp(cmd *pb.ClientCommand) *pb.ServerMessage {
 	return &pb.ServerMessage{
-		Version: introspection.ProtoVersionPb,
+		Version: ProtoVersionPb,
 		Payload: &pb.ServerMessage_Response{
 			Response: &pb.CommandResponse{
 				Id:     cmd.Id,
