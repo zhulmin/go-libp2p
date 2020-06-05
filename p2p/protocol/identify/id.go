@@ -231,7 +231,7 @@ func (ids *IDService) loop() {
 			// before we could finish removing it's handler on the previous disconnection.
 			// If we delete the handler, we wont be able to push updates to it
 			// till we see a new connection. So, we should restart the handler.
-			// The fact that we got the handler on this channel means that it's context and handler
+			// The fact that we got the handler on this channel means that it's context and looping go-routine
 			// have completed because we write the handler to this chanel only after it closed.
 			if ph != nil && ids.Host.Network().Connectedness(rp) == network.Connected {
 				ph.start()

@@ -17,6 +17,7 @@ import (
 
 	ggio "github.com/gogo/protobuf/io"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/tevino/abool"
 )
 
 var errProtocolNotSupported = errors.New("protocol not supported")
@@ -42,7 +43,7 @@ type peerHandler struct {
 	pushCh  chan struct{}
 	deltaCh chan struct{}
 
-	isRunning bool
+	isRunningAtomic *abool.AtomicBool
 }
 
 func newPeerHandler(pid peer.ID, ids *IDService) *peerHandler {
@@ -55,7 +56,8 @@ func newPeerHandler(pid peer.ID, ids *IDService) *peerHandler {
 		pushCh:  make(chan struct{}, 1),
 		deltaCh: make(chan struct{}, 1),
 
-		isRunning: false,
+		// defaults to false
+		isRunningAtomic: abool.New(),
 	}
 
 	return ph
@@ -63,9 +65,7 @@ func newPeerHandler(pid peer.ID, ids *IDService) *peerHandler {
 
 // should be idempotent.
 func (ph *peerHandler) start() {
-	if !ph.isRunning {
-		ph.isRunning = true
-
+	if ph.isRunningAtomic.SetToIf(false, true) {
 		ctx, cancel := context.WithCancel(context.Background())
 		ph.ctx = ctx
 		ph.cancel = cancel
@@ -76,9 +76,10 @@ func (ph *peerHandler) start() {
 }
 
 func (ph *peerHandler) close() error {
-	ph.cancel()
-	ph.wg.Wait()
-	ph.isRunning = false
+	if ph.isRunningAtomic.SetToIf(true, false) {
+		ph.cancel()
+		ph.wg.Wait()
+	}
 	return nil
 }
 

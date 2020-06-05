@@ -41,6 +41,7 @@ require (
 	github.com/multiformats/go-multiaddr-net v0.1.5
 	github.com/multiformats/go-multistream v0.1.1
 	github.com/stretchr/testify v1.5.1
+	github.com/tevino/abool v0.0.0-20170917061928-9b9efcf221b5
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 	golang.org/x/net v0.0.0-20200519113804-d87ec0cfa476 // indirect
 	golang.org/x/sys v0.0.0-20200519105757-fe76b779f299 // indirect
