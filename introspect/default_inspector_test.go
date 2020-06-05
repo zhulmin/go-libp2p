@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p"
-	introspection_pb "github.com/libp2p/go-libp2p-core/introspection/pb"
+	"github.com/libp2p/go-libp2p-core/introspection/pb"
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
+	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/introspect"
 
 	"github.com/stretchr/testify/require"
@@ -68,8 +69,8 @@ func TestConnsAndStreamIntrospect(t *testing.T) {
 	require.Len(t, conns, 1)
 	require.NotEmpty(t, conns[0].Id)
 	require.Equal(t, h2.ID().String(), conns[0].PeerId)
-	require.Equal(t, introspection_pb.Status_ACTIVE, conns[0].Status)
-	require.Equal(t, introspection_pb.Role_INITIATOR, conns[0].Role)
+	require.Equal(t, pb.Status_ACTIVE, conns[0].Status)
+	require.Equal(t, pb.Role_INITIATOR, conns[0].Role)
 	require.Equal(t, h1.Network().Conns()[0].LocalMultiaddr().String(), conns[0].Endpoints.SrcMultiaddr)
 	require.Equal(t, h1.Network().Conns()[0].RemoteMultiaddr().String(), conns[0].Endpoints.DstMultiaddr)
 
@@ -79,7 +80,7 @@ func TestConnsAndStreamIntrospect(t *testing.T) {
 	require.NoError(t, err)
 
 	// map stream to protocols
-	protos := make(map[string]*introspection_pb.Stream)
+	protos := make(map[string]*pb.Stream)
 	for _, s := range streams {
 		protos[s.Protocol] = s
 	}
@@ -88,8 +89,8 @@ func TestConnsAndStreamIntrospect(t *testing.T) {
 	stream1 := protos["1"]
 	require.NotEmpty(t, stream1)
 	require.Equal(t, "1", stream1.Protocol)
-	require.Equal(t, introspection_pb.Role_INITIATOR, stream1.Role)
-	require.Equal(t, introspection_pb.Status_ACTIVE, stream1.Status)
+	require.Equal(t, pb.Role_INITIATOR, stream1.Role)
+	require.Equal(t, pb.Status_ACTIVE, stream1.Status)
 	require.NotEmpty(t, stream1.Id)
 	require.NotNil(t, stream1.Traffic)
 	require.NotNil(t, stream1.Traffic.TrafficIn)
@@ -99,8 +100,8 @@ func TestConnsAndStreamIntrospect(t *testing.T) {
 	stream2 := protos["2"]
 	require.NotEmpty(t, stream2)
 	require.Equal(t, "2", stream2.Protocol)
-	require.Equal(t, introspection_pb.Role_INITIATOR, stream2.Role)
-	require.Equal(t, introspection_pb.Status_ACTIVE, stream2.Status)
+	require.Equal(t, pb.Role_INITIATOR, stream2.Role)
+	require.Equal(t, pb.Status_ACTIVE, stream2.Status)
 	require.NotEmpty(t, stream2.Id)
 	require.NotEqual(t, stream2.Id, stream1.Id)
 

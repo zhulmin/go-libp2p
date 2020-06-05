@@ -4,7 +4,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/libp2p/go-libp2p-core/introspection"
-	pb "github.com/libp2p/go-libp2p-core/introspection/pb"
+	"github.com/libp2p/go-libp2p-core/introspection/pb"
 )
 
 type MockIntrospector struct {

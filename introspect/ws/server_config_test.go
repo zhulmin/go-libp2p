@@ -3,9 +3,9 @@ package ws
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/libp2p/go-libp2p-core/introspection/pb"
 
-	pb "github.com/libp2p/go-libp2p-core/introspection/pb"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidConfiguration(t *testing.T) {

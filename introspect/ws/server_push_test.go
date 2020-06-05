@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/libp2p/go-libp2p-core/introspection/pb"
+
+	"github.com/stretchr/testify/require"
 )
 
 type simpleEvent struct {

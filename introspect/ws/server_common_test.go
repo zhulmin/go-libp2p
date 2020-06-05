@@ -6,13 +6,14 @@ import (
 	"hash/fnv"
 	"testing"
 
+	"github.com/libp2p/go-libp2p-core/introspection"
+	"github.com/libp2p/go-libp2p-core/introspection/pb"
+
+	"github.com/libp2p/go-libp2p/introspect"
+
 	"github.com/benbjohnson/clock"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
-
-	"github.com/libp2p/go-libp2p-core/introspection"
-	pb "github.com/libp2p/go-libp2p-core/introspection/pb"
-	"github.com/libp2p/go-libp2p/introspect"
 )
 
 func createTestServer(t *testing.T) (*Endpoint, *introspect.MockIntrospector, *clock.Mock) {
