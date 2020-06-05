@@ -116,9 +116,15 @@ func (ph *peerHandler) sendDelta() error {
 		return fmt.Errorf("failed to open delta stream: %w", err)
 	}
 
-	if err := ph.sendMessage(ds, &pb.Identify{Delta: mes}); err != nil {
+	defer helpers.FullClose(ds)
+
+	c := ds.Conn()
+	if err := ggio.NewDelimitedWriter(ds).WriteMsg(&pb.Identify{Delta: mes}); err != nil {
 		return fmt.Errorf("failed to send delta message, %w", err)
 	}
+	log.Debugw("sent identify update", "protocol", ds.Protocol(), "peer", c.RemotePeer(),
+		"peer address", c.RemoteMultiaddr())
+
 	return nil
 }
 
@@ -131,20 +137,16 @@ func (ph *peerHandler) sendPush() error {
 	if err != nil {
 		return fmt.Errorf("failed to open push stream: %w", err)
 	}
-
-	conn := dp.Conn()
-	mes := &pb.Identify{}
+	defer helpers.FullClose(dp)
 
 	snapshot := ph.ids.getSnapshot()
 	ph.snapshotMu.Lock()
 	ph.snapshot = snapshot
 	ph.snapshotMu.Unlock()
-
-	ph.ids.populateMessage(mes, conn, snapshot)
-
-	if err := ph.sendMessage(dp, mes); err != nil {
+	if err := ph.ids.writeChunkedIdentifyMsg(dp.Conn(), snapshot, dp); err != nil {
 		return fmt.Errorf("failed to send push message: %w", err)
 	}
+
 	return nil
 }
 
@@ -243,16 +245,4 @@ func (ph *peerHandler) nextDelta() *pb.Delta {
 		AddedProtocols: added,
 		RmProtocols:    removed,
 	}
-}
-
-func (ph *peerHandler) sendMessage(s network.Stream, mes *pb.Identify) error {
-	defer helpers.FullClose(s)
-	c := s.Conn()
-	if err := ggio.NewDelimitedWriter(s).WriteMsg(mes); err != nil {
-		return err
-
-	}
-	log.Debugw("sent identify update", "protocol", s.Protocol(), "peer", c.RemotePeer(),
-		"peer address", c.RemoteMultiaddr())
-	return nil
 }

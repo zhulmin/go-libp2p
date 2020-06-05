@@ -28,12 +28,12 @@ var (
 	privKeyType   = reflect.TypeOf((*crypto.PrivKey)(nil)).Elem()
 	pubKeyType    = reflect.TypeOf((*crypto.PubKey)(nil)).Elem()
 	pstoreType    = reflect.TypeOf((*peerstore.Peerstore)(nil)).Elem()
+	connGaterType = reflect.TypeOf((*connmgr.ConnectionGater)(nil)).Elem()
 
 	// concrete types
-	peerIDType    = reflect.TypeOf((peer.ID)(""))
-	upgraderType  = reflect.TypeOf((*tptu.Upgrader)(nil))
-	pskType       = reflect.TypeOf((pnet.PSK)(nil))
-	connGaterType = reflect.TypeOf((*connmgr.ConnectionGater)(nil))
+	peerIDType   = reflect.TypeOf((peer.ID)(""))
+	upgraderType = reflect.TypeOf((*tptu.Upgrader)(nil))
+	pskType      = reflect.TypeOf((pnet.PSK)(nil))
 )
 
 var argTypes = map[reflect.Type]constructor{

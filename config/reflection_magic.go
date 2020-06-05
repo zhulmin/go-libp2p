@@ -121,7 +121,14 @@ func makeConstructor(
 	return func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) (interface{}, error) {
 		arguments := make([]reflect.Value, len(argConstructors))
 		for i, makeArg := range argConstructors {
-			arguments[i] = reflect.ValueOf(makeArg(h, u, cg))
+			if arg := makeArg(h, u, cg); arg != nil {
+				arguments[i] = reflect.ValueOf(arg)
+			} else {
+				// ValueOf an un-typed nil yields a zero reflect
+				// value. However, we _want_ the zero value of
+				// the _type_.
+				arguments[i] = reflect.Zero(t.In(i))
+			}
 		}
 		return callConstructor(v, arguments)
 	}, nil

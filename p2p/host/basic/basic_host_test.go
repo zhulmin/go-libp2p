@@ -25,6 +25,7 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	manet "github.com/multiformats/go-multiaddr-net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -199,6 +200,58 @@ func TestHostAddrsFactory(t *testing.T) {
 	if !addrs[0].Equal(maddr) {
 		t.Fatalf("expected %s, got %s", maddr.String(), addrs[0].String())
 	}
+}
+
+func TestLocalIPChangesWhenListenAddrChanges(t *testing.T) {
+	ctx := context.Background()
+
+	// no listen addrs
+	h := New(swarmt.GenSwarm(t, ctx, swarmt.OptDialOnly))
+	defer h.Close()
+
+	h.lipMu.Lock()
+	h.localIPv4Addr = nil
+	h.lipMu.Unlock()
+
+	// change listen addrs and veify local IP addr is not nil again
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
+	h.SignalAddressChange()
+	time.Sleep(1 * time.Second)
+
+	h.lipMu.RLock()
+	h.lipMu.RUnlock()
+	require.NotNil(t, h.localIPv4Addr)
+}
+
+func TestAllAddrs(t *testing.T) {
+	ctx := context.Background()
+
+	// no listen addrs
+	h := New(swarmt.GenSwarm(t, ctx, swarmt.OptDialOnly))
+	defer h.Close()
+	require.Nil(t, h.AllAddrs())
+
+	h.lipMu.RLock()
+	localIPv4Addr := h.localIPv4Addr
+	h.lipMu.RUnlock()
+
+	// listen on private IP address and see it's available on the address
+	laddr := localIPv4Addr.Encapsulate(ma.StringCast("/tcp/0"))
+	require.NoError(t, h.Network().Listen(laddr))
+	require.Len(t, h.AllAddrs(), 1)
+	addr := ma.Split(h.AllAddrs()[0])
+	require.Equal(t, localIPv4Addr.String(), addr[0].String())
+
+	// listen on IPv4 0.0.0.0
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0")))
+	// should contain localhost and private local addr along with previous listen address
+	require.Len(t, h.AllAddrs(), 3)
+	ipmap := make(map[string]struct{})
+	for _, a := range h.AllAddrs() {
+		ipmap[ma.Split(a)[0].String()] = struct{}{}
+	}
+	require.Contains(t, ipmap, localIPv4Addr.String())
+	require.Contains(t, ipmap, manet.IP4Loopback.String())
 }
 
 func getHostPair(ctx context.Context, t *testing.T) (host.Host, host.Host) {

@@ -7,10 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/transport"
 	"github.com/libp2p/go-tcp-transport"
+
+	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 )
 
 func TestNewHost(t *testing.T) {
@@ -31,6 +35,22 @@ func TestBadTransportConstructor(t *testing.T) {
 	if !strings.Contains(err.Error(), "libp2p_test.go") {
 		t.Error("expected error to contain debugging info")
 	}
+}
+
+func TestTransportConstructor(t *testing.T) {
+	ctx := context.Background()
+	ctor := func(
+		h host.Host,
+		_ connmgr.ConnectionGater,
+		upgrader *tptu.Upgrader,
+	) transport.Transport {
+		return tcp.NewTCPTransport(upgrader)
+	}
+	h, err := New(ctx, Transport(ctor))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Close()
 }
 
 func TestNoListenAddrs(t *testing.T) {

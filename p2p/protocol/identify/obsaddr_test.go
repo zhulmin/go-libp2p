@@ -49,11 +49,34 @@ func (h *harness) conn(observer peer.ID) network.Conn {
 	if err != nil {
 		h.t.Fatal(err)
 	}
+	if c.Stat().Direction != network.DirOutbound {
+		h.t.Fatal("expected conn direction to be outbound")
+	}
+	return c
+}
+
+func (h *harness) connInbound(observer peer.ID) network.Conn {
+	c, err := h.mocknet.ConnectPeers(observer, h.host.ID())
+	if err != nil {
+		h.t.Fatal(err)
+	}
+
+	c = mocknet.ConnComplement(c)
+	if c.Stat().Direction != network.DirInbound {
+		h.t.Fatal("expected conn direction to be inbound")
+	}
 	return c
 }
 
 func (h *harness) observe(observed ma.Multiaddr, observer peer.ID) network.Conn {
 	c := h.conn(observer)
+	h.oas.Record(c, observed)
+	time.Sleep(50 * time.Millisecond) // let the worker run
+	return c
+}
+
+func (h *harness) observeInbound(observed ma.Multiaddr, observer peer.ID) network.Conn {
+	c := h.connInbound(observer)
 	h.oas.Record(c, observed)
 	time.Sleep(50 * time.Millisecond) // let the worker run
 	return c
@@ -75,6 +98,7 @@ func newHarness(ctx context.Context, t *testing.T) harness {
 		oas:     identify.NewObservedAddrManager(ctx, h),
 		mocknet: mn,
 		host:    h,
+		t:       t,
 	}
 }
 
@@ -88,7 +112,7 @@ func TestObsAddrSet(t *testing.T) {
 		return m
 	}
 
-	addrsMarch := func(a, b []ma.Multiaddr) bool {
+	addrsMatch := func(a, b []ma.Multiaddr) bool {
 		if len(a) != len(b) {
 			return false
 		}
@@ -125,7 +149,7 @@ func TestObsAddrSet(t *testing.T) {
 
 	harness := newHarness(ctx, t)
 
-	if !addrsMarch(harness.oas.Addrs(), nil) {
+	if !addrsMatch(harness.oas.Addrs(), nil) {
 		t.Error("addrs should be empty")
 	}
 
@@ -143,7 +167,7 @@ func TestObsAddrSet(t *testing.T) {
 	harness.observe(a3, pa4)
 
 	// these are all different so we should not yet get them.
-	if !addrsMarch(harness.oas.Addrs(), nil) {
+	if !addrsMatch(harness.oas.Addrs(), nil) {
 		t.Error("addrs should _still_ be empty (once)")
 	}
 
@@ -151,7 +175,7 @@ func TestObsAddrSet(t *testing.T) {
 	harness.observe(a1, pa4)
 	harness.observe(a2, pa4)
 	harness.observe(a3, pa4)
-	if !addrsMarch(harness.oas.Addrs(), nil) {
+	if !addrsMatch(harness.oas.Addrs(), nil) {
 		t.Error("addrs should _still_ be empty (same obs)")
 	}
 
@@ -159,14 +183,14 @@ func TestObsAddrSet(t *testing.T) {
 	harness.observe(a1, pa5)
 	harness.observe(a2, pa5)
 	harness.observe(a3, pa5)
-	if !addrsMarch(harness.oas.Addrs(), nil) {
+	if !addrsMatch(harness.oas.Addrs(), nil) {
 		t.Error("addrs should _still_ be empty (same obs group)")
 	}
 
 	harness.observe(a1, pb1)
 	harness.observe(a1, pb2)
 	harness.observe(a1, pb3)
-	if !addrsMarch(harness.oas.Addrs(), []ma.Multiaddr{a1}) {
+	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1}) {
 		t.Error("addrs should only have a1")
 	}
 
@@ -181,14 +205,14 @@ func TestObsAddrSet(t *testing.T) {
 	harness.observe(a1, pb2)
 	harness.observe(a2, pb4)
 	harness.observe(a2, pb5)
-	if !addrsMarch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
+	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
 		t.Error("addrs should only have a1, a2")
 	}
 
 	// force a refresh.
 	harness.oas.SetTTL(time.Millisecond * 200)
 	<-time.After(time.Millisecond * 210)
-	if !addrsMarch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
+	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
 		t.Error("addrs should only have a1, a2")
 	}
 
@@ -204,7 +228,7 @@ func TestObsAddrSet(t *testing.T) {
 	<-time.After(time.Millisecond * 210)
 
 	// Should still have a2
-	if !addrsMarch(harness.oas.Addrs(), []ma.Multiaddr{a2}) {
+	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a2}) {
 		t.Error("should only have a2, have: ", harness.oas.Addrs())
 	}
 
@@ -214,7 +238,7 @@ func TestObsAddrSet(t *testing.T) {
 	<-time.After(time.Millisecond * 400)
 
 	// Should still have a2
-	if !addrsMarch(harness.oas.Addrs(), nil) {
+	if !addrsMatch(harness.oas.Addrs(), nil) {
 		t.Error("addrs should have timed out")
 	}
 }
@@ -249,32 +273,10 @@ func TestAddAddrsProfile(t *testing.T) {
 }
 
 func TestObservedAddrFiltering(t *testing.T) {
-	addrsMarch := func(a, b []ma.Multiaddr) bool {
-		if len(a) != len(b) {
-			return false
-		}
-
-		for _, aa := range a {
-			found := false
-			for _, bb := range b {
-				if aa.Equal(bb) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		}
-		return true
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	harness := newHarness(ctx, t)
-	if !addrsMarch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should be empty")
-	}
+	require.Empty(t, harness.oas.Addrs())
 
 	// IP4/TCP
 	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
@@ -292,7 +294,28 @@ func TestObservedAddrFiltering(t *testing.T) {
 	b4 := ma.StringCast("/ip4/1.2.3.9/tcp/1237")
 	b5 := ma.StringCast("/ip4/1.2.3.10/tcp/1237")
 
-	peers := []peer.ID{harness.add(b1), harness.add(b2), harness.add(b3), harness.add(b4), harness.add(b5)}
+	b6 := ma.StringCast("/ip4/1.2.3.11/tcp/1237")
+	b7 := ma.StringCast("/ip4/1.2.3.12/tcp/1237")
+
+	// These are all observers in the same group.
+	b8 := ma.StringCast("/ip4/1.2.3.13/tcp/1237")
+	b9 := ma.StringCast("/ip4/1.2.3.13/tcp/1238")
+	b10 := ma.StringCast("/ip4/1.2.3.13/tcp/1239")
+
+	peers := []peer.ID{
+		harness.add(b1),
+		harness.add(b2),
+		harness.add(b3),
+		harness.add(b4),
+		harness.add(b5),
+
+		harness.add(b6),
+		harness.add(b7),
+
+		harness.add(b8),
+		harness.add(b9),
+		harness.add(b10),
+	}
 	for i := 0; i < 4; i++ {
 		harness.observe(it1, peers[i])
 		harness.observe(it2, peers[i])
@@ -311,20 +334,41 @@ func TestObservedAddrFiltering(t *testing.T) {
 	require.Contains(t, addrs, it1)
 	require.Contains(t, addrs, it7)
 
-}
+	// Bump the number of observations so 1 & 7 have 7 observations.
+	harness.observe(it1, peers[5])
+	harness.observe(it1, peers[6])
+	harness.observe(it7, peers[5])
+	harness.observe(it7, peers[6])
 
-func TestObservedAddrGroupKey(t *testing.T) {
-	oa1 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/tcp/1231")}
-	require.Equal(t, "/ip4/tcp", oa1.GroupKey())
+	// Add an observation from IP 1.2.3.13
+	// 2 & 3 now have 5 observations
+	harness.observe(it2, peers[7])
+	harness.observe(it3, peers[7])
 
-	oa2 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.5/tcp/2222")}
-	require.Equal(t, "/ip4/tcp", oa2.GroupKey())
+	addrs = harness.oas.Addrs()
+	require.Len(t, addrs, 2)
+	require.Contains(t, addrs, it1)
+	require.Contains(t, addrs, it7)
 
-	oa3 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.2.3.4/udp/1231")}
-	require.Equal(t, "/ip4/udp", oa3.GroupKey())
-	oa4 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.3.3.4/udp/1531")}
-	require.Equal(t, "/ip4/udp", oa4.GroupKey())
+	// Add an inbound observation from IP 1.2.3.13, it should override the
+	// existing observation and it should make these addresses win even
+	// though we have fewer observations.
+	//
+	// 2 & 3 now have 6 observations.
+	harness.observeInbound(it2, peers[8])
+	harness.observeInbound(it3, peers[8])
+	addrs = harness.oas.Addrs()
+	require.Len(t, addrs, 2)
+	require.Contains(t, addrs, it2)
+	require.Contains(t, addrs, it3)
 
-	oa5 := &identify.ObservedAddr{Addr: ma.StringCast("/ip4/1.3.3.4/udp/1531/quic")}
-	require.Equal(t, "/ip4/udp/quic", oa5.GroupKey())
+	// Adding an outbound observation shouldn't "downgrade" it.
+	//
+	// 2 & 3 now have 7 observations.
+	harness.observe(it2, peers[9])
+	harness.observe(it3, peers[9])
+	addrs = harness.oas.Addrs()
+	require.Len(t, addrs, 2)
+	require.Contains(t, addrs, it2)
+	require.Contains(t, addrs, it3)
 }

@@ -13,10 +13,11 @@ require (
 	github.com/ipfs/go-log/v2 v2.1.1
 	github.com/jbenet/go-cienv v0.1.0
 	github.com/jbenet/goprocess v0.1.4
+	github.com/libp2p/go-addr-util v0.0.2
 	github.com/libp2p/go-conn-security-multistream v0.2.0
-	github.com/libp2p/go-eventbus v0.2.0
+	github.com/libp2p/go-eventbus v0.2.1
 	github.com/libp2p/go-libp2p-autonat v0.2.3
-	github.com/libp2p/go-libp2p-blankhost v0.1.4
+	github.com/libp2p/go-libp2p-blankhost v0.1.6
 	github.com/libp2p/go-libp2p-circuit v0.2.3
 	github.com/libp2p/go-libp2p-core v0.6.0
 	github.com/libp2p/go-libp2p-discovery v0.4.0
@@ -32,6 +33,8 @@ require (
 	github.com/libp2p/go-libp2p-tls v0.1.3
 	github.com/libp2p/go-libp2p-transport-upgrader v0.3.0
 	github.com/libp2p/go-libp2p-yamux v0.2.8
+	github.com/libp2p/go-netroute v0.1.2
+	github.com/libp2p/go-sockaddr v0.1.0 // indirect
 	github.com/libp2p/go-stream-muxer-multistream v0.3.0
 	github.com/libp2p/go-tcp-transport v0.2.0
 	github.com/libp2p/go-ws-transport v0.3.1
@@ -44,5 +47,6 @@ require (
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 	go.uber.org/zap v1.15.0
 	golang.org/x/crypto v0.0.0-20200602180216-279210d13fed // indirect
+	golang.org/x/net v0.0.0-20200519113804-d87ec0cfa476 // indirect
 	golang.org/x/sys v0.0.0-20200602225109-6fdc65e7d980 // indirect
 )
