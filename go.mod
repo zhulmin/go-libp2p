@@ -6,6 +6,7 @@ require (
 	github.com/benbjohnson/clock v1.0.2
 	github.com/gogo/protobuf v1.3.1
 	github.com/gorilla/websocket v1.4.2
+	github.com/hashicorp/go-multierror v1.1.0
 	github.com/ipfs/go-cid v0.0.6
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-ipfs-util v0.0.1

@@ -16,6 +16,8 @@ import (
 
 	"github.com/libp2p/go-eventbus"
 	"github.com/multiformats/go-multiaddr"
+
+	"github.com/hashicorp/go-multierror"
 )
 
 var _ introspection.Introspector = (*DefaultIntrospector)(nil)
@@ -55,14 +57,15 @@ func NewDefaultIntrospector(host host.Host, reporter metrics.Reporter) (introspe
 }
 
 func (d *DefaultIntrospector) Close() error {
+	var err *multierror.Error
 	if err := d.wsub.Close(); err != nil {
-		return fmt.Errorf("failed while trying to close wildcard eventbus subscription: %w", err)
+		err = multierror.Append(err, fmt.Errorf("failed while trying to close wildcard eventbus subscription: %w", err))
 	}
 
 	close(d.closeCh)
 	d.closeWg.Wait()
 
-	return nil
+	return err.ErrorOrNil()
 }
 
 func (d *DefaultIntrospector) FetchRuntime() (*pb.Runtime, error) {
