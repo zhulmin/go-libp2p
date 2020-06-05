@@ -46,7 +46,7 @@ type Endpoint struct {
 	sessionOpenedCh chan *sessionEvent
 	sessionClosedCh chan *sessionEvent
 	getSessionsCh   chan chan []*introspection.Session
-	killSessionsCh  chan struct{}
+	stopConnsCh     chan chan struct{}
 
 	evalForTest chan func()
 
@@ -57,7 +57,7 @@ type Endpoint struct {
 	connsWg   sync.WaitGroup
 	controlWg sync.WaitGroup
 
-	closeCh  chan struct{}
+	closedCh chan struct{}
 	isClosed bool
 }
 
@@ -96,10 +96,10 @@ func NewEndpoint(introspector introspection.Introspector, config *EndpointConfig
 
 		sessionOpenedCh: make(chan *sessionEvent),
 		sessionClosedCh: make(chan *sessionEvent),
-		killSessionsCh:  make(chan struct{}),
+		stopConnsCh:     make(chan chan struct{}),
 		getSessionsCh:   make(chan chan []*introspection.Session),
 
-		closeCh: make(chan struct{}),
+		closedCh: make(chan struct{}),
 	}
 
 	if srv.clock == nil {
@@ -157,12 +157,14 @@ func (e *Endpoint) Close() error {
 		return nil
 	}
 
-	close(e.killSessionsCh)
+	ch := make(chan struct{})
+	e.stopConnsCh <- ch
+	<-ch
 
 	// wait for all connections to be dead.
 	e.connsWg.Wait()
 
-	close(e.closeCh)
+	close(e.closedCh)
 
 	// Close the server, which in turn closes all listeners.
 	if err := e.server.Close(); err != nil {
@@ -208,14 +210,14 @@ func (e *Endpoint) wsUpgrader() http.HandlerFunc {
 		done := make(chan struct{}, 1)
 		select {
 		case e.sessionOpenedCh <- &sessionEvent{newSession(e, wsconn), done}:
-		case <-e.closeCh:
+		case <-e.closedCh:
 			_ = wsconn.Close()
 			return
 		}
 
 		select {
 		case <-done:
-		case <-e.closeCh:
+		case <-e.closedCh:
 			_ = wsconn.Close()
 			return
 		}
@@ -238,7 +240,7 @@ func (e *Endpoint) worker() {
 
 				select {
 				case e.sessionClosedCh <- &sessionEvent{session, rq.doneCh}:
-				case <-e.closeCh:
+				case <-e.closedCh:
 					return
 				}
 			}()
@@ -272,12 +274,15 @@ func (e *Endpoint) worker() {
 			}
 			ch <- sessions
 
-		case <-e.killSessionsCh:
+		case ch := <-e.stopConnsCh:
+			// accept no more connections.
+			e.sessionOpenedCh = nil
 			for sess := range e.sessions {
 				sess.kill()
 			}
+			close(ch)
 
-		case <-e.closeCh:
+		case <-e.closedCh:
 			return
 		}
 	}

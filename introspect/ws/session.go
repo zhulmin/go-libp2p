@@ -26,11 +26,12 @@ var handlers = map[pb.ClientCommand_Command]func(*session, *pb.ClientCommand) *p
 var (
 	MaxRetentionPeriod       = 120 * time.Second
 	MinStateSnapshotInterval = 500 * time.Millisecond
+	PruneRetentionInterval   = 2 * time.Second
 
 	WriteTimeout   = 5 * time.Second
 	ConnBufferSize = 1 << 8
 
-	DefaultSessionConfig = &pb.Configuration{
+	DefaultSessionConfig = pb.Configuration{
 		RetentionPeriodMs:       uint64(MaxRetentionPeriod / time.Millisecond),
 		StateSnapshotIntervalMs: uint64(time.Second / time.Millisecond),
 	}
@@ -66,10 +67,11 @@ type session struct {
 }
 
 func newSession(sv *Endpoint, wsconn *websocket.Conn) *session {
+	cfgcpy := DefaultSessionConfig
 	ch := &session{
 		server:      sv,
 		wsconn:      wsconn,
-		config:      DefaultSessionConfig,
+		config:      &cfgcpy,
 		stateTicker: new(clock.Ticker),
 
 		writeCh:   make(chan []byte, ConnBufferSize),
@@ -113,7 +115,7 @@ func (s *session) control() {
 	defer s.wg.Done()
 
 	// dummy ticker that won't tick unless enabled.
-	pruneQTicker := s.server.clock.Ticker(2 * time.Second)
+	pruneQTicker := s.server.clock.Ticker(PruneRetentionInterval)
 	defer pruneQTicker.Stop()
 	defer func() {
 		if s.pushingState {

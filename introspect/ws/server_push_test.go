@@ -94,6 +94,7 @@ func TestPushStopPushEvents(t *testing.T) {
 	// these events will be missed.
 	mocki.EventCh <- EventA{String: "hello", Number: 100}
 	mocki.EventCh <- EventB{String: "hello", Number: 100}
+	time.Sleep(500 * time.Millisecond)
 
 	// enable the pusher again
 	conn.sendCommand(&pb.ClientCommand{Id: 201, Command: pb.ClientCommand_PUSH_ENABLE, Source: pb.ClientCommand_EVENTS})
@@ -173,11 +174,7 @@ func TestPauseResume(t *testing.T) {
 	}()
 
 	// tick 5 seconds; this will generate 5 state messages.
-	clk.Add(time.Second)
-	clk.Add(time.Second)
-	clk.Add(time.Second)
-	clk.Add(time.Second)
-	clk.Add(time.Second)
+	clk.Add(5 * time.Second)
 
 	// send one event, tick once (state), send one event, tick once (state)
 	mocki.EventCh <- EventA{String: "hello", Number: 100}
@@ -212,12 +209,12 @@ func TestPauseResumeMessagesDropped(t *testing.T) {
 
 	conn.greet()
 
-	conn.sendCommand(&pb.ClientCommand{Id: 201, Command: pb.ClientCommand_PUSH_ENABLE, Source: pb.ClientCommand_EVENTS})
-	conn.sendCommand(&pb.ClientCommand{Id: 202, Command: pb.ClientCommand_PUSH_ENABLE, Source: pb.ClientCommand_STATE})
-
 	config := DefaultSessionConfig
 	config.RetentionPeriodMs = 2000 // 2 seconds retention period.
-	conn.sendCommand(&pb.ClientCommand{Id: 203, Command: pb.ClientCommand_UPDATE_CONFIG, Config: config})
+
+	conn.sendCommand(&pb.ClientCommand{Id: 201, Command: pb.ClientCommand_PUSH_ENABLE, Source: pb.ClientCommand_EVENTS})
+	conn.sendCommand(&pb.ClientCommand{Id: 202, Command: pb.ClientCommand_PUSH_ENABLE, Source: pb.ClientCommand_STATE})
+	conn.sendCommand(&pb.ClientCommand{Id: 203, Command: pb.ClientCommand_UPDATE_CONFIG, Config: &config})
 	conn.sendCommand(&pb.ClientCommand{Id: 204, Command: pb.ClientCommand_PUSH_PAUSE})
 
 	conn.consumeCommandResponse(201, pb.CommandResponse_OK)

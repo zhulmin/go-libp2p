@@ -12,7 +12,8 @@ import (
 
 func TestServerClose(t *testing.T) {
 	server, _, _ := createTestServer(t)
-	require.NoError(t, server.Start())
+	err := server.Start()
+	require.NoError(t, err)
 
 	// create 100 connections.
 	var wg sync.WaitGroup
@@ -29,25 +30,31 @@ func TestServerClose(t *testing.T) {
 		conns[i] = conn
 	}
 
-	err := server.Close()
+	err = server.Close()
 	require.NoError(t, err)
 	wg.Wait()
 }
 
 func TestServerHandlesClosedConns(t *testing.T) {
 	server, _, _ := createTestServer(t)
+	defer server.Close()
+
 	require.NoError(t, server.Start())
 
-	conns := make([]*connWrapper, 100)
+	conns := make([]*connWrapper, 50)
 	for i := range conns {
 		conn := createConn(t, server)
 		conns[i] = conn
 	}
 
-	require.Len(t, server.Sessions(), 100)
+	require.Eventually(t, func() bool { return len(server.Sessions()) == 50 }, 2*time.Second, 100*time.Millisecond)
 
 	err := conns[0].Close()
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool { return len(server.Sessions()) == 99 }, 2*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return len(server.Sessions()) == 49 }, 2*time.Second, 100*time.Millisecond)
+
+	for _, c := range conns[1:] {
+		_ = c.Close()
+	}
 }
