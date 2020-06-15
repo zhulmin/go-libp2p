@@ -84,6 +84,12 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	// when true, we need to identify push
 	push := false
 
+	startFindRelaysc := make(chan bool, 1)
+	defer close(startFindRelaysc)
+	updatec := make(chan bool, 1)
+	defer close(updatec)
+	go ar.findRelays(ctx, startFindRelaysc, updatec)
+
 	for {
 		select {
 		case ev, ok := <-subReachability.Out():
@@ -95,19 +101,28 @@ func (ar *AutoRelay) background(ctx context.Context) {
 				return
 			}
 
-			var update bool
 			if evt.Reachability == network.ReachabilityPrivate {
-				// TODO: this is a long-lived (2.5min task) that should get spun up in a separate thread
-				// and canceled if the relay learns the nat is now public.
-				update = ar.findRelays(ctx)
+				startFindRelaysc <- true
+			} else if evt.Reachability == network.ReachabilityPublic {
+				startFindRelaysc <- false
 			}
 
 			ar.mx.Lock()
-			if update || (ar.status != evt.Reachability && evt.Reachability != network.ReachabilityUnknown) {
+			if ar.status != evt.Reachability && evt.Reachability != network.ReachabilityUnknown {
 				push = true
 			}
 			ar.status = evt.Reachability
 			ar.mx.Unlock()
+
+			log.Debugf("relay background subReachability push %v Reachability %d\n", push, ar.status)
+		case update := <-updatec:
+			ar.mx.Lock()
+			if update {
+				push = true
+			}
+			ar.mx.Unlock()
+
+			log.Debugf("relay background update push %v\n", push)
 		case <-ar.disconnect:
 			push = true
 		case <-ctx.Done():
@@ -124,28 +139,38 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	}
 }
 
-func (ar *AutoRelay) findRelays(ctx context.Context) bool {
-	if ar.numRelays() >= DesiredRelays {
-		return false
-	}
+func (ar *AutoRelay) findRelays(ctx context.Context, startFindRelaysc <-chan bool, updatec chan<- bool) {
+	running := false
 
-	update := false
-	for retry := 0; retry < 5; retry++ {
-		if retry > 0 {
-			log.Debug("no relays connected; retrying in 30s")
-			select {
-			case <-time.After(30 * time.Second):
-			case <-ctx.Done():
-				return update
-			}
+	checkUpdate := func(ctx context.Context) {
+		if ar.numRelays() >= DesiredRelays {
+			updatec <- false
 		}
 
-		update = ar.findRelaysOnce(ctx) || update
+		update := ar.findRelaysOnce(ctx)
 		if ar.numRelays() > 0 {
-			return update
+			updatec <- update
+			log.Debugf("relay findRelays update %v", update)
 		}
 	}
-	return update
+
+	for {
+		select {
+		case start := <-startFindRelaysc:
+			if start {
+				running = true
+				checkUpdate(ctx)
+			} else {
+				running = false
+			}
+		case <-time.After(30 * time.Second):
+			if running {
+				checkUpdate(ctx)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (ar *AutoRelay) findRelaysOnce(ctx context.Context) bool {
