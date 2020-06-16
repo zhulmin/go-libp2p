@@ -84,11 +84,11 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	// when true, we need to identify push
 	push := false
 
-	startFindRelaysc := make(chan bool, 1)
-	defer close(startFindRelaysc)
+	reachabilityChanged := make(chan struct{}, 1)
+	defer close(reachabilityChanged)
 	updatec := make(chan bool, 1)
 	defer close(updatec)
-	go ar.findRelays(ctx, startFindRelaysc, updatec)
+	go ar.findRelays(ctx, reachabilityChanged, updatec)
 
 	for {
 		select {
@@ -101,26 +101,23 @@ func (ar *AutoRelay) background(ctx context.Context) {
 				return
 			}
 
-			if evt.Reachability == network.ReachabilityPrivate {
-				startFindRelaysc <- true
-			} else if evt.Reachability == network.ReachabilityPublic {
-				startFindRelaysc <- false
-			}
-
 			ar.mx.Lock()
 			if ar.status != evt.Reachability && evt.Reachability != network.ReachabilityUnknown {
+				select {
+				case reachabilityChanged <- struct{}{}:
+				default:
+				}
 				push = true
 			}
+
 			ar.status = evt.Reachability
 			ar.mx.Unlock()
 
 			log.Debugf("relay background subReachability push %v Reachability %d\n", push, ar.status)
 		case update := <-updatec:
-			ar.mx.Lock()
 			if update {
 				push = true
 			}
-			ar.mx.Unlock()
 
 			log.Debugf("relay background update push %v\n", push)
 		case <-ar.disconnect:
@@ -139,37 +136,42 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	}
 }
 
-func (ar *AutoRelay) findRelays(ctx context.Context, startFindRelaysc <-chan bool, updatec chan<- bool) {
+func (ar *AutoRelay) findRelays(ctx context.Context, reachabilityChanged <-chan struct{}, updatec chan<- bool) {
 	running := false
-
-	checkUpdate := func(ctx context.Context) {
-		if ar.numRelays() >= DesiredRelays {
-			updatec <- false
-		}
-
-		update := ar.findRelaysOnce(ctx)
-		if ar.numRelays() > 0 {
-			updatec <- update
-			log.Debugf("relay findRelays update %v", update)
-		}
-	}
 
 	for {
 		select {
-		case start := <-startFindRelaysc:
-			if start {
+		case <-reachabilityChanged:
+			ar.mx.Lock()
+			if ar.status == network.ReachabilityPrivate {
 				running = true
-				checkUpdate(ctx)
-			} else {
+			} else if ar.status == network.ReachabilityPublic {
 				running = false
+			}
+			ar.mx.Unlock()
+
+			if running {
+				ar.checkUpdate(ctx, updatec)
 			}
 		case <-time.After(30 * time.Second):
 			if running {
-				checkUpdate(ctx)
+				ar.checkUpdate(ctx, updatec)
 			}
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+func (ar *AutoRelay) checkUpdate(ctx context.Context, updatec chan<- bool) {
+	if ar.numRelays() >= DesiredRelays {
+		updatec <- false
+	}
+
+	update := ar.findRelaysOnce(ctx)
+	if ar.numRelays() > 0 {
+		updatec <- update
+		log.Debugf("relay findRelays update %v", update)
 	}
 }
 
