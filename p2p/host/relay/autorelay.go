@@ -85,9 +85,7 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	push := false
 
 	reachabilityChanged := make(chan struct{}, 1)
-	defer close(reachabilityChanged)
-	updatec := make(chan bool, 1)
-	defer close(updatec)
+	updatec := make(chan struct{}, 1)
 	go ar.findRelays(ctx, reachabilityChanged, updatec)
 
 	for {
@@ -113,13 +111,10 @@ func (ar *AutoRelay) background(ctx context.Context) {
 			ar.status = evt.Reachability
 			ar.mx.Unlock()
 
-			log.Debugf("relay background subReachability push %v Reachability %d\n", push, ar.status)
-		case update := <-updatec:
-			if update {
-				push = true
-			}
-
-			log.Debugf("relay background update push %v\n", push)
+			log.Debugf("relay background subReachability push %v Reachability %d", push, ar.status)
+		case <-updatec:
+			push = true
+			log.Debugf("relay background update")
 		case <-ar.disconnect:
 			push = true
 		case <-ctx.Done():
@@ -136,7 +131,7 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	}
 }
 
-func (ar *AutoRelay) findRelays(ctx context.Context, reachabilityChanged <-chan struct{}, updatec chan<- bool) {
+func (ar *AutoRelay) findRelays(ctx context.Context, reachabilityChanged <-chan struct{}, updatec chan<- struct{}) {
 	running := false
 
 	for {
@@ -150,29 +145,30 @@ func (ar *AutoRelay) findRelays(ctx context.Context, reachabilityChanged <-chan 
 			}
 			ar.mx.Unlock()
 
-			if running {
-				ar.checkUpdate(ctx, updatec)
-			}
 		case <-time.After(30 * time.Second):
-			if running {
-				ar.checkUpdate(ctx, updatec)
-			}
 		case <-ctx.Done():
 			return
+		}
+		if running && ar.checkUpdate(ctx) {
+			select {
+			case updatec <- struct{}{}:
+			default:
+			}
 		}
 	}
 }
 
-func (ar *AutoRelay) checkUpdate(ctx context.Context, updatec chan<- bool) {
+func (ar *AutoRelay) checkUpdate(ctx context.Context) (updated bool) {
 	if ar.numRelays() >= DesiredRelays {
-		updatec <- false
+		return false
 	}
 
 	update := ar.findRelaysOnce(ctx)
 	if ar.numRelays() > 0 {
-		updatec <- update
 		log.Debugf("relay findRelays update %v", update)
+		return update
 	}
+	return false
 }
 
 func (ar *AutoRelay) findRelaysOnce(ctx context.Context) bool {
