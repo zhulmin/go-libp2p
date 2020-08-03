@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	autonat "github.com/libp2p/go-libp2p-autonat"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -198,6 +199,16 @@ func TestHostAddrsFactory(t *testing.T) {
 	}
 	if !addrs[0].Equal(maddr) {
 		t.Fatalf("expected %s, got %s", maddr.String(), addrs[0].String())
+	}
+
+	var err error
+	h.AutoNat, err = autonat.New(ctx, h, autonat.WithReachability(network.ReachabilityPublic))
+	if err != nil {
+		t.Fatalf("should be able to attach autonat: %v", err)
+	}
+	addrs = h.Addrs()
+	if len(addrs) != 1 {
+		t.Fatalf("didn't exopect change in reurned addresses.")
 	}
 }
 
