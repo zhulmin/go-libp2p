@@ -925,7 +925,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 			}
 
 			// Did the router give us a routable public addr?
-			if manet.IsPublicAddr(mappedMaddr) {
+			if manet.IsPublicAddr(extMaddr) {
 				//well done
 				continue
 			}
@@ -951,7 +951,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 				}
 
 				// Drop the IP from the external maddr
-				_, extMaddrNoIP := ma.SplitFirst(mappedMaddr)
+				_, extMaddrNoIP := ma.SplitFirst(extMaddr)
 
 				for _, obsMaddr := range observed {
 					// Extract a public observed addr.
