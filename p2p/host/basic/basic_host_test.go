@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	autonat "github.com/libp2p/go-libp2p-autonat"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -21,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/test"
 
 	"github.com/libp2p/go-eventbus"
+	autonat "github.com/libp2p/go-libp2p-autonat"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
@@ -208,7 +208,7 @@ func TestHostAddrsFactory(t *testing.T) {
 	}
 	addrs = h.Addrs()
 	if len(addrs) != 1 {
-		t.Fatalf("didn't exopect change in reurned addresses.")
+		t.Fatalf("didn't expect change in returned addresses.")
 	}
 }
 
