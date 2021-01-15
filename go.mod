@@ -3,7 +3,8 @@ module github.com/libp2p/go-libp2p
 go 1.12
 
 require (
-	github.com/gogo/protobuf v1.3.1
+	github.com/gogo/protobuf v1.3.2
+	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.4
 	github.com/ipfs/go-detect-race v0.0.1
@@ -17,7 +18,7 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.4.0
 	github.com/libp2p/go-libp2p-blankhost v0.2.0
 	github.com/libp2p/go-libp2p-circuit v0.4.0
-	github.com/libp2p/go-libp2p-core v0.8.1-0.20210112053000-24d7f19910e4
+	github.com/libp2p/go-libp2p-core v0.8.1-0.20210114104148-44bd8e7b97d1
 	github.com/libp2p/go-libp2p-discovery v0.5.0
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.4.1
@@ -25,7 +26,7 @@ require (
 	github.com/libp2p/go-libp2p-netutil v0.1.0
 	github.com/libp2p/go-libp2p-noise v0.1.1
 	github.com/libp2p/go-libp2p-peerstore v0.2.6
-	github.com/libp2p/go-libp2p-swarm v0.4.0
+	github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210115045908-979b039460cf
 	github.com/libp2p/go-libp2p-testing v0.4.0
 	github.com/libp2p/go-libp2p-tls v0.1.3
 	github.com/libp2p/go-libp2p-transport-upgrader v0.4.1-0.20210112104805-7891e47ff469
@@ -42,5 +43,5 @@ require (
 	github.com/onsi/ginkgo v1.12.1 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
-	google.golang.org/protobuf v1.23.0 // indirect
+	google.golang.org/protobuf v1.25.0 // indirect
 )

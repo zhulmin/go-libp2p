@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-core/record"
+	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
 	addrutil "github.com/libp2p/go-addr-util"
 	"github.com/libp2p/go-eventbus"
@@ -87,6 +88,7 @@ type BasicHost struct {
 	network    network.Network
 	mux        *msmux.MultistreamMuxer
 	ids        *identify.IDService
+	hps        *holepunch.HolePunchService
 	pings      *ping.PingService
 	natmgr     NATManager
 	maResolver *madns.Resolver
@@ -215,6 +217,12 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Identify service: %s", err)
+	}
+
+	// TODO Config Option
+	h.hps, err = holepunch.NewHolePunchService(h, h.ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hole punch service: %w", err)
 	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {
@@ -649,7 +657,7 @@ func (h *BasicHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.I
 		}
 	case <-ctx.Done():
 		s.Reset()
-		// wait for the negotiation to cancel.
+		// wait for `SelectOneOf` to error out because of resetting the stream.
 		<-errCh
 		return nil, ctx.Err()
 	}
@@ -682,8 +690,11 @@ func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// absorb addresses into peerstore
 	h.Peerstore().AddAddrs(pi.ID, pi.Addrs, peerstore.TempAddrTTL)
 
-	if h.Network().Connectedness(pi.ID) == network.Connected {
-		return nil
+	forceDirect, _ := network.GetForceDirectDial(ctx)
+	if !forceDirect {
+		if h.Network().Connectedness(pi.ID) == network.Connected {
+			return nil
+		}
 	}
 
 	resolved, err := h.resolveAddrs(ctx, h.Peerstore().PeerInfo(pi.ID))
@@ -1004,6 +1015,10 @@ func (h *BasicHost) Close() error {
 		}
 		if h.ids != nil {
 			h.ids.Close()
+		}
+
+		if h.hps != nil {
+			h.hps.Close()
 		}
 
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()

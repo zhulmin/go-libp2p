@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+package holepunch.pb;
+
+message HolePunch {
+  enum Type {
+    PING = 100;
+    PONG = 200;
+    SYNC = 300;
+  }
+
+  optional Type type=1;
+}

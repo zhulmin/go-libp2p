@@ -17,7 +17,6 @@ import (
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 const (
@@ -25,7 +24,8 @@ const (
 )
 
 var (
-	DesiredRelays = 1
+	// TODO Change this back to 1
+	DesiredRelays = 2
 
 	BootDelay = 20 * time.Second
 )
@@ -33,8 +33,13 @@ var (
 // These are the known PL-operated relays
 var DefaultRelays = []string{
 	"/ip4/147.75.80.110/tcp/4001/p2p/QmbFgm5zan8P6eWWmeyfncR5feYEMPbht5b1FW1C37aQ7y",
+	"/ip4/147.75.80.110/udp/4001/quic/p2p/QmbFgm5zan8P6eWWmeyfncR5feYEMPbht5b1FW1C37aQ7y",
+
 	"/ip4/147.75.195.153/tcp/4001/p2p/QmW9m57aiBDHAkKj9nmFSEn7ZqrcF1fZS4bipsTCHburei",
+	"/ip4/147.75.195.153/udp/4001/quic/p2p/QmW9m57aiBDHAkKj9nmFSEn7ZqrcF1fZS4bipsTCHburei",
+
 	"/ip4/147.75.70.221/tcp/4001/p2p/Qme8g49gm3q4Acp7xWBKg3nAa9fxZ1YmyDJdyGgoG6LsXh",
+	"/ip4/147.75.70.221/udp/4001/quic/p2p/Qme8g49gm3q4Acp7xWBKg3nAa9fxZ1YmyDJdyGgoG6LsXh",
 }
 
 // AutoRelay is a Host that uses relays for connectivity when a NAT is detected.
@@ -259,7 +264,7 @@ func (ar *AutoRelay) selectRelays(ctx context.Context, pis []peer.AddrInfo) []pe
 }
 
 // This function is computes the NATed relay addrs when our status is private:
-// - The public addrs are removed from the address set.
+// TODO: If hole punching is NOT enabled on the peer, remove public addresses
 // - The non-public addrs are included verbatim so that peers behind the same NAT/firewall
 //   can still dial us directly.
 // - On top of those, we add the relay-specific addrs for the relays to which we are
@@ -278,13 +283,7 @@ func (ar *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	}
 
 	raddrs := make([]ma.Multiaddr, 0, 4*len(ar.relays)+4)
-
-	// only keep private addrs from the original addr set
-	for _, addr := range addrs {
-		if manet.IsPrivateAddr(addr) {
-			raddrs = append(raddrs, addr)
-		}
-	}
+	raddrs = append(raddrs, addrs...)
 
 	// add relay specific addrs to the list
 	for p := range ar.relays {
