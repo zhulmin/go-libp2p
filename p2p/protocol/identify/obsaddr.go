@@ -22,7 +22,7 @@ import (
 // can be contacted on. The "seen" events expire by default after 40 minutes
 // (OwnObservedAddressTTL * ActivationThreshold). The are cleaned up during
 // the GC rounds set by GCInterval.
-var ActivationThresh = 4
+var ActivationThresh = 1
 
 // GCInterval specicies how often to make a round cleaning seen events and
 // observed addresses. An address will be cleaned if it has not been seen in
