@@ -22,4 +22,8 @@ func main() {
 	time.Sleep(10 * time.Second)
 	fmt.Println("\n h1 ID is ", h1.ID().Pretty())
 	fmt.Println("\n h1 Addrs are", h1.Addrs())
+
+	select {
+	case <-time.After(1 * time.Hour):
+	}
 }
