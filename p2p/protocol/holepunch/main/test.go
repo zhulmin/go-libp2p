@@ -19,7 +19,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	time.Sleep(10 * time.Second)
+	time.Sleep(20 * time.Second)
 	fmt.Println("\n h1 ID is ", h1.ID().Pretty())
 	fmt.Println("\n h1 Addrs are", h1.Addrs())
 
