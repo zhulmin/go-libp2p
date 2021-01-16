@@ -3,9 +3,11 @@ package holepunch
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	logging "github.com/ipfs/go-log"
+	"github.com/jpillora/backoff"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -15,13 +17,14 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-// TODO Options
+// TODO Should we have options for these ?
 const (
 	protocol             = "/libp2p/holepunch/1.0.0"
 	maxMsgSize           = 1 * 1024 // 1K
 	holePunchTimeout     = 2 * time.Minute
-	dialTimeout          = 30 * time.Second
+	dialTimeout          = 60 * time.Second
 	connCloseGracePeriod = 5 * time.Minute
+	maxRetries           = 4
 )
 
 var (
@@ -35,6 +38,10 @@ type HolePunchService struct {
 
 	ids  *identify.IDService
 	host host.Host
+
+	// ensure we shutdown ONLY once
+	closeSync sync.Once
+	refCount  sync.WaitGroup
 }
 
 // NewHolePunchService creates a new service that can be used for hole punching
@@ -49,7 +56,11 @@ func NewHolePunchService(h host.Host, ids *identify.IDService) (*HolePunchServic
 
 // Close closes the Hole Punch Service.
 func (hs *HolePunchService) Close() error {
-	hs.ctxCancel()
+	hs.closeSync.Do(func() {
+		hs.ctxCancel()
+		hs.refCount.Wait()
+	})
+
 	return nil
 }
 
@@ -123,12 +134,29 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 		dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 		defer cancel()
 		err := hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
-		if err != nil {
-			fmt.Printf("\n connect call for hole punching failed on initiator: %s", err)
+		if err == nil {
+			fmt.Println("\n hole punch successful !!!!")
 			return
 		}
-		fmt.Println("\n hole punch successful !!!!")
-		return
+
+		// backoff and retry before giving up.
+		// this code will make the peer retry for (approximately ) a TOTAL of 10 seconds
+		// before giving up and declaring the hole punch a failure.
+		b := &backoff.Backoff{
+			Jitter: true,
+			Min:    1 * time.Second,
+			Max:    5 * time.Second,
+			Factor: 2,
+		}
+		for b.Attempt() < maxRetries {
+			time.Sleep(b.Duration())
+			err = hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
+			if err == nil {
+				fmt.Println("\n hole punch successful !")
+				return
+			}
+		}
+		fmt.Printf("\n hole punch failed: %s", err)
 
 	case <-hs.ctx.Done():
 		fmt.Println("\n hole punch ctx cancelled")
@@ -138,6 +166,7 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 
 func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	_ = s.SetDeadline(time.Now().Add(holePunchTimeout))
+	rp := s.Conn().RemotePeer()
 	wr := protoio.NewDelimitedWriter(s)
 
 	rd := protoio.NewDelimitedReader(s, maxMsgSize)
@@ -172,14 +201,35 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	}
 	defer s.Close()
 
-	// Let's go force connect !!
+	// Hole punch now by forcing a connect
 	forceDirectConnCtx := network.WithForceDirectDial(hs.ctx, "hole-punching")
 	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 	defer cancel()
-	rp := s.Conn().RemotePeer()
 	fmt.Printf("\n response peer %s will hole punch now in response to sync message", hs.host.ID().Pretty())
 	err := hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
-	fmt.Printf("\n hole punch connect call error on responder peer is %s", err)
+	if err == nil {
+		fmt.Println("\n Hole punch successful")
+		return
+	}
+
+	// First hole punch attempt failed, implement a backoff-retry now
+	// before giving up.
+	b := &backoff.Backoff{
+		Jitter: true,
+		Min:    1 * time.Second,
+		Max:    5 * time.Second,
+		Factor: 2,
+	}
+	for b.Attempt() < maxRetries {
+		time.Sleep(b.Duration())
+		err = hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
+		if err == nil {
+			fmt.Println("\n hole punch successful !")
+			return
+		}
+	}
+
+	fmt.Printf("\n hole punch failed: %s", err)
 }
 
 type netNotifiee HolePunchService
@@ -195,21 +245,19 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 
 	// Hole punch if it's an inbound proxy connection.
 	if dir == network.DirInbound && !isDirectConn(v) {
-		// do we still have this connection ?
-		for _, c := range hs.host.Network().ConnsToPeer(rp) {
-			if v == c {
-				go func() {
-					select {
-					case <-hs.ids.IdentifyWait(v):
-					case <-hs.ctx.Done():
-						return
-					}
-					nn.HolePunchService().holePunch(v)
-				}()
-
+		hs.refCount.Add(1)
+		go func() {
+			defer hs.refCount.Done()
+			select {
+			// waiting for Identify here will allow us to access the peer's public and observed addresses
+			// that we can dial to for a hole punch.
+			case <-hs.ids.IdentifyWait(v):
+			case <-hs.ctx.Done():
 				return
 			}
-		}
+			nn.HolePunchService().holePunch(v)
+		}()
+		return
 	}
 
 	// If we see a direct connection when we already have a Proxy connection, process it
@@ -229,7 +277,8 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 					}
 
 					if isDirect {
-						// TODO Think about stream migration for long lived streams
+						// TODO If we have two direct connections, we should keep only one around ?
+						// Especially for QUIC as QUIC hole punching can result into two direct connections.
 						c.Close()
 					}
 				})

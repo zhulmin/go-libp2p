@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/routing"
+	manet "github.com/multiformats/go-multiaddr/net"
 
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	discovery "github.com/libp2p/go-libp2p-discovery"
@@ -24,8 +25,7 @@ const (
 )
 
 var (
-	// TODO Change this back to 1
-	DesiredRelays = 2
+	DesiredRelays = 1
 
 	BootDelay = 20 * time.Second
 )
@@ -264,7 +264,7 @@ func (ar *AutoRelay) selectRelays(ctx context.Context, pis []peer.AddrInfo) []pe
 }
 
 // This function is computes the NATed relay addrs when our status is private:
-// TODO: If hole punching is NOT enabled on the peer, remove public addresses
+// - If hole punching is NOT enabled, public addresses are removed from the set.
 // - The non-public addrs are included verbatim so that peers behind the same NAT/firewall
 //   can still dial us directly.
 // - On top of those, we add the relay-specific addrs for the relays to which we are
@@ -283,7 +283,16 @@ func (ar *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	}
 
 	raddrs := make([]ma.Multiaddr, 0, 4*len(ar.relays)+4)
-	raddrs = append(raddrs, addrs...)
+	if !ar.host.EnableHolePunching {
+		// only keep private addrs from the original addr set
+		for _, addr := range addrs {
+			if manet.IsPrivateAddr(addr) {
+				raddrs = append(raddrs, addr)
+			}
+		}
+	} else {
+		raddrs = append(raddrs, addrs...)
+	}
 
 	// add relay specific addrs to the list
 	for p := range ar.relays {

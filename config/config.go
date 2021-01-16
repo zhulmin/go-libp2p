@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"time"
 
@@ -92,6 +93,8 @@ type Config struct {
 	EnableAutoRelay bool
 	AutoNATConfig
 	StaticRelays []peer.AddrInfo
+
+	EnableHolePunching bool
 }
 
 func (cfg *Config) makeSwarm(ctx context.Context) (*swarm.Swarm, error) {
@@ -185,12 +188,17 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 		return nil, err
 	}
 
+	if cfg.EnableHolePunching && !cfg.Relay {
+		return nil, errors.New("cannot enable hole punching; relay is not enabled")
+	}
+
 	h, err := bhost.NewHost(ctx, swrm, &bhost.HostOpts{
-		ConnManager:  cfg.ConnManager,
-		AddrsFactory: cfg.AddrsFactory,
-		NATManager:   cfg.NATManager,
-		EnablePing:   !cfg.DisablePing,
-		UserAgent:    cfg.UserAgent,
+		ConnManager:        cfg.ConnManager,
+		AddrsFactory:       cfg.AddrsFactory,
+		NATManager:         cfg.NATManager,
+		EnablePing:         !cfg.DisablePing,
+		UserAgent:          cfg.UserAgent,
+		EnableHolePunching: cfg.EnableHolePunching,
 	})
 
 	if err != nil {

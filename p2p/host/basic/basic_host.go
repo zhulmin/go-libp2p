@@ -114,7 +114,8 @@ type BasicHost struct {
 	signKey                 crypto.PrivKey
 	caBook                  peerstore.CertifiedAddrBook
 
-	AutoNat autonat.AutoNAT
+	AutoNat            autonat.AutoNAT
+	EnableHolePunching bool
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -153,6 +154,9 @@ type HostOpts struct {
 
 	// DisableSignedPeerRecord disables the generation of Signed Peer Records on this host.
 	DisableSignedPeerRecord bool
+
+	// EnableHolePunching enables the peer to initiate/respond to hole punching attempts for NAT traversal.
+	EnableHolePunching bool
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -219,10 +223,12 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 		return nil, fmt.Errorf("failed to create Identify service: %s", err)
 	}
 
-	// TODO Config Option
-	h.hps, err = holepunch.NewHolePunchService(h, h.ids)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create hole punch service: %w", err)
+	h.EnableHolePunching = opts.EnableHolePunching
+	if opts.EnableHolePunching {
+		h.hps, err = holepunch.NewHolePunchService(h, h.ids)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
+		}
 	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {

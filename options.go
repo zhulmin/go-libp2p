@@ -25,6 +25,44 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+// Experimental
+// EnableHolePunching enables NAT traversal by enabling NATT'd peers to both initiate and respond to hole punching attempts
+// to create direct/NAT-traversed connections with other peers. (default: disabled)
+//
+// Dependencies:
+//  * Relay (enabled by default)
+//
+// This subsystem performs two functions:
+//
+// 1. On receiving an inbound Relay connection, it attempts to create a direct connection with the remote peer
+//    by initiating and co-ordinating a hole punch over the Relayed connection.
+// 2. If a peer sees a request to co-ordinate a hole punch on an outbound Relay connection,
+//    it will participate in the hole-punch to create a direct connection with the remote peer.
+//
+// If the hole punch is successful, all new streams will thereafter be created on the hole-punched connection and
+// the Relayed connection is scheduled to be closed after a grace period.
+//
+// All indefinite long-lived streams on the Relayed connection will have to re-opened on the hole-punched connection by the user.
+// Users can make use of the `Connected`/`Disconnected` notifications emitted by the Network for this purpose.
+//
+// It is not mandatory but nice to also enable the `AutoRelay` option (See `EnableAutoRelay`)
+// so the peer can discover and connect to Relay servers  if it discovers that it is NATT'd and has private reachability via AutoNAT.
+// This will then enable it to advertise Relay addresses which can be used to accept inbound Relay connections to then co-ordinate
+// a hole punch.
+//
+// If `EnableAutoRelay` is configured and the user is confident that the peer has private reachability/is NATT'd,
+// the `ForceReachabilityPrivate` option can be configured to short-circuit reachability discovery via AutoNAT
+// so the peer can immediately start connecting to Relay servers.
+//
+// If `EnableAutoRelay` is configured, the `StaticRelays` option can be used to configure a static set of Relay servers
+// for `AutoRelay` to connect to so that it does not need to discover Relay servers via Routing.
+func EnableHolePunching() Option {
+	return func(cfg *Config) error {
+		cfg.EnableHolePunching = true
+		return nil
+	}
+}
+
 // ListenAddrStrings configures libp2p to listen on the given (unparsed)
 // addresses.
 func ListenAddrStrings(s ...string) Option {
