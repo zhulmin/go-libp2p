@@ -49,7 +49,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("peer ID is", h1.ID().Pretty())
 	// subscribe for address change event so we can detect when we discover an observed public non proxy address
 	sub, err := h1.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
 	if err != nil {
@@ -68,7 +67,6 @@ LOOP:
 		case ev := <-sub.Out():
 			aev := ev.(event.EvtLocalAddressesUpdated)
 			for _, a := range aev.Current {
-				fmt.Println(a.Address)
 				_, err := a.Address.ValueForProtocol(ma.P_CIRCUIT)
 				if manet.IsPublicAddr(a.Address) && err != nil {
 					break LOOP
@@ -79,6 +77,7 @@ LOOP:
 		}
 	}
 
+	fmt.Println("peer ID is", h1.ID().Pretty())
 	fmt.Println("peer has discovered it's NATT'd address, known addresses are:")
 	for _, a := range h1.Addrs() {
 		fmt.Println(a)
