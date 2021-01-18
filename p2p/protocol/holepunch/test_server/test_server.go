@@ -21,8 +21,8 @@ import (
 
 var (
 	relay_server_ID      = "12D3KooWR7ubdas2nrgK3Y2mE9A27i5WubjhkzgrMKkEeEvzB6Cw"
-	relay_server_address = []ma.Multiaddr{ma.StringCast("/ip4/13.212.244.112/udp/12345/quic"),
-		ma.StringCast("/ip4/13.212.244.112/tcp/12345")}
+	relay_server_address = []ma.Multiaddr{ma.StringCast("/ip4/54.255.62.136/udp/12345/quic"),
+		ma.StringCast("/ip4/54.255.62.136/tcp/12345")}
 	privateKeyHex = "08011240b5e6951900c9fb878b75a38b35d51d1279843df1e54b1d432a765882ed17f03bc92f4027a85925927042e5a85c2ac3fc9585a88cb1db612253850093be957d2b"
 )
 
@@ -94,21 +94,20 @@ LOOP:
 		case ev := <-sub.Out():
 			aev := ev.(event.EvtLocalAddressesUpdated)
 			for _, a := range aev.Current {
+				fmt.Println(a.Address)
 				_, err := a.Address.ValueForProtocol(ma.P_CIRCUIT)
 				if manet.IsPublicAddr(a.Address) && err != nil {
 					break LOOP
 				}
 			}
-		case <-time.After(60 * time.Second):
+		case <-time.After(300 * time.Second):
 			panic(errors.New("did not get public address"))
 		}
 	}
-	fmt.Println("peer has discovered public/NATT'd addresses for self")
-	time.Sleep(10 * time.Second)
-	fmt.Println("\n peer connections are ", h1.Network().Conns())
 
-	// one more round of refresh so our observed address also gets propogated to the network.
-	<-d.RefreshRoutingTable()
+	// one more round of refresh so our observed address also gets propagate to the network.
+	d.RefreshRoutingTable()
+	time.Sleep(10 * time.Second)
 
 	fmt.Println("server peer has advertised addresses to the DHT and is ready for hole punching")
 	fmt.Println("peer address are:")

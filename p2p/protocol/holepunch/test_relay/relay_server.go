@@ -75,14 +75,14 @@ LOOP:
 			panic(errors.New("did not discover address for self"))
 		}
 	}
-	fmt.Println("peer has discovered public/NATT'd addresses for self")
-	fmt.Println("\n Relay server peerID is", h1.ID().Pretty())
-	fmt.Println("\n Relay server addresses are:")
+	fmt.Println("relay server peerID is", h1.ID().Pretty())
+	fmt.Println("relay server addresses are:")
 	for _, a := range h1.Addrs() {
 		fmt.Println(a)
 	}
 
-	select {
-	case <-time.After(1 * time.Hour):
+	//  no wait for conns
+	for {
+
 	}
 }
