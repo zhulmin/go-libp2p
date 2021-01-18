@@ -2,7 +2,6 @@ package identify
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -189,6 +188,21 @@ func (oas *ObservedAddrManager) filter(observedAddrs []*observedAddr) []ma.Multi
 			pat := a.groupKey()
 			pmap[pat] = append(pmap[pat], a)
 
+		}
+	}
+
+	// for certain use cases such as hole punching, it's better to advertise even unactivated observed addresses than none at all.
+	// we don't want to wait till we make enough connections with other peers to discover our activated addresses.
+	// if we have activated addresses, we will use them, otherwise, let's use whatever observed addresses we have.
+	if len(pmap) == 0 {
+		for i := range observedAddrs {
+			a := observedAddrs[i]
+			if now.Sub(a.lastSeen) <= oas.ttl {
+				// group addresses by their IPX/Transport Protocol(TCP or UDP) pattern.
+				pat := a.groupKey()
+				pmap[pat] = append(pmap[pat], a)
+
+			}
 		}
 	}
 

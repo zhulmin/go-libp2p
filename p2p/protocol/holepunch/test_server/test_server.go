@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"time"
 
@@ -24,22 +23,6 @@ var (
 )
 
 func main() {
-	var test_mode string
-	flag.StringVar(&test_mode, "test_mode", "quic", "Test TCP or QUIC hole punching")
-	flag.Parse()
-	if test_mode != "tcp" && test_mode != "quic" {
-		panic(errors.New("test mode should be tcp or quic"))
-	}
-	fmt.Println("\n test server initiated in mode:", test_mode)
-
-	// transports and addresses
-	var transportOpts []libp2p.Option
-	if test_mode == "tcp" {
-		transportOpts = append(transportOpts, libp2p.Transport(tcp.NewTCPTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/tcp/12345")))
-	} else {
-		transportOpts = append(transportOpts, libp2p.Transport(quic.NewTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/udp/12345/quic")))
-	}
-
 	relay_server, err := peer.Decode(relay_server_ID)
 	if err != nil {
 		panic(err)
@@ -56,13 +39,17 @@ func main() {
 			{ID: relay_server,
 				Addrs: relay_server_address},
 		}),
-		transportOpts[0],
-		transportOpts[1],
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.Transport(quic.NewTransport),
+		libp2p.ListenAddrs(
+			ma.StringCast("/ip4/0.0.0.0/tcp/12345"),
+			ma.StringCast("/ip4/0.0.0.0/udp/12345/quic"),
+		),
 	)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("server Peer ID is", h1.ID().Pretty())
+	fmt.Println("peer ID is", h1.ID().Pretty())
 	// subscribe for address change event so we can detect when we discover an observed public non proxy address
 	sub, err := h1.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
 	if err != nil {
@@ -92,18 +79,15 @@ LOOP:
 		}
 	}
 
-	fmt.Println(h1.Addrs())
-
-	// one more round of refresh so our observed address also gets propagate to the network.
-	<-d.ForceRefresh()
-	time.Sleep(30 * time.Second)
-
-	fmt.Println("server peer has advertised addresses to the DHT and is ready for hole punching")
-	fmt.Println("peer address are:")
+	fmt.Println("peer has discovered it's NATT'd address, known addresses are:")
 	for _, a := range h1.Addrs() {
 		fmt.Println(a)
 	}
 
+	// one more round of refresh so our observed address also gets propagated to the network.
+	<-d.ForceRefresh()
+
+	fmt.Println("server peer has advertised addresses to the DHT and is ready for hole punching")
 	// accept connections
 	for {
 	}

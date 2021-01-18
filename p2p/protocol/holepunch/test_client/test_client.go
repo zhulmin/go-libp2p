@@ -18,7 +18,7 @@ import (
 
 var (
 	// peer ID of the server
-	server_peer_id = "12D3KooWPMhuRnKpepwk1p47SjDY92WWnfRNao7EbaeM2Z22r1wQ"
+	server_peer_id = "QmbPgZ9iQPYUxctG5cdGPvvGDHhtJCdwBJspPD78qHNKEg"
 )
 
 func main() {
@@ -58,7 +58,7 @@ func main() {
 
 	// wait till we have a public non-pxory address i.e. we learn of our observed/NAT-translated addresses by connecting
 	// to DHT peers
-	time.Sleep(20 * time.Second)
+	time.Sleep(100 * time.Second)
 	isPublic := false
 	for _, a := range h1.Addrs() {
 		_, err := a.ValueForProtocol(ma.P_CIRCUIT)
@@ -67,7 +67,7 @@ func main() {
 		}
 	}
 	if !isPublic {
-		panic(errors.New("do not have a single public address even after 10 seconds"))
+		panic(errors.New("do not have a single public address even after 20 seconds"))
 	}
 
 	// we should now have some connections and observed addresses
