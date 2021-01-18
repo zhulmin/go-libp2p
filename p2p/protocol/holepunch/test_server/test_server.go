@@ -20,7 +20,9 @@ import (
 )
 
 var (
-	relayServers  = []peer.AddrInfo{}
+	relay_server_ID      = "12D3KooWR7ubdas2nrgK3Y2mE9A27i5WubjhkzgrMKkEeEvzB6Cw"
+	relay_server_address = []ma.Multiaddr{ma.StringCast("/ip4/13.212.244.112/udp/12345/quic"),
+		ma.StringCast("/ip4/13.212.244.112/tcp/12345")}
 	privateKeyHex = "08011240b5e6951900c9fb878b75a38b35d51d1279843df1e54b1d432a765882ed17f03bc92f4027a85925927042e5a85c2ac3fc9585a88cb1db612253850093be957d2b"
 )
 
@@ -50,6 +52,11 @@ func main() {
 		transportOpts = append(transportOpts, libp2p.Transport(quic.NewTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/udp/12345/quic")))
 	}
 
+	relay_server, err := peer.Decode(relay_server_ID)
+	if err != nil {
+		panic(err)
+	}
+
 	// create host with hole punching enabled. we also enable AutorRelay with static servers so peer can connect to and
 	// advertise relay addresses on it's own.
 	ctx := context.Background()
@@ -58,13 +65,17 @@ func main() {
 		libp2p.EnableHolePunching(),
 		libp2p.EnableAutoRelay(),
 		libp2p.ForceReachabilityPrivate(),
-		libp2p.StaticRelays(relayServers),
+		libp2p.StaticRelays([]peer.AddrInfo{
+			{ID: relay_server,
+				Addrs: relay_server_address},
+		}),
 		transportOpts[0],
 		transportOpts[1],
 	)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("server Peer ID is", h1.ID().Pretty())
 	// subscribe for address change event so we can detect when we discover an observed public non proxy address
 	sub, err := h1.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
 	if err != nil {
@@ -88,19 +99,21 @@ LOOP:
 					break LOOP
 				}
 			}
-		case <-time.After(10 * time.Second):
+		case <-time.After(60 * time.Second):
 			panic(errors.New("did not get public address"))
 		}
 	}
-	fmt.Println("\n Peer has discovered public addresses for self")
+	fmt.Println("peer has discovered public/NATT'd addresses for self")
+	time.Sleep(10 * time.Second)
+	fmt.Println("\n peer connections are ", h1.Network().Conns())
 
 	// one more round of refresh so our observed address also gets propogated to the network.
-	<-d.ForceRefresh()
+	<-d.RefreshRoutingTable()
 
-	fmt.Printf("\n Server peer is up and ready for hole punching, peer ID is %s", h1.ID())
-	fmt.Println("\n peer address are:")
+	fmt.Println("server peer has advertised addresses to the DHT and is ready for hole punching")
+	fmt.Println("peer address are:")
 	for _, a := range h1.Addrs() {
-		fmt.Println("\n ", a)
+		fmt.Println(a)
 	}
 	select {
 	case <-time.After(1 * time.Hour):

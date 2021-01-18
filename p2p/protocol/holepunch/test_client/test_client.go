@@ -18,7 +18,7 @@ import (
 
 var (
 	// peer ID of the server
-	server_peer_id = ""
+	server_peer_id = "12D3KooWPMhuRnKpepwk1p47SjDY92WWnfRNao7EbaeM2Z22r1wQ"
 )
 
 func main() {
@@ -34,9 +34,9 @@ func main() {
 	// transports and addresses
 	var transportOpts []libp2p.Option
 	if test_mode == "tcp" {
-		transportOpts = append(transportOpts, libp2p.Transport(tcp.NewTCPTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/tcp/12345")))
+		transportOpts = append(transportOpts, libp2p.Transport(tcp.NewTCPTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/tcp/22345")))
 	} else {
-		transportOpts = append(transportOpts, libp2p.Transport(quic.NewTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/udp/12345/quic")))
+		transportOpts = append(transportOpts, libp2p.Transport(quic.NewTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/udp/22345/quic")))
 	}
 
 	// create host with hole punching enabled.
@@ -46,19 +46,6 @@ func main() {
 		transportOpts[0],
 		transportOpts[1])
 	if err != nil {
-		panic(err)
-	}
-
-	id, err := peer.Decode("12D3KooWR7ubdas2nrgK3Y2mE9A27i5WubjhkzgrMKkEeEvzB6Cw")
-	if err != nil {
-		panic(err)
-	}
-	err = h1.Connect(ctx, peer.AddrInfo{ID: id,
-		Addrs: []ma.Multiaddr{ma.StringCast("/ip4/13.212.244.112/tcp/38675")}
-	)
-	if err == nil {
-		fmt.Println("\n Connected to Relay")
-	} else {
 		panic(err)
 	}
 
@@ -84,9 +71,9 @@ func main() {
 	}
 
 	// we should now have some connections and observed addresses
-	fmt.Println("\n dht refresh finished, known addresses for client are:")
+	fmt.Println("peer has discovered public addresses for self, all addresses are:")
 	for _, a := range h1.Addrs() {
-		fmt.Println("\n ", a)
+		fmt.Println(a)
 	}
 
 	// lookup and connect to server peer
@@ -98,6 +85,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("\n finished looking up server peer on DHT, info is \n %+v", pi)
 
 	// we should have a Relayed connection to the peer as the server peer is:
 	// a. NATT'd
