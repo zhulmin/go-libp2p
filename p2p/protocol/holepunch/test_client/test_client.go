@@ -58,7 +58,7 @@ func main() {
 
 	// wait till we have a public non-pxory address i.e. we learn of our observed/NAT-translated addresses by connecting
 	// to DHT peers
-	time.Sleep(10 * time.Second)
+	time.Sleep(20 * time.Second)
 	isPublic := false
 	for _, a := range h1.Addrs() {
 		_, err := a.ValueForProtocol(ma.P_CIRCUIT)
@@ -94,6 +94,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// wait for some time for hole punching to finish and print out all connections.
-	fmt.Println("\n")
+	time.Sleep(20 * time.Second)
+	fmt.Println("connections on client are:")
+
 }

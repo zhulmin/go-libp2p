@@ -296,6 +296,7 @@ func (ar *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 
 	// add relay specific addrs to the list
 	for p := range ar.relays {
+		fmt.Println("\n relay addrs are", ar.host.Peerstore().Addrs(p))
 		addrs := cleanupAddressSet(ar.host.Peerstore().Addrs(p))
 
 		circuit, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s/p2p-circuit", p.Pretty()))

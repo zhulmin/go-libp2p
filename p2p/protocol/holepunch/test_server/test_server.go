@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/peer"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -23,7 +21,6 @@ var (
 	relay_server_ID      = "12D3KooWR7ubdas2nrgK3Y2mE9A27i5WubjhkzgrMKkEeEvzB6Cw"
 	relay_server_address = []ma.Multiaddr{ma.StringCast("/ip4/54.255.62.136/udp/12345/quic"),
 		ma.StringCast("/ip4/54.255.62.136/tcp/12345")}
-	privateKeyHex = "08011240b5e6951900c9fb878b75a38b35d51d1279843df1e54b1d432a765882ed17f03bc92f4027a85925927042e5a85c2ac3fc9585a88cb1db612253850093be957d2b"
 )
 
 func main() {
@@ -34,15 +31,6 @@ func main() {
 		panic(errors.New("test mode should be tcp or quic"))
 	}
 	fmt.Println("\n test server initiated in mode:", test_mode)
-
-	skbz, err := hex.DecodeString(privateKeyHex)
-	if err != nil {
-		panic(err)
-	}
-	sk, err := crypto.UnmarshalPrivateKey(skbz)
-	if err != nil {
-		panic(err)
-	}
 
 	// transports and addresses
 	var transportOpts []libp2p.Option
@@ -61,7 +49,6 @@ func main() {
 	// advertise relay addresses on it's own.
 	ctx := context.Background()
 	h1, err := libp2p.New(ctx,
-		libp2p.Identity(sk),
 		libp2p.EnableHolePunching(),
 		libp2p.EnableAutoRelay(),
 		libp2p.ForceReachabilityPrivate(),
@@ -104,6 +91,8 @@ LOOP:
 			panic(errors.New("did not get public address"))
 		}
 	}
+
+	fmt.Println(h1.Addrs())
 
 	// one more round of refresh so our observed address also gets propagate to the network.
 	<-d.ForceRefresh()
