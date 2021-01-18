@@ -49,6 +49,19 @@ func main() {
 		panic(err)
 	}
 
+	id, err := peer.Decode("12D3KooWR7ubdas2nrgK3Y2mE9A27i5WubjhkzgrMKkEeEvzB6Cw")
+	if err != nil {
+		panic(err)
+	}
+	err = h1.Connect(ctx, peer.AddrInfo{ID: id,
+		Addrs: []ma.Multiaddr{ma.StringCast("/ip4/13.212.244.112/tcp/38675")}
+	)
+	if err == nil {
+		fmt.Println("\n Connected to Relay")
+	} else {
+		panic(err)
+	}
+
 	// bootstrap with dht so we have some connections and activated observed addresses.
 	d, err := dht.New(ctx, h1, dht.Mode(dht.ModeClient), dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...))
 	if err != nil {

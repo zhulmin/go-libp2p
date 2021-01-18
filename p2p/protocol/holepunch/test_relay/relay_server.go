@@ -9,6 +9,8 @@ import (
 	"github.com/libp2p/go-libp2p"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-core/crypto"
+	quic "github.com/libp2p/go-libp2p-quic-transport"
+	"github.com/libp2p/go-tcp-transport"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -30,8 +32,13 @@ func main() {
 	h1, err := libp2p.New(ctx,
 		libp2p.Identity(sk),
 		libp2p.EnableRelay(circuit.OptHop),
-		libp2p.ListenAddrs(ma.StringCast("/ip4/13.228.138.10/tcp/12345")),
-	)
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.Transport(quic.NewTransport),
+		libp2p.ListenAddrs(
+			ma.StringCast("/ip4/0.0.0.0/tcp/12345"),
+			ma.StringCast("/ip4/0.0.0.0/udp/12345/quic"),
+		))
+
 	if err != nil {
 		panic(err)
 	}
