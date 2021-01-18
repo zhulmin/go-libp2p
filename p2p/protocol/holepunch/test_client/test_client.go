@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/peer"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	quic "github.com/libp2p/go-libp2p-quic-transport"
@@ -18,7 +19,7 @@ import (
 
 var (
 	// peer ID of the server
-	server_peer_id = "QmbPgZ9iQPYUxctG5cdGPvvGDHhtJCdwBJspPD78qHNKEg"
+	server_peer_id = "QmW3MoedmkQn1kqsMN9oRoJDfhCxKBHGSyscBGMbzuGcCT"
 )
 
 func main() {
@@ -48,6 +49,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	// subscribe for address change event so we can detect when we discover an observed public non proxy address
+	sub, err := h1.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
+	if err != nil {
+		panic(err)
+	}
 
 	// bootstrap with dht so we have some connections and activated observed addresses.
 	d, err := dht.New(ctx, h1, dht.Mode(dht.ModeClient), dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...))
@@ -56,22 +62,26 @@ func main() {
 	}
 	d.Bootstrap(ctx)
 
-	// wait till we have a public non-pxory address i.e. we learn of our observed/NAT-translated addresses by connecting
-	// to DHT peers
-	time.Sleep(100 * time.Second)
-	isPublic := false
-	for _, a := range h1.Addrs() {
-		_, err := a.ValueForProtocol(ma.P_CIRCUIT)
-		if manet.IsPublicAddr(a) && err != nil {
-			isPublic = true
+	// block till we have an observed public address.
+LOOP:
+	for {
+		select {
+		case ev := <-sub.Out():
+			aev := ev.(event.EvtLocalAddressesUpdated)
+			for _, a := range aev.Current {
+				_, err := a.Address.ValueForProtocol(ma.P_CIRCUIT)
+				if manet.IsPublicAddr(a.Address) && err != nil {
+					break LOOP
+				}
+			}
+		case <-time.After(300 * time.Second):
+			panic(errors.New("did not get public address"))
 		}
-	}
-	if !isPublic {
-		panic(errors.New("do not have a single public address even after 20 seconds"))
 	}
 
 	// we should now have some connections and observed addresses
-	fmt.Println("peer has discovered public addresses for self, all addresses are:")
+	fmt.Println("client peer ID is", h1.ID().Pretty())
+	fmt.Println("client peer has discovered public addresses for self, all addresses are:")
 	for _, a := range h1.Addrs() {
 		fmt.Println(a)
 	}

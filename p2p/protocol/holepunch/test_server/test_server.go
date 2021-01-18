@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"time"
 
@@ -23,6 +24,23 @@ var (
 )
 
 func main() {
+	// Configure either TCP hole punching or QUIC hole punching
+	var test_mode string
+	flag.StringVar(&test_mode, "test_mode", "quic", "Test TCP or QUIC hole punching")
+	flag.Parse()
+	if test_mode != "tcp" && test_mode != "quic" {
+		panic(errors.New("test mode should be tcp or quic"))
+	}
+	fmt.Println("\n test client initiated in mode:", test_mode)
+
+	// transports and addresses
+	var transportOpts []libp2p.Option
+	if test_mode == "tcp" {
+		transportOpts = append(transportOpts, libp2p.Transport(tcp.NewTCPTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/tcp/22345")))
+	} else {
+		transportOpts = append(transportOpts, libp2p.Transport(quic.NewTransport), libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/udp/22345/quic")))
+	}
+
 	relay_server, err := peer.Decode(relay_server_ID)
 	if err != nil {
 		panic(err)
@@ -39,13 +57,9 @@ func main() {
 			{ID: relay_server,
 				Addrs: relay_server_address},
 		}),
-		libp2p.Transport(tcp.NewTCPTransport),
-		libp2p.Transport(quic.NewTransport),
-		libp2p.ListenAddrs(
-			ma.StringCast("/ip4/0.0.0.0/tcp/12345"),
-			ma.StringCast("/ip4/0.0.0.0/udp/12345/quic"),
-		),
-	)
+		transportOpts[0],
+		transportOpts[1])
+
 	if err != nil {
 		panic(err)
 	}
