@@ -106,15 +106,16 @@ LOOP:
 	}
 
 	// one more round of refresh so our observed address also gets propagate to the network.
-	d.RefreshRoutingTable()
-	time.Sleep(10 * time.Second)
+	<-d.ForceRefresh()
+	time.Sleep(30 * time.Second)
 
 	fmt.Println("server peer has advertised addresses to the DHT and is ready for hole punching")
 	fmt.Println("peer address are:")
 	for _, a := range h1.Addrs() {
 		fmt.Println(a)
 	}
-	select {
-	case <-time.After(1 * time.Hour):
+
+	// accept connections
+	for {
 	}
 }
