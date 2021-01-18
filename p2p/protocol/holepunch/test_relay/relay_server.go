@@ -29,8 +29,7 @@ func main() {
 	ctx := context.Background()
 	h1, err := libp2p.New(ctx,
 		libp2p.Identity(sk),
-		libp2p.EnableRelay(circuit.OptHop),
-		libp2p.ListenAddrs(ma.StringCast("/ip4/0.0.0.0/tcp/12345")),
+		libp2p.EnableRelay(circuit.OptHop))
 	)
 	if err != nil {
 		panic(err)
