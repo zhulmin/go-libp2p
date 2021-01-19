@@ -2,6 +2,7 @@ package identify_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -170,25 +171,22 @@ func TestObsAddrSet(t *testing.T) {
 	harness.observe(a2, pa4)
 	harness.observe(a3, pa4)
 
-	// these are all different so we should not yet get them.
-	if !addrsMatch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should _still_ be empty (once)")
-	}
-
-	// same observer, so should not yet get them.
+	// get the address as none has been activated yet.
 	harness.observe(a1, pa4)
 	harness.observe(a2, pa4)
 	harness.observe(a3, pa4)
-	if !addrsMatch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should _still_ be empty (same obs)")
+
+	fmt.Println(harness.oas.Addrs())
+	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
+		t.Error("should get expected addresses as there are no activated addresses")
 	}
 
 	// different observer, but same observer group.
 	harness.observe(a1, pa5)
 	harness.observe(a2, pa5)
 	harness.observe(a3, pa5)
-	if !addrsMatch(harness.oas.Addrs(), nil) {
-		t.Error("addrs should _still_ be empty (same obs group)")
+	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
+		t.Error("should get expected addresses as there are no activated addresses")
 	}
 
 	harness.observe(a1, pb1)

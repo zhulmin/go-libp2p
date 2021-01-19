@@ -264,7 +264,7 @@ func (ar *AutoRelay) selectRelays(ctx context.Context, pis []peer.AddrInfo) []pe
 }
 
 // This function is computes the NATed relay addrs when our status is private:
-// - If hole punching is NOT enabled, public addresses are removed from the set.
+// - The public addrs are removed from the address set.
 // - The non-public addrs are included verbatim so that peers behind the same NAT/firewall
 //   can still dial us directly.
 // - On top of those, we add the relay-specific addrs for the relays to which we are
@@ -283,15 +283,12 @@ func (ar *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	}
 
 	raddrs := make([]ma.Multiaddr, 0, 4*len(ar.relays)+4)
-	if !ar.host.EnableHolePunching {
-		// only keep private addrs from the original addr set
-		for _, addr := range addrs {
-			if manet.IsPrivateAddr(addr) {
-				raddrs = append(raddrs, addr)
-			}
+
+	// only keep private addrs from the original addr set
+	for _, addr := range addrs {
+		if manet.IsPrivateAddr(addr) {
+			raddrs = append(raddrs, addr)
 		}
-	} else {
-		raddrs = append(raddrs, addrs...)
 	}
 
 	// add relay specific addrs to the list
