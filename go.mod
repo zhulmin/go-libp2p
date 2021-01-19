@@ -29,7 +29,7 @@ require (
 	github.com/libp2p/go-libp2p-noise v0.1.1
 	github.com/libp2p/go-libp2p-peerstore v0.2.6
 	github.com/libp2p/go-libp2p-quic-transport v0.10.0
-	github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210115045908-979b039460cf
+	github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210119090647-fca9031125ef
 	github.com/libp2p/go-libp2p-testing v0.4.0
 	github.com/libp2p/go-libp2p-tls v0.1.3
 	github.com/libp2p/go-libp2p-transport-upgrader v0.4.1-0.20210112104805-7891e47ff469

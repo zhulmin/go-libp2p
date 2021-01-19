@@ -372,6 +372,8 @@ github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210114085255-7d13adbf5056 h1:iMcKFA
 github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210114085255-7d13adbf5056/go.mod h1:B7niWRY1MOQx96Vm5u2p3QWXT7Cg0Xc6DWJre81YZVs=
 github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210115045908-979b039460cf h1:zx0NcGtm3AJeoJjYSPS+TItHfiyObbnsfuj58Sk2XmA=
 github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210115045908-979b039460cf/go.mod h1:B7niWRY1MOQx96Vm5u2p3QWXT7Cg0Xc6DWJre81YZVs=
+github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210119090647-fca9031125ef h1:gu70hTNXAOAAfa9U+j+F8LZ/5+0NFaQ1GV5T98G5Cuo=
+github.com/libp2p/go-libp2p-swarm v0.4.1-0.20210119090647-fca9031125ef/go.mod h1:B7niWRY1MOQx96Vm5u2p3QWXT7Cg0Xc6DWJre81YZVs=
 github.com/libp2p/go-libp2p-testing v0.0.2/go.mod h1:gvchhf3FQOtBdr+eFUABet5a4MBLK8jM3V4Zghvmi+E=
 github.com/libp2p/go-libp2p-testing v0.0.3/go.mod h1:gvchhf3FQOtBdr+eFUABet5a4MBLK8jM3V4Zghvmi+E=
 github.com/libp2p/go-libp2p-testing v0.0.4/go.mod h1:gvchhf3FQOtBdr+eFUABet5a4MBLK8jM3V4Zghvmi+E=
