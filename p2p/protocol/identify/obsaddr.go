@@ -191,9 +191,9 @@ func (oas *ObservedAddrManager) filter(observedAddrs []*observedAddr) []ma.Multi
 		}
 	}
 
-	// for certain use cases such as hole punching, it's better to advertise even unactivated observed addresses than none at all.
-	// we don't want to wait till we make enough connections with other peers to discover our activated addresses.
-	// if we have activated addresses, we will use them, otherwise, let's use whatever observed addresses we have.
+	// For certain use cases such as hole punching, it's better to advertise even unactivated observed addresses rather than none at all
+	// because we don't want to wait for a hole-punch till we make enough connections with other peers to discover our activated addresses.
+	// If we have activated addresses, we will use them, otherwise, let's use whatever observed addresses we do have.
 	if len(pmap) == 0 {
 		for i := range observedAddrs {
 			a := observedAddrs[i]

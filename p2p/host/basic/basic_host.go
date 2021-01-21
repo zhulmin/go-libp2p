@@ -114,8 +114,7 @@ type BasicHost struct {
 	signKey                 crypto.PrivKey
 	caBook                  peerstore.CertifiedAddrBook
 
-	AutoNat            autonat.AutoNAT
-	EnableHolePunching bool
+	AutoNat autonat.AutoNAT
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -223,7 +222,6 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 		return nil, fmt.Errorf("failed to create Identify service: %s", err)
 	}
 
-	h.EnableHolePunching = opts.EnableHolePunching
 	if opts.EnableHolePunching {
 		h.hps, err = holepunch.NewHolePunchService(h, h.ids)
 		if err != nil {

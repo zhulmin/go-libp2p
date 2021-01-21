@@ -39,10 +39,10 @@ import (
 // 2. If a peer sees a request to co-ordinate a hole punch on an outbound Relay connection,
 //    it will participate in the hole-punch to create a direct connection with the remote peer.
 //
-// If the hole punch is successful, all new streams will thereafter be created on the hole-punched connection and
-// the Relayed connection is scheduled to be closed after a grace period.
+// If the hole punch is successful, all new streams will thereafter be created on the hole-punched connection.
+// The Relayed connection will eventually be closed after a grace period.
 //
-// All indefinite long-lived streams on the Relayed connection will have to re-opened on the hole-punched connection by the user.
+// All existing indefinite long-lived streams on the Relayed connection will have to re-opened on the hole-punched connection by the user.
 // Users can make use of the `Connected`/`Disconnected` notifications emitted by the Network for this purpose.
 //
 // It is not mandatory but nice to also enable the `AutoRelay` option (See `EnableAutoRelay`)
