@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/gogo/protobuf v1.3.1
 	github.com/ipfs/go-cid v0.0.7
-	github.com/ipfs/go-datastore v0.4.4
+	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-ipfs-util v0.0.2
 	github.com/ipfs/go-log v1.0.4
@@ -17,8 +17,9 @@ require (
 	github.com/libp2p/go-libp2p-autonat v0.4.0
 	github.com/libp2p/go-libp2p-blankhost v0.2.0
 	github.com/libp2p/go-libp2p-circuit v0.4.0
-	github.com/libp2p/go-libp2p-core v0.8.0
+	github.com/libp2p/go-libp2p-core v0.8.1-0.20210127121730-7262bc034e1c
 	github.com/libp2p/go-libp2p-discovery v0.5.0
+	github.com/libp2p/go-libp2p-kad-dht v0.11.1
 	github.com/libp2p/go-libp2p-loggables v0.1.0
 	github.com/libp2p/go-libp2p-mplex v0.4.1
 	github.com/libp2p/go-libp2p-nat v0.0.6
@@ -44,5 +45,3 @@ require (
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 	google.golang.org/protobuf v1.23.0 // indirect
 )
-
-replace github.com/libp2p/go-libp2p-core => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-core
