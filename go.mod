@@ -44,3 +44,5 @@ require (
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
 	google.golang.org/protobuf v1.23.0 // indirect
 )
+
+replace github.com/libp2p/go-libp2p-core => /Users/aarshshah/go/src/github.com/libp2p/go-libp2p-core
