@@ -240,6 +240,7 @@ func (nn *netNotifiee) HolePunchService() *HolePunchService {
 	return (*HolePunchService)(nn)
 }
 
+// TODO FIX For some reason, we see two such notifications for inbound proxy connections.
 func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	hs := nn.HolePunchService()
 	dir := v.Stat().Direction
@@ -247,7 +248,7 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
 	if dir == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
-		log.Infof("got inbound proxy conn from peer %s", v.RemotePeer().String())
+		log.Infof("got inbound proxy conn from peer %s, connection is %v", v.RemotePeer().String(), v)
 		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
