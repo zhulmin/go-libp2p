@@ -30,6 +30,7 @@ var (
 	log = logging.Logger("p2p/holepunch")
 )
 
+// TODO Find a better name for this protocol.
 // HolePunchService is used to make direct connections with a peer via hole-punching.
 type HolePunchService struct {
 	ctx       context.Context
@@ -76,7 +77,7 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 			defer cancel()
 			if err := hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp}); err == nil {
-				log.Infof("direct connection to peer %s successful, no need for a hole punch", rp.Pretty())
+				log.Debugf("direct connection to peer %s successful, no need for a hole punch", rp.Pretty())
 				return
 			}
 			break
@@ -248,7 +249,7 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
 	if dir == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
-		log.Infof("got inbound proxy conn from peer %s, connection is %v", v.RemotePeer().String(), v)
+		log.Debugf("got inbound proxy conn from peer %s, connection is %v", v.RemotePeer().String(), v)
 		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
