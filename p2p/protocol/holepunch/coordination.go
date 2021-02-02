@@ -83,6 +83,7 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 		}
 	}
 
+	log.Infof("will attempt hole punch with peer %s", rp.Pretty())
 	// hole punch
 	s, err := hs.host.NewStream(hs.ctx, rp, protocol)
 	if err != nil {
@@ -146,6 +147,7 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 }
 
 func (hs *HolePunchService) handleNewStream(s network.Stream) {
+	log.Infof("got hole punch request from peer %s", s.Conn().RemotePeer().Pretty())
 	_ = s.SetDeadline(time.Now().Add(holePunchTimeout))
 	rp := s.Conn().RemotePeer()
 	wr := protoio.NewDelimitedWriter(s)
@@ -198,7 +200,12 @@ func (hs *HolePunchService) holePunchConnectWithBackoff(pi peer.AddrInfo) {
 	defer cancel()
 	err := hs.host.Connect(dialCtx, pi)
 	if err == nil {
-		log.Infof("hole punch with peer %s successful", pi.ID.Pretty())
+		log.Infof("hole punch with peer %s successful, direct conns to peer are:", pi.ID.Pretty())
+		for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
+			if !isRelayAddress(c.RemoteMultiaddr()) {
+				log.Info(c)
+			}
+		}
 		return
 	}
 
@@ -215,7 +222,12 @@ func (hs *HolePunchService) holePunchConnectWithBackoff(pi peer.AddrInfo) {
 		time.Sleep(b.Duration())
 		err = hs.host.Connect(dialCtx, pi)
 		if err == nil {
-			log.Infof("hole punch with peer %s successful", pi.ID.Pretty())
+			log.Infof("hole punch with peer %s successful after retry, direct conns to peer are:", pi.ID.Pretty())
+			for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
+				if !isRelayAddress(c.RemoteMultiaddr()) {
+					log.Info(c)
+				}
+			}
 			return
 		}
 	}
@@ -235,6 +247,7 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
 	if dir == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
+		log.Infof("got inbound proxy conn from peer %s", v.RemotePeer().String())
 		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
@@ -251,7 +264,10 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	}
 }
 
-func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn)   {}
+func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn) {
+	log.Infof("disconnected with peer %s", v.RemotePeer().Pretty())
+}
+
 func (nn *netNotifiee) OpenedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)         {}
