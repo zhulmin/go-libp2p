@@ -411,7 +411,7 @@ func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 	case ev := <-sub.Out():
 		evt := ev.(event.EvtNATDeviceTypeChanged)
 		require.Equal(t, network.NATDeviceTypeSymmetric, evt.NatDeviceType)
-		require.Equal(t, event.NATTransportTCP, evt.TransportProtocol)
+		require.Equal(t, network.NATTransportTCP, evt.TransportProtocol)
 	case <-time.After(5 * time.Second):
 		t.Fatal("did not get Symmetric NAT event")
 	}
