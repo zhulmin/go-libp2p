@@ -84,13 +84,12 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 		}
 	}
 
-	log.Infof("will attempt hole punch with peer %s", rp.Pretty())
 	// hole punch
 	s, err := hs.host.NewStream(hs.ctx, rp, protocol)
 	if err != nil {
-		log.Errorf("initiator failed to open hole punching stream to peer %s, err: %s", rp, err)
 		return
 	}
+	log.Infof("will attempt hole punch with peer %s", rp.Pretty())
 	_ = s.SetDeadline(time.Now().Add(holePunchTimeout))
 	w := protoio.NewDelimitedWriter(s)
 
