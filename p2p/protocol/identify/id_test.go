@@ -126,6 +126,21 @@ func subtestIDService(t *testing.T) {
 	testHasCertifiedAddrs(t, h1, h2p, []ma.Multiaddr{})
 	testHasCertifiedAddrs(t, h2, h1p, []ma.Multiaddr{})
 
+	// test we have the TCP & UDP NAT Device Types on both sides
+	udp, err := h1.Peerstore().Get(h2p, identify.UDPNATDeviceTypeKey)
+	require.NoError(t, err)
+	require.Equal(t, network.NATDeviceTypeUnknown, udp.(network.NATDeviceType))
+	tcp, err := h1.Peerstore().Get(h2p, identify.TCPNATDeviceTypeKey)
+	require.NoError(t, err)
+	require.Equal(t, network.NATDeviceTypeUnknown, tcp.(network.NATDeviceType))
+
+	udp, err = h2.Peerstore().Get(h1p, identify.UDPNATDeviceTypeKey)
+	require.NoError(t, err)
+	require.Equal(t, network.NATDeviceTypeUnknown, udp.(network.NATDeviceType))
+	tcp, err = h2.Peerstore().Get(h1p, identify.TCPNATDeviceTypeKey)
+	require.NoError(t, err)
+	require.Equal(t, network.NATDeviceTypeUnknown, tcp.(network.NATDeviceType))
+
 	// test that we received the "identify completed" event.
 	select {
 	case <-sub.Out():

@@ -7,6 +7,7 @@ import (
 
 	logging "github.com/ipfs/go-log"
 	"github.com/jpillora/backoff"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -49,9 +50,53 @@ func NewHolePunchService(h host.Host, ids *identify.IDService) (*HolePunchServic
 	ctx, cancel := context.WithCancel(context.Background())
 	hs := &HolePunchService{ctx: ctx, ctxCancel: cancel, host: h, ids: ids}
 
+	sub, err := h.EventBus().Subscribe(new(event.EvtNATDeviceTypeChanged))
+	if err != nil {
+		return nil, err
+	}
+
 	h.SetStreamHandler(protocol, hs.handleNewStream)
 	h.Network().Notify((*netNotifiee)(hs))
+
+	hs.refCount.Add(1)
+	go hs.loop(sub)
+
 	return hs, nil
+}
+
+func (hs *HolePunchService) loop(sub event.Subscription) {
+	defer hs.refCount.Done()
+	defer sub.Close()
+
+	for {
+		select {
+		case _, ok := <-sub.Out():
+			if !ok {
+				return
+			}
+
+			if hs.peerSupportsHolePunching(hs.host.ID(), hs.host.Addrs()) {
+				hs.host.SetStreamHandler(protocol, hs.handleNewStream)
+				hs.host.Network().Notify((*netNotifiee)(hs))
+			} else {
+				hs.host.Network().StopNotify((*netNotifiee)(hs))
+				hs.host.RemoveStreamHandler(protocol)
+			}
+
+		case <-hs.ctx.Done():
+			return
+		}
+	}
+}
+
+func hasProtoAddr(protocCode int, addrs []ma.Multiaddr) bool {
+	for _, a := range addrs {
+		if _, err := a.ValueForProtocol(protocCode); err == nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Close closes the Hole Punch Service.
@@ -234,6 +279,30 @@ func (hs *HolePunchService) holePunchConnectWithBackoff(pi peer.AddrInfo) {
 	log.Errorf("hole punch with peer %s failed, err: %s", pi.ID.Pretty(), err)
 }
 
+// We can hole punch with a peer ONLY if it is NOT behind a symmetric NAT for all the transport protocol it supports.
+func (hs *HolePunchService) peerSupportsHolePunching(p peer.ID, addrs []ma.Multiaddr) bool {
+	udpSupported := hasProtoAddr(ma.P_UDP, addrs)
+	tcpSupported := hasProtoAddr(ma.P_TCP, addrs)
+	udpNAT, _ := hs.host.Peerstore().Get(p, identify.UDPNATDeviceTypeKey)
+	tcpNAT, _ := hs.host.Peerstore().Get(p, identify.TCPNATDeviceTypeKey)
+	udpNatType := udpNAT.(network.NATDeviceType)
+	tcpNATType := tcpNAT.(network.NATDeviceType)
+
+	if udpSupported {
+		if udpNatType == network.NATDeviceTypeCone || udpNatType == network.NATDeviceTypeUnknown {
+			return true
+		}
+	}
+
+	if tcpSupported {
+		if tcpNATType == network.NATDeviceTypeCone || tcpNATType == network.NATDeviceTypeUnknown {
+			return true
+		}
+	}
+
+	return false
+}
+
 type netNotifiee HolePunchService
 
 func (nn *netNotifiee) HolePunchService() *HolePunchService {
@@ -259,8 +328,12 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 			case <-hs.ctx.Done():
 				return
 			}
-			nn.HolePunchService().holePunch(v)
+
+			if hs.peerSupportsHolePunching(v.RemotePeer(), hs.host.Peerstore().Addrs(v.RemotePeer())) {
+				nn.HolePunchService().holePunch(v)
+			}
 		}()
+
 		return
 	}
 }

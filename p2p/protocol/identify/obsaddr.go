@@ -143,6 +143,13 @@ func NewObservedAddrManager(ctx context.Context, host host.Host) (*ObservedAddrM
 	return oas, nil
 }
 
+func (oas *ObservedAddrManager) getNATDeviceTypes() (udp, tcp network.NATDeviceType) {
+	oas.mu.RLock()
+	defer oas.mu.RUnlock()
+
+	return oas.currentUDPNATDeviceType, oas.currentTCPNATDeviceType
+}
+
 // AddrsFor return all activated observed addresses associated with the given
 // (resolved) listen address.
 func (oas *ObservedAddrManager) AddrsFor(addr ma.Multiaddr) (addrs []ma.Multiaddr) {
@@ -469,11 +476,13 @@ func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
 
 	hasChanged, natType := oas.emitNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType)
 	if hasChanged {
+		oas.host.Peerstore().Put(oas.host.ID(), TCPNATDeviceTypeKey, natType)
 		oas.currentTCPNATDeviceType = natType
 	}
 
 	hasChanged, natType = oas.emitNATType(allObserved, ma.P_UDP, network.NATTransportUDP, oas.currentUDPNATDeviceType)
 	if hasChanged {
+		oas.host.Peerstore().Put(oas.host.ID(), UDPNATDeviceTypeKey, natType)
 		oas.currentUDPNATDeviceType = natType
 	}
 }
