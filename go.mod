@@ -41,7 +41,7 @@ require (
 	github.com/libp2p/go-tcp-transport v0.2.1
 	github.com/libp2p/go-ws-transport v0.4.0
 	github.com/miekg/dns v1.1.31 // indirect
-	github.com/multiformats/go-multiaddr v0.3.1
+	github.com/multiformats/go-multiaddr v0.3.2-0.20210121092939-900a4d7ebbca
 	github.com/multiformats/go-multiaddr-dns v0.2.0
 	github.com/multiformats/go-multistream v0.2.1-0.20210121060916-85f04aad069c
 	github.com/onsi/ginkgo v1.14.0 // indirect
