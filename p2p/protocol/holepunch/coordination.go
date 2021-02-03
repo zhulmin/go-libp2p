@@ -77,9 +77,7 @@ func (hs *HolePunchService) loop(sub event.Subscription) {
 
 			if hs.peerSupportsHolePunching(hs.host.ID(), hs.host.Addrs()) {
 				hs.host.SetStreamHandler(protocol, hs.handleNewStream)
-				hs.host.Network().Notify((*netNotifiee)(hs))
 			} else {
-				hs.host.Network().StopNotify((*netNotifiee)(hs))
 				hs.host.RemoveStreamHandler(protocol)
 			}
 
@@ -127,6 +125,12 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 			}
 			break
 		}
+	}
+
+	// return if either peer does NOT support hole punching
+	if !hs.peerSupportsHolePunching(rp, hs.host.Peerstore().Addrs(rp)) ||
+		!hs.peerSupportsHolePunching(hs.host.ID(), hs.host.Addrs()) {
+		return
 	}
 
 	// hole punch
@@ -329,9 +333,7 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 				return
 			}
 
-			if hs.peerSupportsHolePunching(v.RemotePeer(), hs.host.Peerstore().Addrs(v.RemotePeer())) {
-				nn.HolePunchService().holePunch(v)
-			}
+			nn.HolePunchService().holePunch(v)
 		}()
 
 		return
