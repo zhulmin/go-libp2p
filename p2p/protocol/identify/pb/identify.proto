@@ -12,9 +12,9 @@ message Delta {
 message Identify {
 
   enum NATDeviceType {
-    UNKNOWN = 100;
-    CONE = 200;
-    SYMMETRIC = 300;
+    UNKNOWN = 0;
+    CONE = 1;
+    SYMMETRIC = 2;
   }
 
   // protocolVersion determines compatibility between peers
@@ -51,5 +51,6 @@ message Identify {
   optional bytes signedPeerRecord = 8;
 
   optional NATDeviceType tcpNATDeviceType = 10;
+
   optional NATDeviceType udpNATDeviceType = 11;
 }

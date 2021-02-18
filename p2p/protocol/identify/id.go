@@ -43,9 +43,9 @@ const LibP2PVersion = "ipfs/0.1.0"
 
 const (
 	// UDPNATDeviceTypeKey is the key with which we will persist a peer's UDP NAT Device Type to the peerstore.
-	UDPNATDeviceTypeKey = "UdpNATDeviceType"
+	UDPNATDeviceTypeKey = "UDPNATDeviceType"
 	// TCPNATDeviceTypeKey is the key with which we will persist a peer's TCP NAT Device Type to the peerstore.
-	TCPNATDeviceTypeKey = "TcpNATDeviceType"
+	TCPNATDeviceTypeKey = "TCPNATDeviceType"
 )
 
 // ClientVersion is the default user agent.
