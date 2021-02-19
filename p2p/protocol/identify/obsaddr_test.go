@@ -3,12 +3,6 @@ package identify_test
 import (
 	"context"
 	"fmt"
-	detectrace "github.com/ipfs/go-detect-race"
-	"github.com/libp2p/go-eventbus"
-	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/network"
-	ma "github.com/multiformats/go-multiaddr"
-	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +16,7 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
+	detectrace "github.com/ipfs/go-detect-race"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
