@@ -185,13 +185,6 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 		return nil, err
 	}
 
-	if opts.EnableHolePunching {
-		h.hps, err = holepunch.NewHolePunchService(h, h.ids)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
-		}
-	}
-
 	if !h.disableSignedPeerRecord {
 		cab, ok := peerstore.GetCertifiedAddrBook(n.Peerstore())
 		if !ok {
@@ -227,6 +220,13 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Identify service: %s", err)
+	}
+
+	if opts.EnableHolePunching {
+		h.hps, err = holepunch.NewHolePunchService(h, h.ids)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
+		}
 	}
 
 	if uint64(opts.NegotiationTimeout) != 0 {
