@@ -188,7 +188,8 @@ func (ph *peerHandler) openStream(ctx context.Context, protos []string) (network
 
 	// newstream will open a stream on the first protocol the remote peer supports from the among
 	// the list of protocols passed to it.
-	s, err := ph.ids.Host.NewStream(ctx, ph.pid, protocol.ConvertFromStrings(protos)...)
+	sCtx := network.WithUseTransient(ctx, "identify-peer-loop")
+	s, err := ph.ids.Host.NewStream(sCtx, ph.pid, protocol.ConvertFromStrings(protos)...)
 	if err != nil {
 		return nil, err
 	}
