@@ -113,9 +113,11 @@ type ObservedAddrManager struct {
 	// this is the worker channel
 	wch chan newObservation
 
-	currentUDPNATDeviceType network.NATDeviceType
-	currentTCPNATDeviceType network.NATDeviceType
+	reachabilitySub event.Subscription
+	reachability    network.Reachability
 
+	currentUDPNATDeviceType  network.NATDeviceType
+	currentTCPNATDeviceType  network.NATDeviceType
 	emitNATDeviceTypeChanged event.Emitter
 }
 
@@ -131,6 +133,12 @@ func NewObservedAddrManager(ctx context.Context, host host.Host) (*ObservedAddrM
 		// refresh every ttl/2 so we don't forget observations from connected peers
 		refreshTimer: time.NewTimer(peerstore.OwnObservedAddrTTL / 2),
 	}
+
+	reachabilitySub, err := host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to reachability event: %s", err)
+	}
+	oas.reachabilitySub = reachabilitySub
 
 	emitter, err := host.EventBus().Emitter(new(event.EvtNATDeviceTypeChanged), eventbus.Stateful)
 	if err != nil {
@@ -179,8 +187,8 @@ func (oas *ObservedAddrManager) Addrs() []ma.Multiaddr {
 	}
 
 	var allObserved []*observedAddr
-	for k := range oas.addrs {
-		allObserved = append(allObserved, oas.addrs[k]...)
+	for _, addrs := range oas.addrs {
+		allObserved = append(allObserved, addrs...)
 	}
 	return oas.filter(allObserved)
 }
@@ -256,6 +264,7 @@ func (oas *ObservedAddrManager) Record(conn network.Conn, observed ma.Multiaddr)
 
 func (oas *ObservedAddrManager) teardown() {
 	oas.host.Network().StopNotify((*obsAddrNotifiee)(oas))
+	oas.reachabilitySub.Close()
 
 	oas.mu.Lock()
 	oas.refreshTimer.Stop()
@@ -269,11 +278,19 @@ func (oas *ObservedAddrManager) worker(ctx context.Context) {
 	defer ticker.Stop()
 
 	hostClosing := oas.host.Network().Process().Closing()
+	subChan := oas.reachabilitySub.Out()
 	for {
 		select {
+		case evt, ok := <-subChan:
+			if !ok {
+				subChan = nil
+				continue
+			}
+			ev := evt.(event.EvtLocalReachabilityChanged)
+			oas.reachability = ev.Reachability
+
 		case obs := <-oas.wch:
 			oas.maybeRecordObservation(obs.conn, obs.observed)
-
 		case <-ticker.C:
 			oas.gc()
 		case <-oas.refreshTimer.C:
@@ -368,7 +385,6 @@ func (oas *ObservedAddrManager) removeConn(conn network.Conn) {
 }
 
 func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observed ma.Multiaddr) {
-
 	// First, determine if this observation is even worth keeping...
 
 	// Ignore observations from loopback nodes. We already know our loopback
@@ -412,7 +428,10 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 	oas.mu.Lock()
 	defer oas.mu.Unlock()
 	oas.recordObservationUnlocked(conn, observed)
-	oas.emitNATTypeUnlocked()
+
+	if oas.reachability == network.ReachabilityPrivate {
+		oas.emitAllNATTypes()
+	}
 }
 
 func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, observed ma.Multiaddr) {
@@ -468,35 +487,32 @@ func (oas *ObservedAddrManager) recordObservationUnlocked(conn network.Conn, obs
 //
 // Please see the documentation on the enumerations for `network.NATDeviceType` for more details about these NAT Device types
 // and how they relate to NAT traversal via Hole Punching.
-func (oas *ObservedAddrManager) emitNATTypeUnlocked() {
+func (oas *ObservedAddrManager) emitAllNATTypes() {
 	var allObserved []*observedAddr
-	for k := range oas.addrs {
-		allObserved = append(allObserved, oas.addrs[k]...)
+	for _, addrs := range oas.addrs {
+		allObserved = append(allObserved, addrs...)
 	}
 
-	hasChanged, natType := oas.emitNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType)
+	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType)
 	if hasChanged {
-		oas.host.Peerstore().Put(oas.host.ID(), TCPNATDeviceTypeKey, natType)
 		oas.currentTCPNATDeviceType = natType
 	}
 
-	hasChanged, natType = oas.emitNATType(allObserved, ma.P_UDP, network.NATTransportUDP, oas.currentUDPNATDeviceType)
+	hasChanged, natType = oas.emitSpecificNATType(allObserved, ma.P_UDP, network.NATTransportUDP, oas.currentUDPNATDeviceType)
 	if hasChanged {
-		oas.host.Peerstore().Put(oas.host.ID(), UDPNATDeviceTypeKey, natType)
 		oas.currentUDPNATDeviceType = natType
 	}
 }
 
 // returns true along with the new NAT device type if the NAT device type for the given protocol has changed.
 // returns false otherwise.
-func (oas *ObservedAddrManager) emitNATType(addrs []*observedAddr, protoCode int, transportProto network.NATTransportProtocol,
+func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, protoCode int, transportProto network.NATTransportProtocol,
 	currentNATType network.NATDeviceType) (bool, network.NATDeviceType) {
 	now := time.Now()
 	seenBy := make(map[string]struct{})
 	cnt := 0
 
-	for i := range addrs {
-		oa := addrs[i]
+	for _, oa := range addrs {
 		_, err := oa.addr.ValueForProtocol(protoCode)
 		if err != nil {
 			continue
@@ -519,7 +535,7 @@ func (oas *ObservedAddrManager) emitNATType(addrs []*observedAddr, protoCode int
 		// An observed address on an outbound connection that has ONLY been seen by one peer
 		if now.Sub(oa.lastSeen) <= oas.ttl && oa.numInbound == 0 && len(oa.seenBy) == 1 {
 			cnt++
-			for s, _ := range oa.seenBy {
+			for s := range oa.seenBy {
 				seenBy[s] = struct{}{}
 			}
 		}

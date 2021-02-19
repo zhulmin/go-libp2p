@@ -3,11 +3,17 @@ package identify_test
 import (
 	"context"
 	"fmt"
+	detectrace "github.com/ipfs/go-detect-race"
+	"github.com/libp2p/go-eventbus"
+	"github.com/libp2p/go-libp2p-core/event"
+	"github.com/libp2p/go-libp2p-core/network"
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
 	"time"
 
-	detectrace "github.com/ipfs/go-detect-race"
+	"github.com/libp2p/go-eventbus"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -381,6 +387,10 @@ func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 	harness := newHarness(ctx, t)
 	require.Empty(t, harness.oas.Addrs())
 
+	emitter, err := harness.host.EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	require.NoError(t, err)
+	require.NoError(t, emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate}))
+
 	// TCP
 	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
 	it2 := ma.StringCast("/ip4/1.2.3.4/tcp/1232")
@@ -423,6 +433,10 @@ func TestEmitNATDeviceTypeCone(t *testing.T) {
 	defer cancel()
 	harness := newHarness(ctx, t)
 	require.Empty(t, harness.oas.Addrs())
+
+	emitter, err := harness.host.EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	require.NoError(t, err)
+	require.NoError(t, emitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate}))
 
 	it1 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")
 	it2 := ma.StringCast("/ip4/1.2.3.4/tcp/1231")

@@ -3,7 +3,7 @@ module github.com/libp2p/go-libp2p
 go 1.12
 
 require (
-	github.com/gogo/protobuf v1.3.2
+	github.com/gogo/protobuf v1.3.1
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-detect-race v0.0.1
@@ -42,4 +42,5 @@ require (
 	github.com/multiformats/go-multistream v0.2.1
 	github.com/stretchr/testify v1.6.1
 	github.com/whyrusleeping/mdns v0.0.0-20190826153040-b9b60ed33aa9
+	go.uber.org/zap v1.16.0 // indirect
 )
