@@ -421,6 +421,11 @@ func TestEmitNATDeviceTypeSymmetric(t *testing.T) {
 		t.Fatal("did not get Symmetric NAT event")
 	}
 
+	natType, err := harness.host.Peerstore().Get(harness.host.ID(), identify.TCPNATDeviceTypeKey)
+	require.NoError(t, err)
+
+	require.Equal(t, network.NATDeviceTypeSymmetric, natType.(network.NATDeviceType))
+
 }
 
 func TestEmitNATDeviceTypeCone(t *testing.T) {
@@ -465,4 +470,9 @@ func TestEmitNATDeviceTypeCone(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("did not get Cone NAT event")
 	}
+
+	natType, err := harness.host.Peerstore().Get(harness.host.ID(), identify.TCPNATDeviceTypeKey)
+	require.NoError(t, err)
+
+	require.Equal(t, network.NATDeviceTypeCone, natType.(network.NATDeviceType))
 }
