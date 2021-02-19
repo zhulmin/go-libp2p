@@ -550,16 +550,16 @@ func (ids *IDService) createBaseIdentifyResponse(
 	mes.ProtocolVersion = &pv
 	mes.AgentVersion = &av
 	udpNAT, tcpNAT := ids.observedAddrs.getNATDeviceTypes()
-	udpNATPb := toPbNATDeviceTyp(udpNAT)
-	tcpNATPb := toPbNATDeviceTyp(tcpNAT)
+	udpNATPb := toPbNATDeviceType(udpNAT)
+	tcpNATPb := toPbNATDeviceType(tcpNAT)
 	mes.UdpNATDeviceType = &udpNATPb
 	mes.TcpNATDeviceType = &tcpNATPb
 
 	return mes
 }
 
-func toPbNATDeviceTyp(typ network.NATDeviceType) pb.Identify_NATDeviceType {
-	switch typ {
+func toPbNATDeviceType(t network.NATDeviceType) pb.Identify_NATDeviceType {
+	switch t {
 	case network.NATDeviceTypeCone:
 		return pb.Identify_CONE
 	case network.NATDeviceTypeSymmetric:
