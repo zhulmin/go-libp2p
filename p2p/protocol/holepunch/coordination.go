@@ -10,7 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
-	holepunch_pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
+	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -21,13 +21,13 @@ import (
 const (
 	protocol         = "/libp2p/holepunch/1.0.0"
 	maxMsgSize       = 4 * 1024 // 4K
-	holePunchTimeout = 2 * time.Minute
-	dialTimeout      = 60 * time.Second
+	holePunchTimeout = 1 * time.Minute
+	dialTimeout      = 10 * time.Second
 	maxRetries       = 4
 )
 
 var (
-	log = logging.Logger("p2p/holepunch")
+	log = logging.Logger("p2p-holepunch")
 )
 
 // TODO Find a better name for this protocol.
@@ -86,8 +86,10 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 
 	// hole punch
 	hpCtx := network.WithUseTransient(hs.ctx, "hole-punch")
-	s, err := hs.host.NewStream(hpCtx, rp, protocol)
+	sCtx := network.WithNoDial(hpCtx, "hole-punch")
+	s, err := hs.host.NewStream(sCtx, rp, protocol)
 	if err != nil {
+		log.Errorf("failed to open hole-punching stream with peer %s, err: %s", rp, err)
 		return
 	}
 	log.Infof("will attempt hole punch with peer %s", rp.Pretty())
@@ -222,6 +224,10 @@ func (hs *HolePunchService) holePunchConnectWithBackoff(pi peer.AddrInfo) {
 	}
 	for b.Attempt() < maxRetries {
 		time.Sleep(b.Duration())
+
+		dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
+		defer cancel()
+
 		err = hs.host.Connect(dialCtx, pi)
 		if err == nil {
 			log.Infof("hole punch with peer %s successful after retry, direct conns to peer are:", pi.ID.Pretty())
