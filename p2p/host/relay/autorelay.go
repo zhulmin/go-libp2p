@@ -7,12 +7,13 @@ import (
 	"sync"
 	"time"
 
+	circuitv2client "github.com/libp2p/go-libp2p-circuit/v2/client"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/routing"
 
-	circuit "github.com/libp2p/go-libp2p-circuit"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 
@@ -30,15 +31,9 @@ var (
 	BootDelay = 20 * time.Second
 )
 
-// These are the known PL-operated relays
-var DefaultRelays = []string{
-	"/ip4/147.75.80.110/tcp/4001/p2p/QmbFgm5zan8P6eWWmeyfncR5feYEMPbht5b1FW1C37aQ7y",
-	"/ip4/147.75.80.110/udp/4001/quic/p2p/QmbFgm5zan8P6eWWmeyfncR5feYEMPbht5b1FW1C37aQ7y",
-	"/ip4/147.75.195.153/tcp/4001/p2p/QmW9m57aiBDHAkKj9nmFSEn7ZqrcF1fZS4bipsTCHburei",
-	"/ip4/147.75.195.153/udp/4001/quic/p2p/QmW9m57aiBDHAkKj9nmFSEn7ZqrcF1fZS4bipsTCHburei",
-	"/ip4/147.75.70.221/tcp/4001/p2p/Qme8g49gm3q4Acp7xWBKg3nAa9fxZ1YmyDJdyGgoG6LsXh",
-	"/ip4/147.75.70.221/udp/4001/quic/p2p/Qme8g49gm3q4Acp7xWBKg3nAa9fxZ1YmyDJdyGgoG6LsXh",
-}
+// These are the known PL-operated V2 relays
+// TODO Fill this up
+var DefaultV2Relays = []string{}
 
 // AutoRelay is a Host that uses relays for connectivity when a NAT is detected.
 type AutoRelay struct {
@@ -196,16 +191,13 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 		return false
 	}
 
-	ok, err := circuit.CanHop(ctx, ar.host, pi.ID)
+	rsv, err := circuitv2client.Reserve(ctx, ar.host, pi)
 	if err != nil {
-		log.Debugf("error querying relay: %s", err.Error())
+		log.Debugf("error reserving slot on relay: %s", err.Error())
 		return false
 	}
 
-	if !ok {
-		// not a hop relay
-		return false
-	}
+	ar.host.Peerstore().AddAddrs(pi.ID, rsv.Relay.Addrs, peerstore.ConnectedAddrTTL)
 
 	ar.mx.Lock()
 	defer ar.mx.Unlock()
@@ -215,6 +207,7 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 		return false
 	}
 	ar.relays[pi.ID] = struct{}{}
+	ar.host.ConnManager().Protect(pi.ID, "relay")
 
 	return true
 }
@@ -224,6 +217,10 @@ func (ar *AutoRelay) connect(ctx context.Context, pi peer.AddrInfo) bool {
 	defer cancel()
 
 	if len(pi.Addrs) == 0 {
+		if ar.router == nil {
+			log.Debug("cannot find relay addrs as router is NOT configured")
+			return false
+		}
 		var err error
 		pi, err = ar.router.FindPeer(ctx, pi.ID)
 		if err != nil {
@@ -333,6 +330,7 @@ func (ar *AutoRelay) Disconnected(net network.Network, c network.Conn) {
 		return
 	}
 
+	ar.host.ConnManager().Unprotect(p, "relay")
 	if _, ok := ar.relays[p]; ok {
 		delete(ar.relays, p)
 		select {
