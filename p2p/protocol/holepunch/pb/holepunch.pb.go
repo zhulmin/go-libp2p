@@ -65,8 +65,8 @@ func (HolePunch_Type) EnumDescriptor() ([]byte, []int) {
 type HolePunch struct {
 	Type *HolePunch_Type `protobuf:"varint,1,opt,name=type,enum=holepunch.pb.HolePunch_Type" json:"type,omitempty"`
 	// For hole punching, we'll send some additional observed addresses to the remote peer
-	// that could have been filtered by the Host address factory.
-	// This is a hack.
+	// that could have been filtered by the Host address factory (for example: AutoRelay removes all public addresses if peer has private reachability).
+	// This is a hack!
 	// We plan to have a better address discovery and advertisement mechanism in the future.
 	// See https://github.com/libp2p/go-libp2p-autonat/pull/98
 	ObsAddrs             [][]byte `protobuf:"bytes,2,rep,name=ObsAddrs" json:"ObsAddrs,omitempty"`
