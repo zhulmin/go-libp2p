@@ -10,7 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
+	pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -97,8 +97,8 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 	w := protoio.NewDelimitedWriter(s)
 
 	// send a CONNECT and start RTT measurement
-	msg := new(holepunch_pb.HolePunch)
-	msg.Type = holepunch_pb.HolePunch_CONNECT.Enum()
+	msg := new(pb.HolePunch)
+	msg.Type = pb.HolePunch_CONNECT.Enum()
 	msg.ObsAddrs = addrsToBytes(hs.ids.OwnObservedAddrs())
 	if err := w.WriteMsg(msg); err != nil {
 		s.Reset()
@@ -115,7 +115,7 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 		log.Errorf("failed to read connect message from remote peer, err: %s", err)
 		return
 	}
-	if msg.GetType() != holepunch_pb.HolePunch_CONNECT {
+	if msg.GetType() != pb.HolePunch_CONNECT {
 		s.Reset()
 		log.Debugf("expectd HolePunch_CONNECT message, got %s", msg.GetType())
 		return
@@ -125,7 +125,7 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 
 	// send a SYNC message and attempt a direct connect after half the RTT
 	msg.Reset()
-	msg.Type = holepunch_pb.HolePunch_SYNC.Enum()
+	msg.Type = pb.HolePunch_SYNC.Enum()
 	if err := w.WriteMsg(msg); err != nil {
 		s.Reset()
 		log.Errorf("failed to send SYNC message for hole punching, err: %s", err)
@@ -158,12 +158,12 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	rd := protoio.NewDelimitedReader(s, maxMsgSize)
 
 	// Read Connect message
-	msg := new(holepunch_pb.HolePunch)
+	msg := new(pb.HolePunch)
 	if err := rd.ReadMsg(msg); err != nil {
 		s.Reset()
 		return
 	}
-	if msg.GetType() != holepunch_pb.HolePunch_CONNECT {
+	if msg.GetType() != pb.HolePunch_CONNECT {
 		s.Reset()
 		return
 	}
@@ -171,7 +171,7 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 
 	// Write CONNECT message
 	msg.Reset()
-	msg.Type = holepunch_pb.HolePunch_CONNECT.Enum()
+	msg.Type = pb.HolePunch_CONNECT.Enum()
 	msg.ObsAddrs = addrsToBytes(hs.ids.OwnObservedAddrs())
 	if err := wr.WriteMsg(msg); err != nil {
 		s.Reset()
@@ -184,7 +184,7 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 		s.Reset()
 		return
 	}
-	if msg.GetType() != holepunch_pb.HolePunch_SYNC {
+	if msg.GetType() != pb.HolePunch_SYNC {
 		s.Reset()
 		return
 	}
