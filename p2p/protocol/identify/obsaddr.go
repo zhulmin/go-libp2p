@@ -495,11 +495,13 @@ func (oas *ObservedAddrManager) emitAllNATTypes() {
 
 	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType)
 	if hasChanged {
+		oas.host.Peerstore().Put(oas.host.ID(), TCPNATDeviceTypeKey, natType)
 		oas.currentTCPNATDeviceType = natType
 	}
 
 	hasChanged, natType = oas.emitSpecificNATType(allObserved, ma.P_UDP, network.NATTransportUDP, oas.currentUDPNATDeviceType)
 	if hasChanged {
+		oas.host.Peerstore().Put(oas.host.ID(), UDPNATDeviceTypeKey, natType)
 		oas.currentUDPNATDeviceType = natType
 	}
 }
