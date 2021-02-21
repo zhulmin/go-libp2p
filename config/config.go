@@ -25,7 +25,7 @@ import (
 
 	autonat "github.com/libp2p/go-libp2p-autonat"
 	blankhost "github.com/libp2p/go-libp2p-blankhost"
-	circuitv2client "github.com/libp2p/go-libp2p-circuit/v2/client"
+	circuitv2 "github.com/libp2p/go-libp2p-circuit/v2/client"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 
@@ -90,7 +90,7 @@ type Config struct {
 
 	EnableAutoRelay bool
 	AutoNATConfig
-	StaticV2Relays []peer.AddrInfo
+	StaticRelays []peer.AddrInfo
 
 	EnableHolePunching bool
 }
@@ -167,7 +167,7 @@ func (cfg *Config) addTransports(ctx context.Context, h host.Host) (err error) {
 	}
 
 	if cfg.Relay {
-		err := circuitv2client.AddTransport(ctx, h, upgrader)
+		err := circuitv2.AddTransport(ctx, h, upgrader)
 		if err != nil {
 			h.Close()
 			return err
@@ -256,8 +256,8 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 			return nil, fmt.Errorf("cannot enable autorelay; relay is not enabled")
 		}
 
-		if len(cfg.StaticV2Relays) > 0 {
-			_ = relay.NewAutoRelay(ctx, h, nil, router, cfg.StaticV2Relays)
+		if len(cfg.StaticRelays) > 0 {
+			_ = relay.NewAutoRelay(ctx, h, nil, router, cfg.StaticRelays)
 		} else {
 			return nil, errors.New("need to configure v2 Relays to use for AutoRelay")
 		}

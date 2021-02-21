@@ -241,19 +241,19 @@ func EnableAutoRelay() Option {
 	}
 }
 
-// StaticV2Relays configures known v2 Relays for autorelay;
+// StaticRelays configures known v2 Relays for autorelay;
 // V2 Relays are Limited Relays as opposed to V1 Relays which are unlimited Relays.
-func StaticV2Relays(relays []peer.AddrInfo) Option {
+func StaticRelays(relays []peer.AddrInfo) Option {
 	return func(cfg *Config) error {
-		cfg.StaticV2Relays = append(cfg.StaticV2Relays, relays...)
+		cfg.StaticRelays = append(cfg.StaticRelays, relays...)
 		return nil
 	}
 }
 
-// DefaultStaticV2Relays configures the static relays to use the known PL-operated V2 relays.
-func DefaultStaticV2Relays() Option {
+// DefaultStaticRelays configures the static relays to use the known PL-operated V2 relays.
+func DefaultStaticRelays() Option {
 	return func(cfg *Config) error {
-		for _, addr := range autorelay.DefaultV2Relays {
+		for _, addr := range autorelay.DefaultRelays {
 			a, err := ma.NewMultiaddr(addr)
 			if err != nil {
 				return err
@@ -262,7 +262,7 @@ func DefaultStaticV2Relays() Option {
 			if err != nil {
 				return err
 			}
-			cfg.StaticV2Relays = append(cfg.StaticV2Relays, *pi)
+			cfg.StaticRelays = append(cfg.StaticRelays, *pi)
 		}
 
 		return nil

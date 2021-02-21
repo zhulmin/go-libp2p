@@ -2,16 +2,14 @@ package relay
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
-	circuitv2client "github.com/libp2p/go-libp2p-circuit/v2/client"
+	circuitv2 "github.com/libp2p/go-libp2p-circuit/v2/client"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/routing"
 
 	discovery "github.com/libp2p/go-libp2p-discovery"
@@ -29,14 +27,28 @@ var (
 	DesiredRelays = 1
 
 	BootDelay = 20 * time.Second
+
+	connMgrTag = "relay"
+
+	// ReserveRefreshInterval is the interval at which we will attempt reservation refreshes for refreshes that are due.
+	ReserveRefreshInterval = 1 * time.Minute
+
+	// MinTTLRefresh is the minimum Limited Relay TTL below which we will NOT schedule the reservation for refreshes.
+	MinTTLRefresh = 10 * time.Minute
 )
 
 // These are the known PL-operated V2 relays
 // TODO Fill this up
-var DefaultV2Relays = []string{}
+var DefaultRelays = []string{}
+
+type relayInfo struct {
+	addrs      []ma.Multiaddr
+	resfreshAt time.Time
+}
 
 // AutoRelay is a Host that uses relays for connectivity when a NAT is detected.
 type AutoRelay struct {
+	ctx      context.Context
 	host     *basic.BasicHost
 	discover discovery.Discoverer
 	router   routing.PeerRouting
@@ -47,7 +59,7 @@ type AutoRelay struct {
 	disconnect chan struct{}
 
 	mx     sync.Mutex
-	relays map[peer.ID]struct{}
+	relays map[peer.ID]*relayInfo
 	status network.Reachability
 
 	cachedAddrs       []ma.Multiaddr
@@ -56,12 +68,13 @@ type AutoRelay struct {
 
 func NewAutoRelay(ctx context.Context, bhost *basic.BasicHost, discover discovery.Discoverer, router routing.PeerRouting, static []peer.AddrInfo) *AutoRelay {
 	ar := &AutoRelay{
+		ctx:        ctx,
 		host:       bhost,
 		discover:   discover,
 		router:     router,
 		addrsF:     bhost.AddrsFactory,
 		static:     static,
-		relays:     make(map[peer.ID]struct{}),
+		relays:     make(map[peer.ID]*relayInfo),
 		disconnect: make(chan struct{}, 1),
 		status:     network.ReachabilityUnknown,
 	}
@@ -81,9 +94,13 @@ func (ar *AutoRelay) background(ctx context.Context) {
 
 	// when true, we need to identify push
 	push := false
+	ticker := time.NewTicker(ReserveRefreshInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ticker.C:
+			ar.refreshReservations()
 		case ev, ok := <-subReachability.Out():
 			if !ok {
 				return
@@ -118,6 +135,39 @@ func (ar *AutoRelay) background(ctx context.Context) {
 			ar.mx.Unlock()
 			push = false
 			ar.host.SignalAddressChange()
+		}
+	}
+}
+
+func (ar *AutoRelay) refreshReservations() {
+	for p, info := range ar.relays {
+		if !info.resfreshAt.IsZero() && time.Now().After(info.resfreshAt) {
+			ar.mx.Lock()
+			// if we're no longer connected to the peer, there's nothing to do here.
+			if ar.host.Network().Connectedness(p) != network.Connected {
+				ar.mx.Unlock()
+				continue
+			}
+			ar.mx.Unlock()
+
+			// try reserving a slot again -> this is akin to a reservation refresh.
+			rsvp, err := circuitv2.Reserve(ar.ctx, ar.host, peer.AddrInfo{ID: p, Addrs: info.addrs})
+			if err != nil {
+				log.Debugf("error refreshing slot on relay: %s", err.Error())
+				continue
+			}
+
+			ar.mx.Lock()
+			info := &relayInfo{
+				addrs: rsvp.Addrs,
+			}
+			if rsvp.LimitDuration > MinTTLRefresh {
+				info.resfreshAt = time.Now().Add(rsvp.LimitDuration / 2)
+			}
+
+			ar.relays[p] = info
+			ar.host.ConnManager().Protect(p, connMgrTag)
+			ar.mx.Unlock()
 		}
 	}
 }
@@ -191,13 +241,11 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 		return false
 	}
 
-	rsv, err := circuitv2client.Reserve(ctx, ar.host, pi)
+	rsvp, err := circuitv2.Reserve(ctx, ar.host, pi)
 	if err != nil {
 		log.Debugf("error reserving slot on relay: %s", err.Error())
 		return false
 	}
-
-	ar.host.Peerstore().AddAddrs(pi.ID, rsv.Relay.Addrs, peerstore.ConnectedAddrTTL)
 
 	ar.mx.Lock()
 	defer ar.mx.Unlock()
@@ -206,8 +254,17 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 	if ar.host.Network().Connectedness(pi.ID) != network.Connected {
 		return false
 	}
-	ar.relays[pi.ID] = struct{}{}
-	ar.host.ConnManager().Protect(pi.ID, "relay")
+
+	rinfo := &relayInfo{
+		addrs: rsvp.Addrs,
+	}
+	// If it's a limited time Relay, we need to schedule a reservation refresh before the reservation expires.
+	// However, avoid scheduling a refresh if the TTL is less than 10 minutes to prevent repeated refreshes.
+	if rsvp.LimitDuration > MinTTLRefresh {
+		rinfo.resfreshAt = time.Now().Add(rsvp.LimitDuration / 2)
+	}
+	ar.relays[pi.ID] = rinfo
+	ar.host.ConnManager().Protect(pi.ID, connMgrTag)
 
 	return true
 }
@@ -236,7 +293,7 @@ func (ar *AutoRelay) connect(ctx context.Context, pi peer.AddrInfo) bool {
 	}
 
 	// tag the connection as very important
-	ar.host.ConnManager().TagPeer(pi.ID, "relay", 42)
+	ar.host.ConnManager().TagPeer(pi.ID, connMgrTag, 42)
 	return true
 }
 
@@ -287,18 +344,9 @@ func (ar *AutoRelay) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	}
 
 	// add relay specific addrs to the list
-	for p := range ar.relays {
-		addrs := cleanupAddressSet(ar.host.Peerstore().Addrs(p))
-
-		circuit, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s/p2p-circuit", p.Pretty()))
-		if err != nil {
-			panic(err)
-		}
-
-		for _, addr := range addrs {
-			pub := addr.Encapsulate(circuit)
-			raddrs = append(raddrs, pub)
-		}
+	for _, rinfo := range ar.relays {
+		caddrs := cleanupAddressSet(rinfo.addrs)
+		raddrs = append(raddrs, caddrs...)
 	}
 
 	ar.cachedAddrs = raddrs
@@ -319,7 +367,7 @@ func (ar *AutoRelay) Listen(network.Network, ma.Multiaddr)      {}
 func (ar *AutoRelay) ListenClose(network.Network, ma.Multiaddr) {}
 func (ar *AutoRelay) Connected(network.Network, network.Conn)   {}
 
-func (ar *AutoRelay) Disconnected(net network.Network, c network.Conn) {
+func (ar *AutoRelay) Disconnected(_ network.Network, c network.Conn) {
 	p := c.RemotePeer()
 
 	ar.mx.Lock()
@@ -330,7 +378,7 @@ func (ar *AutoRelay) Disconnected(net network.Network, c network.Conn) {
 		return
 	}
 
-	ar.host.ConnManager().Unprotect(p, "relay")
+	ar.host.ConnManager().Unprotect(p, connMgrTag)
 	if _, ok := ar.relays[p]; ok {
 		delete(ar.relays, p)
 		select {
