@@ -21,7 +21,7 @@ const (
 	protocol         = "/libp2p/holepunch/1.0.0"
 	maxMsgSize       = 4 * 1024 // 4K
 	holePunchTimeout = 1 * time.Minute
-	dialTimeout      = 10 * time.Second
+	dialTimeout      = 5 * time.Second
 	maxRetries       = 5
 	retryWait        = 2 * time.Second
 )
