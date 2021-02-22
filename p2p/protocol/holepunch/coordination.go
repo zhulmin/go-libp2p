@@ -214,6 +214,13 @@ func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) {
 		return
 	} else {
 		log.Infof("first hole punch attempt with peer %s failed, error: %s, will retry now...", pi.ID.Pretty(), err)
+		log.Infof("\n direct conns to peer are...")
+
+		for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
+			if !isRelayAddress(c.RemoteMultiaddr()) {
+				log.Info(c)
+			}
+		}
 	}
 
 	for i := 0; i < maxRetries; i++ {
@@ -233,7 +240,12 @@ func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) {
 			return
 		}
 	}
-	log.Errorf("all retries for hole punch with peer %s failed, err: %s", pi.ID.Pretty(), err)
+	log.Errorf("all retries for hole punch with peer %s failed, err: %s, direct conns to peer are: ", pi.ID.Pretty(), err)
+	for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
+		if !isRelayAddress(c.RemoteMultiaddr()) {
+			log.Info(c)
+		}
+	}
 }
 
 type netNotifiee HolePunchService
