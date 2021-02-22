@@ -6,7 +6,6 @@ import (
 	"time"
 
 	logging "github.com/ipfs/go-log"
-	"github.com/jpillora/backoff"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -23,7 +22,8 @@ const (
 	maxMsgSize       = 4 * 1024 // 4K
 	holePunchTimeout = 1 * time.Minute
 	dialTimeout      = 10 * time.Second
-	maxRetries       = 4
+	maxRetries       = 5
+	retryWait        = 2 * time.Second
 )
 
 var (
@@ -143,7 +143,7 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 			ID:    rp,
 			Addrs: obsRemote,
 		}
-		hs.holePunchConnectWithBackoff(pi)
+		hs.holePunchConnectWithRetry(pi)
 
 	case <-hs.ctx.Done():
 		return
@@ -195,11 +195,12 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 		ID:    rp,
 		Addrs: obsDial,
 	}
-	hs.holePunchConnectWithBackoff(pi)
+	hs.holePunchConnectWithRetry(pi)
 }
 
-func (hs *HolePunchService) holePunchConnectWithBackoff(pi peer.AddrInfo) {
-	forceDirectConnCtx := network.WithForceDirectDial(hs.ctx, "hole-punching")
+func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) {
+	holePunchCtx := network.WithSimultaneousConnect(hs.ctx, "hole-punching")
+	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")
 	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 	defer cancel()
 	err := hs.host.Connect(dialCtx, pi)
@@ -211,26 +212,19 @@ func (hs *HolePunchService) holePunchConnectWithBackoff(pi peer.AddrInfo) {
 			}
 		}
 		return
+	} else {
+		log.Infof("first hole punch attempt with peer %s failed, error: %s, will retry now...", pi.ID.Pretty(), err)
 	}
 
-	// backoff and retry before giving up.
-	// this code will make the peer retry for (approximately ) a TOTAL of 10 seconds
-	// before giving up and declaring the hole punch a failure.
-	b := &backoff.Backoff{
-		Jitter: true,
-		Min:    1 * time.Second,
-		Max:    5 * time.Second,
-		Factor: 2,
-	}
-	for b.Attempt() < maxRetries {
-		time.Sleep(b.Duration())
+	for i := 0; i < maxRetries; i++ {
+		time.Sleep(retryWait)
 
 		dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 		defer cancel()
 
 		err = hs.host.Connect(dialCtx, pi)
 		if err == nil {
-			log.Infof("hole punch with peer %s successful after retry, direct conns to peer are:", pi.ID.Pretty())
+			log.Infof("hole punch with peer %s successful after %d retries, direct conns to peer are:", pi.ID.Pretty(), i)
 			for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
 				if !isRelayAddress(c.RemoteMultiaddr()) {
 					log.Info(c)
@@ -239,7 +233,7 @@ func (hs *HolePunchService) holePunchConnectWithBackoff(pi peer.AddrInfo) {
 			return
 		}
 	}
-	log.Errorf("hole punch with peer %s failed, err: %s", pi.ID.Pretty(), err)
+	log.Errorf("all retries for hole punch with peer %s failed, err: %s", pi.ID.Pretty(), err)
 }
 
 type netNotifiee HolePunchService
