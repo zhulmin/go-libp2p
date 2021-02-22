@@ -223,7 +223,7 @@ func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) {
 		}
 	}
 
-	for i := 0; i < maxRetries; i++ {
+	for i := 1; i <= maxRetries; i++ {
 		time.Sleep(retryWait)
 
 		dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
