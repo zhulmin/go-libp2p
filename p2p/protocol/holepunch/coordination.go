@@ -262,7 +262,7 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
 	if dir == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
-		log.Debugf("got inbound proxy conn from peer %s, connection is %v", v.RemotePeer().String(), v)
+		log.Debugf("got inbound proxy conn from peer %s, connectionID is %s", v.RemotePeer().String(), v.ID())
 		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
