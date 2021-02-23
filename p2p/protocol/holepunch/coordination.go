@@ -117,12 +117,13 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 	msg := new(pb.HolePunch)
 	msg.Type = pb.HolePunch_CONNECT.Enum()
 	msg.ObsAddrs = addrsToBytes(hs.ids.OwnObservedAddrs())
+
+	tstart := time.Now()
 	if err := w.WriteMsg(msg); err != nil {
 		s.Reset()
 		log.Errorf("failed to send hole punch CONNECT, err: %s", err)
 		return
 	}
-	tstart := time.Now()
 
 	// wait for a CONNECT message from the remote peer
 	rd := protoio.NewDelimitedReader(s, maxMsgSize)
@@ -137,8 +138,9 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 		log.Debugf("expectd HolePunch_CONNECT message, got %s", msg.GetType())
 		return
 	}
-	obsRemote := addrsFromBytes(msg.ObsAddrs)
+
 	rtt := time.Since(tstart)
+	obsRemote := addrsFromBytes(msg.ObsAddrs)
 
 	// send a SYNC message and attempt a direct connect after half the RTT
 	msg.Reset()
@@ -150,7 +152,8 @@ func (hs *HolePunchService) holePunch(relayConn network.Conn) {
 	}
 	defer s.Close()
 
-	synTime := time.Duration(rtt.Milliseconds()/2) * time.Millisecond
+	synTime := rtt / 2
+	log.Debugf("peer RTT is %s; starting hole punch in %s", rtt, synTime)
 
 	// wait for sync to reach the other peer and then punch a hole for it in our NAT
 	// by attempting a connect to it.
@@ -216,6 +219,8 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 }
 
 func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) {
+	log.Debugf("starting hole punch with %s", pi.ID)
+
 	holePunchCtx := network.WithSimultaneousConnect(hs.ctx, "hole-punching")
 	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")
 	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
