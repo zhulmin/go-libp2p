@@ -154,6 +154,7 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 		log.Debug(msg)
 		return errors.New(msg)
 	}
+
 	obsRemote := addrsFromBytes(msg.ObsAddrs)
 
 	// send a SYNC message and attempt a direct connect after half the RTT
@@ -167,7 +168,8 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	}
 	defer s.Close()
 
-	synTime := time.Duration(rtt.Milliseconds()/2) * time.Millisecond
+	synTime := rtt / 2
+	log.Debugf("peer RTT is %s; starting hole punch in %s", rtt, synTime)
 
 	// wait for sync to reach the other peer and then punch a hole for it in our NAT
 	// by attempting a connect to it.
@@ -255,6 +257,7 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 }
 
 func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) error {
+	log.Debugf("starting hole punch with %s", pi.ID)
 	holePunchCtx := network.WithSimultaneousConnect(hs.ctx, "hole-punching")
 	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")
 	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
