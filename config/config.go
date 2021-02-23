@@ -3,7 +3,6 @@ package config
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"time"
 
@@ -186,10 +185,6 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 	swrm, err := cfg.makeSwarm(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	if cfg.EnableHolePunching && !cfg.Relay {
-		return nil, errors.New("cannot enable hole punching; relay is not enabled")
 	}
 
 	h, err := bhost.NewHost(ctx, swrm, &bhost.HostOpts{
