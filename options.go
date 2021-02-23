@@ -9,7 +9,6 @@ import (
 	"net"
 	"time"
 
-	circuit "github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/metrics"
@@ -210,13 +209,10 @@ func AddrsFactory(factory config.AddrsFactory) Option {
 // configuration options. By default, this option only configures libp2p to
 // accept inbound connections from relays and make outbound connections
 // _through_ relays when requested by the remote peer. (default: enabled)
-//
-// To _act_ as a relay, pass the circuit.OptHop option.
-func EnableRelay(options ...circuit.RelayOpt) Option {
+func EnableRelay() Option {
 	return func(cfg *Config) error {
 		cfg.RelayCustom = true
 		cfg.Relay = true
-		cfg.RelayOpts = options
 		return nil
 	}
 }
