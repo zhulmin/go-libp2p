@@ -48,16 +48,32 @@ type HolePunchService struct {
 	// ensure we shutdown ONLY once
 	closeSync sync.Once
 	refCount  sync.WaitGroup
+
+	// active hole punches for deduplicating
+	activeMx sync.Mutex
+	active   map[peer.ID]struct{}
+
+	isTest        bool
+	handlerErrsMu sync.Mutex
+	handlerErrs   []error
 }
 
 // NewHolePunchService creates a new service that can be used for hole punching
-func NewHolePunchService(h host.Host, ids *identify.IDService) (*HolePunchService, error) {
+// The `isTest` should ONLY be turned ON for testing.
+func NewHolePunchService(h host.Host, ids *identify.IDService, isTest bool) (*HolePunchService, error) {
 	if ids == nil {
 		return nil, errors.New("Identify service can't be nil")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	hs := &HolePunchService{ctx: ctx, ctxCancel: cancel, host: h, ids: ids}
+	hs := &HolePunchService{
+		ctx:       ctx,
+		ctxCancel: cancel,
+		host:      h,
+		ids:       ids,
+		active:    make(map[peer.ID]struct{}),
+		isTest:    isTest,
+	}
 
 	h.SetStreamHandler(Protocol, hs.handleNewStream)
 	h.Network().Notify((*netNotifiee)(hs))
@@ -77,7 +93,6 @@ func (hs *HolePunchService) Close() error {
 // attempts to make a direct connection with the remote peer of `relayConn` by co-ordinating a hole punch over
 // the given relay connection `relayConn`.
 func (hs *HolePunchService) HolePunch(rp peer.ID) error {
-
 	// short-circuit hole punching if a direct dial works.
 	// attempt a direct connection ONLY if we have a public address for the remote peer
 	for _, a := range hs.host.Peerstore().Addrs(rp) {
@@ -169,6 +184,23 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	}
 }
 
+// HandlerErrors returns the errors accumulated by the Stream Handler.
+// This is ONLY for testing.
+func (hs *HolePunchService) HandlerErrors() []error {
+	hs.handlerErrsMu.Lock()
+	defer hs.handlerErrsMu.Unlock()
+	return hs.handlerErrs
+}
+
+func (hs *HolePunchService) appendHandlerErr(err error) {
+	hs.handlerErrsMu.Lock()
+	defer hs.handlerErrsMu.Unlock()
+
+	if hs.isTest {
+		hs.handlerErrs = append(hs.handlerErrs, err)
+	}
+}
+
 func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	log.Infof("got hole punch request from peer %s", s.Conn().RemotePeer().Pretty())
 	_ = s.SetDeadline(time.Now().Add(HolePunchTimeout))
@@ -180,10 +212,12 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	msg := new(pb.HolePunch)
 	if err := rd.ReadMsg(msg); err != nil {
 		s.Reset()
+		hs.appendHandlerErr(fmt.Errorf("failed to read message from initator, err: %s", err))
 		return
 	}
 	if msg.GetType() != pb.HolePunch_CONNECT {
 		s.Reset()
+		hs.appendHandlerErr(errors.New("did not get expected HolePunch_CONNECT message from initiator"))
 		return
 	}
 	obsDial := addrsFromBytes(msg.ObsAddrs)
@@ -194,6 +228,7 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	msg.ObsAddrs = addrsToBytes(hs.ids.OwnObservedAddrs())
 	if err := wr.WriteMsg(msg); err != nil {
 		s.Reset()
+		hs.appendHandlerErr(fmt.Errorf("failed to write HolePunch_CONNECT message to initator, err: %s", err))
 		return
 	}
 
@@ -201,10 +236,12 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	msg.Reset()
 	if err := rd.ReadMsg(msg); err != nil {
 		s.Reset()
+		hs.appendHandlerErr(fmt.Errorf("failed to read message from initator, err: %s", err))
 		return
 	}
 	if msg.GetType() != pb.HolePunch_SYNC {
 		s.Reset()
+		hs.appendHandlerErr(errors.New("did not get expected HolePunch_SYNC message from initiator"))
 		return
 	}
 	defer s.Close()
@@ -290,7 +327,6 @@ func (nn *netNotifiee) HolePunchService() *HolePunchService {
 	return (*HolePunchService)(nn)
 }
 
-// TODO FIX For some reason, we see two such notifications for inbound proxy connections.
 func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	hs := nn.HolePunchService()
 	dir := v.Stat().Direction
@@ -298,10 +334,34 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
 	if dir == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
+		// short-circuit check to see if we already have a direct connection
+		for _, c := range hs.host.Network().ConnsToPeer(v.RemotePeer()) {
+			if !isRelayAddress(c.RemoteMultiaddr()) {
+				return
+			}
+		}
+
+		p := v.RemotePeer()
+		hs.activeMx.Lock()
+		_, active := hs.active[p]
+		if !active {
+			hs.active[p] = struct{}{}
+		}
+		hs.activeMx.Unlock()
+
+		if active {
+			return
+		}
+
 		log.Debugf("got inbound proxy conn from peer %s, connectionID is %s", v.RemotePeer().String(), v.ID())
 		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
+			defer func() {
+				hs.activeMx.Lock()
+				delete(hs.active, p)
+				hs.activeMx.Unlock()
+			}()
 			select {
 			// waiting for Identify here will allow us to access the peer's public and observed addresses
 			// that we can dial to for a hole punch.
@@ -309,7 +369,8 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 			case <-hs.ctx.Done():
 				return
 			}
-			nn.HolePunchService().HolePunch(v.RemotePeer())
+
+			hs.HolePunch(v.RemotePeer())
 		}()
 		return
 	}
