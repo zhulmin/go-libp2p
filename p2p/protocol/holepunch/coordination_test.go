@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	circuit "github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -44,6 +45,41 @@ func TestDirectDialWorks(t *testing.T) {
 
 	cs = h2.Network().ConnsToPeer(h1.ID())
 	require.Len(t, cs, 1)
+}
+
+func TestEndToEndSimConnect(t *testing.T) {
+	// all addrs should be marked as public
+	cpy := manet.Private4
+	manet.Private4 = []*net.IPNet{}
+	defer func() {
+		manet.Private4 = cpy
+	}()
+	ctx := context.Background()
+	r := mkRelay(t, ctx)
+
+	h1, _ := mkHostWithHolePunchSvc(t, ctx)
+	h2, _ := mkHostWithStaticAutoRelay(t, ctx, r)
+
+	// h1 has a relay addr
+	// h2 should connect to the relay addr
+	var raddr ma.Multiaddr
+	for _, a := range h2.Addrs() {
+		if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+			raddr = a
+			break
+		}
+	}
+	require.NotEmpty(t, raddr)
+
+	require.NoError(t, h1.Connect(ctx, peer.AddrInfo{
+		ID:    h2.ID(),
+		Addrs: []ma.Multiaddr{raddr},
+	}))
+
+	// wait till a direct connection is complete
+	ensureDirectConn(t, h1, h2)
+	// ensure no hole-punching streams are open on either side
+	ensureNoHolePunchingStream(t, h1, h2)
 }
 
 func TestFailuresOnInitiator(t *testing.T) {
@@ -248,8 +284,60 @@ func TestObservedAddressesAreExchanged(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
-func TestHolePunchingAttemptsAreDeduplicated(t *testing.T) {
+func ensureNoHolePunchingStream(t *testing.T, h1, h2 host.Host) {
+	require.Eventually(t, func() bool {
+		for _, c := range h1.Network().ConnsToPeer(h2.ID()) {
+			for _, s := range c.GetStreams() {
+				if s.ID() == string(holepunch.Protocol) {
+					return false
+				}
+			}
+		}
 
+		return true
+
+	}, 5*time.Second, 200*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		for _, c := range h2.Network().ConnsToPeer(h1.ID()) {
+			for _, s := range c.GetStreams() {
+				if s.ID() == string(holepunch.Protocol) {
+					return false
+				}
+			}
+		}
+
+		return true
+
+	}, 5*time.Second, 200*time.Millisecond)
+}
+
+func ensureDirectConn(t *testing.T, h1, h2 host.Host) {
+	require.Eventually(t, func() bool {
+		cs := h1.Network().ConnsToPeer(h2.ID())
+		if len(cs) != 2 {
+			return false
+		}
+		for _, c := range cs {
+			if _, err := c.RemoteMultiaddr().ValueForProtocol(ma.P_CIRCUIT); err != nil {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 200*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		cs := h2.Network().ConnsToPeer(h1.ID())
+		if len(cs) != 2 {
+			return false
+		}
+		for _, c := range cs {
+			if _, err := c.RemoteMultiaddr().ValueForProtocol(ma.P_CIRCUIT); err != nil {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 200*time.Millisecond)
 }
 
 func TestNoHolePunchingIfDirectConnAlreadyExists(t *testing.T) {
@@ -265,6 +353,40 @@ func connect(t *testing.T, ctx context.Context, h1, h2 host.Host) network.Conn {
 	cs := h1.Network().ConnsToPeer(h2.ID())
 	require.Len(t, cs, 1)
 	return cs[0]
+}
+
+func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Host) (host.Host, *holepunch.HolePunchService) {
+	pi := peer.AddrInfo{
+		ID:    relay.ID(),
+		Addrs: relay.Addrs(),
+	}
+
+	h, err := libp2p.New(ctx, libp2p.EnableRelay(), libp2p.EnableAutoRelay(), libp2p.ForceReachabilityPrivate(),
+		libp2p.StaticRelays([]peer.AddrInfo{pi}))
+	require.NoError(t, err)
+	ids, err := identify.NewIDService(h)
+	require.NoError(t, err)
+	hps, err := holepunch.NewHolePunchService(h, ids, true)
+	require.NoError(t, err)
+
+	// wait till we have a relay addr
+	require.Eventually(t, func() bool {
+		for _, a := range h.Addrs() {
+			if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+				return true
+			}
+		}
+
+		return false
+	}, 5*time.Second, 200*time.Millisecond)
+
+	return h, hps
+}
+
+func mkRelay(t *testing.T, ctx context.Context) host.Host {
+	h, err := libp2p.New(ctx, libp2p.EnableRelay(circuit.OptHop))
+	require.NoError(t, err)
+	return h
 }
 
 func mkHostWithHolePunchSvc(t *testing.T, ctx context.Context) (host.Host, *holepunch.HolePunchService) {
