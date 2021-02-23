@@ -225,7 +225,7 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	}
 
 	if opts.EnableHolePunching {
-		h.hps, err = holepunch.NewHolePunchService(h, h.ids)
+		h.hps, err = holepunch.NewHolePunchService(h, h.ids, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
 		}
