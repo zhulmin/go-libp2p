@@ -16,7 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	identify_pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -230,69 +229,6 @@ func TestFailuresOnResponder(t *testing.T) {
 	}
 }
 
-func TestObservedAddressesAreExchanged(t *testing.T) {
-	ctx := context.Background()
-
-	h1, h1ps := mkHostWithHolePunchSvc(t, ctx)
-	h2, _ := mkHostWithHolePunchSvc(t, ctx)
-
-	// modify identify handlers to send our fake observed addresses
-	obsAddrs1 := ma.StringCast("/ip4/8.8.8.8/tcp/1234")
-	obsAddrs2 := ma.StringCast("/ip4/9.8.8.8/tcp/1234")
-	h1.SetStreamHandler(identify.ID, func(s network.Stream) {
-		writer := protoio.NewDelimitedWriter(s)
-		msg := new(identify_pb.Identify)
-		msg.ObservedAddr = obsAddrs2.Bytes()
-		msg.TcpNATDeviceType = identify_pb.Identify_CONE.Enum()
-		writer.WriteMsg(msg)
-		s.Close()
-	})
-
-	h2.SetStreamHandler(identify.ID, func(s network.Stream) {
-		writer := protoio.NewDelimitedWriter(s)
-		msg := new(identify_pb.Identify)
-		msg.ObservedAddr = obsAddrs1.Bytes()
-		msg.TcpNATDeviceType = identify_pb.Identify_CONE.Enum()
-
-		var addrs [][]byte
-		for _, a := range h2.Addrs() {
-			addrs = append(addrs, a.Bytes())
-		}
-
-		msg.ListenAddrs = addrs
-		writer.WriteMsg(msg)
-		s.Close()
-	})
-
-	connect(t, ctx, h1, h2)
-
-	// hole punch so both peers exchange each other's observed addresses and save to peerstore
-	require.NoError(t, h1ps.HolePunch(h2.ID()))
-
-	require.Eventually(t, func() bool {
-		h2Addrs := h1.Peerstore().Addrs(h2.ID())
-		h1Addrs := h2.Peerstore().Addrs(h1.ID())
-
-		b1 := false
-		b2 := false
-		for _, a := range h1Addrs {
-			if a.Equal(obsAddrs1) {
-				b1 = true
-				break
-			}
-		}
-
-		for _, a := range h2Addrs {
-			if a.Equal(obsAddrs2) {
-				b2 = true
-				break
-			}
-		}
-
-		return b1 && b2
-	}, 2*time.Second, 100*time.Millisecond)
-}
-
 func TestHolePunchingFailsOnSymmetricNAT(t *testing.T) {
 	ctx := context.Background()
 
@@ -499,10 +435,6 @@ func ensureDirectConn(t *testing.T, h1, h2 host.Host) {
 	}, 5*time.Second, 200*time.Millisecond)
 }
 
-func TestNoHolePunchingIfDirectConnAlreadyExists(t *testing.T) {
-
-}
-
 func connect(t *testing.T, ctx context.Context, h1, h2 host.Host) network.Conn {
 	require.NoError(t, h1.Connect(ctx, peer.AddrInfo{
 		ID:    h2.ID(),
@@ -543,13 +475,13 @@ func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Hos
 }
 
 func mkRelay(t *testing.T, ctx context.Context) host.Host {
-	h, err := libp2p.New(ctx, libp2p.EnableRelay(circuit.OptHop))
+	h, err := libp2p.New(ctx, libp2p.EnableRelay(circuit.OptHop), libp2p.ForceReachabilityPrivate())
 	require.NoError(t, err)
 	return h
 }
 
 func mkHostWithHolePunchSvc(t *testing.T, ctx context.Context) (host.Host, *holepunch.HolePunchService) {
-	h, err := libp2p.New(ctx)
+	h, err := libp2p.New(ctx, libp2p.ForceReachabilityPrivate())
 	require.NoError(t, err)
 	ids, err := identify.NewIDService(h)
 	require.NoError(t, err)
