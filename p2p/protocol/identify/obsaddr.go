@@ -493,15 +493,15 @@ func (oas *ObservedAddrManager) emitAllNATTypes() {
 		allObserved = append(allObserved, addrs...)
 	}
 
-	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType)
+	hasChanged, natType := oas.emitSpecificNATType(allObserved, ma.P_TCP, network.NATTransportTCP, oas.currentTCPNATDeviceType,
+		TCPNATDeviceTypeKey)
 	if hasChanged {
-		oas.host.Peerstore().Put(oas.host.ID(), TCPNATDeviceTypeKey, natType)
 		oas.currentTCPNATDeviceType = natType
 	}
 
-	hasChanged, natType = oas.emitSpecificNATType(allObserved, ma.P_UDP, network.NATTransportUDP, oas.currentUDPNATDeviceType)
+	hasChanged, natType = oas.emitSpecificNATType(allObserved, ma.P_UDP, network.NATTransportUDP, oas.currentUDPNATDeviceType,
+		UDPNATDeviceTypeKey)
 	if hasChanged {
-		oas.host.Peerstore().Put(oas.host.ID(), UDPNATDeviceTypeKey, natType)
 		oas.currentUDPNATDeviceType = natType
 	}
 }
@@ -509,7 +509,7 @@ func (oas *ObservedAddrManager) emitAllNATTypes() {
 // returns true along with the new NAT device type if the NAT device type for the given protocol has changed.
 // returns false otherwise.
 func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, protoCode int, transportProto network.NATTransportProtocol,
-	currentNATType network.NATDeviceType) (bool, network.NATDeviceType) {
+	currentNATType network.NATDeviceType, key string) (bool, network.NATDeviceType) {
 	now := time.Now()
 	seenBy := make(map[string]struct{})
 	cnt := 0
@@ -523,6 +523,9 @@ func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, proto
 		// if we have an activated addresses, it's a Cone NAT.
 		if now.Sub(oa.lastSeen) <= oas.ttl && oa.activated() {
 			if currentNATType != network.NATDeviceTypeCone {
+
+				oas.host.Peerstore().Put(oas.host.ID(), key, network.NATDeviceTypeCone)
+
 				oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
 					TransportProtocol: transportProto,
 					NatDeviceType:     network.NATDeviceTypeCone,
@@ -547,6 +550,9 @@ func (oas *ObservedAddrManager) emitSpecificNATType(addrs []*observedAddr, proto
 	// are MOST probably behind a Symmetric NAT.
 	if cnt >= ActivationThresh && len(seenBy) >= ActivationThresh {
 		if currentNATType != network.NATDeviceTypeSymmetric {
+
+			oas.host.Peerstore().Put(oas.host.ID(), key, network.NATDeviceTypeSymmetric)
+
 			oas.emitNATDeviceTypeChanged.Emit(event.EvtNATDeviceTypeChanged{
 				TransportProtocol: transportProto,
 				NatDeviceType:     network.NATDeviceTypeSymmetric,

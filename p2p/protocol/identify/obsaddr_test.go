@@ -2,7 +2,6 @@ package identify_test
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -177,7 +176,6 @@ func TestObsAddrSet(t *testing.T) {
 	harness.observe(a2, pa4)
 	harness.observe(a3, pa4)
 
-	fmt.Println(harness.oas.Addrs())
 	if !addrsMatch(harness.oas.Addrs(), []ma.Multiaddr{a1, a2}) {
 		t.Error("should get expected addresses as there are no activated addresses")
 	}

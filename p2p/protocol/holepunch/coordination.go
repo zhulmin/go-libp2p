@@ -105,7 +105,7 @@ func (hs *HolePunchService) loop(sub event.Subscription) {
 				return
 			}
 
-			if hs.peerSupportsHolePunching(hs.host.ID(), hs.host.Addrs()) {
+			if hs.PeerSupportsHolePunching(hs.host.ID(), hs.host.Addrs()) {
 				hs.host.SetStreamHandler(Protocol, hs.handleNewStream)
 			} else {
 				hs.host.RemoveStreamHandler(Protocol)
@@ -156,8 +156,8 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	}
 
 	// return if either peer does NOT support hole punching
-	if !hs.peerSupportsHolePunching(rp, hs.host.Peerstore().Addrs(rp)) ||
-		!hs.peerSupportsHolePunching(hs.host.ID(), hs.host.Addrs()) {
+	if !hs.PeerSupportsHolePunching(rp, hs.host.Peerstore().Addrs(rp)) ||
+		!hs.PeerSupportsHolePunching(hs.host.ID(), hs.host.Addrs()) {
 		return ErrNATHolePunchingUnsupported
 	}
 
@@ -256,22 +256,32 @@ func (hs *HolePunchService) appendHandlerErr(err error) {
 	}
 }
 
+// PeerSupportsHolePunching returns true if the given peer with the given addresses supports hole punching.
+// It uses the peer's NAT device type detected via Identify.
 // We can hole punch with a peer ONLY if it is NOT behind a symmetric NAT for all the transport protocol it supports.
-func (hs *HolePunchService) peerSupportsHolePunching(p peer.ID, addrs []ma.Multiaddr) bool {
+func (hs *HolePunchService) PeerSupportsHolePunching(p peer.ID, addrs []ma.Multiaddr) bool {
 	udpSupported := hasProtoAddr(ma.P_UDP, addrs)
 	tcpSupported := hasProtoAddr(ma.P_TCP, addrs)
-	udpNAT, _ := hs.host.Peerstore().Get(p, identify.UDPNATDeviceTypeKey)
-	tcpNAT, _ := hs.host.Peerstore().Get(p, identify.TCPNATDeviceTypeKey)
-	udpNatType := udpNAT.(network.NATDeviceType)
-	tcpNATType := tcpNAT.(network.NATDeviceType)
 
 	if udpSupported {
+		udpNAT, err := hs.host.Peerstore().Get(p, identify.UDPNATDeviceTypeKey)
+		if err != nil {
+			return false
+		}
+		udpNatType := udpNAT.(network.NATDeviceType)
+
 		if udpNatType == network.NATDeviceTypeCone || udpNatType == network.NATDeviceTypeUnknown {
 			return true
 		}
 	}
 
 	if tcpSupported {
+		tcpNAT, err := hs.host.Peerstore().Get(p, identify.TCPNATDeviceTypeKey)
+		if err != nil {
+			return false
+		}
+
+		tcpNATType := tcpNAT.(network.NATDeviceType)
 		if tcpNATType == network.NATDeviceTypeCone || tcpNATType == network.NATDeviceTypeUnknown {
 			return true
 		}

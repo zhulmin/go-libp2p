@@ -8,6 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	circuit "github.com/libp2p/go-libp2p-circuit"
+	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -232,17 +233,17 @@ func TestFailuresOnResponder(t *testing.T) {
 func TestObservedAddressesAreExchanged(t *testing.T) {
 	ctx := context.Background()
 
-	obsAddrs1 := ma.StringCast("/ip4/8.8.8.8/tcp/1234")
-	obsAddrs2 := ma.StringCast("/ip4/9.8.8.8/tcp/1234")
-
 	h1, h1ps := mkHostWithHolePunchSvc(t, ctx)
 	h2, _ := mkHostWithHolePunchSvc(t, ctx)
 
 	// modify identify handlers to send our fake observed addresses
+	obsAddrs1 := ma.StringCast("/ip4/8.8.8.8/tcp/1234")
+	obsAddrs2 := ma.StringCast("/ip4/9.8.8.8/tcp/1234")
 	h1.SetStreamHandler(identify.ID, func(s network.Stream) {
 		writer := protoio.NewDelimitedWriter(s)
 		msg := new(identify_pb.Identify)
 		msg.ObservedAddr = obsAddrs2.Bytes()
+		msg.TcpNATDeviceType = identify_pb.Identify_CONE.Enum()
 		writer.WriteMsg(msg)
 		s.Close()
 	})
@@ -251,6 +252,14 @@ func TestObservedAddressesAreExchanged(t *testing.T) {
 		writer := protoio.NewDelimitedWriter(s)
 		msg := new(identify_pb.Identify)
 		msg.ObservedAddr = obsAddrs1.Bytes()
+		msg.TcpNATDeviceType = identify_pb.Identify_CONE.Enum()
+
+		var addrs [][]byte
+		for _, a := range h2.Addrs() {
+			addrs = append(addrs, a.Bytes())
+		}
+
+		msg.ListenAddrs = addrs
 		writer.WriteMsg(msg)
 		s.Close()
 	})
@@ -282,6 +291,156 @@ func TestObservedAddressesAreExchanged(t *testing.T) {
 
 		return b1 && b2
 	}, 2*time.Second, 100*time.Millisecond)
+}
+
+func TestHolePunchingFailsOnSymmetricNAT(t *testing.T) {
+	ctx := context.Background()
+
+	h1, h1ps := mkHostWithHolePunchSvc(t, ctx)
+	h2, _ := mkHostWithHolePunchSvc(t, ctx)
+	// connect and wait for identify to exchange NAT types
+	connect(t, ctx, h1, h2)
+
+	// self peer is behind a Symmetric NAT and remote peer is behind a Cone NAT
+	h1.Peerstore().Put(h1.ID(), identify.TCPNATDeviceTypeKey, network.NATDeviceTypeSymmetric)
+	h1.Peerstore().Put(h2.ID(), identify.TCPNATDeviceTypeKey, network.NATDeviceTypeCone)
+	require.Equal(t, holepunch.ErrNATHolePunchingUnsupported, h1ps.HolePunch(h2.ID()))
+
+	// remote peer is behind a Symmetric NAT and self is behind a Cone NAT
+	h1.Peerstore().Put(h1.ID(), identify.TCPNATDeviceTypeKey, network.NATDeviceTypeCone)
+	h1.Peerstore().Put(h2.ID(), identify.TCPNATDeviceTypeKey, network.NATDeviceTypeSymmetric)
+	require.Equal(t, holepunch.ErrNATHolePunchingUnsupported, h1ps.HolePunch(h2.ID()))
+}
+
+func TestProtocolHandlerOnNATType(t *testing.T) {
+	ctx := context.Background()
+
+	// Unknown NAT -> Protocol is supported
+	h, _ := mkHostWithHolePunchSvc(t, ctx)
+	em, err := h.EventBus().Emitter(new(event.EvtNATDeviceTypeChanged))
+	require.NoError(t, err)
+	require.Contains(t, h.Mux().Protocols(), string(holepunch.Protocol))
+
+	// Symmetric NAT -> Protocol is NOT supported
+	h.Peerstore().Put(h.ID(), identify.TCPNATDeviceTypeKey, network.NATDeviceTypeSymmetric)
+
+	require.NoError(t, em.Emit(event.EvtNATDeviceTypeChanged{
+		TransportProtocol: network.NATTransportTCP,
+		NatDeviceType:     network.NATDeviceTypeSymmetric,
+	}))
+	require.Eventually(t, func() bool {
+		for _, p := range h.Mux().Protocols() {
+			if p == string(holepunch.Protocol) {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 200*time.Millisecond)
+
+	// Cone NAT -> Protocol is supported
+	h.Peerstore().Put(h.ID(), identify.TCPNATDeviceTypeKey, network.NATDeviceTypeCone)
+
+	require.NoError(t, em.Emit(event.EvtNATDeviceTypeChanged{
+		TransportProtocol: network.NATTransportTCP,
+		NatDeviceType:     network.NATDeviceTypeCone,
+	}))
+	require.Eventually(t, func() bool {
+		for _, p := range h.Mux().Protocols() {
+			if p == string(holepunch.Protocol) {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 200*time.Millisecond)
+}
+
+func TestPeerSupportsHolePunching(t *testing.T) {
+	ctx := context.Background()
+
+	tcs := map[string]struct {
+		udpSupported         bool
+		tcpSupported         bool
+		udpNat               network.NATDeviceType
+		tcpNat               network.NATDeviceType
+		supportsHolePunching bool
+	}{
+		"udp/tcp supported and symmetric for both -> no hole punching": {
+			udpSupported:         true,
+			tcpSupported:         true,
+			udpNat:               network.NATDeviceTypeSymmetric,
+			tcpNat:               network.NATDeviceTypeSymmetric,
+			supportsHolePunching: false,
+		},
+		"tcp supported and symmetric -> no hole punching": {
+			tcpSupported:         true,
+			tcpNat:               network.NATDeviceTypeSymmetric,
+			udpNat:               network.NATDeviceTypeCone,
+			supportsHolePunching: false,
+		},
+		"udp supported and symmetric -> no hole punching": {
+			udpSupported:         true,
+			udpNat:               network.NATDeviceTypeSymmetric,
+			tcpNat:               network.NATDeviceTypeCone,
+			supportsHolePunching: false,
+		},
+		"udp/tcp supported and cone for both -> hole punching possible": {
+			udpSupported:         true,
+			tcpSupported:         true,
+			udpNat:               network.NATDeviceTypeCone,
+			tcpNat:               network.NATDeviceTypeCone,
+			supportsHolePunching: true,
+		},
+		"tcp supported and cone -> hole punching possible": {
+			tcpSupported:         true,
+			tcpNat:               network.NATDeviceTypeCone,
+			udpNat:               network.NATDeviceTypeSymmetric,
+			supportsHolePunching: true,
+		},
+		"udp supported and cone -> hole punching possible": {
+			udpSupported:         true,
+			udpNat:               network.NATDeviceTypeCone,
+			tcpNat:               network.NATDeviceTypeSymmetric,
+			supportsHolePunching: true,
+		},
+		"udp/tcp supported and unknown for both -> hole punching possible": {
+			udpSupported:         true,
+			tcpSupported:         true,
+			udpNat:               network.NATDeviceTypeUnknown,
+			tcpNat:               network.NATDeviceTypeUnknown,
+			supportsHolePunching: true,
+		},
+		"tcp supported and unknown -> hole punching possible": {
+			tcpSupported:         true,
+			tcpNat:               network.NATDeviceTypeUnknown,
+			udpNat:               network.NATDeviceTypeSymmetric,
+			supportsHolePunching: true,
+		},
+		"udp supported and unknown -> hole punching possible": {
+			udpSupported:         true,
+			udpNat:               network.NATDeviceTypeUnknown,
+			tcpNat:               network.NATDeviceTypeSymmetric,
+			supportsHolePunching: true,
+		},
+	}
+
+	for name, tc := range tcs {
+		t.Run(name, func(t *testing.T) {
+			h, hps := mkHostWithHolePunchSvc(t, ctx)
+			var addrs []ma.Multiaddr
+			if tc.udpSupported {
+				addrs = append(addrs, ma.StringCast("/ip4/8.8.8.8/udp/1234/quic"))
+			}
+
+			if tc.tcpSupported {
+				addrs = append(addrs, ma.StringCast("/ip4/8.8.8.8/tcp/1234"))
+			}
+
+			h.Peerstore().Put(h.ID(), identify.TCPNATDeviceTypeKey, tc.tcpNat)
+			h.Peerstore().Put(h.ID(), identify.UDPNATDeviceTypeKey, tc.udpNat)
+
+			require.Equal(t, tc.supportsHolePunching, hps.PeerSupportsHolePunching(h.ID(), addrs))
+		})
+	}
 }
 
 func ensureNoHolePunchingStream(t *testing.T, h1, h2 host.Host) {
