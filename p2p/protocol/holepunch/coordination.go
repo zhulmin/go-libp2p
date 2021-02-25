@@ -310,7 +310,7 @@ func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) error {
 		hs.tracer.HolePunchAttempt(pi.ID, attempt)
 		err := hs.host.Connect(dialCtx, pi)
 		if err == nil {
-			log.Infof("hole punch with peer %s successful after %d retries; direct conns to peer are:", attempt, pi.ID)
+			log.Infof("hole punch with peer %s successful after %d retries; direct conns to peer are:", pi.ID, attempt)
 			for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
 				if !isRelayAddress(c.RemoteMultiaddr()) {
 					log.Info(c)
