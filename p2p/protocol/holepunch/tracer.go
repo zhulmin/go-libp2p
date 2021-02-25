@@ -11,13 +11,14 @@ import (
 // WithTracer is a HolePunchService option that enables hole punching tracing
 func WithTracer(tr EventTracer) Option {
 	return func(hps *HolePunchService) error {
-		hps.tracer = &Tracer{tr: tr}
+		hps.tracer = &Tracer{tr: tr, self: hps.host.ID()}
 		return nil
 	}
 }
 
 type Tracer struct {
-	tr EventTracer
+	tr   EventTracer
+	self peer.ID
 }
 
 type EventTracer interface {
@@ -26,7 +27,8 @@ type EventTracer interface {
 
 type Event struct {
 	Timestamp int64       // UNIX nanos
-	Peer      peer.ID     // remote peer ID
+	Peer      peer.ID     // local peer ID
+	Remote    peer.ID     // remote peer ID
 	Type      string      // event type
 	Evt       interface{} // the actual event
 }
@@ -74,7 +76,8 @@ func (t *Tracer) DirectDialSuccessful(p peer.ID, dt time.Duration) {
 
 	t.tr.Trace(&Event{
 		Timestamp: time.Now().UnixNano(),
-		Peer:      p,
+		Peer:      t.self,
+		Remote:    p,
 		Type:      DirectDialEvtT,
 		Evt: &DirectDialEvt{
 			Success:      true,
@@ -90,7 +93,8 @@ func (t *Tracer) DirectDialFailed(p peer.ID, dt time.Duration, err error) {
 
 	t.tr.Trace(&Event{
 		Timestamp: time.Now().UnixNano(),
-		Peer:      p,
+		Peer:      t.self,
+		Remote:    p,
 		Type:      DirectDialEvtT,
 		Evt: &DirectDialEvt{
 			Success:      false,
@@ -107,7 +111,8 @@ func (t *Tracer) ProtocolError(p peer.ID, err error) {
 
 	t.tr.Trace(&Event{
 		Timestamp: time.Now().UnixNano(),
-		Peer:      p,
+		Peer:      t.self,
+		Remote:    p,
 		Type:      ProtocolErrorEvtT,
 		Evt: &ProtocolErrorEvt{
 			Error: err.Error(),
@@ -127,7 +132,8 @@ func (t *Tracer) StartHolePunch(p peer.ID, obsAddrs []ma.Multiaddr, rtt time.Dur
 
 	t.tr.Trace(&Event{
 		Timestamp: time.Now().UnixNano(),
-		Peer:      p,
+		Peer:      t.self,
+		Remote:    p,
 		Type:      StartHolePunchEvtT,
 		Evt: &StartHolePunchEvt{
 			RemoteAddrs: addrs,
@@ -151,7 +157,8 @@ func (t *Tracer) EndHolePunch(p peer.ID, dt time.Duration, err error) {
 
 	t.tr.Trace(&Event{
 		Timestamp: time.Now().UnixNano(),
-		Peer:      p,
+		Peer:      t.self,
+		Remote:    p,
 		Type:      EndHolePunchEvtT,
 		Evt:       evt,
 	})
@@ -164,7 +171,8 @@ func (t *Tracer) HolePunchAttempt(p peer.ID, attempt int) {
 
 	t.tr.Trace(&Event{
 		Timestamp: time.Now().UnixNano(),
-		Peer:      p,
+		Peer:      t.self,
+		Remote:    p,
 		Type:      HolePunchAttemptEvtT,
 		Evt: &HolePunchAttemptEvt{
 			Attempt: attempt,
