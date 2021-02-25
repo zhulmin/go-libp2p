@@ -20,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/config"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	autorelay "github.com/libp2p/go-libp2p/p2p/host/relay"
+	holepunch "github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -490,9 +491,10 @@ func UserAgent(userAgent string) Option {
 //
 // If `EnableAutoRelay` is configured, the `StaticRelays` option can be used to configure a static set of Relay servers
 // for `AutoRelay` to connect to so that it does not need to discover Relay servers via Routing.
-func EnableHolePunching() Option {
+func EnableHolePunching(opts ...holepunch.Option) Option {
 	return func(cfg *Config) error {
 		cfg.EnableHolePunching = true
+		cfg.HolePunchingOptions = opts
 		return nil
 	}
 }

@@ -7,14 +7,16 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/ipfs/go-log"
+	pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	pb "github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
-	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
-	"github.com/libp2p/go-msgio/protoio"
+
+	logging "github.com/ipfs/go-log"
+	protoio "github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -45,6 +47,8 @@ type HolePunchService struct {
 	ids  *identify.IDService
 	host host.Host
 
+	tracer *Tracer
+
 	// ensure we shutdown ONLY once
 	closeSync sync.Once
 	refCount  sync.WaitGroup
@@ -58,9 +62,11 @@ type HolePunchService struct {
 	handlerErrs   []error
 }
 
+type Option func(*HolePunchService) error
+
 // NewHolePunchService creates a new service that can be used for hole punching
 // The `isTest` should ONLY be turned ON for testing.
-func NewHolePunchService(h host.Host, ids *identify.IDService, isTest bool) (*HolePunchService, error) {
+func NewHolePunchService(h host.Host, ids *identify.IDService, opts ...Option) (*HolePunchService, error) {
 	if ids == nil {
 		return nil, errors.New("Identify service can't be nil")
 	}
@@ -72,7 +78,14 @@ func NewHolePunchService(h host.Host, ids *identify.IDService, isTest bool) (*Ho
 		host:      h,
 		ids:       ids,
 		active:    make(map[peer.ID]struct{}),
-		isTest:    isTest,
+	}
+
+	for _, opt := range opts {
+		err := opt(hs)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
 	}
 
 	h.SetStreamHandler(Protocol, hs.handleNewStream)
@@ -99,11 +112,18 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 		if manet.IsPublicAddr(a) && !isRelayAddress(a) {
 			forceDirectConnCtx := network.WithForceDirectDial(hs.ctx, "hole-punching")
 			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
-			defer cancel()
-			if err := hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp}); err == nil {
+
+			tstart := time.Now()
+			err := hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
+			dt := time.Since(tstart)
+			cancel()
+
+			if err == nil {
+				hs.tracer.DirectDialSuccessful(rp, dt)
 				log.Debugf("direct connection to peer %s successful, no need for a hole punch", rp.Pretty())
 				return nil
 			}
+			hs.tracer.DirectDialFailed(rp, dt, err)
 			break
 		}
 	}
@@ -113,9 +133,9 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	sCtx := network.WithNoDial(hpCtx, "hole-punch")
 	s, err := hs.host.NewStream(sCtx, rp, Protocol)
 	if err != nil {
-		msg := fmt.Sprintf("failed to open hole-punching stream with peer %s, err: %s", rp, err)
-		log.Error(msg)
-		return errors.New(msg)
+		err = fmt.Errorf("failed to open hole-punching stream with peer %s: %w", rp, err)
+		hs.tracer.ProtocolError(rp, err)
+		return err
 	}
 	log.Infof("will attempt hole punch with peer %s", rp.Pretty())
 	_ = s.SetDeadline(time.Now().Add(HolePunchTimeout))
@@ -129,10 +149,9 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	tstart := time.Now()
 	if err := w.WriteMsg(msg); err != nil {
 		s.Reset()
-		msg := fmt.Sprintf("failed to send hole punch CONNECT, err: %s", err)
-
-		log.Error(msg)
-		return errors.New(msg)
+		err = fmt.Errorf("failed to send hole punch CONNECT: %w", err)
+		hs.tracer.ProtocolError(rp, err)
+		return err
 	}
 
 	// wait for a CONNECT message from the remote peer
@@ -140,19 +159,17 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	msg.Reset()
 	if err := rd.ReadMsg(msg); err != nil {
 		s.Reset()
-
-		msg := fmt.Sprintf("failed to read HolePunch_CONNECT message from remote peer, err: %s", err)
-		log.Error(msg)
-		return errors.New(msg)
+		err = fmt.Errorf("failed to read CONNECT message from remote peer: %w", err)
+		hs.tracer.ProtocolError(rp, err)
+		return err
 	}
 	rtt := time.Since(tstart)
 
-	if msg.GetType() != pb.HolePunch_CONNECT {
+	if t := msg.GetType(); t != pb.HolePunch_CONNECT {
 		s.Reset()
-		msg := fmt.Sprintf("expected HolePunch_CONNECT message, got %s", msg.GetType())
-
-		log.Debug(msg)
-		return errors.New(msg)
+		err = fmt.Errorf("expected CONNECT message but got %d", t)
+		hs.tracer.ProtocolError(rp, err)
+		return err
 	}
 
 	obsRemote := addrsFromBytes(msg.ObsAddrs)
@@ -162,9 +179,9 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	msg.Type = pb.HolePunch_SYNC.Enum()
 	if err := w.WriteMsg(msg); err != nil {
 		s.Reset()
-		msg := fmt.Sprintf("failed to send SYNC message for hole punching, err: %s", err)
-		log.Error(msg)
-		return errors.New(msg)
+		err = fmt.Errorf("failed to send SYNC message for hole punching: %w", err)
+		hs.tracer.ProtocolError(rp, err)
+		return err
 	}
 	defer s.Close()
 
@@ -179,7 +196,15 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 			ID:    rp,
 			Addrs: obsRemote,
 		}
-		return hs.holePunchConnectWithRetry(pi)
+		tstart = time.Now()
+		hs.tracer.StartHolePunch(rp, obsRemote, rtt)
+		err = hs.holePunchConnectWithRetry(pi)
+		dt := time.Since(tstart)
+		hs.tracer.EndHolePunch(rp, dt, err)
+		if err == nil {
+			log.Infof("hole punching with %s successful after %s", rp, dt)
+		}
+		return err
 
 	case <-hs.ctx.Done():
 		return hs.ctx.Err()
@@ -194,13 +219,17 @@ func (hs *HolePunchService) HandlerErrors() []error {
 	return hs.handlerErrs
 }
 
-func (hs *HolePunchService) appendHandlerErr(err error) {
+func (hs *HolePunchService) handlerError(p peer.ID, err error) {
+	if !hs.isTest {
+		hs.tracer.ProtocolError(p, err)
+		log.Warn(err)
+		return
+	}
+
 	hs.handlerErrsMu.Lock()
 	defer hs.handlerErrsMu.Unlock()
 
-	if hs.isTest {
-		hs.handlerErrs = append(hs.handlerErrs, err)
-	}
+	hs.handlerErrs = append(hs.handlerErrs, err)
 }
 
 func (hs *HolePunchService) handleNewStream(s network.Stream) {
@@ -214,12 +243,12 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	msg := new(pb.HolePunch)
 	if err := rd.ReadMsg(msg); err != nil {
 		s.Reset()
-		hs.appendHandlerErr(fmt.Errorf("failed to read message from initator, err: %s", err))
+		hs.handlerError(rp, fmt.Errorf("failed to read message from initator: %w", err))
 		return
 	}
-	if msg.GetType() != pb.HolePunch_CONNECT {
+	if t := msg.GetType(); t != pb.HolePunch_CONNECT {
 		s.Reset()
-		hs.appendHandlerErr(errors.New("did not get expected HolePunch_CONNECT message from initiator"))
+		hs.handlerError(rp, fmt.Errorf("expected CONNECT message from initiator but got %d", t))
 		return
 	}
 	obsDial := addrsFromBytes(msg.ObsAddrs)
@@ -228,9 +257,10 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	msg.Reset()
 	msg.Type = pb.HolePunch_CONNECT.Enum()
 	msg.ObsAddrs = addrsToBytes(hs.ids.OwnObservedAddrs())
+	tstart := time.Now()
 	if err := wr.WriteMsg(msg); err != nil {
 		s.Reset()
-		hs.appendHandlerErr(fmt.Errorf("failed to write HolePunch_CONNECT message to initator, err: %s", err))
+		hs.handlerError(rp, fmt.Errorf("failed to write CONNECT message to initator:: %w", err))
 		return
 	}
 
@@ -238,12 +268,14 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	msg.Reset()
 	if err := rd.ReadMsg(msg); err != nil {
 		s.Reset()
-		hs.appendHandlerErr(fmt.Errorf("failed to read message from initator, err: %s", err))
+		hs.handlerError(rp, fmt.Errorf("failed to read message from initator: %w", err))
 		return
 	}
-	if msg.GetType() != pb.HolePunch_SYNC {
+	rtt := time.Since(tstart)
+
+	if t := msg.GetType(); t != pb.HolePunch_SYNC {
 		s.Reset()
-		hs.appendHandlerErr(errors.New("did not get expected HolePunch_SYNC message from initiator"))
+		hs.handlerError(rp, fmt.Errorf("expected SYNC message from initiator but got %d", t))
 		return
 	}
 	defer s.Close()
@@ -253,48 +285,59 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 		ID:    rp,
 		Addrs: obsDial,
 	}
-	_ = hs.holePunchConnectWithRetry(pi)
+
+	hs.tracer.StartHolePunch(rp, obsDial, rtt)
+	tstart = time.Now()
+	err := hs.holePunchConnectWithRetry(pi)
+	dt := time.Since(tstart)
+	hs.tracer.EndHolePunch(rp, dt, err)
+	if err != nil {
+		log.Warnf("hole punching with %s failed after %s: %s", rp, dt, err)
+	} else {
+		log.Infof("hole punching with %s successful after %s", rp, dt)
+	}
 }
 
 func (hs *HolePunchService) holePunchConnectWithRetry(pi peer.AddrInfo) error {
 	log.Debugf("starting hole punch with %s", pi.ID)
 	holePunchCtx := network.WithSimultaneousConnect(hs.ctx, "hole-punching")
 	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")
-	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
-	defer cancel()
-	err := hs.host.Connect(dialCtx, pi)
-	if err == nil {
-		log.Infof("hole punch with peer %s successful, direct conns to peer are:", pi.ID.Pretty())
-		for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
-			if !isRelayAddress(c.RemoteMultiaddr()) {
-				log.Info(c)
-			}
-		}
-		return nil
-	} else {
-		log.Infof("first hole punch attempt with peer %s failed, error: %s, will retry now...", pi.ID.Pretty(), err)
-	}
 
-	for i := 1; i <= maxRetries; i++ {
-		time.Sleep(retryWait)
-
+	doConnect := func(attempt int) error {
 		dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 		defer cancel()
 
-		err = hs.host.Connect(dialCtx, pi)
+		hs.tracer.HolePunchAttempt(pi.ID, attempt)
+		err := hs.host.Connect(dialCtx, pi)
 		if err == nil {
-			log.Infof("hole punch with peer %s successful after %d retries, direct conns to peer are:", pi.ID.Pretty(), i)
+			log.Infof("hole punch with peer %s successful after %d retries; direct conns to peer are:", attempt, pi.ID)
 			for _, c := range hs.host.Network().ConnsToPeer(pi.ID) {
 				if !isRelayAddress(c.RemoteMultiaddr()) {
 					log.Info(c)
 				}
 			}
+		}
+
+		return err
+	}
+
+	err := doConnect(0)
+	if err == nil {
+		return nil
+	}
+
+	log.Infof("first hole punch attempt with peer %s failed: %s; will retry in %s...", pi.ID, err, retryWait)
+
+	for i := 1; i <= maxRetries; i++ {
+		time.Sleep(retryWait)
+
+		err = doConnect(i)
+		if err == nil {
 			return nil
 		}
 	}
-	log.Errorf("all retries for hole punch with peer %s failed, err: %s", pi.ID.Pretty(), err)
 
-	return err
+	return fmt.Errorf("all retries for hole punch with peer %s failed: %w", pi.ID, err)
 }
 
 func isRelayAddress(a ma.Multiaddr) bool {
@@ -373,7 +416,10 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 				return
 			}
 
-			hs.HolePunch(v.RemotePeer())
+			err := hs.HolePunch(v.RemotePeer())
+			if err != nil {
+				log.Warnf("hole punching attempt with %s failed: %s", v.RemotePeer(), err)
+			}
 		}()
 		return
 	}
