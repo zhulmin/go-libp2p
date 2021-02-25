@@ -368,7 +368,7 @@ func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Hos
 	require.NoError(t, err)
 	ids, err := identify.NewIDService(h)
 	require.NoError(t, err)
-	hps, err := holepunch.NewHolePunchService(h, ids, true)
+	hps, err := holepunch.NewHolePunchService(h, ids, withTest)
 	require.NoError(t, err)
 
 	// wait till we have a relay addr
@@ -396,8 +396,12 @@ func mkHostWithHolePunchSvc(t *testing.T, ctx context.Context) (host.Host, *hole
 	require.NoError(t, err)
 	ids, err := identify.NewIDService(h)
 	require.NoError(t, err)
-	hps, err := holepunch.NewHolePunchService(h, ids, true)
+	hps, err := holepunch.NewHolePunchService(h, ids, withTest)
 	require.NoError(t, err)
 
 	return h, hps
+}
+
+func withTest(hps *HolePunchService) error {
+	hps.isTest = true
 }

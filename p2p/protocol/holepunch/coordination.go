@@ -45,6 +45,8 @@ type HolePunchService struct {
 	ids  *identify.IDService
 	host host.Host
 
+	//tracer *Tracer
+
 	// ensure we shutdown ONLY once
 	closeSync sync.Once
 	refCount  sync.WaitGroup
@@ -58,9 +60,11 @@ type HolePunchService struct {
 	handlerErrs   []error
 }
 
+type Option func(*HolePunchService) error
+
 // NewHolePunchService creates a new service that can be used for hole punching
 // The `isTest` should ONLY be turned ON for testing.
-func NewHolePunchService(h host.Host, ids *identify.IDService, isTest bool) (*HolePunchService, error) {
+func NewHolePunchService(h host.Host, ids *identify.IDService, opts ...Option) (*HolePunchService, error) {
 	if ids == nil {
 		return nil, errors.New("Identify service can't be nil")
 	}
@@ -72,7 +76,14 @@ func NewHolePunchService(h host.Host, ids *identify.IDService, isTest bool) (*Ho
 		host:      h,
 		ids:       ids,
 		active:    make(map[peer.ID]struct{}),
-		isTest:    isTest,
+	}
+
+	for _, opt := range opts {
+		err := opt(hs)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
 	}
 
 	h.SetStreamHandler(Protocol, hs.handleNewStream)

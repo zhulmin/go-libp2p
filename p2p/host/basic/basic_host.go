@@ -156,6 +156,8 @@ type HostOpts struct {
 
 	// EnableHolePunching enables the peer to initiate/respond to hole punching attempts for NAT traversal.
 	EnableHolePunching bool
+	// HolePunchingOptions are options for the hole punching service
+	HolePunchingOptions []holepunch.Option
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -223,7 +225,7 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	}
 
 	if opts.EnableHolePunching {
-		h.hps, err = holepunch.NewHolePunchService(h, h.ids, false)
+		h.hps, err = holepunch.NewHolePunchService(h, h.ids, opts.HolePunchingOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
 		}
