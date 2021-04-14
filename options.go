@@ -431,6 +431,17 @@ func Routing(rt config.RoutingC) Option {
 	}
 }
 
+// SmartRecord will configure libp2p to use smart records.
+func SmartRecord(rt config.SmartRecordsC) Option {
+	return func(cfg *Config) error {
+		if cfg.SmartRecords != nil {
+			return fmt.Errorf("cannot specify multiple smart-record manager options")
+		}
+		cfg.SmartRecords = rt
+		return nil
+	}
+}
+
 // NoListenAddrs will configure libp2p to not listen by default.
 //
 // This will both clear any configured listen addrs and prevent libp2p from

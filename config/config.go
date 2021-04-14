@@ -31,6 +31,8 @@ import (
 
 	logging "github.com/ipfs/go-log"
 	ma "github.com/multiformats/go-multiaddr"
+
+	smart "github.com/libp2p/go-smart-record/protocol"
 )
 
 var log = logging.Logger("p2p-config")
@@ -43,6 +45,8 @@ type AddrsFactory = bhost.AddrsFactory
 type NATManagerC func(network.Network) bhost.NATManager
 
 type RoutingC func(host.Host) (routing.PeerRouting, error)
+
+type SmartRecordsC func(host.Host) (smart.SmartRecordManager, error)
 
 // AutoNATConfig defines the AutoNAT behavior for the libp2p host.
 type AutoNATConfig struct {
@@ -92,6 +96,7 @@ type Config struct {
 	EnableAutoRelay bool
 	AutoNATConfig
 	StaticRelays []peer.AddrInfo
+	SmartRecords SmartRecordsC
 }
 
 func (cfg *Config) makeSwarm(ctx context.Context) (*swarm.Swarm, error) {
@@ -234,6 +239,20 @@ func (cfg *Config) NewNode(ctx context.Context) (host.Host, error) {
 	var router routing.PeerRouting
 	if cfg.Routing != nil {
 		router, err = cfg.Routing(h)
+		if err != nil {
+			h.Close()
+			return nil, err
+		}
+	}
+
+	// Configure smart records handlers if available
+	// NOTE: We could expose the smart record interface
+	// if we wanted to here. That would require
+	// changing the host interface or wrapping up the baseHost in
+	// a smartRecordsHost similar to the routerHost. Not
+	// going to do it for now.
+	if cfg.SmartRecords != nil {
+		_, err = cfg.SmartRecords(h)
 		if err != nil {
 			h.Close()
 			return nil, err

@@ -34,6 +34,7 @@ require (
 	github.com/libp2p/go-libp2p-yamux v0.5.1
 	github.com/libp2p/go-msgio v0.0.6
 	github.com/libp2p/go-netroute v0.1.5
+	github.com/libp2p/go-smart-record v0.0.0-20210414084321-7e561a2c921d
 	github.com/libp2p/go-stream-muxer-multistream v0.3.0
 	github.com/libp2p/go-tcp-transport v0.2.1
 	github.com/libp2p/go-ws-transport v0.4.0
