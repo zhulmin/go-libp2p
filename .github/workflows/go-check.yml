@@ -16,9 +16,9 @@ jobs:
         run: go install honnef.co/go/tools/cmd/staticcheck@be534f007836a777104a15f2456cd1fffd3ddee8 # v2020.2.2
       - name: Check that go.mod is tidy
         run: |
-          for mod in **/go.mod; do
+          while read -r mod; do
             ( cd "$(dirname "$mod")" && go mod tidy )
-          done
+          done < <(find -name go.mod)
 
           if [[ -n $(git ls-files --other --exclude-standard --directory -- 'go.sum' '**/go.sum') ]]; then
             echo "go.sum was added by go mod tidy"
@@ -36,14 +36,14 @@ jobs:
       - name: go vet
         if: ${{ success() || failure() }} # run this step even if the previous one failed
         run: |
-          for mod in **/go.mod; do
+          while read -r mod; do
             ( cd "$(dirname "$mod")" && go vet ./... )
-          done
+          done < <(find -name go.mod)
       - name: staticcheck
         if: ${{ success() || failure() }} # run this step even if the previous one failed
         run: |
           set -o pipefail
-          for mod in **/go.mod; do
+          while read -r mod; do
             moddir="$(dirname "$mod")"
             ( cd "$moddir" && staticcheck ./... ';' | sed -e "s@\(.*\)\.go@./${moddir}/\1.go@g" )
-          done
+          done < <(find -name go.mod)
