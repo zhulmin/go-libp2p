@@ -120,9 +120,7 @@ func runListener(ctx context.Context, ha host.Host, listenPort int, insecure boo
 	}
 
 	// Wait until canceled
-	select {
-	case <-ctx.Done():
-	}
+	<-ctx.Done()
 }
 
 func runSender(ctx context.Context, ha host.Host, targetPeer string) {
@@ -155,7 +153,7 @@ func runSender(ctx context.Context, ha host.Host, targetPeer string) {
 		return
 	}
 
-	peerid, err := peer.IDB58Decode(pid)
+	peerid, err := peer.Decode(pid)
 	if err != nil {
 		log.Println(err)
 		return

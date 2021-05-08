@@ -54,7 +54,7 @@ func (n *Node) authenticateMessage(message proto.Message, data *p2p.MessageData)
 	data.Sign = sign
 
 	// restore peer id binary format from base58 encoded node id data
-	peerId, err := peer.IDB58Decode(data.NodeId)
+	peerId, err := peer.Decode(data.NodeId)
 	if err != nil {
 		log.Println(err, "Failed to decode node id from base58")
 		return false
@@ -128,7 +128,7 @@ func (n *Node) NewMessageData(messageId string, gossip bool) *p2p.MessageData {
 	}
 
 	return &p2p.MessageData{ClientVersion: clientVersion,
-		NodeId:     peer.IDB58Encode(n.ID()),
+		NodeId:     peer.Encode(n.ID()),
 		NodePubKey: nodePubKey,
 		Timestamp:  time.Now().Unix(),
 		Id:         messageId,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/gogo/protobuf/proto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 )
@@ -28,7 +29,7 @@ func pubsubHandler(ctx context.Context, sub *pubsub.Subscription) {
 		}
 
 		req := &Request{}
-		err = req.Unmarshal(msg.Data)
+		err = proto.Unmarshal(msg.Data, req)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			continue

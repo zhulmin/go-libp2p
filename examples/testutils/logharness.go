@@ -107,8 +107,6 @@ exploop:
 			return
 		}
 	}
-
-	return
 }
 
 // Expect adds an expectation that the log contains a line equal to s

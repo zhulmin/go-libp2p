@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/libp2p/go-libp2p-core/host"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 )
@@ -33,7 +34,7 @@ func chatInputLoop(ctx context.Context, h host.Host, ps *pubsub.PubSub, donec ch
 				Created: &now,
 			},
 		}
-		msgBytes, err := req.Marshal()
+		msgBytes, err := proto.Marshal(req)
 		if err != nil {
 			continue
 		}

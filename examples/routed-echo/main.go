@@ -154,7 +154,7 @@ func main() {
 	}
 	/**** This is where the listener code ends ****/
 
-	peerid, err := peer.IDB58Decode(*target)
+	peerid, err := peer.Decode(*target)
 	if err != nil {
 		log.Fatalln(err)
 	}

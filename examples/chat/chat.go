@@ -144,10 +144,8 @@ func main() {
 
 	}
 
-	// Wait until canceled
-	select {
-	case <-ctx.Done():
-	}
+	// Wait forever
+	select {}
 }
 
 func makeHost(ctx context.Context, port int, randomness io.Reader) (host.Host, error) {

@@ -10,6 +10,7 @@ import (
 
 	"strings"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/libp2p/go-libp2p-core/host"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -35,7 +36,7 @@ func sendMessage(ps *pubsub.PubSub, msg string) {
 			Created: &now,
 		},
 	}
-	msgBytes, err := req.Marshal()
+	msgBytes, err := proto.Marshal(req)
 	if err != nil {
 		return
 	}
@@ -55,7 +56,7 @@ func updatePeer(ps *pubsub.PubSub, id peer.ID, handle string) {
 			UserHandle: []byte(handle),
 		},
 	}
-	reqBytes, err := req.Marshal()
+	reqBytes, err := proto.Marshal(req)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return

@@ -65,8 +65,6 @@ func TestMain(t *testing.T) {
 			rw.Flush()
 		}()
 
-		select {
-		case <-ctx.Done():
-		}
+		<-ctx.Done()
 	})
 }

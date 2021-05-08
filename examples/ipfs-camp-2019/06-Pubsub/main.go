@@ -117,6 +117,9 @@ func main() {
 	routingDiscovery := disc.NewRoutingDiscovery(dht)
 	disc.Advertise(ctx, routingDiscovery, string(chatProtocol))
 	peers, err := disc.FindPeers(ctx, routingDiscovery, string(chatProtocol))
+	if err != nil {
+		panic(err)
+	}
 	for _, peer := range peers {
 		notifee.HandlePeerFound(peer)
 	}
