@@ -25,15 +25,24 @@ jobs:
           go version
           go env
       - name: Run tests
-        run: find -name 'go.mod' -execdir go test -v -coverprofile coverage.txt ./... ';'
+        run: |
+          for mod in **/go.mod; do
+            ( cd "$(dirname "$mod")" && go test -v -coverprofile coverage.txt ./... )
+          done
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
         env:
           GOARCH: 386
-        run: find -name 'go.mod' -execdir go test -v ./... ';'
+        run: |
+          for mod in **/go.mod; do
+            ( cd "$(dirname "$mod")" && go test -v ./... )
+          done
       - name: Run tests with race detector
         if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
-        run: find -name 'go.mod' go test -v -race ./... ';'
+        run: |
+          for mod in **/go.mod; do
+            ( cd "$(dirname "$mod")" && go test -v -race ./... )
+          done
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@967e2b38a85a62bd61be5529ada27ebc109948c2 # v1.4.1
         with:
