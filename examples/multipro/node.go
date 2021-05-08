@@ -12,7 +12,7 @@ import (
 
 	ggio "github.com/gogo/protobuf/io"
 	proto "github.com/gogo/protobuf/proto"
-	p2p "github.com/libp2p/go-libp2p-examples/multipro/pb"
+	p2p "github.com/libp2p/go-libp2p/examples/multipro/pb"
 )
 
 // node client version
