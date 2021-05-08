@@ -77,7 +77,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	sub, err := ps.Subscribe(pubsubTopic)
+	topic, err := ps.Join(pubsubTopic)
+	if err != nil {
+		panic(err)
+	}
+	defer topic.Close()
+	sub, err := topic.Subscribe()
 	if err != nil {
 		panic(err)
 	}
@@ -119,7 +124,7 @@ func main() {
 	donec := make(chan struct{}, 1)
 	// TODO: modify this chat input loop to use the protobufs defined in this
 	// folder.
-	go chatInputLoop(ctx, host, ps, donec)
+	go chatInputLoop(ctx, topic, donec)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT)

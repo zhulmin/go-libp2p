@@ -9,20 +9,17 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/libp2p/go-libp2p-core/host"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 )
 
-func chatInputLoop(ctx context.Context, h host.Host, ps *pubsub.PubSub, donec chan struct{}) {
+func chatInputLoop(ctx context.Context, topic *pubsub.Topic, donec chan struct{}) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		msg := scanner.Text()
 		msgId := make([]byte, 10)
 		_, err := rand.Read(msgId)
-		defer func() {
-			fmt.Fprintln(os.Stderr, err)
-		}()
 		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 		now := time.Now().Unix()
@@ -36,9 +33,14 @@ func chatInputLoop(ctx context.Context, h host.Host, ps *pubsub.PubSub, donec ch
 		}
 		msgBytes, err := proto.Marshal(req)
 		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			continue
 		}
-		err = ps.Publish(pubsubTopic, msgBytes)
+		err = topic.Publish(ctx, msgBytes)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			continue
+		}
 	}
 	donec <- struct{}{}
 }

@@ -32,6 +32,7 @@ func pubsubUpdateHandler(id peer.ID, msg *UpdatePeer) {
 }
 
 func pubsubHandler(ctx context.Context, sub *pubsub.Subscription) {
+	defer sub.Cancel()
 	for {
 		msg, err := sub.Next(ctx)
 		if err != nil {
