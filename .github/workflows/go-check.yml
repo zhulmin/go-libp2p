@@ -45,5 +45,5 @@ jobs:
           set -o pipefail
           while read -r mod; do
             moddir="$(dirname "$mod")"
-            ( cd "$moddir" && staticcheck ./... ';' | sed -e "s@\(.*\)\.go@./${moddir}/\1.go@g" )
+            ( cd "$moddir" && staticcheck ./... | sed -e "s@\(.*\)\.go@./${moddir}/\1.go@g" )
           done < <(find -name go.mod)
