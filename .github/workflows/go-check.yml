@@ -15,7 +15,7 @@ jobs:
       - name: Install staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@be534f007836a777104a15f2456cd1fffd3ddee8 # v2020.2.2
       - name: Check that go.mod is tidy
-        uses: marten-seemann/multiple-go-modules@master
+        uses: protocol/multiple-go-modules@master
         with:
           run: |
             go mod tidy
@@ -26,7 +26,7 @@ jobs:
             git diff --exit-code -- go.sum go.mod
       - name: gofmt
         if: ${{ success() || failure() }} # run this step even if the previous one failed
-        uses: marten-seemann/multiple-go-modules@master
+        uses: protocol/multiple-go-modules@master
         with:
           run: |
             out=$(gofmt -s -l .)
@@ -36,12 +36,12 @@ jobs:
             fi
       - name: go vet
         if: ${{ success() || failure() }} # run this step even if the previous one failed
-        uses: marten-seemann/multiple-go-modules@master
+        uses: protocol/multiple-go-modules@master
         with:
           run: go vet ./...
       - name: staticcheck
         if: ${{ success() || failure() }} # run this step even if the previous one failed
-        uses: marten-seemann/multiple-go-modules@master
+        uses: protocol/multiple-go-modules@master
         with:
           run: |
             set -o pipefail
