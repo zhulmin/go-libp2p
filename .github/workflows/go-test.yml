@@ -22,23 +22,31 @@ jobs:
           go version
           go env
       - name: Run tests
-        uses: protocol/multiple-go-modules@master
-        with:
-          run: go test -v -coverprofile coverage.txt ./...
-      - name: Run tests (32 bit)
-        if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
-        uses: protocol/multiple-go-modules@master
+        id: tests
         env:
-          GOARCH: 386
+          COVERAGE: "initial"
+        uses: protocol/multiple-go-modules@group
         with:
-          run: go test -v ./...
-      - name: Run tests with race detector
-        if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
-        uses: protocol/multiple-go-modules@master
-        with:
-          run: go test -v -race ./...
+          run: |
+            export COVERAGE="$COVERAGE,abc"
+            echo "::set-output name=coverage::$COVERAGE"
+            echo "$COVERAGE"
+            # go test -v -coverprofile coverage.txt ./...
+      # - name: Run tests (32 bit)
+      #   if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
+      #   uses: protocol/multiple-go-modules@master
+      #   env:
+      #     GOARCH: 386
+      #   with:
+      #     run: go test -v ./...
+      # - name: Run tests with race detector
+      #   if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
+      #   uses: protocol/multiple-go-modules@master
+      #   with:
+      #     run: go test -v -race ./...
+      - run: echo ${{ env.COVERAGE }}
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@967e2b38a85a62bd61be5529ada27ebc109948c2 # v1.4.1
         with:
-          file: coverage.txt
+          files: ${{ steps.tests.outputs.coverage }}
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
