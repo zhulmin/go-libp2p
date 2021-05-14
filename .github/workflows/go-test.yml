@@ -26,14 +26,12 @@ jobs:
         uses: protocol/multiple-go-modules@add-output
         with:
           run: |
-            echo $COVERAGE
-            covers+=($(pwd))
+            covers+=($(pwd)"/coverage.txt")
             list=$(IFS=, ; echo "${covers[*]}")
-            echo "COVERAGE=$list" >> $GITHUB_ENV
             export COVERAGE="$list"
             echo $COVERAGE
-            echo ${{ steps.tests.outputs.output }}
             echo "::set-output name=output::$COVERAGE"
+            go test -v -coverprofile coverage.txt ./...
       # - name: Run tests (32 bit)
       #   if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
       #   uses: protocol/multiple-go-modules@master
@@ -50,5 +48,5 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@967e2b38a85a62bd61be5529ada27ebc109948c2 # v1.4.1
         with:
-          files: ${{ steps.tests.outputs.coverage }}
+          files: ${{ steps.tests.outputs.output }}
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
