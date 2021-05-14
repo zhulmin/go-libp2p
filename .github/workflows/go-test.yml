@@ -23,15 +23,16 @@ jobs:
           go env
       - name: Run tests
         id: tests
-        env:
-          COVERAGE: "initial"
-        uses: protocol/multiple-go-modules@group
+        uses: protocol/multiple-go-modules@no-subshell
         with:
           run: |
-            export COVERAGE="$COVERAGE,abc"
+            echo $COVERAGE
+            covers+=($(pwd))
+            list=$(IFS=, ; echo "${covers[*]}")
+            echo "COVERAGE=$list" >> $GITHUB_ENV
+            export COVERAGE="$list"
+            echo $COVERAGE
             echo "::set-output name=coverage::$COVERAGE"
-            echo "$COVERAGE"
-            # go test -v -coverprofile coverage.txt ./...
       # - name: Run tests (32 bit)
       #   if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
       #   uses: protocol/multiple-go-modules@master
@@ -44,7 +45,7 @@ jobs:
       #   uses: protocol/multiple-go-modules@master
       #   with:
       #     run: go test -v -race ./...
-      - run: echo ${{ env.COVERAGE }}
+      - run: echo ${{ steps.tests.outputs.COVERAGE }}
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@967e2b38a85a62bd61be5529ada27ebc109948c2 # v1.4.1
         with:
