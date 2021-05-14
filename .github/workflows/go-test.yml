@@ -32,6 +32,7 @@ jobs:
             echo "COVERAGE=$list" >> $GITHUB_ENV
             export COVERAGE="$list"
             echo $COVERAGE
+            echo ${{ steps.tests.outputs.output }}
             echo "::set-output name=output::$COVERAGE"
       # - name: Run tests (32 bit)
       #   if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
@@ -45,7 +46,7 @@ jobs:
       #   uses: protocol/multiple-go-modules@master
       #   with:
       #     run: go test -v -race ./...
-      - run: echo ${{ steps.tests.outputs.COVERAGE }}
+      - run: echo ${{ steps.tests.outputs.output }}
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@967e2b38a85a62bd61be5529ada27ebc109948c2 # v1.4.1
         with:
