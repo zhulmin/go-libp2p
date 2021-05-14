@@ -23,7 +23,7 @@ jobs:
           go env
       - name: Run tests
         id: tests
-        uses: protocol/multiple-go-modules@no-subshell
+        uses: protocol/multiple-go-modules@add-output
         with:
           run: |
             echo $COVERAGE
@@ -32,7 +32,7 @@ jobs:
             echo "COVERAGE=$list" >> $GITHUB_ENV
             export COVERAGE="$list"
             echo $COVERAGE
-            echo "::set-output name=coverage::$COVERAGE"
+            echo "::set-output name=output::$COVERAGE"
       # - name: Run tests (32 bit)
       #   if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
       #   uses: protocol/multiple-go-modules@master
