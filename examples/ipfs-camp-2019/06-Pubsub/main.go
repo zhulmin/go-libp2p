@@ -19,7 +19,7 @@ import (
 	tls "github.com/libp2p/go-libp2p-tls"
 	yamux "github.com/libp2p/go-libp2p-yamux"
 	"github.com/libp2p/go-libp2p/p2p/discovery"
-	tcp "github.com/libp2p/go-tcp-transport"
+	"github.com/libp2p/go-tcp-transport"
 	ws "github.com/libp2p/go-ws-transport"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -102,7 +102,7 @@ func main() {
 		fmt.Println("Connected to", targetInfo.ID)
 	}
 
-	mdns, err := discovery.NewMdnsService(ctx, host, time.Second*10, "")
+	mdns, err := discovery.NewMdnsService(ctx, host, time.Second*10)
 	if err != nil {
 		panic(err)
 	}

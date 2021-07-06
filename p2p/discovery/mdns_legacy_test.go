@@ -33,10 +33,10 @@ func TestMdnsDiscovery(t *testing.T) {
 	b, err := bhost.NewHost(ctx, swarmt.GenSwarm(t, ctx), nil)
 	require.NoError(t, err)
 
-	sa, err := NewMdnsService(ctx, a, time.Second, "someTag")
+	sa, err := NewMdnsServiceLegacy(ctx, a, time.Second)
 	require.NoError(t, err)
 
-	sb, err := NewMdnsService(ctx, b, time.Second, "someTag")
+	sb, err := NewMdnsServiceLegacy(ctx, b, time.Second)
 	require.NoError(t, err)
 	_ = sb
 

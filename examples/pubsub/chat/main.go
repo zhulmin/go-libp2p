@@ -107,7 +107,7 @@ func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 // This lets us automatically discover peers on the same LAN and connect to them.
 func setupDiscovery(ctx context.Context, h host.Host) error {
 	// setup mDNS discovery to find local peers
-	disc, err := discovery.NewMdnsService(ctx, h, DiscoveryInterval, DiscoveryServiceTag)
+	disc, err := discovery.NewMdnsService(ctx, h, DiscoveryInterval)
 	if err != nil {
 		return err
 	}

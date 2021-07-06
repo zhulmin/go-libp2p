@@ -110,7 +110,7 @@ func main() {
 
 	fmt.Println("Connected to", targetInfo.ID)
 
-	mdns, err := discovery.NewMdnsService(ctx, host, time.Second*10, "")
+	mdns, err := discovery.NewMdnsService(ctx, host, time.Second*10)
 	if err != nil {
 		panic(err)
 	}
