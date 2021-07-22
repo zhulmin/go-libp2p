@@ -58,7 +58,7 @@ type AddrsFactory func([]ma.Multiaddr) []ma.Multiaddr
 
 // Option is a type used to pass in options to the host.
 //
-// Deprecated in favor of HostOpts and NewHost.
+// Deprecated: use HostOpts instead.
 type Option int
 
 // NATPortMap makes the host attempt to open port-mapping in NAT devices
@@ -67,7 +67,7 @@ type Option int
 // port mappings periodically. The NATed addresses are included in the
 // Host's Addrs() list.
 //
-// This option is deprecated in favor of HostOpts and NewHost.
+// Deprecated: use HostOpts instead.
 const NATPortMap Option = iota
 
 // BasicHost is the basic implementation of the host.Host interface. This
@@ -336,7 +336,7 @@ func (h *BasicHost) updateLocalIpAddr() {
 // * connmgr.ConnManager
 // * madns.Resolver
 //
-// This function is deprecated in favor of NewHost and HostOpts.
+// Deprecated: use NewHost instead.
 func New(net network.Network, opts ...interface{}) *BasicHost {
 	hostopts := &HostOpts{}
 
