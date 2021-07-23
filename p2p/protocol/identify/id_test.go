@@ -188,16 +188,24 @@ func checkAddrs(t *testing.T, expected, actual []ma.Multiaddr, msg string) {
 
 func testHasProtocolVersions(t *testing.T, h host.Host, p peer.ID) {
 	v, err := h.Peerstore().Get(p, "ProtocolVersion")
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	if v == nil {
 		t.Error("no protocol version")
 		return
 	}
-	if v.(string) != identify.LibP2PVersion {
-		t.Error("protocol mismatch", err)
+	if v.(string) != "github.com/libp2p/go-libp2p" { // this is the default libp2p version
+		t.Errorf("protocol mismatch %s != %s", v.(string), "github.com/libp2p/go-libp2p")
 	}
 	v, err = h.Peerstore().Get(p, "AgentVersion")
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	if v.(string) != "github.com/libp2p/go-libp2p" { // this is the default user agent
-		t.Error("agent version mismatch", err)
+		t.Errorf("agent version %s != %s", v.(string), "github.com/libp2p/go-libp2p")
 	}
 }
 

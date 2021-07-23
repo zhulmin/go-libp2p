@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"reflect"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,12 +37,6 @@ var log = logging.Logger("net/identify")
 // service.
 const ID = "/ipfs/id/1.0.0"
 
-// LibP2PVersion holds the current protocol version for a client running this code
-// TODO(jbenet): fix the versioning mess.
-// XXX: Don't change this till 2020. You'll break all go-ipfs versions prior to
-// 0.4.17 which asserted an exact version match.
-const LibP2PVersion = "ipfs/0.1.0"
-
 // StreamReadTimeout is the read timeout on all incoming Identify family streams.
 var StreamReadTimeout = 60 * time.Second
 
@@ -49,6 +45,7 @@ var (
 	signedIDSize     = 8 * 1024 // 8K
 	maxMessages      = 10
 	defaultUserAgent = "github.com/libp2p/go-libp2p"
+	libp2pVersion    = "github.com/libp2p/go-libp2p"
 )
 
 func init() {
@@ -56,12 +53,46 @@ func init() {
 	if !ok {
 		return
 	}
-	version := bi.Main.Version
-	if version == "(devel)" {
-		defaultUserAgent = bi.Main.Path
-	} else {
-		defaultUserAgent = fmt.Sprintf("%s@%s", bi.Main.Path, bi.Main.Version)
+
+	// Default the "user agent" to the program importing go-libp2p.
+	defaultUserAgent = modName(&bi.Main)
+
+	// Set the libp2p version to this repo's module (in case someone decides to fork it) and
+	// module version (if available).
+	if mod := findModule(bi); mod != nil {
+		libp2pVersion = modName(mod)
 	}
+}
+
+func modName(mod *debug.Module) string {
+	if mod.Version == "(devel)" {
+		return mod.Path
+	}
+	return fmt.Sprintf("%s@%s", mod.Path, mod.Version)
+}
+
+// Given a build info, find the module containing this package.
+func findModule(bi *debug.BuildInfo) *debug.Module {
+	type test struct{}
+	thisPackage := reflect.TypeOf(test{}).PkgPath()
+
+	var bestModule *debug.Module
+	for _, mod := range bi.Deps {
+		// Find a module that's a "prefix" of this module.
+		if !strings.HasPrefix(thisPackage, mod.Path) {
+			continue
+		}
+		if len(thisPackage) == len(mod.Path) || thisPackage[len(mod.Path)] != '/' {
+			continue
+		}
+		// Continue if we already have a longer prefix.
+		if bestModule != nil && len(bestModule.Path) > len(mod.Path) {
+			continue
+		}
+		// Otherwise, choose this module.
+		bestModule = mod
+	}
+	return bestModule
 }
 
 type addPeerHandlerReq struct {
@@ -537,7 +568,7 @@ func (ids *IDService) createBaseIdentifyResponse(
 	}
 
 	// set protocol versions
-	pv := LibP2PVersion
+	pv := libp2pVersion
 	av := ids.UserAgent
 	mes.ProtocolVersion = &pv
 	mes.AgentVersion = &av
