@@ -37,12 +37,12 @@ jobs:
           fi
       - name: go vet
         if: ${{ success() || failure() }} # run this step even if the previous one failed
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@6834c83adb490bcc21cd6cc7b3baa0528d63f755
         with:
           run: go vet ./...
       - name: staticcheck
         if: ${{ success() || failure() }} # run this step even if the previous one failed
-        uses: protocol/multiple-go-modules@v1.0
+        uses: protocol/multiple-go-modules@6834c83adb490bcc21cd6cc7b3baa0528d63f755
         with:
           run: |
             set -o pipefail
