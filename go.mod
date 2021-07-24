@@ -13,7 +13,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.1.3
 	github.com/jbenet/go-cienv v0.1.0
 	github.com/jbenet/goprocess v0.1.4
-	github.com/libp2p/go-addr-util v0.0.2
+	github.com/libp2p/go-addr-util v0.1.0
 	github.com/libp2p/go-conn-security-multistream v0.2.1
 	github.com/libp2p/go-eventbus v0.2.1
 	github.com/libp2p/go-libp2p-autonat v0.4.2
