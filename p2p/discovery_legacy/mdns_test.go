@@ -1,4 +1,4 @@
-package discovery
+package discovery_legacy
 
 import (
 	"context"

@@ -1,15 +1,15 @@
-package discovery
+package discovery_legacy
 
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/p2p/discovery"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -22,19 +22,12 @@ func init() {
 	mdns.DisableLogging = true
 }
 
-var log = logging.Logger("mdns")
+var log = logging.Logger("mdns_legacy")
 
 const ServiceTag = "_ipfs-discovery._udp"
 
-type Service interface {
-	io.Closer
-	RegisterNotifee(Notifee)
-	UnregisterNotifee(Notifee)
-}
-
-type Notifee interface {
-	HandlePeerFound(peer.AddrInfo)
-}
+type Service = discovery.Service
+type Notifee = discovery.Notifee
 
 type mdnsService struct {
 	server  *mdns.Server

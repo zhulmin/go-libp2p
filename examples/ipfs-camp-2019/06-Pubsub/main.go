@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -18,8 +17,8 @@ import (
 	mplex "github.com/libp2p/go-libp2p-mplex"
 	tls "github.com/libp2p/go-libp2p-tls"
 	yamux "github.com/libp2p/go-libp2p-yamux"
-	discovery "github.com/libp2p/go-libp2p/p2p/discovery_legacy"
-	tcp "github.com/libp2p/go-tcp-transport"
+	"github.com/libp2p/go-libp2p/p2p/discovery"
+	"github.com/libp2p/go-tcp-transport"
 	ws "github.com/libp2p/go-ws-transport"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -102,10 +101,7 @@ func main() {
 		fmt.Println("Connected to", targetInfo.ID)
 	}
 
-	mdns, err := discovery.NewMdnsService(ctx, host, time.Second*10, "")
-	if err != nil {
-		panic(err)
-	}
+	mdns := discovery.NewMdnsService(host, "")
 	notifee := &discoveryNotifee{h: host, ctx: ctx}
 	mdns.RegisterNotifee(notifee)
 
