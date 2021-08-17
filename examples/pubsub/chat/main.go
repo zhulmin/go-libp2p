@@ -9,7 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p/p2p/discovery"
+	discovery "github.com/libp2p/go-libp2p/p2p/discovery_legacy"
 
 	"github.com/libp2p/go-libp2p-core/host"
 
