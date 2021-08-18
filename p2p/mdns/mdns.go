@@ -39,9 +39,7 @@ type mdnsService struct {
 	host        host.Host
 	serviceName string
 
-	// This ctx is passed to the resolver.
-	// It is closed when Close() is called.
-	ctx       context.Context
+	// The context is canceled when Close() is called.
 	ctxCancel context.CancelFunc
 
 	resolverRunning chan struct{}
@@ -57,14 +55,13 @@ func NewMdnsService(host host.Host, serviceName string) *mdnsService {
 		serviceName = ServiceName
 	}
 	s := &mdnsService{
-		ctx:             ctx,
 		ctxCancel:       cancel,
 		resolverRunning: make(chan struct{}),
 		host:            host,
 		serviceName:     serviceName,
 	}
 	s.startServer()
-	s.startResolver()
+	s.startResolver(ctx)
 	return s
 }
 
@@ -154,7 +151,7 @@ func (s *mdnsService) startServer() error {
 	return nil
 }
 
-func (s *mdnsService) startResolver() {
+func (s *mdnsService) startResolver(ctx context.Context) {
 	entryChan := make(chan *zeroconf.ServiceEntry, 1000)
 	go func() {
 		for entry := range entryChan {
@@ -189,7 +186,7 @@ func (s *mdnsService) startResolver() {
 	}()
 	go func() {
 		defer close(s.resolverRunning)
-		if err := zeroconf.Browse(s.ctx, s.serviceName, mdnsDomain, entryChan); err != nil {
+		if err := zeroconf.Browse(ctx, s.serviceName, mdnsDomain, entryChan); err != nil {
 			log.Debugf("zeroconf browsing failed: %s", err)
 		}
 	}()
