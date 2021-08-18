@@ -137,7 +137,7 @@ func (s *mdnsService) startServer() error {
 		s.mdnsInstance(),
 		s.serviceName,
 		mdnsDomain,
-		4001,
+		4001,                 // we have to pass in a port number here, but libp2p only uses the TXT records
 		s.host.ID().Pretty(), // TODO: deals with peer IDs longer than 63 characters
 		ips,
 		txts,
