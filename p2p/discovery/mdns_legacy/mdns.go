@@ -9,7 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
-	mdnsnew "github.com/libp2p/go-libp2p/p2p/mdns"
+	mdnsnew "github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
