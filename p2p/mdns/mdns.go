@@ -42,8 +42,8 @@ type mdnsService struct {
 	// The context is canceled when Close() is called.
 	ctxCancel context.CancelFunc
 
-	resolverRunning chan struct{}
-	server          *zeroconf.Server
+	resolverWG sync.WaitGroup
+	server     *zeroconf.Server
 
 	mutex    sync.Mutex
 	notifees []Notifee
@@ -55,10 +55,9 @@ func NewMdnsService(host host.Host, serviceName string) *mdnsService {
 		serviceName = ServiceName
 	}
 	s := &mdnsService{
-		ctxCancel:       cancel,
-		resolverRunning: make(chan struct{}),
-		host:            host,
-		serviceName:     serviceName,
+		ctxCancel:   cancel,
+		host:        host,
+		serviceName: serviceName,
 	}
 	s.startServer()
 	s.startResolver(ctx)
@@ -70,7 +69,7 @@ func (s *mdnsService) Close() error {
 	if s.server != nil {
 		s.server.Shutdown()
 	}
-	<-s.resolverRunning
+	s.resolverWG.Wait()
 	return nil
 }
 
@@ -152,8 +151,10 @@ func (s *mdnsService) startServer() error {
 }
 
 func (s *mdnsService) startResolver(ctx context.Context) {
+	s.resolverWG.Add(2)
 	entryChan := make(chan *zeroconf.ServiceEntry, 1000)
 	go func() {
+		defer s.resolverWG.Done()
 		for entry := range entryChan {
 			// We only care about the TXT records.
 			// Ignore A, AAAA and PTR.
@@ -185,7 +186,7 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 		}
 	}()
 	go func() {
-		defer close(s.resolverRunning)
+		defer s.resolverWG.Done()
 		if err := zeroconf.Browse(ctx, s.serviceName, mdnsDomain, entryChan); err != nil {
 			log.Debugf("zeroconf browsing failed: %s", err)
 		}
