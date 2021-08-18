@@ -9,7 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p/p2p/discovery"
+	"github.com/libp2p/go-libp2p/p2p/mdns"
 
 	"github.com/libp2p/go-libp2p-core/host"
 
@@ -107,7 +107,7 @@ func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 // This lets us automatically discover peers on the same LAN and connect to them.
 func setupDiscovery(ctx context.Context, h host.Host) error {
 	// setup mDNS discovery to find local peers
-	disc := discovery.NewMdnsService(h, DiscoveryServiceTag)
+	disc := mdns.NewMdnsService(h, DiscoveryServiceTag)
 
 	n := discoveryNotifee{h: h}
 	disc.RegisterNotifee(&n)
