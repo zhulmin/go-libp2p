@@ -25,25 +25,43 @@ import (
 )
 
 type mockEventTracer struct {
-	errs []string
+	events []*holepunch.Event
 }
 
 func (m *mockEventTracer) Trace(evt *holepunch.Event) {
-	if evt.Type != holepunch.ProtocolErrorEvtT {
-		return
-	}
-	m.errs = append(m.errs, evt.Evt.(*holepunch.ProtocolErrorEvt).Error)
+	m.events = append(m.events, evt)
 }
 
 var _ holepunch.EventTracer = &mockEventTracer{}
 
+func TestNoHolePunchIfDirectConnExists(t *testing.T) {
+	tr := &mockEventTracer{}
+	h1, hps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
+	h2, _ := mkHostWithHolePunchSvc(t)
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{
+		ID:    h2.ID(),
+		Addrs: h2.Addrs(),
+	}))
+	time.Sleep(50 * time.Millisecond)
+	nc1 := len(h1.Network().ConnsToPeer(h2.ID()))
+	require.GreaterOrEqual(t, nc1, 1)
+	nc2 := len(h2.Network().ConnsToPeer(h1.ID()))
+	require.GreaterOrEqual(t, nc2, 1)
+
+	require.NoError(t, hps.HolePunch(h2.ID()))
+	require.Equal(t, len(h1.Network().ConnsToPeer(h2.ID())), nc1)
+	require.Equal(t, len(h2.Network().ConnsToPeer(h1.ID())), nc2)
+	require.Empty(t, tr.events)
+}
+
 func TestDirectDialWorks(t *testing.T) {
-	// all addrs should be marked as public
+	// mark all addresses as public
 	cpy := manet.Private4
 	manet.Private4 = []*net.IPNet{}
 	defer func() { manet.Private4 = cpy }()
 
-	h1, h1ps := mkHostWithHolePunchSvc(t)
+	tr := &mockEventTracer{}
+	h1, h1ps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
 	h2, _ := mkHostWithHolePunchSvc(t)
 	h2.RemoveStreamHandler(holepunch.Protocol)
 	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
@@ -53,6 +71,8 @@ func TestDirectDialWorks(t *testing.T) {
 	require.NoError(t, h1ps.HolePunch(h2.ID()))
 	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
 	require.GreaterOrEqual(t, len(h2.Network().ConnsToPeer(h1.ID())), 1)
+	require.Len(t, tr.events, 1)
+	require.Equal(t, tr.events[0].Type, holepunch.DirectDialEvtT)
 }
 
 func TestEndToEndSimConnect(t *testing.T) {
@@ -84,11 +104,13 @@ func TestEndToEndSimConnect(t *testing.T) {
 	ensureDirectConn(t, h1, h2)
 	// ensure no hole-punching streams are open on either side
 	ensureNoHolePunchingStream(t, h1, h2)
+	require.Len(t, tr.events, 3)
+	require.Equal(t, tr.events[0].Type, holepunch.StartHolePunchEvtT)
+	require.Equal(t, tr.events[1].Type, holepunch.HolePunchAttemptEvtT)
+	require.Equal(t, tr.events[2].Type, holepunch.EndHolePunchEvtT)
 }
 
 func TestFailuresOnInitiator(t *testing.T) {
-	t.Skip("broken test")
-
 	tcs := map[string]struct {
 		rhandler         func(s network.Stream)
 		errMsg           string
@@ -97,11 +119,9 @@ func TestFailuresOnInitiator(t *testing.T) {
 		"responder does NOT send a CONNECT message": {
 			rhandler: func(s network.Stream) {
 				wr := protoio.NewDelimitedWriter(s)
-				msg := new(holepunch_pb.HolePunch)
-				msg.Type = holepunch_pb.HolePunch_SYNC.Enum()
-				wr.WriteMsg(msg)
+				wr.WriteMsg(&holepunch_pb.HolePunch{Type: holepunch_pb.HolePunch_SYNC.Enum()})
 			},
-			errMsg: "expected CONNECT message",
+			errMsg: "expect CONNECT message, got SYNC",
 		},
 		"responder does NOT support protocol": {
 			rhandler: nil,
@@ -115,7 +135,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 		"responder does NOT reply within hole punch deadline": {
 			holePunchTimeout: 10 * time.Millisecond,
 			rhandler: func(s network.Stream) {
-				time.Sleep(10 * time.Second)
+				time.Sleep(5 * time.Second)
 			},
 			errMsg: "i/o deadline reached",
 		},
@@ -126,9 +146,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 			if tc.holePunchTimeout != 0 {
 				cpy := holepunch.StreamTimeout
 				holepunch.StreamTimeout = tc.holePunchTimeout
-				defer func() {
-					holepunch.StreamTimeout = cpy
-				}()
+				defer func() { holepunch.StreamTimeout = cpy }()
 			}
 
 			tr := &mockEventTracer{}
@@ -220,9 +238,20 @@ func TestFailuresOnResponder(t *testing.T) {
 
 			go tc.initiator(s)
 
-			require.Eventually(t, func() bool { return len(tr.errs) > 0 }, 5*time.Second, 100*time.Millisecond)
-			require.Len(t, tr.errs, 1)
-			require.Contains(t, tr.errs[0], tc.errMsg)
+			getTracerError := func(tr *mockEventTracer) []string {
+				var errs []string
+				for _, ev := range tr.events {
+					if errEv, ok := ev.Evt.(*holepunch.ProtocolErrorEvt); ok {
+						errs = append(errs, errEv.Error)
+					}
+				}
+				return errs
+			}
+
+			require.Eventually(t, func() bool { return len(getTracerError(tr)) > 0 }, 5*time.Second, 100*time.Millisecond)
+			errs := getTracerError(tr)
+			require.Len(t, errs, 1)
+			require.Contains(t, errs[0], tc.errMsg)
 		})
 
 	}
