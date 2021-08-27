@@ -111,6 +111,7 @@ func TestNotifications(t *testing.T) {
 	// close conns
 	for _, s1 := range nets {
 		n1 := notifiees[s1.LocalPeer()]
+		t.Logf("closing conns for %s", s1.LocalPeer())
 		for _, c1 := range s1.Conns() {
 			c2 := ConnComplement(c1)
 
@@ -138,7 +139,8 @@ func TestNotifications(t *testing.T) {
 		}
 	}
 
-	for _, n1 := range notifiees {
+	for id, n1 := range notifiees {
+		t.Logf("dealing with notifee %s", id)
 		// Avoid holding this lock while waiting, otherwise we can deadlock.
 		streamStateCopy := map[network.Stream]chan struct{}{}
 		n1.streamState.Lock()
