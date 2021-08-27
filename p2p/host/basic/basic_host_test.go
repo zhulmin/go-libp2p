@@ -517,27 +517,14 @@ func TestProtoDowngrade(t *testing.T) {
 	})
 
 	s, err := h2.NewStream(ctx, h1.ID(), "/testing/1.0.0", "/testing")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if s.Protocol() != "/testing/1.0.0" {
-		t.Fatalf("should have gotten /testing/1.0.0, got %s", s.Protocol())
-	}
+	require.NoError(t, err)
+	require.Equal(t, s.Protocol(), protocol.ID("/testing/1.0.0"))
 
 	_, err = s.Write([]byte("bar"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = s.CloseWrite()
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	require.NoError(t, err)
+	require.NoError(t, s.CloseWrite())
 	assertWait(t, connectedOn, "/testing/1.0.0")
-	if err := s.Close(); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, s.Close())
 
 	h2.Network().ClosePeer(h1.ID())
 
@@ -558,32 +545,17 @@ func TestProtoDowngrade(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
-	if err := h1.Connect(ctx, h2pi); err != nil {
-		t.Fatal(err)
-	}
-
+	require.NoError(t, h1.Connect(ctx, h2pi))
 	s2, err := h2.NewStream(ctx, h1.ID(), "/testing/1.0.0", "/testing")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if s2.Protocol() != "/testing" {
-		t.Errorf("should have gotten /testing, got %s, %s", s.Protocol(), s.Conn())
-	}
-
+	require.Equal(t, s2.Protocol(), protocol.ID("/testing"))
 	_, err = s2.Write([]byte("foo"))
-	if err != nil {
-		t.Error(err)
-	}
-	err = s2.CloseWrite()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, s2.CloseWrite())
 
 	assertWait(t, connectedOn, "/testing")
-	if err := s.Close(); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, s.Close())
 }
 
 func TestAddrResolution(t *testing.T) {

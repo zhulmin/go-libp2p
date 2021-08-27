@@ -33,6 +33,9 @@ jobs:
         uses: protocol/multiple-go-modules@v1.2
         with:
           run: go test -v -coverprofile module-coverage.txt ./...
+      - name: run BasicHost tests
+        run: go test -v -count 50
+        working-directory: "p2p/host/basic"
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
         uses: protocol/multiple-go-modules@v1.2
