@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -30,7 +31,7 @@ func (h *LogHarness) Run(t *testing.T, f func()) {
 	// Capture raw log output
 	fl := log.Flags()
 	log.SetFlags(0)
-	log.SetOutput(&h.buf)
+	log.SetOutput(io.MultiWriter(os.Stdout, &h.buf))
 	f()
 	log.SetFlags(fl)
 	log.SetOutput(os.Stderr)
