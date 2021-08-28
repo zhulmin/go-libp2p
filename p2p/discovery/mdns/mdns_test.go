@@ -2,6 +2,7 @@ package mdns
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,7 +48,7 @@ func TestSelfDiscovery(t *testing.T) {
 	notif := &notif{}
 	host, s := setupMDNS(t, notif)
 	defer s.Close()
-	assert.Eventuallyf(
+	require.Eventually(
 		t,
 		func() bool {
 			var found bool
@@ -74,7 +74,6 @@ func TestOtherDiscovery(t *testing.T) {
 	for i := 0; i < n; i++ {
 		notif := &notif{}
 		notifs[i] = notif
-		var s *mdnsService
 		host, s := setupMDNS(t, notif)
 		hostIDs[i] = host.ID()
 		defer s.Close()
@@ -96,23 +95,26 @@ func TestOtherDiscovery(t *testing.T) {
 		return true
 	}
 
-	assert.Eventuallyf(
+	require.Eventually(
 		t,
 		func() bool {
-			for _, notif := range notifs {
+			fmt.Println("== checking if all IDs are discovered ==")
+			for i, notif := range notifs {
 				infos := notif.GetPeers()
 				ids := make([]peer.ID, 0, len(infos))
 				for _, info := range infos {
 					ids = append(ids, info.ID)
 				}
 				if !containsAllHostIDs(ids) {
+					fmt.Printf("Host %d doesn't contain all IDs: %v\n", i, ids)
 					return false
 				}
+				fmt.Printf("Host %d ok.\n", i)
 			}
 			return true
 		},
 		25*time.Second,
-		5*time.Millisecond,
+		time.Second,
 		"expected peers to find each other",
 	)
 }
