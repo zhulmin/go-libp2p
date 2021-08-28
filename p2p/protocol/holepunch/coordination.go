@@ -40,8 +40,8 @@ var (
 	log = logging.Logger("p2p-holepunch")
 )
 
-// The HolePunchService is used to make direct connections with a peer via hole-punching.
-type HolePunchService struct {
+// The Service is used to make direct connections with a peer via hole-punching.
+type Service struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
@@ -58,16 +58,16 @@ type HolePunchService struct {
 	active   map[peer.ID]struct{}
 }
 
-type Option func(*HolePunchService) error
+type Option func(*Service) error
 
-// NewHolePunchService creates a new service that can be used for hole punching
-func NewHolePunchService(h host.Host, ids *identify.IDService, opts ...Option) (*HolePunchService, error) {
+// NewService creates a new service that can be used for hole punching
+func NewService(h host.Host, ids *identify.IDService, opts ...Option) (*Service, error) {
 	if ids == nil {
 		return nil, errors.New("identify service can't be nil")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	hs := &HolePunchService{
+	hs := &Service{
 		ctx:       ctx,
 		ctxCancel: cancel,
 		host:      h,
@@ -88,7 +88,7 @@ func NewHolePunchService(h host.Host, ids *identify.IDService, opts ...Option) (
 }
 
 // Close closes the Hole Punch Service.
-func (hs *HolePunchService) Close() error {
+func (hs *Service) Close() error {
 	hs.ctxCancel()
 	hs.refCount.Wait()
 	return nil
@@ -96,7 +96,7 @@ func (hs *HolePunchService) Close() error {
 
 // initiateHolePunch opens a new hole punching coordination stream,
 // exchanges the addresses and measures the RTT.
-func (hs *HolePunchService) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, time.Duration, error) {
+func (hs *Service) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, time.Duration, error) {
 	hpCtx := network.WithUseTransient(hs.ctx, "hole-punch")
 	sCtx := network.WithNoDial(hpCtx, "hole-punch")
 	str, err := hs.host.NewStream(sCtx, rp, Protocol)
@@ -148,7 +148,7 @@ func (hs *HolePunchService) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, time.
 
 // attempts to make a direct connection with the remote peer of `relayConn` by co-ordinating a hole punch over
 // the given relay connection `relayConn`.
-func (hs *HolePunchService) HolePunch(rp peer.ID) error {
+func (hs *Service) HolePunch(rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
 	for _, c := range hs.host.Network().ConnsToPeer(rp) {
 		if !isRelayAddress(c.RemoteMultiaddr()) {
@@ -214,12 +214,12 @@ func (hs *HolePunchService) HolePunch(rp peer.ID) error {
 	return fmt.Errorf("all retries for hole punch with peer %s failed", rp)
 }
 
-func (hs *HolePunchService) handlerError(p peer.ID, err error) {
+func (hs *Service) handlerError(p peer.ID, err error) {
 	hs.tracer.ProtocolError(p, err)
 	log.Warn(err)
 }
 
-func (hs *HolePunchService) handleNewStream(s network.Stream) {
+func (hs *Service) handleNewStream(s network.Stream) {
 	log.Infof("got hole punch request from peer %s", s.Conn().RemotePeer().Pretty())
 	_ = s.SetDeadline(time.Now().Add(StreamTimeout))
 	rp := s.Conn().RemotePeer()
@@ -286,7 +286,7 @@ func (hs *HolePunchService) handleNewStream(s network.Stream) {
 	}
 }
 
-func (hs *HolePunchService) holePunchConnect(pi peer.AddrInfo, attempt int) error {
+func (hs *Service) holePunchConnect(pi peer.AddrInfo, attempt int) error {
 	holePunchCtx := network.WithSimultaneousConnect(hs.ctx, "hole-punching")
 	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")
 	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
@@ -330,10 +330,10 @@ func addrsFromBytes(bzs [][]byte) []ma.Multiaddr {
 	return addrs
 }
 
-type netNotifiee HolePunchService
+type netNotifiee Service
 
-func (nn *netNotifiee) HolePunchService() *HolePunchService {
-	return (*HolePunchService)(nn)
+func (nn *netNotifiee) HolePunchService() *Service {
+	return (*Service)(nn)
 }
 
 func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {

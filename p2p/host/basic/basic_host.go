@@ -73,7 +73,7 @@ type BasicHost struct {
 	network    network.Network
 	mux        *msmux.MultistreamMuxer
 	ids        *identify.IDService
-	hps        *holepunch.HolePunchService
+	hps        *holepunch.Service
 	pings      *ping.PingService
 	natmgr     NATManager
 	maResolver *madns.Resolver
@@ -216,7 +216,7 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	}
 
 	if opts.EnableHolePunching {
-		h.hps, err = holepunch.NewHolePunchService(h, h.ids, opts.HolePunchingOptions...)
+		h.hps, err = holepunch.NewService(h, h.ids, opts.HolePunchingOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create hole punch service: %w", err)
 		}
