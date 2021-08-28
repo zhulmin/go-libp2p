@@ -3,6 +3,7 @@ package holepunch_test
 import (
 	"context"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,11 +26,21 @@ import (
 )
 
 type mockEventTracer struct {
+	mutex  sync.Mutex
 	events []*holepunch.Event
 }
 
 func (m *mockEventTracer) Trace(evt *holepunch.Event) {
+	m.mutex.Lock()
 	m.events = append(m.events, evt)
+	m.mutex.Unlock()
+}
+
+func (m *mockEventTracer) getEvents() []*holepunch.Event {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	// copy the slice
+	return append([]*holepunch.Event{}, m.events...)
 }
 
 var _ holepunch.EventTracer = &mockEventTracer{}
@@ -37,7 +48,9 @@ var _ holepunch.EventTracer = &mockEventTracer{}
 func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 	tr := &mockEventTracer{}
 	h1, hps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
+	defer h1.Close()
 	h2, _ := mkHostWithHolePunchSvc(t)
+	defer h2.Close()
 	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{
 		ID:    h2.ID(),
 		Addrs: h2.Addrs(),
@@ -51,7 +64,7 @@ func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 	require.NoError(t, hps.HolePunch(h2.ID()))
 	require.Equal(t, len(h1.Network().ConnsToPeer(h2.ID())), nc1)
 	require.Equal(t, len(h2.Network().ConnsToPeer(h1.ID())), nc2)
-	require.Empty(t, tr.events)
+	require.Empty(t, tr.getEvents())
 }
 
 func TestDirectDialWorks(t *testing.T) {
@@ -62,7 +75,9 @@ func TestDirectDialWorks(t *testing.T) {
 
 	tr := &mockEventTracer{}
 	h1, h1ps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
+	defer h1.Close()
 	h2, _ := mkHostWithHolePunchSvc(t)
+	defer h2.Close()
 	h2.RemoveStreamHandler(holepunch.Protocol)
 	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.ConnectedAddrTTL)
 
@@ -71,8 +86,9 @@ func TestDirectDialWorks(t *testing.T) {
 	require.NoError(t, h1ps.HolePunch(h2.ID()))
 	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
 	require.GreaterOrEqual(t, len(h2.Network().ConnsToPeer(h1.ID())), 1)
-	require.Len(t, tr.events, 1)
-	require.Equal(t, tr.events[0].Type, holepunch.DirectDialEvtT)
+	events := tr.getEvents()
+	require.Len(t, events, 1)
+	require.Equal(t, events[0].Type, holepunch.DirectDialEvtT)
 }
 
 func TestEndToEndSimConnect(t *testing.T) {
@@ -104,10 +120,11 @@ func TestEndToEndSimConnect(t *testing.T) {
 	ensureDirectConn(t, h1, h2)
 	// ensure no hole-punching streams are open on either side
 	ensureNoHolePunchingStream(t, h1, h2)
-	require.Len(t, tr.events, 3)
-	require.Equal(t, tr.events[0].Type, holepunch.StartHolePunchEvtT)
-	require.Equal(t, tr.events[1].Type, holepunch.HolePunchAttemptEvtT)
-	require.Equal(t, tr.events[2].Type, holepunch.EndHolePunchEvtT)
+	events := tr.getEvents()
+	require.Len(t, events, 3)
+	require.Equal(t, events[0].Type, holepunch.StartHolePunchEvtT)
+	require.Equal(t, events[1].Type, holepunch.HolePunchAttemptEvtT)
+	require.Equal(t, events[2].Type, holepunch.EndHolePunchEvtT)
 }
 
 func TestFailuresOnInitiator(t *testing.T) {
@@ -230,7 +247,9 @@ func TestFailuresOnResponder(t *testing.T) {
 
 			tr := &mockEventTracer{}
 			h1, _ := mkHostWithHolePunchSvc(t)
+			defer h1.Close()
 			h2, _ := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
+			defer h2.Close()
 			connect(t, context.Background(), h1, h2)
 
 			s, err := h1.NewStream(context.Background(), h2.ID(), holepunch.Protocol)
@@ -240,7 +259,8 @@ func TestFailuresOnResponder(t *testing.T) {
 
 			getTracerError := func(tr *mockEventTracer) []string {
 				var errs []string
-				for _, ev := range tr.events {
+				events := tr.getEvents()
+				for _, ev := range events {
 					if errEv, ok := ev.Evt.(*holepunch.ProtocolErrorEvt); ok {
 						errs = append(errs, errEv.Error)
 					}
@@ -343,10 +363,10 @@ func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Hos
 	return h
 }
 
-func addHolePunchService(t *testing.T, h host.Host) *holepunch.HolePunchService {
+func addHolePunchService(t *testing.T, h host.Host) *holepunch.Service {
 	ids, err := identify.NewIDService(h)
 	require.NoError(t, err)
-	hps, err := holepunch.NewHolePunchService(h, ids)
+	hps, err := holepunch.NewService(h, ids)
 	require.NoError(t, err)
 	return hps
 }
@@ -360,7 +380,7 @@ func mkRelay(t *testing.T, ctx context.Context) host.Host {
 	return h
 }
 
-func mkHostWithHolePunchSvc(t *testing.T, opts ...holepunch.Option) (host.Host, *holepunch.HolePunchService) {
+func mkHostWithHolePunchSvc(t *testing.T, opts ...holepunch.Option) (host.Host, *holepunch.Service) {
 	h, err := libp2p.New(
 		context.Background(),
 		libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/tcp/0"), ma.StringCast("/ip6/::1/tcp/0")),
@@ -368,7 +388,7 @@ func mkHostWithHolePunchSvc(t *testing.T, opts ...holepunch.Option) (host.Host, 
 	require.NoError(t, err)
 	ids, err := identify.NewIDService(h)
 	require.NoError(t, err)
-	hps, err := holepunch.NewHolePunchService(h, ids, opts...)
+	hps, err := holepunch.NewService(h, ids, opts...)
 	require.NoError(t, err)
 	return h, hps
 }

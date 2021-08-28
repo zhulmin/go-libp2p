@@ -8,9 +8,9 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-// WithTracer is a HolePunchService option that enables hole punching tracing
+// WithTracer is a Service option that enables hole punching tracing
 func WithTracer(tr EventTracer) Option {
-	return func(hps *HolePunchService) error {
+	return func(hps *Service) error {
 		hps.tracer = &Tracer{tr: tr, self: hps.host.ID()}
 		return nil
 	}
