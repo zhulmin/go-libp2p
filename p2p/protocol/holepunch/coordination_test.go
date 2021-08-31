@@ -96,8 +96,10 @@ func TestEndToEndSimConnect(t *testing.T) {
 	h1, _ := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
 	defer h1.Close()
 	r := mkRelay(t, context.Background())
-	h2, _ := mkHostWithStaticAutoRelay(t, context.Background(), r)
+	defer r.Close()
+	h2 := mkHostWithStaticAutoRelay(t, context.Background(), r)
 	defer h2.Close()
+	addHolePunchService(t, h2)
 	manet.Private4 = cpy
 
 	// h1 has a relay addr
@@ -141,7 +143,6 @@ func TestFailuresOnInitiator(t *testing.T) {
 		},
 		"responder does NOT support protocol": {
 			rhandler: nil,
-			errMsg:   "failed to read CONNECT message from remote peer: EOF",
 		},
 		"unable to READ CONNECT message from responder": {
 			rhandler: func(s network.Stream) {
@@ -169,13 +170,12 @@ func TestFailuresOnInitiator(t *testing.T) {
 			// all addrs should be marked as public
 			cpy := manet.Private4
 			manet.Private4 = []*net.IPNet{}
-			defer func() { manet.Private4 = cpy }()
 			tr := &mockEventTracer{}
-			h1, h1ps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
+			h1, _ := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
 			defer h1.Close()
 			r := mkRelay(t, context.Background())
 			defer r.Close()
-			h2, _ := mkHostWithStaticAutoRelay(t, context.Background(), r)
+			h2 := mkHostWithStaticAutoRelay(t, context.Background(), r)
 			defer h2.Close()
 
 			// h1 has a relay addr
@@ -192,16 +192,21 @@ func TestFailuresOnInitiator(t *testing.T) {
 				ID:    h2.ID(),
 				Addrs: []ma.Multiaddr{raddr},
 			}))
+			manet.Private4 = cpy
+
+			hps := addHolePunchService(t, h2)
 
 			if tc.rhandler != nil {
-				h2.SetStreamHandler(holepunch.Protocol, tc.rhandler)
+				h1.SetStreamHandler(holepunch.Protocol, tc.rhandler)
 			} else {
-				h2.RemoveStreamHandler(holepunch.Protocol)
+				h1.RemoveStreamHandler(holepunch.Protocol)
 			}
 
-			err := h1ps.HolePunch(h2.ID())
+			err := hps.HolePunch(h1.ID())
 			require.Error(t, err)
-			require.Contains(t, err.Error(), tc.errMsg)
+			if tc.errMsg != "" {
+				require.Contains(t, err.Error(), tc.errMsg)
+			}
 		})
 
 	}
@@ -329,7 +334,7 @@ func connect(t *testing.T, ctx context.Context, h1, h2 host.Host) {
 	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
 }
 
-func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Host) (host.Host, *holepunch.Service) {
+func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Host) host.Host {
 	pi := peer.AddrInfo{
 		ID:    relay.ID(),
 		Addrs: relay.Addrs(),
@@ -343,10 +348,6 @@ func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Hos
 		libp2p.StaticRelays([]peer.AddrInfo{pi}),
 	)
 	require.NoError(t, err)
-	ids, err := identify.NewIDService(h)
-	require.NoError(t, err)
-	hps, err := holepunch.NewService(h, ids)
-	require.NoError(t, err)
 
 	// wait till we have a relay addr
 	require.Eventually(t, func() bool {
@@ -357,8 +358,15 @@ func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Hos
 		}
 		return false
 	}, 5*time.Second, 50*time.Millisecond)
+	return h
+}
 
-	return h, hps
+func addHolePunchService(t *testing.T, h host.Host) *holepunch.Service {
+	ids, err := identify.NewIDService(h)
+	require.NoError(t, err)
+	hps, err := holepunch.NewService(h, ids)
+	require.NoError(t, err)
+	return hps
 }
 
 func mkRelay(t *testing.T, ctx context.Context) host.Host {
