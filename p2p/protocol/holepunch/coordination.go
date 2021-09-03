@@ -88,6 +88,7 @@ func NewService(h host.Host, ids *identify.IDService, opts ...Option) (*Service,
 
 // Close closes the Hole Punch Service.
 func (hs *Service) Close() error {
+	hs.host.RemoveStreamHandler(Protocol)
 	hs.ctxCancel()
 	hs.refCount.Wait()
 	return nil
