@@ -332,12 +332,8 @@ func addrsFromBytes(bzs [][]byte) []ma.Multiaddr {
 
 type netNotifiee Service
 
-func (nn *netNotifiee) HolePunchService() *Service {
-	return (*Service)(nn)
-}
-
 func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
-	hs := nn.HolePunchService()
+	hs := (*Service)(nn)
 	dir := v.Stat().Direction
 
 	// Hole punch if it's an inbound proxy connection.
