@@ -264,7 +264,7 @@ func (hs *Service) handleNewStream(s network.Stream) {
 		hs.handlerError(rp, fmt.Errorf("expected SYNC message from initiator but got %d", t))
 		return
 	}
-	defer s.Close()
+	s.Close()
 
 	// Hole punch now by forcing a connect
 	pi := peer.AddrInfo{
