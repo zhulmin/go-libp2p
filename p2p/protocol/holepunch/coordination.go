@@ -192,12 +192,11 @@ func (hs *Service) HolePunch(rp peer.ID) error {
 		// by attempting a connect to it.
 		timer := time.NewTimer(synTime)
 		select {
-		case <-timer.C:
+		case start := <-timer.C:
 			pi := peer.AddrInfo{
 				ID:    rp,
 				Addrs: addrs,
 			}
-			start := time.Now()
 			hs.tracer.StartHolePunch(rp, addrs, rtt)
 			err := hs.holePunchConnect(pi, i+1)
 			dt := time.Since(start)
