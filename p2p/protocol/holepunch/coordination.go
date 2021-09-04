@@ -219,9 +219,16 @@ func (hs *Service) handlerError(p peer.ID, err error) {
 }
 
 func (hs *Service) handleNewStream(s network.Stream) {
+	rp := s.Conn().RemotePeer()
+	// sanity check: a hole punch request should only come from peers behind a relay
+	if !isRelayAddress(s.Conn().RemoteMultiaddr()) {
+		s.Reset()
+		hs.handlerError(rp, fmt.Errorf("received hole punch stream: %s", s.Conn().RemoteMultiaddr()))
+		return
+	}
+
 	log.Infof("got hole punch request from peer %s", s.Conn().RemotePeer().Pretty())
 	_ = s.SetDeadline(time.Now().Add(StreamTimeout))
-	rp := s.Conn().RemotePeer()
 	wr := protoio.NewDelimitedWriter(s)
 	rd := protoio.NewDelimitedReader(s, maxMsgSize)
 
