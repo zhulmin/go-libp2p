@@ -48,6 +48,8 @@ type Service struct {
 
 	tracer *Tracer
 
+	closeMx  sync.RWMutex
+	closed   bool
 	refCount sync.WaitGroup
 
 	// active hole punches for deduplicating
@@ -86,6 +88,9 @@ func NewService(h host.Host, ids *identify.IDService, opts ...Option) (*Service,
 
 // Close closes the Hole Punch Service.
 func (hs *Service) Close() error {
+	hs.closeMx.Lock()
+	hs.closed = true
+	hs.closeMx.Unlock()
 	hs.host.RemoveStreamHandler(Protocol)
 	hs.ctxCancel()
 	hs.refCount.Wait()
@@ -332,18 +337,21 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	if dir == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
 		p := v.RemotePeer()
 		hs.activeMx.Lock()
+		hs.closeMx.RLock()
+		closed := hs.closed
 		_, active := hs.active[p]
-		if !active {
+		if !active && !closed {
+			hs.refCount.Add(1)
 			hs.active[p] = struct{}{}
 		}
+		hs.closeMx.RUnlock()
 		hs.activeMx.Unlock()
 
-		if active {
+		if active || closed {
 			return
 		}
 
 		log.Debugw("got inbound proxy conn from peer", v.RemotePeer())
-		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
 			defer func() {
