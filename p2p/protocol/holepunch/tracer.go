@@ -1,6 +1,7 @@
 package holepunch
 
 import (
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -11,7 +12,11 @@ import (
 // WithTracer is a Service option that enables hole punching tracing
 func WithTracer(tr EventTracer) Option {
 	return func(hps *Service) error {
-		hps.tracer = &Tracer{tr: tr, self: hps.host.ID()}
+		hps.tracer = &Tracer{
+			tr:    tr,
+			self:  hps.host.ID(),
+			peers: make(map[peer.ID]int),
+		}
 		return nil
 	}
 }
@@ -19,6 +24,9 @@ func WithTracer(tr EventTracer) Option {
 type Tracer struct {
 	tr   EventTracer
 	self peer.ID
+
+	mutex sync.Mutex
+	peers map[peer.ID]int
 }
 
 type EventTracer interface {
@@ -164,18 +172,32 @@ func (t *Tracer) EndHolePunch(p peer.ID, dt time.Duration, err error) {
 	})
 }
 
-func (t *Tracer) HolePunchAttempt(p peer.ID, attempt int) {
+func (t *Tracer) Cleanup(p peer.ID) {
 	if t == nil {
 		return
 	}
+
+	t.mutex.Lock()
+	delete(t.peers, p)
+	t.mutex.Unlock()
+}
+
+func (t *Tracer) HolePunchAttempt(p peer.ID) {
+	if t == nil {
+		return
+	}
+
+	t.mutex.Lock()
+	attempt := t.peers[p]
+	attempt++
+	t.peers[p] = attempt
+	t.mutex.Unlock()
 
 	t.tr.Trace(&Event{
 		Timestamp: time.Now().UnixNano(),
 		Peer:      t.self,
 		Remote:    p,
 		Type:      HolePunchAttemptEvtT,
-		Evt: &HolePunchAttemptEvt{
-			Attempt: attempt,
-		},
+		Evt:       &HolePunchAttemptEvt{Attempt: attempt},
 	})
 }

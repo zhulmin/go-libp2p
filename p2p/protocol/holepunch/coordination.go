@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/host"
@@ -50,7 +49,6 @@ type Service struct {
 	tracer *Tracer
 
 	refCount sync.WaitGroup
-	counter  int32 // to be used as an atomic. How many hole punch requests we have responded to
 
 	// active hole punches for deduplicating
 	activeMx sync.Mutex
@@ -198,7 +196,7 @@ func (hs *Service) HolePunch(rp peer.ID) error {
 				Addrs: addrs,
 			}
 			hs.tracer.StartHolePunch(rp, addrs, rtt)
-			err := hs.holePunchConnect(pi, i+1)
+			err := hs.holePunchConnect(pi)
 			dt := time.Since(start)
 			hs.tracer.EndHolePunch(rp, dt, err)
 			if err == nil {
@@ -272,9 +270,8 @@ func (hs *Service) handleNewStream(s network.Stream) {
 	}
 	hs.tracer.StartHolePunch(rp, addrs, rtt)
 	log.Debugw("starting hole punch with", rp)
-	counter := atomic.AddInt32(&hs.counter, 1)
 	start := time.Now()
-	err = hs.holePunchConnect(pi, int(counter))
+	err = hs.holePunchConnect(pi)
 	dt := time.Since(start)
 	hs.tracer.EndHolePunch(rp, dt, err)
 	if err != nil {
@@ -284,18 +281,18 @@ func (hs *Service) handleNewStream(s network.Stream) {
 	}
 }
 
-func (hs *Service) holePunchConnect(pi peer.AddrInfo, attempt int) error {
+func (hs *Service) holePunchConnect(pi peer.AddrInfo) error {
 	holePunchCtx := network.WithSimultaneousConnect(hs.ctx, "hole-punching")
 	forceDirectConnCtx := network.WithForceDirectDial(holePunchCtx, "hole-punching")
 	dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 	defer cancel()
 
-	hs.tracer.HolePunchAttempt(pi.ID, attempt)
+	hs.tracer.HolePunchAttempt(pi.ID)
 	err := hs.host.Connect(dialCtx, pi)
 	if err == nil {
-		log.Debugw("hole punch with peer", pi.ID, "successful. Number of retries needed", attempt)
+		log.Debugw("hole punch with peer", pi.ID, "successful")
 	}
-	log.Debugw("hole punch attempt", attempt, "with peer", pi.ID, "failed:", err)
+	log.Debugw("hole punch attempt with peer", pi.ID, "failed:", err)
 	return err
 }
 
@@ -367,8 +364,13 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	}
 }
 
-// NO-OPS
-func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn)   {}
+func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn) {
+	if v.Stat().Direction == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
+		hs := (*Service)(nn)
+		hs.tracer.Cleanup(v.RemotePeer())
+	}
+}
+
 func (nn *netNotifiee) OpenedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)         {}
