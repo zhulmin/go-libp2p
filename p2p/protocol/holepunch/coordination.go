@@ -143,9 +143,10 @@ func (hs *Service) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, time.Duration,
 	return addrs, rtt, nil
 }
 
-// attempts to make a direct connection with the remote peer of `relayConn` by co-ordinating a hole punch over
-// the given relay connection `relayConn`.
-func (hs *Service) HolePunch(rp peer.ID) error {
+// DirectConnect attempts to make a direct connection with a remote peer.
+// It first attempts a direct dial (if we have a public address of that peer), and then
+// coordinates a hole punch over the given relay connection.
+func (hs *Service) DirectConnect(rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
 	for _, c := range hs.host.Network().ConnsToPeer(rp) {
 		if !isRelayAddress(c.RemoteMultiaddr()) {
@@ -358,7 +359,7 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 				return
 			}
 
-			_ = hs.HolePunch(v.RemotePeer())
+			_ = hs.DirectConnect(v.RemotePeer())
 		}()
 		return
 	}

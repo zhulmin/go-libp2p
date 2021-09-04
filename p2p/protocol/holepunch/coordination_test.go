@@ -61,7 +61,7 @@ func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 	nc2 := len(h2.Network().ConnsToPeer(h1.ID()))
 	require.GreaterOrEqual(t, nc2, 1)
 
-	require.NoError(t, hps.HolePunch(h2.ID()))
+	require.NoError(t, hps.DirectConnect(h2.ID()))
 	require.Equal(t, len(h1.Network().ConnsToPeer(h2.ID())), nc1)
 	require.Equal(t, len(h2.Network().ConnsToPeer(h1.ID())), nc2)
 	require.Empty(t, tr.getEvents())
@@ -83,7 +83,7 @@ func TestDirectDialWorks(t *testing.T) {
 
 	// try to hole punch without any connection and streams, if it works -> it's a direct connection
 	require.Len(t, h1.Network().ConnsToPeer(h2.ID()), 0)
-	require.NoError(t, h1ps.HolePunch(h2.ID()))
+	require.NoError(t, h1ps.DirectConnect(h2.ID()))
 	require.GreaterOrEqual(t, len(h1.Network().ConnsToPeer(h2.ID())), 1)
 	require.GreaterOrEqual(t, len(h2.Network().ConnsToPeer(h1.ID())), 1)
 	events := tr.getEvents()
@@ -160,7 +160,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 				h1.RemoveStreamHandler(holepunch.Protocol)
 			}
 
-			err := hps.HolePunch(h1.ID())
+			err := hps.DirectConnect(h1.ID())
 			require.Error(t, err)
 			if tc.errMsg != "" {
 				require.Contains(t, err.Error(), tc.errMsg)
