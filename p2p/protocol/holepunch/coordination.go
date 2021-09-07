@@ -168,6 +168,7 @@ func (hs *Service) DirectConnect(rp peer.ID) error {
 			dialCtx, cancel := context.WithTimeout(forceDirectConnCtx, dialTimeout)
 
 			tstart := time.Now()
+			// This dials *all* public addresses from the peerstore.
 			err := hs.host.Connect(dialCtx, peer.AddrInfo{ID: rp})
 			dt := time.Since(tstart)
 			cancel()
