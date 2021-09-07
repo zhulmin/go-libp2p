@@ -46,7 +46,7 @@ type Service struct {
 	ids  *identify.IDService
 	host host.Host
 
-	tracer *Tracer
+	tracer *tracer
 
 	closeMx  sync.RWMutex
 	closed   bool
@@ -91,6 +91,7 @@ func (hs *Service) Close() error {
 	hs.closeMx.Lock()
 	hs.closed = true
 	hs.closeMx.Unlock()
+	hs.tracer.Close()
 	hs.host.RemoveStreamHandler(Protocol)
 	hs.ctxCancel()
 	hs.refCount.Wait()
@@ -373,13 +374,7 @@ func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
 	}
 }
 
-func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn) {
-	if v.Stat().Direction == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
-		hs := (*Service)(nn)
-		hs.tracer.Cleanup(v.RemotePeer())
-	}
-}
-
+func (nn *netNotifiee) Disconnected(_ network.Network, v network.Conn)   {}
 func (nn *netNotifiee) OpenedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
 func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)         {}
