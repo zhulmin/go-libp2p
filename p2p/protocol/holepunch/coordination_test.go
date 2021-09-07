@@ -93,7 +93,7 @@ func TestDirectDialWorks(t *testing.T) {
 
 func TestEndToEndSimConnect(t *testing.T) {
 	tr := &mockEventTracer{}
-	h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(tr))
+	h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(tr), true)
 	defer h1.Close()
 	defer h2.Close()
 	defer relay.Close()
@@ -149,10 +149,11 @@ func TestFailuresOnInitiator(t *testing.T) {
 			}
 
 			tr := &mockEventTracer{}
-			h1, h2, relay, hps := makeRelayedHosts(t, holepunch.WithTracer(tr))
+			h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(tr), false)
 			defer h1.Close()
 			defer h2.Close()
 			defer relay.Close()
+			hps := addHolePunchService(t, h2)
 
 			if tc.rhandler != nil {
 				h1.SetStreamHandler(holepunch.Protocol, tc.rhandler)
@@ -209,7 +210,7 @@ func TestFailuresOnResponder(t *testing.T) {
 			}
 
 			tr := &mockEventTracer{}
-			h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(tr))
+			h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(tr), false)
 			defer h1.Close()
 			defer h2.Close()
 			defer relay.Close()
@@ -317,7 +318,7 @@ func mkHostWithStaticAutoRelay(t *testing.T, ctx context.Context, relay host.Hos
 	return h
 }
 
-func makeRelayedHosts(t *testing.T, h1Opt holepunch.Option) (h1, h2, relay host.Host, hps *holepunch.Service) {
+func makeRelayedHosts(t *testing.T, h1Opt holepunch.Option, addHolePuncher bool) (h1, h2, relay host.Host, hps *holepunch.Service) {
 	t.Helper()
 	h1, _ = mkHostWithHolePunchSvc(t, h1Opt)
 	var err error
@@ -327,7 +328,9 @@ func makeRelayedHosts(t *testing.T, h1Opt holepunch.Option) (h1, h2, relay host.
 	)
 	require.NoError(t, err)
 	h2 = mkHostWithStaticAutoRelay(t, context.Background(), relay)
-	hps = addHolePunchService(t, h2)
+	if addHolePuncher {
+		hps = addHolePunchService(t, h2)
+	}
 
 	// h1 has a relay addr
 	// h2 should connect to the relay addr

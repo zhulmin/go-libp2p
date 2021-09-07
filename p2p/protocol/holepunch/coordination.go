@@ -36,6 +36,10 @@ const (
 
 var (
 	log = logging.Logger("p2p-holepunch")
+	// ErrHolePunchActive is returned from DirectConnect when another hole punching attempt is currently running
+	ErrHolePunchActive = errors.New("another hole punching attempt to this peer is active")
+	// ErrClosed is returned when the hole punching is closed
+	ErrClosed = errors.New("hole punching service closing")
 )
 
 // The Service is used to make direct connections with a peer via hole-punching.
@@ -149,10 +153,42 @@ func (hs *Service) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, time.Duration,
 	return addrs, rtt, nil
 }
 
+func (hs *Service) beginDirectConnect(p peer.ID) error {
+	hs.closeMx.RLock()
+	defer hs.closeMx.RUnlock()
+	if hs.closed {
+		return ErrClosed
+	}
+
+	hs.activeMx.Lock()
+	defer hs.activeMx.Unlock()
+	if _, ok := hs.active[p]; ok {
+		return ErrHolePunchActive
+	}
+
+	hs.active[p] = struct{}{}
+	return nil
+}
+
 // DirectConnect attempts to make a direct connection with a remote peer.
 // It first attempts a direct dial (if we have a public address of that peer), and then
 // coordinates a hole punch over the given relay connection.
-func (hs *Service) DirectConnect(rp peer.ID) error {
+func (hs *Service) DirectConnect(p peer.ID) error {
+	log.Debugw("got inbound proxy conn from peer", p)
+	if err := hs.beginDirectConnect(p); err != nil {
+		return err
+	}
+
+	defer func() {
+		hs.activeMx.Lock()
+		delete(hs.active, p)
+		hs.activeMx.Unlock()
+	}()
+
+	return hs.directConnect(p)
+}
+
+func (hs *Service) directConnect(rp peer.ID) error {
 	// short-circuit check to see if we already have a direct connection
 	for _, c := range hs.host.Network().ConnsToPeer(rp) {
 		if !isRelayAddress(c.RemoteMultiaddr()) {
@@ -339,48 +375,25 @@ func addrsFromBytes(bzs [][]byte) []ma.Multiaddr {
 
 type netNotifiee Service
 
-func (nn *netNotifiee) Connected(_ network.Network, v network.Conn) {
+func (nn *netNotifiee) Connected(_ network.Network, conn network.Conn) {
 	hs := (*Service)(nn)
-	dir := v.Stat().Direction
 
 	// Hole punch if it's an inbound proxy connection.
 	// If we already have a direct connection with the remote peer, this will be a no-op.
-	if dir == network.DirInbound && isRelayAddress(v.RemoteMultiaddr()) {
-		p := v.RemotePeer()
-		hs.activeMx.Lock()
-		hs.closeMx.RLock()
-		closed := hs.closed
-		_, active := hs.active[p]
-		if !active && !closed {
-			hs.refCount.Add(1)
-			hs.active[p] = struct{}{}
-		}
-		hs.closeMx.RUnlock()
-		hs.activeMx.Unlock()
-
-		if active || closed {
-			return
-		}
-
-		log.Debugw("got inbound proxy conn from peer", v.RemotePeer())
+	if conn.Stat().Direction == network.DirInbound && isRelayAddress(conn.RemoteMultiaddr()) {
+		hs.refCount.Add(1)
 		go func() {
 			defer hs.refCount.Done()
-			defer func() {
-				hs.activeMx.Lock()
-				delete(hs.active, p)
-				hs.activeMx.Unlock()
-			}()
+
 			select {
 			// waiting for Identify here will allow us to access the peer's public and observed addresses
 			// that we can dial to for a hole punch.
-			case <-hs.ids.IdentifyWait(v):
+			case <-hs.ids.IdentifyWait(conn):
 			case <-hs.ctx.Done():
-				return
 			}
 
-			_ = hs.DirectConnect(v.RemotePeer())
+			_ = hs.DirectConnect(conn.RemotePeer())
 		}()
-		return
 	}
 }
 
