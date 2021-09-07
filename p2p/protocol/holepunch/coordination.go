@@ -260,6 +260,15 @@ func (hs *Service) incomingHolePunch(s network.Stream) (rtt time.Duration, addrs
 }
 
 func (hs *Service) handleNewStream(s network.Stream) {
+	// Check directionality of the underlying connection.
+	// Peer A receives an inbound connection from peer B.
+	// Peer A opens a new hole punch stream to peer B.
+	// Peer B receives this stream, calling this function.
+	// Peer B sees the underlying connection as an outbound connection.
+	if s.Conn().Stat().Direction == network.DirInbound {
+		s.Reset()
+		return
+	}
 	rp := s.Conn().RemotePeer()
 	rtt, addrs, err := hs.incomingHolePunch(s)
 	if err != nil {
