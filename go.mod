@@ -38,7 +38,7 @@ require (
 	github.com/libp2p/go-msgio v0.0.6
 	github.com/libp2p/go-netroute v0.1.6
 	github.com/libp2p/go-stream-muxer-multistream v0.3.0
-	github.com/libp2p/go-tcp-transport v0.2.7
+	github.com/libp2p/go-tcp-transport v0.2.8
 	github.com/libp2p/go-ws-transport v0.5.0
 	github.com/libp2p/zeroconf/v2 v2.0.0
 	github.com/miekg/dns v1.1.43 // indirect
