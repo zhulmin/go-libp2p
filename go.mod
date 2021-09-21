@@ -23,28 +23,28 @@ require (
 	github.com/libp2p/go-libp2p-asn-util v0.0.0-20210818120414-1f382a4aa43a
 	github.com/libp2p/go-libp2p-autonat v0.5.0
 	github.com/libp2p/go-libp2p-blankhost v0.2.0
-	github.com/libp2p/go-libp2p-circuit v0.4.0
-	github.com/libp2p/go-libp2p-core v0.10.0
+	github.com/libp2p/go-libp2p-circuit v0.4.1-0.20210921174845-5bf9f8e3f668
+	github.com/libp2p/go-libp2p-core v0.10.1-0.20210921170543-f829c09c1ca0
 	github.com/libp2p/go-libp2p-discovery v0.5.1
 	github.com/libp2p/go-libp2p-mplex v0.4.1
 	github.com/libp2p/go-libp2p-nat v0.0.6
 	github.com/libp2p/go-libp2p-netutil v0.1.0
-	github.com/libp2p/go-libp2p-noise v0.3.0
+	github.com/libp2p/go-libp2p-noise v0.3.1-0.20210921174126-fa31d59f9697
 	github.com/libp2p/go-libp2p-peerstore v0.2.8
-	github.com/libp2p/go-libp2p-quic-transport v0.13.0
-	github.com/libp2p/go-libp2p-swarm v0.6.0
-	github.com/libp2p/go-libp2p-testing v0.5.0
-	github.com/libp2p/go-libp2p-tls v0.3.0
-	github.com/libp2p/go-libp2p-transport-upgrader v0.5.0
+	github.com/libp2p/go-libp2p-quic-transport v0.13.1-0.20210921174332-c419ce9c3de3
+	github.com/libp2p/go-libp2p-swarm v0.6.1-0.20210922105329-6a837b036140
+	github.com/libp2p/go-libp2p-testing v0.5.1-0.20210921173022-d2d7433a5068
+	github.com/libp2p/go-libp2p-tls v0.3.1-0.20210921173952-a113dc2e87ca
+	github.com/libp2p/go-libp2p-transport-upgrader v0.5.1-0.20210922105033-ad6ad0abd9c8
 	github.com/libp2p/go-libp2p-yamux v0.5.4
 	github.com/libp2p/go-msgio v0.0.6
 	github.com/libp2p/go-netroute v0.1.6
 	github.com/libp2p/go-stream-muxer-multistream v0.3.0
-	github.com/libp2p/go-tcp-transport v0.2.7
-	github.com/libp2p/go-ws-transport v0.5.0
+	github.com/libp2p/go-tcp-transport v0.2.9-0.20210922105139-fe3437611b28
+	github.com/libp2p/go-ws-transport v0.5.1-0.20210921174602-b33b43d7934d
 	github.com/libp2p/zeroconf/v2 v2.0.0
 	github.com/miekg/dns v1.1.43 // indirect
-	github.com/multiformats/go-multiaddr v0.4.0
+	github.com/multiformats/go-multiaddr v0.4.1
 	github.com/multiformats/go-multiaddr-dns v0.3.1
 	github.com/multiformats/go-multistream v0.2.2
 	github.com/multiformats/go-varint v0.0.6

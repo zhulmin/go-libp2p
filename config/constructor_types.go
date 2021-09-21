@@ -41,7 +41,7 @@ var argTypes = map[reflect.Type]constructor{
 	hostType:      func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return h },
 	networkType:   func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return h.Network() },
 	muxType:       func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return u.Muxer },
-	securityType:  func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return u.Secure },
+	securityType:  func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return u.SecureMuxer },
 	pskType:       func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return u.PSK },
 	connGaterType: func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return cg },
 	peerIDType:    func(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater) interface{} { return h.ID() },

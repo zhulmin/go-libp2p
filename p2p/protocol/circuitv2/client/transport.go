@@ -73,8 +73,10 @@ func (c *Client) Listen(addr ma.Multiaddr) (transport.Listener, error) {
 	return c.upgrader.UpgradeListener(c, c.Listener()), nil
 }
 
-func (c *Client) Protocols() []int {
-	return []int{ma.P_CIRCUIT}
+var protoCircuit = ma.ProtocolWithCode(ma.P_CIRCUIT)
+
+func (c *Client) Protocols() []ma.Protocol {
+	return []ma.Protocol{protoCircuit}
 }
 
 func (c *Client) Proxy() bool {

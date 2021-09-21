@@ -56,14 +56,16 @@ func TransportConstructor(tpt interface{}) (TptC, error) {
 	}, nil
 }
 
-func makeTransports(h host.Host, u *tptu.Upgrader, cg connmgr.ConnectionGater, tpts []TptC) ([]transport.Transport, error) {
-	transports := make([]transport.Transport, len(tpts))
-	for i, tC := range tpts {
-		t, err := tC(h, u, cg)
-		if err != nil {
-			return nil, err
+func makeTransports(h host.Host, upgraders []*tptu.Upgrader, cg connmgr.ConnectionGater, tpts []TptC) ([]transport.Transport, error) {
+	transports := make([]transport.Transport, 0, len(tpts)*len(upgraders))
+	for _, tC := range tpts {
+		for _, u := range upgraders {
+			t, err := tC(h, u, cg)
+			if err != nil {
+				return nil, err
+			}
+			transports = append(transports, t)
 		}
-		transports[i] = t
 	}
 	return transports, nil
 }

@@ -135,30 +135,49 @@ func (cfg *Config) makeSwarm() (*swarm.Swarm, error) {
 	return swarm.NewSwarm(pid, cfg.Peerstore, swarm.WithMetrics(cfg.Reporter), swarm.WithConnectionGater(cfg.ConnectionGater))
 }
 
-func (cfg *Config) addTransports(h host.Host) (err error) {
+func (cfg *Config) addTransports(h host.Host) error {
 	swrm, ok := h.Network().(transport.TransportNetwork)
 	if !ok {
 		// Should probably skip this if no transports.
 		return fmt.Errorf("swarm does not support transports")
 	}
-	upgrader := new(tptu.Upgrader)
-	upgrader.PSK = cfg.PSK
-	upgrader.ConnGater = cfg.ConnectionGater
+
+	var negotiatingMuxer tptu.Upgrader
+	var numSecureTransports int
 	if cfg.Insecure {
-		upgrader.Secure = makeInsecureTransport(h.ID(), cfg.PeerKey)
+		negotiatingMuxer.SecureMuxer = makeInsecureTransport(h.ID(), cfg.PeerKey)
+		numSecureTransports = 1
 	} else {
-		upgrader.Secure, err = makeSecurityMuxer(h, cfg.SecurityTransports)
+		var err error
+		negotiatingMuxer.SecureMuxer, err = makeSecurityMuxer(h, cfg.SecurityTransports)
 		if err != nil {
 			return err
 		}
+		numSecureTransports = len(cfg.SecurityTransports)
 	}
 
-	upgrader.Muxer, err = makeMuxer(h, cfg.Muxers)
+	upgraders := make([]*tptu.Upgrader, 1, 1+numSecureTransports)
+	upgraders[0] = &negotiatingMuxer
+	for _, st := range cfg.SecurityTransports {
+		t, err := st.SecC(h)
+		if err != nil {
+			return err
+		}
+		upgraders = append(upgraders, &tptu.Upgrader{SecureTransport: t})
+	}
+
+	muxer, err := makeMuxer(h, cfg.Muxers)
 	if err != nil {
 		return err
 	}
 
-	tpts, err := makeTransports(h, upgrader, cfg.ConnectionGater, cfg.Transports)
+	for _, u := range upgraders {
+		u.PSK = cfg.PSK
+		u.Muxer = muxer
+		u.ConnGater = cfg.ConnectionGater
+	}
+
+	tpts, err := makeTransports(h, upgraders, cfg.ConnectionGater, cfg.Transports)
 	if err != nil {
 		return err
 	}
@@ -169,12 +188,12 @@ func (cfg *Config) addTransports(h host.Host) (err error) {
 	}
 
 	if cfg.Relay {
-		if err := circuitv2.AddTransport(h, upgrader); err != nil {
+		// TODO: figure out how to deal with security-enabled address and circuits
+		if err := circuitv2.AddTransport(h, &negotiatingMuxer); err != nil {
 			h.Close()
 			return err
 		}
 	}
-
 	return nil
 }
 
