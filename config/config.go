@@ -331,19 +331,9 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		ho = routed.Wrap(h, router)
 	}
 	if ar != nil {
-		return &autoRelayHost{Host: ho, autoRelay: ar}, nil
+		return autorelay.NewAutoRelayHost(ho, ar), nil
 	}
 	return ho, nil
-}
-
-type autoRelayHost struct {
-	host.Host
-	autoRelay *autorelay.AutoRelay
-}
-
-func (h *autoRelayHost) Close() error {
-	_ = h.autoRelay.Close()
-	return h.Host.Close()
 }
 
 // Option is a libp2p config option that can be given to the libp2p constructor
