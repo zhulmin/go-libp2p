@@ -116,17 +116,16 @@ func connect(t *testing.T, a, b host.Host) {
 }
 
 // and the actual test!
-func TestAutoRelayv1(t *testing.T) {
-	testAutoRelay(t, false)
-}
+func TestAutoRelay(t *testing.T) {
+	manet.Private4 = []*net.IPNet{}
 
-func TestAutoRelayv2(t *testing.T) {
+	t.Log("testing autorelay with circuitv1 relay")
+	testAutoRelay(t, false)
+	t.Log("testing autorelay with circuitv2 relay")
 	testAutoRelay(t, true)
 }
 
 func testAutoRelay(t *testing.T, useRelayv2 bool) {
-	manet.Private4 = []*net.IPNet{}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
