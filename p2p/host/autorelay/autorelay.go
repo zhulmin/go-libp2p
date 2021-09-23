@@ -15,6 +15,8 @@ import (
 
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
+	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -30,7 +32,7 @@ var (
 	BootDelay = 20 * time.Second
 )
 
-// These are the known PL-operated relays
+// These are the known PL-operated v1 relays; will be decommissioned in 2022.
 var DefaultRelays = []string{
 	"/ip4/147.75.80.110/tcp/4001/p2p/QmbFgm5zan8P6eWWmeyfncR5feYEMPbht5b1FW1C37aQ7y",
 	"/ip4/147.75.80.110/udp/4001/quic/p2p/QmbFgm5zan8P6eWWmeyfncR5feYEMPbht5b1FW1C37aQ7y",
@@ -55,7 +57,7 @@ type AutoRelay struct {
 	disconnect chan struct{}
 
 	mx     sync.Mutex
-	relays map[peer.ID]struct{}
+	relays map[peer.ID]*circuitv2.Reservation // rsvp will be nil if it is a v1 relay
 	status network.Reachability
 
 	cachedAddrs       []ma.Multiaddr
@@ -71,7 +73,7 @@ func NewAutoRelay(bhost *basic.BasicHost, discover discovery.Discoverer, router 
 		router:     router,
 		addrsF:     bhost.AddrsFactory,
 		static:     static,
-		relays:     make(map[peer.ID]struct{}),
+		relays:     make(map[peer.ID]*circuitv2.Reservation),
 		disconnect: make(chan struct{}, 1),
 		status:     network.ReachabilityUnknown,
 	}
@@ -79,6 +81,7 @@ func NewAutoRelay(bhost *basic.BasicHost, discover discovery.Discoverer, router 
 	bhost.Network().Notify(ar)
 	ar.refCount.Add(1)
 	go ar.background(ctx)
+	go ar.refresh(ctx)
 	return ar
 }
 
@@ -131,6 +134,75 @@ func (ar *AutoRelay) background(ctx context.Context) {
 			ar.mx.Unlock()
 			push = false
 			ar.host.SignalAddressChange()
+		}
+	}
+}
+
+func (ar *AutoRelay) refresh(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			var toRefresh []peer.ID
+
+			ar.mx.Lock()
+			if ar.status == network.ReachabilityPublic {
+				// we are public, forget about the relays, unprotect peers
+				for p := range ar.relays {
+					ar.host.ConnManager().Unprotect(p, "autorelay")
+					delete(ar.relays, p)
+				}
+
+				ar.mx.Unlock()
+				continue
+			}
+
+			// find reservations about to expire
+			now := time.Now()
+			for p, rsvp := range ar.relays {
+				if rsvp == nil {
+					continue
+				}
+
+				if now.Add(time.Minute).Before(rsvp.Expiration) {
+					continue
+				}
+
+				toRefresh = append(toRefresh, p)
+			}
+			ar.mx.Unlock()
+
+			// refresh reservations about to expire in parallel
+			var wg sync.WaitGroup
+			for _, p := range toRefresh {
+				wg.Add(1)
+
+				go func(p peer.ID) {
+					rsvp, err := circuitv2.Reserve(ctx, ar.host, peer.AddrInfo{ID: p})
+					ar.mx.Lock()
+					if err != nil {
+						log.Debugf("failed to refresh relay slot reservation with %s: %s", p, err)
+						delete(ar.relays, p)
+						// unprotect the connection
+						ar.host.ConnManager().Unprotect(p, "autorelay")
+						// notify of relay disconnection
+						select {
+						case ar.disconnect <- struct{}{}:
+						default:
+						}
+					} else {
+						log.Debugf("refreshed relay slot reservation with %s", p)
+						ar.relays[p] = rsvp
+					}
+					ar.mx.Unlock()
+				}(p)
+			}
+			wg.Wait()
+
+		case <-ctx.Done():
+			return
 		}
 	}
 }
@@ -204,14 +276,48 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 		return false
 	}
 
-	ok, err := relayv1.CanHop(ctx, ar.host, pi.ID)
+	protoIDv1 := string(relayv1.ProtoID)
+	protoIDv2 := string(circuitv2_proto.ProtoIDv2Hop)
+	protos, err := ar.host.Peerstore().SupportsProtocols(pi.ID, protoIDv1, protoIDv2)
 	if err != nil {
-		log.Debugf("error querying relay: %s", err.Error())
+		log.Debugf("error checking relay protocol support for peer %s: %s", pi.ID, err)
 		return false
 	}
 
-	if !ok {
-		// not a hop relay
+	var supportsv1, supportsv2 bool
+	for _, proto := range protos {
+		switch proto {
+		case protoIDv1:
+			supportsv1 = true
+		case protoIDv2:
+			supportsv2 = true
+		}
+	}
+
+	var rsvp *circuitv2.Reservation
+
+	switch {
+	case supportsv2:
+		rsvp, err = circuitv2.Reserve(ctx, ar.host, pi)
+		if err != nil {
+			log.Debugf("error reserving slot with %s: %s", pi.ID, err)
+			return false
+		}
+
+	case supportsv1:
+		ok, err := relayv1.CanHop(ctx, ar.host, pi.ID)
+		if err != nil {
+			log.Debugf("error querying relay %s for v1 hop: %s", pi.ID, err)
+			return false
+		}
+
+		if !ok {
+			// not a hop relay
+			return false
+		}
+
+	default:
+		// supports neither, unusable relay.
 		return false
 	}
 
@@ -222,7 +328,11 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 	if ar.host.Network().Connectedness(pi.ID) != network.Connected {
 		return false
 	}
-	ar.relays[pi.ID] = struct{}{}
+
+	ar.relays[pi.ID] = rsvp
+
+	// protect the connection
+	ar.host.ConnManager().Protect(pi.ID, "autorelay")
 
 	return true
 }
@@ -246,8 +356,10 @@ func (ar *AutoRelay) connect(ctx context.Context, pi peer.AddrInfo) bool {
 		return false
 	}
 
-	// tag the connection as very important
-	ar.host.ConnManager().TagPeer(pi.ID, "relay", 42)
+	// wait for identify to complete so that we can check the supported protocols
+	// TODO we should do this without a delay/sleep.
+	time.Sleep(time.Second)
+
 	return true
 }
 
