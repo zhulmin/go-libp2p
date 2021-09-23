@@ -25,4 +25,4 @@ How it works:
   advertising relay addresses.  The new set of addresses is propagated to
   connected peers through the `identify/push` protocol.
 */
-package relay
+package autorelay

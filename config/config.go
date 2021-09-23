@@ -17,8 +17,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/transport"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 
+	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
-	"github.com/libp2p/go-libp2p/p2p/host/relay"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -209,7 +209,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		// TODO: We shouldn't be doing this here.
 		oldFactory := h.AddrsFactory
 		h.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			return oldFactory(relay.Filter(addrs))
+			return oldFactory(autorelay.Filter(addrs))
 		}
 	}
 
@@ -237,7 +237,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 
 	// Note: h.AddrsFactory may be changed by AutoRelay, but non-relay version is
 	// used by AutoNAT below.
-	var autorelay *relay.AutoRelay
+	var ar *autorelay.AutoRelay
 	addrF := h.AddrsFactory
 	if cfg.EnableAutoRelay {
 		if !cfg.Relay {
@@ -246,7 +246,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		}
 
 		if len(cfg.StaticRelays) > 0 {
-			autorelay = relay.NewAutoRelay(h, nil, router, cfg.StaticRelays)
+			ar = autorelay.NewAutoRelay(h, nil, router, cfg.StaticRelays)
 		} else {
 			if router == nil {
 				h.Close()
@@ -259,7 +259,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			}
 
 			discovery := discovery.NewRoutingDiscovery(crouter)
-			autorelay = relay.NewAutoRelay(h, discovery, router, cfg.StaticRelays)
+			ar = autorelay.NewAutoRelay(h, discovery, router, cfg.StaticRelays)
 		}
 	}
 
@@ -330,15 +330,15 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if router != nil {
 		ho = routed.Wrap(h, router)
 	}
-	if autorelay != nil {
-		return &autoRelayHost{Host: ho, autoRelay: autorelay}, nil
+	if ar != nil {
+		return &autoRelayHost{Host: ho, autoRelay: ar}, nil
 	}
 	return ho, nil
 }
 
 type autoRelayHost struct {
 	host.Host
-	autoRelay *relay.AutoRelay
+	autoRelay *autorelay.AutoRelay
 }
 
 func (h *autoRelayHost) Close() error {

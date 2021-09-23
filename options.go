@@ -17,8 +17,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/pnet"
 
 	"github.com/libp2p/go-libp2p/config"
+	autorelay "github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
-	autorelay "github.com/libp2p/go-libp2p/p2p/host/relay"
 	holepunch "github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
 	ma "github.com/multiformats/go-multiaddr"

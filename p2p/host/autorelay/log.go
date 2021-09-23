@@ -1,4 +1,4 @@
-package relay
+package autorelay
 
 import (
 	logging "github.com/ipfs/go-log/v2"
