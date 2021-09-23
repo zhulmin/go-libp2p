@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
+	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -115,7 +116,15 @@ func connect(t *testing.T, a, b host.Host) {
 }
 
 // and the actual test!
-func TestAutoRelay(t *testing.T) {
+func TestAutoRelayv1(t *testing.T) {
+	testAutoRelay(t, false)
+}
+
+func TestAutoRelayv2(t *testing.T) {
+	testAutoRelay(t, true)
+}
+
+func testAutoRelay(t *testing.T, useRelayv2 bool) {
 	manet.Private4 = []*net.IPNet{}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -150,11 +159,19 @@ func TestAutoRelay(t *testing.T) {
 	}
 
 	// instantiate the relay
-	r, err := relayv1.NewRelay(relayHost)
-	if err != nil {
-		t.Fatal(err)
+	if useRelayv2 {
+		r, err := relayv2.New(relayHost)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+	} else {
+		r, err := relayv1.NewRelay(relayHost)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
 	}
-	defer r.Close()
 
 	// advertise the relay
 	relayRouting, err := makeRouting(relayHost)
