@@ -175,6 +175,7 @@ func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) boo
 
 	for p, rsvp := range ar.relays {
 		if rsvp == nil {
+			// this is a circuitv1 relay, there is no reservation
 			continue
 		}
 
