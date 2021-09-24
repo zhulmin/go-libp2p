@@ -24,6 +24,9 @@ import (
 
 const (
 	RelayRendezvous = "/libp2p/relay"
+
+	rsvpRefreshInterval = time.Minute
+	rsvpExpirationSlack = 2 * time.Minute
 )
 
 var (
@@ -139,14 +142,12 @@ func (ar *AutoRelay) background(ctx context.Context) {
 }
 
 func (ar *AutoRelay) refresh(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(rsvpRefreshInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
-			var toRefresh []peer.ID
-
+		case now := <-ticker.C:
 			ar.mx.Lock()
 			if ar.status == network.ReachabilityPublic {
 				// we are public, forget about the relays, unprotect peers
@@ -159,51 +160,52 @@ func (ar *AutoRelay) refresh(ctx context.Context) {
 				continue
 			}
 
-			// find reservations about to expire
-			now := time.Now()
+			// find reservations about to expire and refresh them in parallel
+			var wg sync.WaitGroup
 			for p, rsvp := range ar.relays {
 				if rsvp == nil {
 					continue
 				}
 
-				if now.Add(time.Minute).Before(rsvp.Expiration) {
+				if now.Add(rsvpExpirationSlack).Before(rsvp.Expiration) {
 					continue
 				}
 
-				toRefresh = append(toRefresh, p)
+				wg.Add(1)
+				go ar.refreshRsvp(ctx, p, &wg)
 			}
 			ar.mx.Unlock()
 
-			// refresh reservations about to expire in parallel
-			var wg sync.WaitGroup
-			for _, p := range toRefresh {
-				wg.Add(1)
-
-				go func(p peer.ID) {
-					rsvp, err := circuitv2.Reserve(ctx, ar.host, peer.AddrInfo{ID: p})
-					ar.mx.Lock()
-					if err != nil {
-						log.Debugf("failed to refresh relay slot reservation with %s: %s", p, err)
-						delete(ar.relays, p)
-						// unprotect the connection
-						ar.host.ConnManager().Unprotect(p, "autorelay")
-						// notify of relay disconnection
-						select {
-						case ar.disconnect <- struct{}{}:
-						default:
-						}
-					} else {
-						log.Debugf("refreshed relay slot reservation with %s", p)
-						ar.relays[p] = rsvp
-					}
-					ar.mx.Unlock()
-				}(p)
-			}
 			wg.Wait()
 
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+func (ar *AutoRelay) refreshRsvp(ctx context.Context, p peer.ID, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	rsvp, err := circuitv2.Reserve(ctx, ar.host, peer.AddrInfo{ID: p})
+
+	ar.mx.Lock()
+	defer ar.mx.Unlock()
+
+	if err != nil {
+		log.Debugf("failed to refresh relay slot reservation with %s: %s", p, err)
+
+		delete(ar.relays, p)
+		// unprotect the connection
+		ar.host.ConnManager().Unprotect(p, "autorelay")
+		// notify of relay disconnection
+		select {
+		case ar.disconnect <- struct{}{}:
+		default:
+		}
+	} else {
+		log.Debugf("refreshed relay slot reservation with %s", p)
+		ar.relays[p] = rsvp
 	}
 }
 
