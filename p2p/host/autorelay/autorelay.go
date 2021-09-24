@@ -28,6 +28,8 @@ const (
 
 	rsvpRefreshInterval = time.Minute
 	rsvpExpirationSlack = 2 * time.Minute
+
+	autorelayTag = "autorelay"
 )
 
 var (
@@ -154,7 +156,7 @@ func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) boo
 	if ar.status == network.ReachabilityPublic {
 		// we are public, forget about the relays, unprotect peers
 		for p := range ar.relays {
-			ar.host.ConnManager().Unprotect(p, "autorelay")
+			ar.host.ConnManager().Unprotect(p, autorelayTag)
 			delete(ar.relays, p)
 		}
 
@@ -199,7 +201,7 @@ func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID, wg 
 
 		delete(ar.relays, p)
 		// unprotect the connection
-		ar.host.ConnManager().Unprotect(p, "autorelay")
+		ar.host.ConnManager().Unprotect(p, autorelayTag)
 		// increment fail counter
 		atomic.AddInt32(fail, 1)
 	} else {
@@ -333,7 +335,7 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 	ar.relays[pi.ID] = rsvp
 
 	// protect the connection
-	ar.host.ConnManager().Protect(pi.ID, "autorelay")
+	ar.host.ConnManager().Protect(pi.ID, autorelayTag)
 
 	return true
 }
