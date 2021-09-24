@@ -84,7 +84,6 @@ func NewAutoRelay(bhost *basic.BasicHost, discover discovery.Discoverer, router 
 	bhost.Network().Notify(ar)
 	ar.refCount.Add(1)
 	go ar.background(ctx)
-	go ar.refresh(ctx)
 	return ar
 }
 
@@ -97,6 +96,9 @@ func (ar *AutoRelay) background(ctx context.Context) {
 
 	subReachability, _ := ar.host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
 	defer subReachability.Close()
+
+	ticker := time.NewTicker(rsvpRefreshInterval)
+	defer ticker.Stop()
 
 	// when true, we need to identify push
 	push := false
@@ -125,8 +127,13 @@ func (ar *AutoRelay) background(ctx context.Context) {
 			}
 			ar.status = evt.Reachability
 			ar.mx.Unlock()
+
 		case <-ar.disconnect:
 			push = true
+
+		case now := <-ticker.C:
+			ar.refreshReservations(ctx, now)
+
 		case <-ctx.Done():
 			return
 		}
@@ -141,50 +148,39 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	}
 }
 
-func (ar *AutoRelay) refresh(ctx context.Context) {
-	ticker := time.NewTicker(rsvpRefreshInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case now := <-ticker.C:
-			ar.mx.Lock()
-			if ar.status == network.ReachabilityPublic {
-				// we are public, forget about the relays, unprotect peers
-				for p := range ar.relays {
-					ar.host.ConnManager().Unprotect(p, "autorelay")
-					delete(ar.relays, p)
-				}
-
-				ar.mx.Unlock()
-				continue
-			}
-
-			// find reservations about to expire and refresh them in parallel
-			var wg sync.WaitGroup
-			for p, rsvp := range ar.relays {
-				if rsvp == nil {
-					continue
-				}
-
-				if now.Add(rsvpExpirationSlack).Before(rsvp.Expiration) {
-					continue
-				}
-
-				wg.Add(1)
-				go ar.refreshRsvp(ctx, p, &wg)
-			}
-			ar.mx.Unlock()
-
-			wg.Wait()
-
-		case <-ctx.Done():
-			return
+func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) {
+	ar.mx.Lock()
+	if ar.status == network.ReachabilityPublic {
+		// we are public, forget about the relays, unprotect peers
+		for p := range ar.relays {
+			ar.host.ConnManager().Unprotect(p, "autorelay")
+			delete(ar.relays, p)
 		}
+
+		ar.mx.Unlock()
+		return
 	}
+
+	// find reservations about to expire and refresh them in parallel
+	var wg sync.WaitGroup
+	for p, rsvp := range ar.relays {
+		if rsvp == nil {
+			continue
+		}
+
+		if now.Add(rsvpExpirationSlack).Before(rsvp.Expiration) {
+			continue
+		}
+
+		wg.Add(1)
+		go ar.refreshRelayReservation(ctx, p, &wg)
+	}
+	ar.mx.Unlock()
+
+	wg.Wait()
 }
 
-func (ar *AutoRelay) refreshRsvp(ctx context.Context, p peer.ID, wg *sync.WaitGroup) {
+func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	rsvp, err := circuitv2.Reserve(ctx, ar.host, peer.AddrInfo{ID: p})
