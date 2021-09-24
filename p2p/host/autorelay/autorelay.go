@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/libp2p/go-libp2p-core/discovery"
 	"github.com/libp2p/go-libp2p-core/event"
@@ -167,12 +168,13 @@ func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) boo
 		return true
 	}
 
-	// find reservations about to expire and refresh them in parallel
-	var (
-		wg   sync.WaitGroup
-		fail int32
-	)
+	if len(ar.relays) == 0 {
+		ar.mx.Unlock()
+		return false
+	}
 
+	// find reservations about to expire and refresh them in parallel
+	g := new(errgroup.Group)
 	for p, rsvp := range ar.relays {
 		if rsvp == nil {
 			// this is a circuitv1 relay, there is no reservation
@@ -183,18 +185,17 @@ func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) boo
 			continue
 		}
 
-		wg.Add(1)
-		go ar.refreshRelayReservation(ctx, p, &wg, &fail)
+		g.Go(func() error {
+			return ar.refreshRelayReservation(ctx, p)
+		})
 	}
 	ar.mx.Unlock()
 
-	wg.Wait()
-	return fail > 0
+	err := g.Wait()
+	return err != nil
 }
 
-func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID, wg *sync.WaitGroup, fail *int32) {
-	defer wg.Done()
-
+func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID) error {
 	rsvp, err := circuitv2.Reserve(ctx, ar.host, peer.AddrInfo{ID: p})
 
 	ar.mx.Lock()
@@ -206,12 +207,12 @@ func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID, wg 
 		delete(ar.relays, p)
 		// unprotect the connection
 		ar.host.ConnManager().Unprotect(p, autorelayTag)
-		// increment fail counter
-		atomic.AddInt32(fail, 1)
 	} else {
 		log.Debugf("refreshed relay slot reservation with %s", p)
 		ar.relays[p] = rsvp
 	}
+
+	return err
 }
 
 func (ar *AutoRelay) findRelays(ctx context.Context) bool {
