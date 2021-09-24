@@ -359,9 +359,28 @@ func (ar *AutoRelay) connect(ctx context.Context, pi peer.AddrInfo) bool {
 		return false
 	}
 
-	// wait for identify to complete so that we can check the supported protocols
-	// TODO we should do this without a delay/sleep.
-	time.Sleep(time.Second)
+	// wait for identify to complete in at least one conn so that we can check the supported protocols
+	conns := ar.host.Network().ConnsToPeer(pi.ID)
+	if len(conns) == 0 {
+		return false
+	}
+
+	ready := make(chan struct{}, len(conns))
+	for _, conn := range conns {
+		go func(conn network.Conn) {
+			select {
+			case <-ar.host.IDService().IdentifyWait(conn):
+				ready <- struct{}{}
+			case <-ctx.Done():
+			}
+		}(conn)
+	}
+
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		return false
+	}
 
 	return true
 }
