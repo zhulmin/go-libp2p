@@ -185,6 +185,7 @@ func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) boo
 			continue
 		}
 
+		p := p
 		g.Go(func() error {
 			return ar.refreshRelayReservation(ctx, p)
 		})
