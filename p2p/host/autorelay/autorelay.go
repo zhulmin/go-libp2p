@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/discovery"
@@ -132,7 +133,7 @@ func (ar *AutoRelay) background(ctx context.Context) {
 			push = true
 
 		case now := <-ticker.C:
-			ar.refreshReservations(ctx, now)
+			push = ar.refreshReservations(ctx, now)
 
 		case <-ctx.Done():
 			return
@@ -148,7 +149,7 @@ func (ar *AutoRelay) background(ctx context.Context) {
 	}
 }
 
-func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) {
+func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) bool {
 	ar.mx.Lock()
 	if ar.status == network.ReachabilityPublic {
 		// we are public, forget about the relays, unprotect peers
@@ -158,11 +159,15 @@ func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) {
 		}
 
 		ar.mx.Unlock()
-		return
+		return true
 	}
 
 	// find reservations about to expire and refresh them in parallel
-	var wg sync.WaitGroup
+	var (
+		wg   sync.WaitGroup
+		fail int32
+	)
+
 	for p, rsvp := range ar.relays {
 		if rsvp == nil {
 			continue
@@ -173,14 +178,15 @@ func (ar *AutoRelay) refreshReservations(ctx context.Context, now time.Time) {
 		}
 
 		wg.Add(1)
-		go ar.refreshRelayReservation(ctx, p, &wg)
+		go ar.refreshRelayReservation(ctx, p, &wg, &fail)
 	}
 	ar.mx.Unlock()
 
 	wg.Wait()
+	return fail > 0
 }
 
-func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID, wg *sync.WaitGroup) {
+func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID, wg *sync.WaitGroup, fail *int32) {
 	defer wg.Done()
 
 	rsvp, err := circuitv2.Reserve(ctx, ar.host, peer.AddrInfo{ID: p})
@@ -194,11 +200,8 @@ func (ar *AutoRelay) refreshRelayReservation(ctx context.Context, p peer.ID, wg 
 		delete(ar.relays, p)
 		// unprotect the connection
 		ar.host.ConnManager().Unprotect(p, "autorelay")
-		// notify of relay disconnection
-		select {
-		case ar.disconnect <- struct{}{}:
-		default:
-		}
+		// increment fail counter
+		atomic.AddInt32(fail, 1)
 	} else {
 		log.Debugf("refreshed relay slot reservation with %s", p)
 		ar.relays[p] = rsvp
