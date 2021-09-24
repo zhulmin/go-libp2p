@@ -30,6 +30,9 @@ const (
 	rsvpExpirationSlack = 2 * time.Minute
 
 	autorelayTag = "autorelay"
+
+	protoIDv1 = string(relayv1.ProtoID)
+	protoIDv2 = string(circuitv2_proto.ProtoIDv2Hop)
 )
 
 var (
@@ -279,8 +282,6 @@ func (ar *AutoRelay) tryRelay(ctx context.Context, pi peer.AddrInfo) bool {
 		return false
 	}
 
-	protoIDv1 := string(relayv1.ProtoID)
-	protoIDv2 := string(circuitv2_proto.ProtoIDv2Hop)
 	protos, err := ar.host.Peerstore().SupportsProtocols(pi.ID, protoIDv1, protoIDv2)
 	if err != nil {
 		log.Debugf("error checking relay protocol support for peer %s: %s", pi.ID, err)
