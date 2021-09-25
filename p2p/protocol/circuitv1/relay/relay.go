@@ -202,6 +202,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 
 	err = wr.WriteMsg(msg)
 	if err != nil {
+		fmt.Println("can't write msg:", err)
 		log.Debugf("error writing stop handshake: %s", err.Error())
 		bs.Reset()
 		r.handleError(s, pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
@@ -215,6 +216,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	if err != nil {
 		log.Debugf("error reading stop response: %s", err.Error())
 		bs.Reset()
+		fmt.Println("can't read msg:", err)
 		r.handleError(s, pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
 		cleanup()
 		return
@@ -223,6 +225,7 @@ func (r *Relay) handleHopStream(s network.Stream, msg *pb.CircuitRelay) {
 	if msg.GetType() != pb.CircuitRelay_STATUS {
 		log.Debugf("unexpected relay stop response: not a status message (%d)", msg.GetType())
 		bs.Reset()
+		fmt.Println("unexpected msg type", msg.GetType())
 		r.handleError(s, pb.CircuitRelay_HOP_CANT_OPEN_DST_STREAM)
 		cleanup()
 		return
