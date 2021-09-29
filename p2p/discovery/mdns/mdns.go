@@ -105,10 +105,6 @@ func (s *mdnsService) getIPs(addrs []ma.Multiaddr) ([]string, error) {
 	return ips, nil
 }
 
-func (s *mdnsService) mdnsInstance() string {
-	return string(s.host.ID())
-}
-
 func (s *mdnsService) startServer() error {
 	interfaceAddrs, err := s.host.Network().InterfaceListenAddresses()
 	if err != nil {
@@ -134,7 +130,7 @@ func (s *mdnsService) startServer() error {
 	}
 
 	server, err := zeroconf.RegisterProxy(
-		s.mdnsInstance(),
+		s.host.ID().Pretty(), // TODO: deals with peer IDs longer than 63 characters
 		s.serviceName,
 		mdnsDomain,
 		4001,                 // we have to pass in a port number here, but libp2p only uses the TXT records
