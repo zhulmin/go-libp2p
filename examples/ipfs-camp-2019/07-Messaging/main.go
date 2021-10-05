@@ -28,7 +28,7 @@ type mdnsNotifee struct {
 }
 
 func (m *mdnsNotifee) HandlePeerFound(pi peer.AddrInfo) {
-	m.h.Connect(m.ctx, pi)
+	go m.h.Connect(m.ctx, pi)
 }
 
 func main() {

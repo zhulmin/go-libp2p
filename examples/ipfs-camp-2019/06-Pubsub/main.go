@@ -31,7 +31,7 @@ type discoveryNotifee struct {
 func (m *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	if m.h.Network().Connectedness(pi.ID) != network.Connected {
 		fmt.Printf("Found %s!\n", pi.ID.ShortString())
-		m.h.Connect(m.ctx, pi)
+		go m.h.Connect(m.ctx, pi)
 	}
 }
 

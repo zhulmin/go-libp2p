@@ -7,20 +7,24 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 )
 
+// interface to be called when new peer is found
 type discoveryNotifee struct {
 	PeerChan chan peer.AddrInfo
 }
 
-//interface to be called when new  peer is found
 func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
-	n.PeerChan <- pi
+	select {
+	case n.PeerChan <- pi:
+	default:
+	}
 }
 
-//Initialize the MDNS service
+// Initialize the MDNS service
 func initMDNS(peerhost host.Host, rendezvous string) chan peer.AddrInfo {
 	// register with service so that we get notified about peer discovery
-	n := &discoveryNotifee{}
-	n.PeerChan = make(chan peer.AddrInfo)
+	n := &discoveryNotifee{
+		PeerChan: make(chan peer.AddrInfo, 8),
+	}
 
 	// An hour might be a long long period in practical applications. But this is fine for us
 	ser := mdns.NewMdnsService(peerhost, rendezvous, n)

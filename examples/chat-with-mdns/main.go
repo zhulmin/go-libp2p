@@ -124,16 +124,16 @@ func main() {
 
 	// open a stream, this stream will be handled by handleStream other end
 	stream, err := host.NewStream(ctx, peer.ID, protocol.ID(cfg.ProtocolID))
-
 	if err != nil {
 		fmt.Println("Stream open failed", err)
-	} else {
-		rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
-
-		go writeData(rw)
-		go readData(rw)
-		fmt.Println("Connected to:", peer)
+		return
 	}
+
+	rw := bufio.NewReadWriter(bufio.NewReader(stream), bufio.NewWriter(stream))
+
+	go writeData(rw)
+	go readData(rw)
+	fmt.Println("Connected to:", peer)
 
 	select {} //wait here
 }

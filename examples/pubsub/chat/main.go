@@ -94,10 +94,12 @@ type discoveryNotifee struct {
 // support PubSub.
 func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	fmt.Printf("discovered new peer %s\n", pi.ID.Pretty())
-	err := n.h.Connect(context.Background(), pi)
-	if err != nil {
-		fmt.Printf("error connecting to peer %s: %s\n", pi.ID.Pretty(), err)
-	}
+
+	go func() {
+		if err := n.h.Connect(context.Background(), pi); err != nil {
+			fmt.Printf("error connecting to peer %s: %s\n", pi.ID.Pretty(), err)
+		}
+	}()
 }
 
 // setupDiscovery creates an mDNS discovery service and attaches it to the libp2p Host.

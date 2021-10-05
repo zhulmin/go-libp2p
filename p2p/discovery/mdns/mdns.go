@@ -31,6 +31,8 @@ type Service interface {
 }
 
 type Notifee interface {
+	// HandlePeerFound is called when a new peer is discovered via mDNS.
+	// Calling this function must not block.
 	HandlePeerFound(peer.AddrInfo)
 }
 
@@ -182,7 +184,7 @@ func (s *mdnsService) startResolver(ctx context.Context) {
 				continue
 			}
 			for _, info := range infos {
-				go s.notifee.HandlePeerFound(info)
+				s.notifee.HandlePeerFound(info)
 			}
 		}
 	}()
