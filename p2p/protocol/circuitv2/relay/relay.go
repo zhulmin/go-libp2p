@@ -174,7 +174,7 @@ func (r *Relay) handleReserve(s network.Stream) {
 	// Delivery of the reservation might fail for a number of reasons.
 	// For example, the stream might be reset or the connection might be closed before the reservation is received.
 	// In that case, the reservation will just be garbage collected later.
-	if err := r.writeResponse(s, pbv2.Status_OK, r.makeReservationMsg(p, expire), r.makeLimitMsg(p)); err != nil {
+	if err := r.writeResponse(s, pbv2.Status_OK, r.makeReservationMsg(p, expire), r.makeLimitMsg()); err != nil {
 		log.Debugf("error writing reservation response; retracting reservation for %s", p)
 		s.Reset()
 	}
@@ -256,10 +256,11 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 	wr := util.NewDelimitedWriter(bs)
 	defer rd.Close()
 
-	var stopmsg pbv2.StopMessage
-	stopmsg.Type = pbv2.StopMessage_CONNECT.Enum()
-	stopmsg.Peer = util.PeerInfoToPeerV2(peer.AddrInfo{ID: src})
-	stopmsg.Limit = r.makeLimitMsg(dest.ID)
+	stopmsg := pbv2.StopMessage{
+		Type:  pbv2.StopMessage_CONNECT.Enum(),
+		Peer:  util.PeerInfoToPeerV2(peer.AddrInfo{ID: src}),
+		Limit: r.makeLimitMsg(),
+	}
 
 	bs.SetDeadline(time.Now().Add(HandshakeTimeout))
 
@@ -299,10 +300,11 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 		return
 	}
 
-	var response pbv2.HopMessage
-	response.Type = pbv2.HopMessage_STATUS.Enum()
-	response.Status = pbv2.Status_OK.Enum()
-	response.Limit = r.makeLimitMsg(dest.ID)
+	response := pbv2.HopMessage{
+		Type:   pbv2.HopMessage_STATUS.Enum(),
+		Status: pbv2.Status_OK.Enum(),
+		Limit:  r.makeLimitMsg(),
+	}
 
 	wr = util.NewDelimitedWriter(s)
 	err = wr.WriteMsg(&response)
@@ -330,7 +332,7 @@ func (r *Relay) handleConnect(s network.Stream, msg *pbv2.HopMessage) {
 		}
 	}
 
-	if r.rc.Limit != nil {
+	if !r.rc.Limit.IsZero() {
 		deadline := time.Now().Add(r.rc.Limit.Duration)
 		s.SetDeadline(deadline)
 		bs.SetDeadline(deadline)
@@ -472,14 +474,13 @@ func (r *Relay) makeReservationMsg(p peer.ID, expire time.Time) *pbv2.Reservatio
 	return rsvp
 }
 
-func (r *Relay) makeLimitMsg(p peer.ID) *pbv2.Limit {
-	if r.rc.Limit == nil {
+func (r *Relay) makeLimitMsg() *pbv2.Limit {
+	if r.rc.Limit.IsZero() {
 		return nil
 	}
 
 	duration := uint32(r.rc.Limit.Duration / time.Second)
 	data := uint64(r.rc.Limit.Data)
-
 	return &pbv2.Limit{
 		Duration: &duration,
 		Data:     &data,

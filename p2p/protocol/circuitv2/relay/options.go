@@ -11,7 +11,7 @@ func WithResources(rc Resources) Option {
 }
 
 // WithLimit is a Relay option that sets only the relayed connection limits for the relay.
-func WithLimit(limit *RelayLimit) Option {
+func WithLimit(limit RelayLimit) Option {
 	return func(r *Relay) error {
 		r.rc.Limit = limit
 		return nil

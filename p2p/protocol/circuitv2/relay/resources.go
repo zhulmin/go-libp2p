@@ -7,7 +7,7 @@ import (
 // Resources are the resource limits associated with the relay service.
 type Resources struct {
 	// Limit is the (optional) relayed connection limits.
-	Limit *RelayLimit
+	Limit RelayLimit
 
 	// ReservationTTL is the duration of a new (or refreshed reservation).
 	// Defaults to 1hr.
@@ -40,6 +40,10 @@ type RelayLimit struct {
 	Data int64
 }
 
+func (l RelayLimit) IsZero() bool {
+	return l.Duration == 0 && l.Data == 0
+}
+
 // DefaultResources returns a Resources object with the default filled in.
 func DefaultResources() Resources {
 	return Resources{
@@ -58,8 +62,8 @@ func DefaultResources() Resources {
 }
 
 // DefaultLimit returns a RelayLimit object with the defaults filled in.
-func DefaultLimit() *RelayLimit {
-	return &RelayLimit{
+func DefaultLimit() RelayLimit {
+	return RelayLimit{
 		Duration: 2 * time.Minute,
 		Data:     1 << 17, // 128K
 	}
