@@ -92,7 +92,10 @@ func (mn *mocknet) AddPeer(k ic.PrivKey, a ma.Multiaddr) (host.Host, error) {
 		return nil, err
 	}
 
-	ps := pstoremem.NewPeerstore()
+	ps, err := pstoremem.NewPeerstore()
+	if err != nil {
+		return nil, err
+	}
 	ps.AddAddr(p, a, peerstore.PermanentAddrTTL)
 	ps.AddPrivKey(p, k)
 	ps.AddPubKey(p, k.GetPublic())

@@ -284,6 +284,10 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		if err != nil {
 			return nil, err
 		}
+		ps, err := pstoremem.NewPeerstore()
+		if err != nil {
+			return nil, err
+		}
 
 		// Pull out the pieces of the config that we _actually_ care about.
 		// Specifically, don't setup things like autorelay, listeners,
@@ -297,8 +301,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			ConnectionGater:    cfg.ConnectionGater,
 			Reporter:           cfg.Reporter,
 			PeerKey:            autonatPrivKey,
-
-			Peerstore: pstoremem.NewPeerstore(),
+			Peerstore:          ps,
 		}
 
 		dialer, err := autoNatCfg.makeSwarm()

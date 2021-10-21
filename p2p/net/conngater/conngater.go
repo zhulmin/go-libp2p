@@ -1,6 +1,7 @@
 package conngater
 
 import (
+	"context"
 	"net"
 	"sync"
 
@@ -51,7 +52,7 @@ func NewBasicConnectionGater(ds datastore.Datastore) (*BasicConnectionGater, err
 
 	if ds != nil {
 		cg.ds = namespace.Wrap(ds, datastore.NewKey(ns))
-		err := cg.loadRules()
+		err := cg.loadRules(context.Background())
 		if err != nil {
 			return nil, err
 		}
@@ -60,9 +61,9 @@ func NewBasicConnectionGater(ds datastore.Datastore) (*BasicConnectionGater, err
 	return cg, nil
 }
 
-func (cg *BasicConnectionGater) loadRules() error {
+func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 	// load blocked peers
-	res, err := cg.ds.Query(query.Query{Prefix: keyPeer})
+	res, err := cg.ds.Query(ctx, query.Query{Prefix: keyPeer})
 	if err != nil {
 		log.Errorf("error querying datastore for blocked peers: %s", err)
 		return err
@@ -79,7 +80,7 @@ func (cg *BasicConnectionGater) loadRules() error {
 	}
 
 	// load blocked addrs
-	res, err = cg.ds.Query(query.Query{Prefix: keyAddr})
+	res, err = cg.ds.Query(ctx, query.Query{Prefix: keyAddr})
 	if err != nil {
 		log.Errorf("error querying datastore for blocked addrs: %s", err)
 		return err
@@ -96,7 +97,7 @@ func (cg *BasicConnectionGater) loadRules() error {
 	}
 
 	// load blocked subnets
-	res, err = cg.ds.Query(query.Query{Prefix: keySubnet})
+	res, err = cg.ds.Query(ctx, query.Query{Prefix: keySubnet})
 	if err != nil {
 		log.Errorf("error querying datastore for blocked subnets: %s", err)
 		return err
@@ -124,7 +125,7 @@ func (cg *BasicConnectionGater) loadRules() error {
 // Note: active connections to the peer are not automatically closed.
 func (cg *BasicConnectionGater) BlockPeer(p peer.ID) error {
 	if cg.ds != nil {
-		err := cg.ds.Put(datastore.NewKey(keyPeer+p.String()), []byte(p))
+		err := cg.ds.Put(context.Background(), datastore.NewKey(keyPeer+p.String()), []byte(p))
 		if err != nil {
 			log.Errorf("error writing blocked peer to datastore: %s", err)
 			return err
@@ -141,7 +142,7 @@ func (cg *BasicConnectionGater) BlockPeer(p peer.ID) error {
 // UnblockPeer removes a peer from the set of blocked peers
 func (cg *BasicConnectionGater) UnblockPeer(p peer.ID) error {
 	if cg.ds != nil {
-		err := cg.ds.Delete(datastore.NewKey(keyPeer + p.String()))
+		err := cg.ds.Delete(context.Background(), datastore.NewKey(keyPeer+p.String()))
 		if err != nil {
 			log.Errorf("error deleting blocked peer from datastore: %s", err)
 			return err
@@ -173,7 +174,7 @@ func (cg *BasicConnectionGater) ListBlockedPeers() []peer.ID {
 // Note: active connections to the IP address are not automatically closed.
 func (cg *BasicConnectionGater) BlockAddr(ip net.IP) error {
 	if cg.ds != nil {
-		err := cg.ds.Put(datastore.NewKey(keyAddr+ip.String()), []byte(ip))
+		err := cg.ds.Put(context.Background(), datastore.NewKey(keyAddr+ip.String()), []byte(ip))
 		if err != nil {
 			log.Errorf("error writing blocked addr to datastore: %s", err)
 			return err
@@ -191,7 +192,7 @@ func (cg *BasicConnectionGater) BlockAddr(ip net.IP) error {
 // UnblockAddr removes an IP address from the set of blocked addresses
 func (cg *BasicConnectionGater) UnblockAddr(ip net.IP) error {
 	if cg.ds != nil {
-		err := cg.ds.Delete(datastore.NewKey(keyAddr + ip.String()))
+		err := cg.ds.Delete(context.Background(), datastore.NewKey(keyAddr+ip.String()))
 		if err != nil {
 			log.Errorf("error deleting blocked addr from datastore: %s", err)
 			return err
@@ -224,7 +225,7 @@ func (cg *BasicConnectionGater) ListBlockedAddrs() []net.IP {
 // Note: active connections to the IP subnet are not automatically closed.
 func (cg *BasicConnectionGater) BlockSubnet(ipnet *net.IPNet) error {
 	if cg.ds != nil {
-		err := cg.ds.Put(datastore.NewKey(keySubnet+ipnet.String()), []byte(ipnet.String()))
+		err := cg.ds.Put(context.Background(), datastore.NewKey(keySubnet+ipnet.String()), []byte(ipnet.String()))
 		if err != nil {
 			log.Errorf("error writing blocked addr to datastore: %s", err)
 			return err
@@ -242,7 +243,7 @@ func (cg *BasicConnectionGater) BlockSubnet(ipnet *net.IPNet) error {
 // UnblockSubnet removes an IP address from the set of blocked addresses
 func (cg *BasicConnectionGater) UnblockSubnet(ipnet *net.IPNet) error {
 	if cg.ds != nil {
-		err := cg.ds.Delete(datastore.NewKey(keySubnet + ipnet.String()))
+		err := cg.ds.Delete(context.Background(), datastore.NewKey(keySubnet+ipnet.String()))
 		if err != nil {
 			log.Errorf("error deleting blocked subnet from datastore: %s", err)
 			return err

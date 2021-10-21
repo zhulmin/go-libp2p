@@ -41,7 +41,10 @@ func getNetHosts(t *testing.T, ctx context.Context, n int) (hosts []host.Host, u
 			t.Fatal(err)
 		}
 
-		ps := pstoremem.NewPeerstore()
+		ps, err := pstoremem.NewPeerstore()
+		if err != nil {
+			t.Fatal(err)
+		}
 		err = ps.AddPrivKey(p, privk)
 		if err != nil {
 			t.Fatal(err)

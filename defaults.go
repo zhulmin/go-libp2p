@@ -47,7 +47,11 @@ var DefaultTransports = ChainOptions(
 
 // DefaultPeerstore configures libp2p to use the default peerstore.
 var DefaultPeerstore Option = func(cfg *Config) error {
-	return cfg.Apply(Peerstore(pstoremem.NewPeerstore()))
+	ps, err := pstoremem.NewPeerstore()
+	if err != nil {
+		return err
+	}
+	return cfg.Apply(Peerstore(ps))
 }
 
 // RandomIdentity generates a random identity. (default behaviour)

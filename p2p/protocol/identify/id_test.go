@@ -304,7 +304,10 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	defer cancel()
 	mn := mocknet.New(ctx)
 	id1 := coretest.RandPeerIDFatal(t)
-	ps1 := pstoremem.NewPeerstore()
+	ps1, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 	p1addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 	p1addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/2345")
 	ps1.AddAddrs(id1, []ma.Multiaddr{p1addr1, p1addr2}, peerstore.PermanentAddrTTL)
@@ -314,7 +317,10 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	}
 
 	id2 := coretest.RandPeerIDFatal(t)
-	ps2 := pstoremem.NewPeerstore()
+	ps2, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 	p2addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.5/tcp/1234")
 	p2addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/3456")
 	p2addrs := []ma.Multiaddr{p2addr1, p2addr2}
@@ -325,7 +331,10 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	}
 
 	id3 := coretest.RandPeerIDFatal(t)
-	ps3 := pstoremem.NewPeerstore()
+	ps3, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 	p3addr1, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/4567")
 	ps3.AddAddrs(id3, []ma.Multiaddr{p3addr1}, peerstore.PermanentAddrTTL)
 	p3, err := mn.AddPeerWithPeerstore(id3, ps3)
