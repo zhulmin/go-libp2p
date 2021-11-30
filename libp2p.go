@@ -34,7 +34,7 @@ func ChainOptions(opts ...Option) Option {
 // - If no transport and listen addresses are provided, the node listens to
 // the multiaddresses "/ip4/0.0.0.0/tcp/0" and "/ip6/::/tcp/0";
 //
-// - If no transport options are provided, the node uses TCP and websocket
+// - If no transport options are provided, the node uses TCP, websocket and QUIC
 // transport protocols;
 //
 // - If no multiplexer configuration is provided, the node is configured by
