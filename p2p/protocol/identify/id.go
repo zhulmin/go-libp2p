@@ -716,35 +716,6 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 	log.Errorf("%s local key and received key for %s do not match, but match peer.ID", lp, rp)
 }
 
-// HasConsistentTransport returns true if the address 'a' shares a
-// protocol set with any address in the green set. This is used
-// to check if a given address might be one of the addresses a peer is
-// listening on.
-func HasConsistentTransport(a ma.Multiaddr, green []ma.Multiaddr) bool {
-	protosMatch := func(a, b []ma.Protocol) bool {
-		if len(a) != len(b) {
-			return false
-		}
-
-		for i, p := range a {
-			if b[i].Code != p.Code {
-				return false
-			}
-		}
-		return true
-	}
-
-	protos := a.Protocols()
-
-	for _, ga := range green {
-		if protosMatch(protos, ga.Protocols()) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (ids *idService) consumeObservedAddress(observed []byte, c network.Conn) {
 	if observed == nil {
 		return

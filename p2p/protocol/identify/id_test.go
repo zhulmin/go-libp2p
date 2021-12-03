@@ -283,21 +283,6 @@ func TestIDService(t *testing.T) {
 	}
 }
 
-func TestProtoMatching(t *testing.T) {
-	tcp1, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
-	tcp2, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/2345")
-	tcp3, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/4567")
-	utp, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/utp")
-
-	if !identify.HasConsistentTransport(tcp1, []ma.Multiaddr{tcp2, tcp3, utp}) {
-		t.Fatal("expected match")
-	}
-
-	if identify.HasConsistentTransport(utp, []ma.Multiaddr{tcp2, tcp3}) {
-		t.Fatal("expected mismatch")
-	}
-}
-
 func TestLocalhostAddrFiltering(t *testing.T) {
 	t.Skip("need to fix this test")
 	ctx, cancel := context.WithCancel(context.Background())
