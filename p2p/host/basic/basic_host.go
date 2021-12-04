@@ -50,7 +50,7 @@ var log = logging.Logger("basichost")
 
 var (
 	// DefaultNegotiationTimeout is the default value for HostOpts.NegotiationTimeout.
-	DefaultNegotiationTimeout = time.Second * 60
+	DefaultNegotiationTimeout = 10 * time.Second
 
 	// DefaultAddrsFactory is the default value for HostOpts.AddrsFactory.
 	DefaultAddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
@@ -944,7 +944,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 			// Did the router give us a routable public addr?
 			if manet.IsPublicAddr(extMaddr) {
-				//well done
+				// well done
 				continue
 			}
 
