@@ -25,7 +25,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
 	autonat "github.com/libp2p/go-libp2p-autonat"
-	blankhost "github.com/libp2p/go-libp2p-blankhost"
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
@@ -307,12 +306,16 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			Peerstore:          ps,
 		}
 
-		dialer, err := autoNatCfg.makeSwarm()
+		dialerSwarm, err := autoNatCfg.makeSwarm()
 		if err != nil {
 			h.Close()
 			return nil, err
 		}
-		dialerHost := blankhost.NewBlankHost(dialer)
+		dialerHost, err := bhost.NewHost(dialerSwarm, nil)
+		if err != nil {
+			h.Close()
+			return nil, err
+		}
 		if err := autoNatCfg.addTransports(dialerHost); err != nil {
 			dialerHost.Close()
 			h.Close()
