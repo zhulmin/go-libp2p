@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/peer"
-	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
-
 	"github.com/libp2p/go-libp2p-core/mux"
+	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/libp2p/go-eventbus"
+	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	yamux "github.com/libp2p/go-libp2p-yamux"
+	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 )
 
 func TestMuxerSimple(t *testing.T) {
@@ -58,7 +59,7 @@ func TestMuxerBadTypes(t *testing.T) {
 }
 
 func TestCatchDuplicateTransportsMuxer(t *testing.T) {
-	h, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+	h, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

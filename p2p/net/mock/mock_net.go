@@ -18,6 +18,7 @@ import (
 	"github.com/jbenet/goprocess"
 	goprocessctx "github.com/jbenet/goprocess/context"
 
+	"github.com/libp2p/go-eventbus"
 	p2putil "github.com/libp2p/go-libp2p-netutil"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	ma "github.com/multiformats/go-multiaddr"
@@ -114,7 +115,7 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host
 		DisableSignedPeerRecord: true,
 	}
 
-	h, err := bhost.NewHost(n, opts)
+	h, err := bhost.NewHost(n, eventbus.NewBus(), opts)
 	if err != nil {
 		return nil, err
 	}

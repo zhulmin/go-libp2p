@@ -8,16 +8,18 @@ import (
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/libp2p/go-eventbus"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestPeerConnectedness(t *testing.T) {
-	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	h1, err := NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
 	defer h1.Close()
-	h2, err := NewHost(swarmt.GenSwarm(t), nil)
+	h2, err := NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
 
 	sub1, err := h1.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})

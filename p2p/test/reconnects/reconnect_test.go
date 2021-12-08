@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-eventbus"
+
 	"github.com/stretchr/testify/require"
 
 	u "github.com/ipfs/go-ipfs-util"
@@ -102,9 +104,9 @@ func newSender() (chan sendChans, func(s network.Stream)) {
 
 // TestReconnect tests whether hosts are able to disconnect and reconnect.
 func TestReconnect2(t *testing.T) {
-	h1, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+	h1, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
-	h2, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+	h2, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
 	hosts := []host.Host{h1, h2}
 
@@ -126,7 +128,7 @@ func TestReconnect5(t *testing.T) {
 	const num = 5
 	hosts := make([]host.Host, 0, num)
 	for i := 0; i < num; i++ {
-		h, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+		h, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 		require.NoError(t, err)
 		h.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 		hosts = append(hosts, h)

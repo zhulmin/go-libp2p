@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
+	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-eventbus"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/stretchr/testify/require"
 )
 
 var log = logging.Logger("backpressure")
@@ -23,9 +24,9 @@ func TestStBackpressureStreamWrite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+	h1, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
-	h2, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+	h2, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
 
 	// setup sender handler on 2

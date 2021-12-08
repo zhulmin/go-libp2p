@@ -155,7 +155,7 @@ type HostOpts struct {
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
-func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
+func NewHost(n network.Network, eventBus event.Bus, opts *HostOpts) (*BasicHost, error) {
 	hostCtx, cancel := context.WithCancel(context.Background())
 	if opts == nil {
 		opts = &HostOpts{}
@@ -167,7 +167,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		negtimeout:              DefaultNegotiationTimeout,
 		AddrsFactory:            DefaultAddrsFactory,
 		maResolver:              madns.DefaultResolver,
-		eventbus:                eventbus.NewBus(),
+		eventbus:                eventBus,
 		addrChangeChan:          make(chan struct{}, 1),
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,

@@ -5,12 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/libp2p/go-eventbus"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/stretchr/testify/require"
 )
 
 type DiscoveryNotifee struct {
@@ -22,15 +24,15 @@ func (n *DiscoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 }
 
 func TestMdnsDiscovery(t *testing.T) {
-	//TODO: re-enable when the new lib will get integrated
+	// TODO: re-enable when the new lib will get integrated
 	t.Skip("TestMdnsDiscovery fails randomly with current lib")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	a, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+	a, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
-	b, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
+	b, err := bhost.NewHost(swarmt.GenSwarm(t), eventbus.NewBus(), nil)
 	require.NoError(t, err)
 
 	sa, err := NewMdnsService(ctx, a, time.Second, "someTag")

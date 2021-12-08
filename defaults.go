@@ -6,6 +6,9 @@ import (
 	"crypto/rand"
 
 	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/event"
+	"github.com/libp2p/go-libp2p-core/peerstore"
+
 	mplex "github.com/libp2p/go-libp2p-mplex"
 	noise "github.com/libp2p/go-libp2p-noise"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
@@ -47,11 +50,9 @@ var DefaultTransports = ChainOptions(
 
 // DefaultPeerstore configures libp2p to use the default peerstore.
 var DefaultPeerstore Option = func(cfg *Config) error {
-	ps, err := pstoremem.NewPeerstore()
-	if err != nil {
-		return err
-	}
-	return cfg.Apply(Peerstore(ps))
+	return cfg.Apply(PeerstoreC(func(eventBus event.Bus) (peerstore.Peerstore, error) {
+		return pstoremem.NewPeerstore(pstoremem.WithEventBus(eventBus))
+	}))
 }
 
 // RandomIdentity generates a random identity. (default behaviour)
@@ -114,7 +115,7 @@ var defaults = []struct {
 		opt:      RandomIdentity,
 	},
 	{
-		fallback: func(cfg *Config) bool { return cfg.Peerstore == nil },
+		fallback: func(cfg *Config) bool { return cfg.PeerstoreC == nil },
 		opt:      DefaultPeerstore,
 	},
 	{

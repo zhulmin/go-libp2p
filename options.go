@@ -13,7 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/metrics"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/pnet"
 
 	"github.com/libp2p/go-libp2p/config"
@@ -137,14 +136,14 @@ func Transport(tpt interface{}, opts ...interface{}) Option {
 	}
 }
 
-// Peerstore configures libp2p to use the given peerstore.
-func Peerstore(ps peerstore.Peerstore) Option {
+// PeerstoreC configures libp2p to use the given peerstore.
+func PeerstoreC(c config.PeerstoreC) Option {
 	return func(cfg *Config) error {
-		if cfg.Peerstore != nil {
-			return fmt.Errorf("cannot specify multiple peerstore options")
+		if cfg.PeerstoreC != nil {
+			return fmt.Errorf("cannot specify multiple peerstore constructor options")
 		}
 
-		cfg.Peerstore = ps
+		cfg.PeerstoreC = c
 		return nil
 	}
 }
