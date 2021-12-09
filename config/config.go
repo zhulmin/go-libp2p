@@ -311,7 +311,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			h.Close()
 			return nil, err
 		}
-		dialerHost, err := bhost.NewHost(dialerSwarm, nil)
+		dialerHost, err := bhost.NewHost(dialerSwarm, &bhost.HostOpts{DisableIdentify: true})
 		if err != nil {
 			h.Close()
 			return nil, err

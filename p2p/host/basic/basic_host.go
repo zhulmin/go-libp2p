@@ -134,6 +134,9 @@ type HostOpts struct {
 	// ConnManager is a libp2p connection manager
 	ConnManager connmgr.ConnManager
 
+	// DisableIdentify indicates whether to instantiate the identify service
+	DisableIdentify bool
+
 	// EnablePing indicates whether to instantiate the ping service
 	EnablePing bool
 
@@ -219,14 +222,17 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		h.mux = opts.MultistreamMuxer
 	}
 
-	// we can't set this as a default above because it depends on the *BasicHost.
-	if h.disableSignedPeerRecord {
-		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
-	} else {
-		h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Identify service: %s", err)
+	if !opts.DisableIdentify {
+		var err error
+		// we can't set this as a default above because it depends on the *BasicHost.
+		if h.disableSignedPeerRecord {
+			h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent), identify.DisableSignedPeerRecord())
+		} else {
+			h.ids, err = identify.NewIDService(h, identify.UserAgent(opts.UserAgent))
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Identify service: %s", err)
+		}
 	}
 
 	if opts.EnableHolePunching {
