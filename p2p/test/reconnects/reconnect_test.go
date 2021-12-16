@@ -171,16 +171,14 @@ func TestConnectHangHost(t *testing.T) {
 
 	done := make(chan struct{})
 	streamAccepted := make(chan struct{})
-	go func() {
-		h2.SetStreamHandler(protocol.TestingID, func(str network.Stream) {
-			defer close(done)
-			b := make([]byte, 6)
-			_, err := str.Read(b)
-			require.NoError(t, err)
-			close(streamAccepted)
-			require.Equal(t, b, []byte("foobar"))
-		})
-	}()
+	h2.SetStreamHandler(protocol.TestingID, func(str network.Stream) {
+		defer close(done)
+		b := make([]byte, 6)
+		_, err := str.Read(b)
+		require.NoError(t, err)
+		close(streamAccepted)
+		require.Equal(t, b, []byte("foobar"))
+	})
 	str, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
 	require.NoError(t, err)
 	_, err = str.Write([]byte("foobar"))
