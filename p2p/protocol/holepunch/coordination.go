@@ -168,6 +168,12 @@ func (hs *Service) initiateHolePunch(rp peer.ID) ([]ma.Multiaddr, time.Duration,
 	}
 
 	// wait for a CONNECT message from the remote peer
+	if streamScope := str.Scope(); streamScope != nil {
+		if err := streamScope.ReserveMemory(maxMsgSize); err != nil {
+			return nil, 0, err
+		}
+		defer streamScope.ReleaseMemory(maxMsgSize)
+	}
 	rd := protoio.NewDelimitedReader(str, maxMsgSize)
 	msg.Reset()
 	if err := rd.ReadMsg(msg); err != nil {
@@ -320,6 +326,12 @@ func (hs *Service) incomingHolePunch(s network.Stream) (rtt time.Duration, addrs
 
 	s.SetDeadline(time.Now().Add(StreamTimeout))
 	wr := protoio.NewDelimitedWriter(s)
+	if streamScope := s.Scope(); streamScope != nil {
+		if err := streamScope.ReserveMemory(maxMsgSize); err != nil {
+			return 0, nil, err
+		}
+		defer streamScope.ReleaseMemory(maxMsgSize)
+	}
 	rd := protoio.NewDelimitedReader(s, maxMsgSize)
 
 	// Read Connect message
