@@ -368,3 +368,7 @@ func (pn *peernet) notifyAll(notification func(f network.Notifiee)) {
 	pn.notifmu.Unlock()
 	wg.Wait()
 }
+
+func (pn *peernet) ResourceManager() network.ResourceManager {
+	return nil
+}

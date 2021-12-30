@@ -195,3 +195,7 @@ func (c *conn) RemotePublicKey() ic.PubKey {
 func (c *conn) Stat() network.ConnStats {
 	return c.stat
 }
+
+func (c *conn) Scope() network.ConnectionScope {
+	return nil
+}

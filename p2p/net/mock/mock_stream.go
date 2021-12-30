@@ -289,6 +289,10 @@ func (s *stream) transport() {
 	}
 }
 
+func (s *stream) Scope() network.StreamScope {
+	return nil
+}
+
 func (s *stream) cancelWrite(err error) {
 	s.write.CloseWithError(err)
 	s.writeErr = err

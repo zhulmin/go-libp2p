@@ -70,7 +70,7 @@ func (c *Client) Listen(addr ma.Multiaddr) (transport.Listener, error) {
 		return nil, err
 	}
 
-	return c.upgrader.UpgradeListener(c, c.Listener()), nil
+	return c.upgrader.UpgradeListener(c, c.Listener(), nil), nil
 }
 
 func (c *Client) Protocols() []int {

@@ -18,9 +18,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func addTransportV1(t *testing.T, ctx context.Context, h host.Host, upgrader *tptu.Upgrader) {
-	err := compatv1.AddRelayTransport(ctx, h, upgrader)
-	if err != nil {
+func addTransportV1(t *testing.T, h host.Host, upgrader *tptu.Upgrader) {
+	if err := compatv1.AddRelayTransport(h, upgrader); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -30,7 +29,7 @@ func TestRelayCompatV2DialV1(t *testing.T) {
 	defer cancel()
 
 	hosts, upgraders := getNetHosts(t, ctx, 3)
-	addTransportV1(t, ctx, hosts[0], upgraders[0])
+	addTransportV1(t, hosts[0], upgraders[0])
 	addTransport(t, hosts[2], upgraders[2])
 
 	rch := make(chan []byte, 1)
@@ -108,7 +107,7 @@ func TestRelayCompatV1DialV2(t *testing.T) {
 
 	hosts, upgraders := getNetHosts(t, ctx, 3)
 	addTransport(t, hosts[0], upgraders[0])
-	addTransportV1(t, ctx, hosts[2], upgraders[2])
+	addTransportV1(t, hosts[2], upgraders[2])
 
 	rch := make(chan []byte, 1)
 	hosts[0].SetStreamHandler("test", func(s network.Stream) {
