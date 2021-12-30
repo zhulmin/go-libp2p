@@ -1010,7 +1010,7 @@ func (h *BasicHost) SetAutoNat(a autonat.AutoNAT) {
 	}
 }
 
-// Return the host's AutoNAT service, if AutoNAT is enabled.
+// GetAutoNat returns the host's AutoNAT service, if AutoNAT is enabled.
 func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
 	h.addrMu.Lock()
 	defer h.addrMu.Unlock()

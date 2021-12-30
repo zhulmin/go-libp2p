@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/libp2p/go-libp2p-core/network"
+
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/transport"
@@ -49,14 +51,25 @@ var _ transport.Transport = (*Client)(nil)
 var _ io.Closer = (*Client)(nil)
 
 func (c *Client) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+	var connScope network.ConnectionManagementScope
+	if rcmgr := c.host.Network().ResourceManager(); rcmgr != nil {
+		var err error
+		// TODO: what's the best way to tell if we'll be using a fd here?
+		connScope, err = rcmgr.OpenConnection(network.DirOutbound, true)
+		if err != nil {
+			return nil, err
+		}
+	}
 	conn, err := c.dial(ctx, a, p)
 	if err != nil {
+		if connScope != nil {
+			connScope.Done()
+		}
 		return nil, err
 	}
 
 	conn.tagHop()
-
-	return c.upgrader.UpgradeOutbound(ctx, c, conn, p)
+	return c.upgrader.Upgrade(ctx, c, conn, network.DirOutbound, p, connScope)
 }
 
 func (c *Client) CanDial(addr ma.Multiaddr) bool {
@@ -70,7 +83,7 @@ func (c *Client) Listen(addr ma.Multiaddr) (transport.Listener, error) {
 		return nil, err
 	}
 
-	return c.upgrader.UpgradeListener(c, c.Listener(), nil), nil
+	return c.upgrader.UpgradeListener(c, c.Listener(), c.host.Network().ResourceManager()), nil
 }
 
 func (c *Client) Protocols() []int {
