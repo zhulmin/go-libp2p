@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
 	"github.com/libp2p/go-libp2p-testing/ci"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p-testing/race"
@@ -330,11 +331,27 @@ func performPing(t *testing.T, st string, n int, s network.Stream) error {
 	return nil
 }
 
-func makePonger(t *testing.T, st string, errs chan<- error) func(network.Stream) {
-	t.Helper()
+func TestStreamsStress(t *testing.T) {
+	ctx := context.Background()
+	nnodes := 100
+	if race.WithRace() {
+		nnodes = 30
+	}
 
-	return func(s network.Stream) {
-		go func() {
+	mn, err := FullMeshConnected(nnodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mn.Close()
+
+	errs := make(chan error)
+
+	hosts := mn.Hosts()
+	var wg sync.WaitGroup
+	for _, h := range hosts {
+		h.SetStreamHandler(protocol.TestingID, func(s network.Stream) {
+			const st = "pingpong"
+			defer wg.Done()
 			defer s.Close()
 
 			for {
@@ -352,34 +369,11 @@ func makePonger(t *testing.T, st string, errs chan<- error) func(network.Stream)
 					errs <- err
 				}
 			}
-		}()
-	}
-}
-
-func TestStreamsStress(t *testing.T) {
-	ctx := context.Background()
-	nnodes := 100
-	if race.WithRace() {
-		nnodes = 30
+		})
 	}
 
-	mn, err := FullMeshConnected(nnodes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mn.Close()
-
-	errs := make(chan error)
-
-	hosts := mn.Hosts()
-	for _, h := range hosts {
-		ponger := makePonger(t, "pingpong", errs)
-		h.SetStreamHandler(protocol.TestingID, ponger)
-	}
-
-	var wg sync.WaitGroup
 	for i := 0; i < 1000; i++ {
-		wg.Add(1)
+		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
 			var from, to int
@@ -405,10 +399,9 @@ func TestStreamsStress(t *testing.T) {
 	}()
 
 	for err := range errs {
-		if err == nil {
-			continue
+		if err != nil {
+			t.Fatal(err)
 		}
-		t.Fatal(err)
 	}
 }
 
