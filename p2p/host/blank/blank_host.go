@@ -203,10 +203,24 @@ func (h *BaseHost) NewStream(ctx context.Context, p peer.ID, protos ...protocol.
 		return nil, err
 	}
 
-	selected, err := msmux.SelectOneOf(protocol.ConvertToStrings(protos), s)
-	if err != nil {
+	// Negotiate the protocol in the background, obeying the context.
+	var selected string
+	errCh := make(chan error, 1)
+	go func() {
+		selected, err = msmux.SelectOneOf(protocol.ConvertToStrings(protos), s)
+		errCh <- err
+	}()
+	select {
+	case err = <-errCh:
+		if err != nil {
+			s.Reset()
+			return nil, err
+		}
+	case <-ctx.Done():
 		s.Reset()
-		return nil, err
+		// wait for `SelectOneOf` to error out because of resetting the stream.
+		<-errCh
+		return nil, ctx.Err()
 	}
 
 	selpid := protocol.ID(selected)
