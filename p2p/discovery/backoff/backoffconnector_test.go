@@ -7,10 +7,13 @@ import (
 	"testing"
 	"time"
 
-	bhost "github.com/libp2p/go-libp2p-blankhost"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	bhost "github.com/libp2p/go-libp2p-blankhost"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type maxDialHost struct {
@@ -37,7 +40,7 @@ func (h *maxDialHost) Connect(ctx context.Context, ai peer.AddrInfo) error {
 	return h.Host.Connect(ctx, ai)
 }
 
-func getNetHosts(t *testing.T, ctx context.Context, n int) []host.Host {
+func getNetHosts(t *testing.T, n int) []host.Host {
 	var out []host.Host
 
 	for i := 0; i < n; i++ {
@@ -60,13 +63,9 @@ func loadCh(peers []host.Host) <-chan peer.AddrInfo {
 }
 
 func TestBackoffConnector(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	hosts := getNetHosts(t, ctx, 5)
+	hosts := getNetHosts(t, 5)
 	primary := &maxDialHost{
 		Host:        hosts[0],
-		mux:         sync.Mutex{},
 		timesDialed: make(map[peer.ID]int),
 		maxTimesToDial: map[peer.ID]int{
 			hosts[1].ID(): 1,
@@ -74,36 +73,24 @@ func TestBackoffConnector(t *testing.T) {
 		},
 	}
 
-	bc, err := NewBackoffConnector(primary, 10, time.Minute, NewFixedBackoff(time.Millisecond*1500))
-	if err != nil {
-		t.Fatal(err)
-	}
+	bc, err := NewBackoffConnector(primary, 10, time.Minute, NewFixedBackoff(250*time.Millisecond))
+	require.NoError(t, err)
 
-	bc.Connect(ctx, loadCh(hosts))
-
-	time.Sleep(time.Millisecond * 100)
-	if expected, actual := len(hosts)-1, len(primary.Network().Conns()); actual != expected {
-		t.Fatalf("wrong number of connections. expected %d, actual %d", expected, actual)
-	}
+	bc.Connect(context.Background(), loadCh(hosts))
+	require.Eventually(t, func() bool { return len(primary.Network().Conns()) == len(hosts)-1 }, 3*time.Second, 10*time.Millisecond)
 
 	for _, c := range primary.Network().Conns() {
 		c.Close()
 	}
+	require.Eventually(t, func() bool { return len(primary.Network().Conns()) == 0 }, 3*time.Second, 10*time.Millisecond)
 
-	for len(primary.Network().Conns()) > 0 {
-		time.Sleep(time.Millisecond * 100)
-	}
+	bc.Connect(context.Background(), loadCh(hosts))
+	require.Empty(t, primary.Network().Conns(), "shouldn't be connected to any peers")
 
-	bc.Connect(ctx, loadCh(hosts))
-	if numConns := len(primary.Network().Conns()); numConns != 0 {
-		t.Fatal("shouldn't be connected to any peers")
-	}
-
-	time.Sleep(time.Millisecond * 1600)
-	bc.Connect(ctx, loadCh(hosts))
-
-	time.Sleep(time.Millisecond * 100)
-	if expected, actual := len(hosts)-2, len(primary.Network().Conns()); actual != expected {
-		t.Fatalf("wrong number of connections. expected %d, actual %d", expected, actual)
-	}
+	time.Sleep(time.Millisecond * 500)
+	bc.Connect(context.Background(), loadCh(hosts))
+	require.Eventually(t, func() bool { return len(primary.Network().Conns()) == len(hosts)-2 }, 3*time.Second, 10*time.Millisecond)
+	// make sure we actually don't connect to host 1 any more
+	time.Sleep(100 * time.Millisecond)
+	require.Len(t, primary.Network().Conns(), len(hosts)-2, "wrong number of connections")
 }
