@@ -123,29 +123,6 @@ func TestAutoRelay(t *testing.T) {
 	t.Cleanup(func() { manet.Private4 = private4 })
 	manet.Private4 = []*net.IPNet{}
 
-	t.Run("with a circuitv1 relay", func(t *testing.T) {
-		testAutoRelay(t, false)
-	})
-	t.Run("testing autorelay with circuitv2 relay", func(t *testing.T) {
-		testAutoRelay(t, true)
-	})
-}
-
-func isRelayAddr(addr ma.Multiaddr) bool {
-	_, err := addr.ValueForProtocol(ma.P_CIRCUIT)
-	return err == nil
-}
-
-func testAutoRelay(t *testing.T, useRelayv2 bool) {
-	mtab := newMockRoutingTable()
-	makeRouting := func(h host.Host) (*mockRouting, error) {
-		mr := newMockRouting(h, mtab)
-		return mr, nil
-	}
-	makePeerRouting := func(h host.Host) (routing.PeerRouting, error) {
-		return makeRouting(h)
-	}
-
 	// this is the relay host
 	// announce dns addrs because filter out private addresses from relays,
 	// and we consider dns addresses "public".
@@ -164,15 +141,33 @@ func testAutoRelay(t *testing.T, useRelayv2 bool) {
 	require.NoError(t, err)
 	defer relayHost.Close()
 
-	// instantiate the relay
-	if useRelayv2 {
-		r, err := relayv2.New(relayHost)
-		require.NoError(t, err)
-		defer r.Close()
-	} else {
+	t.Run("with a circuitv1 relay", func(t *testing.T) {
 		r, err := relayv1.NewRelay(relayHost)
 		require.NoError(t, err)
 		defer r.Close()
+		testAutoRelay(t, relayHost)
+	})
+	t.Run("testing autorelay with circuitv2 relay", func(t *testing.T) {
+		r, err := relayv2.New(relayHost)
+		require.NoError(t, err)
+		defer r.Close()
+		testAutoRelay(t, relayHost)
+	})
+}
+
+func isRelayAddr(addr ma.Multiaddr) bool {
+	_, err := addr.ValueForProtocol(ma.P_CIRCUIT)
+	return err == nil
+}
+
+func testAutoRelay(t *testing.T, relayHost host.Host) {
+	mtab := newMockRoutingTable()
+	makeRouting := func(h host.Host) (*mockRouting, error) {
+		mr := newMockRouting(h, mtab)
+		return mr, nil
+	}
+	makePeerRouting := func(h host.Host) (routing.PeerRouting, error) {
+		return makeRouting(h)
 	}
 
 	// advertise the relay
@@ -200,7 +195,6 @@ func testAutoRelay(t *testing.T, useRelayv2 bool) {
 
 	// connect to AutoNAT, have it resolve to private.
 	connect(t, h1, h2)
-
 	privEmitter, _ := h2.EventBus().Emitter(new(event.EvtLocalReachabilityChanged))
 	privEmitter.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
 
@@ -217,27 +211,13 @@ func testAutoRelay(t *testing.T, useRelayv2 bool) {
 		return false
 	}
 	// Wait for detection to do its magic
-	require.Eventually(t, func() bool { return hasRelayAddrs(t, h2.Addrs()) }, 3*time.Second, 30*time.Millisecond)
-
-	// verify that we now advertise relay addrs (but not unspecific relay addrs)
-	if !hasRelayAddrs(t, h2.Addrs()) {
-		t.Fatal("No relay addrs advertised")
-	}
+	require.Eventually(t, func() bool { return hasRelayAddrs(t, h2.Addrs()) }, 3*time.Second, 10*time.Millisecond)
+	// verify that we have pushed relay addrs to connected peers
+	require.Eventually(t, func() bool { return hasRelayAddrs(t, h1.Peerstore().Addrs(h2.ID())) }, time.Second, 10*time.Millisecond, "no relay addrs pushed")
 
 	// verify that we can connect through the relay
-	var raddrs []ma.Multiaddr
-	for _, addr := range h2.Addrs() {
-		if isRelayAddr(addr) {
-			raddrs = append(raddrs, addr)
-		}
-	}
 	h3, err := libp2p.New(libp2p.EnableRelay())
 	require.NoError(t, err)
 	defer h3.Close()
-	require.NoError(t, h3.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: raddrs}))
-
-	// verify that we have pushed relay addrs to connected peers
-	if !hasRelayAddrs(t, h1.Peerstore().Addrs(h2.ID())) {
-		t.Fatal("No relay addrs pushed")
-	}
+	require.NoError(t, h3.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: ma.FilterAddrs(h2.Addrs(), isRelayAddr)}))
 }
