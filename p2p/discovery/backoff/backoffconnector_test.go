@@ -77,19 +77,20 @@ func TestBackoffConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	bc.Connect(context.Background(), loadCh(hosts))
-	require.Eventually(t, func() bool { return len(primary.Network().Conns()) == len(hosts)-1 }, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return len(primary.Network().Peers()) == len(hosts)-1 }, 3*time.Second, 10*time.Millisecond)
 
+	time.Sleep(100 * time.Millisecond) // give connection attempts time to complete (relevant when using multiple transports)
 	for _, c := range primary.Network().Conns() {
 		c.Close()
 	}
-	require.Eventually(t, func() bool { return len(primary.Network().Conns()) == 0 }, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return len(primary.Network().Peers()) == 0 }, 3*time.Second, 10*time.Millisecond)
 
 	bc.Connect(context.Background(), loadCh(hosts))
 	require.Empty(t, primary.Network().Conns(), "shouldn't be connected to any peers")
 
 	time.Sleep(time.Millisecond * 500)
 	bc.Connect(context.Background(), loadCh(hosts))
-	require.Eventually(t, func() bool { return len(primary.Network().Conns()) == len(hosts)-2 }, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return len(primary.Network().Peers()) == len(hosts)-2 }, 3*time.Second, 10*time.Millisecond)
 	// make sure we actually don't connect to host 1 any more
 	time.Sleep(100 * time.Millisecond)
 	require.Len(t, primary.Network().Conns(), len(hosts)-2, "wrong number of connections")
