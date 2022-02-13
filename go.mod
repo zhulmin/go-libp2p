@@ -5,7 +5,6 @@ go 1.16
 require (
 	github.com/benbjohnson/clock v1.1.0
 	github.com/btcsuite/btcd v0.22.0-beta // indirect
-	github.com/caddyserver/certmagic v0.15.3
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/mock v1.6.0
@@ -16,6 +15,7 @@ require (
 	github.com/ipfs/go-datastore v0.5.0
 	github.com/ipfs/go-ipfs-util v0.0.2
 	github.com/ipfs/go-log/v2 v2.5.0
+	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/koron/go-ssdp v0.0.2 // indirect
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-conn-security-multistream v0.3.0
