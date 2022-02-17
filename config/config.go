@@ -16,7 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/libp2p/go-libp2p-core/sec"
 	"github.com/libp2p/go-libp2p-core/transport"
-	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
@@ -28,6 +27,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
 	blankhost "github.com/libp2p/go-libp2p-blankhost"
+	certbot "github.com/libp2p/go-libp2p-certbot"
+	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 
@@ -86,6 +87,7 @@ type Config struct {
 	ListenAddrs     []ma.Multiaddr
 	AddrsFactory    bhost.AddrsFactory
 	ConnectionGater connmgr.ConnectionGater
+	CertManager     *certbot.CertManager
 
 	ConnManager     connmgr.ConnManager
 	ResourceManager network.ResourceManager
@@ -258,6 +260,9 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if err := h.Network().Listen(cfg.ListenAddrs...); err != nil {
 		h.Close()
 		return nil, err
+	}
+	if cfg.CertManager != nil {
+		cfg.CertManager.AddAddrs(cfg.ListenAddrs)
 	}
 
 	// Configure routing and autorelay

@@ -22,6 +22,7 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
+	certbot "github.com/libp2p/go-libp2p-certbot"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
@@ -430,6 +431,13 @@ func UserAgent(userAgent string) Option {
 func MultiaddrResolver(rslv *madns.Resolver) Option {
 	return func(cfg *Config) error {
 		cfg.MultiaddrResolver = rslv
+		return nil
+	}
+}
+
+func CertificateManager(m *certbot.CertManager) Option {
+	return func(cfg *Config) error {
+		cfg.CertManager = m
 		return nil
 	}
 }
