@@ -233,6 +233,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		HolePunchingOptions: cfg.HolePunchingOptions,
 		EnableRelayService:  cfg.EnableRelayService,
 		RelayServiceOpts:    cfg.RelayServiceOpts,
+		CertManager:         cfg.CertManager,
 	})
 	if err != nil {
 		swrm.Close()
@@ -255,14 +256,16 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		return nil, err
 	}
 
+	// dns addresses might be among the ListenAddrs, or among addresses returned by an AddrFactory.
+	// In the host, we pass the addresses obtained from the AddrFactory to the CertManager.
+	if cfg.CertManager != nil {
+		cfg.CertManager.AddAddrs(cfg.ListenAddrs)
+	}
 	// TODO: This method succeeds if listening on one address succeeds. We
 	// should probably fail if listening on *any* addr fails.
 	if err := h.Network().Listen(cfg.ListenAddrs...); err != nil {
 		h.Close()
 		return nil, err
-	}
-	if cfg.CertManager != nil {
-		cfg.CertManager.AddAddrs(cfg.ListenAddrs)
 	}
 
 	// Configure routing and autorelay

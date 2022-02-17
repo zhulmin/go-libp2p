@@ -497,8 +497,8 @@ github.com/libp2p/go-stream-muxer-multistream v0.4.0/go.mod h1:nb+dGViZleRP4XcyH
 github.com/libp2p/go-tcp-transport v0.4.0/go.mod h1:0y52Rwrn4076xdJYu/51/qJIdxz+EWDAOG2S45sV3VI=
 github.com/libp2p/go-tcp-transport v0.5.0 h1:3ZPW8HAuyRAuFzyabE0hSrCXKKSWzROnZZX7DtcIatY=
 github.com/libp2p/go-tcp-transport v0.5.0/go.mod h1:UPPL0DIjQqiWRwVAb+CEQlaAG0rp/mCqJfIhFcLHc4Y=
-github.com/libp2p/go-ws-transport v0.6.0 h1:326XBL6Q+5CQ2KtjXz32+eGu02W/Kz2+Fm4SpXdr0q4=
-github.com/libp2p/go-ws-transport v0.6.0/go.mod h1:dXqtI9e2JV9FtF1NOtWVZSKXh5zXvnuwPXfj8GPBbYU=
+github.com/libp2p/go-ws-transport v0.6.1-0.20220221074654-eeaddb3c061d h1:pPzKsjOFd9xWCy6kBZWsJtOtHC/FParU3n2TjEb8MmE=
+github.com/libp2p/go-ws-transport v0.6.1-0.20220221074654-eeaddb3c061d/go.mod h1:hnOHOq1pG8ljdU1gpxCIlsjaA+zKflUWSQzikIbmPHA=
 github.com/libp2p/go-yamux v1.4.1 h1:P1Fe9vF4th5JOxxgQvfbOHkrGqIZniTLf+ddhZp8YTI=
 github.com/libp2p/go-yamux v1.4.1/go.mod h1:fr7aVgmdNGJK+N1g+b6DW6VxzbRCjCOejR/hkmpooHE=
 github.com/libp2p/go-yamux/v3 v3.0.1/go.mod h1:s2LsDhHbh+RfCsQoICSYt58U2f8ijtPANFD8BmE74Bo=
