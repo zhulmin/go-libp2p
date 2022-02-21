@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"math/rand"
-	"net"
 	"strings"
 	"sync"
 
@@ -86,18 +85,14 @@ func (s *mdnsService) Close() error {
 func (s *mdnsService) getIPs(addrs []ma.Multiaddr) ([]string, error) {
 	var ip4, ip6 string
 	for _, addr := range addrs {
-		network, hostport, err := manet.DialArgs(addr)
-		if err != nil {
+		first, _ := ma.SplitFirst(addr)
+		if first == nil {
 			continue
 		}
-		host, _, err := net.SplitHostPort(hostport)
-		if err != nil {
-			continue
-		}
-		if ip4 == "" && (network == "udp4" || network == "tcp4") {
-			ip4 = host
-		} else if ip6 == "" && (network == "udp6" || network == "tcp6") {
-			ip6 = host
+		if ip4 == "" && first.Protocol().Code == ma.P_IP4 {
+			ip4 = first.Value()
+		} else if ip6 == "" && first.Protocol().Code == ma.P_IP6 {
+			ip6 = first.Value()
 		}
 	}
 	ips := make([]string, 0, 2)
