@@ -1054,6 +1054,10 @@ func (h *BasicHost) Close() error {
 		}
 
 		h.refCount.Wait()
+
+		if h.Network().ResourceManager() != nil {
+			h.Network().ResourceManager().Close()
+		}
 	})
 
 	return nil
