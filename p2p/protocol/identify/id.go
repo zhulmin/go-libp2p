@@ -614,6 +614,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn) {
 	var signedPeerRecord *record.Envelope
 	signedPeerRecord, err := signedPeerRecordFromMessage(mes)
 	if err != nil {
+		fmt.Println("signature error")
 		log.Errorf("error getting peer record from Identify message: %v", err)
 	}
 
@@ -638,9 +639,11 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn) {
 	if ok && signedPeerRecord != nil {
 		_, addErr := cab.ConsumePeerRecord(signedPeerRecord, ttl)
 		if addErr != nil {
+			fmt.Printf("error adding signed addrs to peerstore: %v\n", addErr)
 			log.Debugf("error adding signed addrs to peerstore: %v", addErr)
 		}
 	} else {
+		fmt.Printf("adding addresses for %s to peerstore: %v\n", p, lmaddrs)
 		ids.Host.Peerstore().AddAddrs(p, lmaddrs, ttl)
 	}
 
