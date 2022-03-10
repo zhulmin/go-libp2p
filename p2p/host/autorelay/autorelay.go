@@ -180,6 +180,7 @@ func (ar *AutoRelay) background(ctx context.Context) {
 							ar.mx.Unlock()
 						}
 						push = true
+						fmt.Println("background: connected")
 						break
 					}
 				}
@@ -187,6 +188,7 @@ func (ar *AutoRelay) background(ctx context.Context) {
 				ar.mx.Lock()
 				if ar.usingRelay(evt.Peer) { // we were disconnected from a relay
 					delete(ar.relays, evt.Peer)
+					fmt.Println("background: not connected")
 					push = true
 				}
 				ar.mx.Unlock()
@@ -211,19 +213,23 @@ func (ar *AutoRelay) background(ctx context.Context) {
 			ar.mx.Lock()
 			// if our reachability changed
 			if ar.status != evt.Reachability && evt.Reachability != network.ReachabilityUnknown {
+				fmt.Println("background: reachability changed")
 				push = true
 			}
 			ar.status = evt.Reachability
 			ar.mx.Unlock()
 		case <-ar.relayFound:
+			fmt.Println("background: relay found")
 			push = true
 		case now := <-ticker.C:
+			fmt.Println("background: ticker")
 			push = ar.refreshReservations(ctx, now)
 		case <-ctx.Done():
 			return
 		}
 
 		if push {
+			fmt.Println("pushing")
 			ar.mx.Lock()
 			ar.cachedAddrs = nil
 			ar.mx.Unlock()
