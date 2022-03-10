@@ -154,6 +154,7 @@ func (ph *peerHandler) sendPush(ctx context.Context) error {
 	ph.snapshotMu.Lock()
 	ph.snapshot = snapshot
 	ph.snapshotMu.Unlock()
+	fmt.Printf("sending push. addrs: %v\n", snapshot.addrs)
 	if err := ph.ids.writeChunkedIdentifyMsg(dp.Conn(), snapshot, dp); err != nil {
 		_ = dp.Reset()
 		return fmt.Errorf("failed to send push message: %w", err)

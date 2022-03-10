@@ -599,6 +599,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn) {
 		}
 		lmaddrs = append(lmaddrs, maddr)
 	}
+	fmt.Printf("consuming identify message from %s: %v", p, lmaddrs)
 
 	// NOTE: Do not add `c.RemoteMultiaddr()` to the peerstore if the remote
 	// peer doesn't tell us to do so. Otherwise, we'll advertise it.
