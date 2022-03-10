@@ -278,6 +278,7 @@ func (ids *idService) loop() {
 					select {
 					case phs[pid].pushCh <- struct{}{}:
 					default:
+						fmt.Printf("dropping addr updated message for %s as buffer full\n", pid.Pretty())
 						log.Debugf("dropping addr updated message for %s as buffer full", pid.Pretty())
 					}
 				}
