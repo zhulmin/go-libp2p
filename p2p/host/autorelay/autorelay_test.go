@@ -117,8 +117,23 @@ func connect(t *testing.T, a, b host.Host) {
 	require.NoError(t, b.Connect(context.Background(), pinfo))
 }
 
-// and the actual test!
-func TestAutoRelay(t *testing.T) {
+func TestAutorelay1(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay2(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay3(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay4(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay5(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay6(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay7(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay8(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay9(t *testing.T)  { testAutoRelay(t) }
+func TestAutorelay10(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay11(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay12(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay13(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay14(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay15(t *testing.T) { testAutoRelay(t) }
+
+func testAutoRelay(t *testing.T) {
 	private4 := manet.Private4
 	t.Cleanup(func() { manet.Private4 = private4 })
 	manet.Private4 = []*net.IPNet{}
@@ -145,13 +160,13 @@ func TestAutoRelay(t *testing.T) {
 		r, err := relayv1.NewRelay(relayHost)
 		require.NoError(t, err)
 		defer r.Close()
-		testAutoRelay(t, relayHost)
+		testAutoRelayImpl(t, relayHost)
 	})
 	t.Run("testing autorelay with circuitv2 relay", func(t *testing.T) {
 		r, err := relayv2.New(relayHost)
 		require.NoError(t, err)
 		defer r.Close()
-		testAutoRelay(t, relayHost)
+		testAutoRelayImpl(t, relayHost)
 	})
 }
 
@@ -160,7 +175,7 @@ func isRelayAddr(addr ma.Multiaddr) bool {
 	return err == nil
 }
 
-func testAutoRelay(t *testing.T, relayHost host.Host) {
+func testAutoRelayImpl(t *testing.T, relayHost host.Host) {
 	mtab := newMockRoutingTable()
 	makeRouting := func(h host.Host) (*mockRouting, error) {
 		mr := newMockRouting(h, mtab)
@@ -213,7 +228,7 @@ func testAutoRelay(t *testing.T, relayHost host.Host) {
 	// Wait for detection to do its magic
 	require.Eventually(t, func() bool { return hasRelayAddrs(t, h2.Addrs()) }, 3*time.Second, 10*time.Millisecond)
 	// verify that we have pushed relay addrs to connected peers
-	require.Eventually(t, func() bool { return hasRelayAddrs(t, h1.Peerstore().Addrs(h2.ID())) }, time.Second, 10*time.Millisecond, "no relay addrs pushed")
+	require.Eventually(t, func() bool { return hasRelayAddrs(t, h1.Peerstore().Addrs(h2.ID())) }, 10*time.Second, 10*time.Millisecond, "no relay addrs pushed")
 
 	// verify that we can connect through the relay
 	h3, err := libp2p.New(libp2p.EnableRelay())
