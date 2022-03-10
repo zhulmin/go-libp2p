@@ -86,12 +86,12 @@ func TestBackoffConnector(t *testing.T) {
 	require.Eventually(t, func() bool { return len(primary.Network().Peers()) == 0 }, 3*time.Second, 10*time.Millisecond)
 
 	bc.Connect(context.Background(), loadCh(hosts))
-	require.Empty(t, primary.Network().Conns(), "shouldn't be connected to any peers")
+	require.Empty(t, primary.Network().Peers(), "shouldn't be connected to any peers")
 
 	time.Sleep(time.Millisecond * 500)
 	bc.Connect(context.Background(), loadCh(hosts))
 	require.Eventually(t, func() bool { return len(primary.Network().Peers()) == len(hosts)-2 }, 3*time.Second, 10*time.Millisecond)
 	// make sure we actually don't connect to host 1 any more
 	time.Sleep(100 * time.Millisecond)
-	require.Len(t, primary.Network().Conns(), len(hosts)-2, "wrong number of connections")
+	require.Len(t, primary.Network().Peers(), len(hosts)-2, "wrong number of connections")
 }
