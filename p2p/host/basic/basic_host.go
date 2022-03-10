@@ -423,6 +423,7 @@ func (h *BasicHost) SignalAddressChange() {
 	select {
 	case h.addrChangeChan <- struct{}{}:
 	default:
+		fmt.Println("skipping signalAddressChange")
 	}
 }
 
@@ -476,6 +477,7 @@ func (h *BasicHost) background() {
 	var lastAddrs []ma.Multiaddr
 
 	emitAddrChange := func(currentAddrs []ma.Multiaddr, lastAddrs []ma.Multiaddr) {
+		fmt.Println("emitAddrChange", lastAddrs)
 		// nothing to do if both are nil..defensive check
 		if currentAddrs == nil && lastAddrs == nil {
 			return
@@ -504,6 +506,7 @@ func (h *BasicHost) background() {
 		}
 
 		// emit addr change event on the bus
+		fmt.Println("emitting change evt:", changeEvt)
 		if err := h.emitters.evtLocalAddrsUpdated.Emit(*changeEvt); err != nil {
 			log.Warnf("error emitting event for updated addrs: %s", err)
 		}

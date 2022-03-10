@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
+
 	"github.com/libp2p/go-libp2p"
 	discovery "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 
 	"github.com/libp2p/go-libp2p-core/event"
@@ -132,6 +133,11 @@ func TestAutorelay12(t *testing.T) { testAutoRelay(t) }
 func TestAutorelay13(t *testing.T) { testAutoRelay(t) }
 func TestAutorelay14(t *testing.T) { testAutoRelay(t) }
 func TestAutorelay15(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay16(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay17(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay18(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay19(t *testing.T) { testAutoRelay(t) }
+func TestAutorelay20(t *testing.T) { testAutoRelay(t) }
 
 func testAutoRelay(t *testing.T) {
 	private4 := manet.Private4
@@ -157,6 +163,7 @@ func testAutoRelay(t *testing.T) {
 	defer relayHost.Close()
 
 	t.Run("with a circuitv1 relay", func(t *testing.T) {
+		t.Skip("skipping v1 test")
 		r, err := relayv1.NewRelay(relayHost)
 		require.NoError(t, err)
 		defer r.Close()
