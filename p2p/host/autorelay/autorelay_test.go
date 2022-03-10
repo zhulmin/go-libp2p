@@ -2,6 +2,7 @@ package autorelay_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -203,10 +204,12 @@ func testAutoRelayImpl(t *testing.T, relayHost host.Host) {
 	h1, err := libp2p.New(libp2p.EnableRelay())
 	require.NoError(t, err)
 	defer h1.Close()
+	fmt.Println("h1:", h1.ID())
 
 	h2, err := libp2p.New(libp2p.EnableRelay(), libp2p.EnableAutoRelay(), libp2p.Routing(makePeerRouting))
 	require.NoError(t, err)
 	defer h2.Close()
+	fmt.Println("h2:", h2.ID())
 
 	// verify that we don't advertise relay addrs initially
 	for _, addr := range h2.Addrs() {
@@ -235,6 +238,8 @@ func testAutoRelayImpl(t *testing.T, relayHost host.Host) {
 	// Wait for detection to do its magic
 	require.Eventually(t, func() bool { return hasRelayAddrs(t, h2.Addrs()) }, 3*time.Second, 10*time.Millisecond)
 	// verify that we have pushed relay addrs to connected peers
+	time.Sleep(5 * time.Second)
+	fmt.Println("h1 has the following addrs of h2:", h1.Peerstore().Addrs(h2.ID()))
 	require.Eventually(t, func() bool { return hasRelayAddrs(t, h1.Peerstore().Addrs(h2.ID())) }, 10*time.Second, 10*time.Millisecond, "no relay addrs pushed")
 
 	// verify that we can connect through the relay
