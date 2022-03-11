@@ -637,6 +637,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn) {
 	// add signed addrs if we have them and the peerstore supports them
 	cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore())
 	if ok && signedPeerRecord != nil {
+		fmt.Println("adding signed peer record")
 		_, addErr := cab.ConsumePeerRecord(signedPeerRecord, ttl)
 		if addErr != nil {
 			fmt.Printf("error adding signed addrs to peerstore: %v\n", addErr)
@@ -646,6 +647,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn) {
 		fmt.Printf("adding addresses for %s to peerstore: %v\n", p, lmaddrs)
 		ids.Host.Peerstore().AddAddrs(p, lmaddrs, ttl)
 	}
+	fmt.Printf("just after adding we have the following addresses for %s: %v\n", p, ids.Host.Peerstore().Addrs(p))
 
 	// Finally, expire all temporary addrs.
 	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
