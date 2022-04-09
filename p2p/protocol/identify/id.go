@@ -421,16 +421,32 @@ func (ids *idService) sendIdentifyResp(s network.Stream) {
 	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
 }
 
-func (ids *idService) handleIdentifyResponse(s network.Stream) error {
+func (ids *idService) handleIdentifyResponse(s network.Stream) (err error) {
+	defer func() {
+		// Identify is parsing untrusted inputs from anyone that connects to us. Given Go's
+		// single-threaded memory safety, panics usually just mean that we got an index
+		// wrong somewhere. So we catch them here and log _loudly_ to avoid taking down the
+		// entire system.
+		if rerr := recover(); rerr != nil {
+			id := s.Conn().RemotePeer()
+			addr := s.Conn().RemoteMultiaddr()
+			log.Errorw("panic in identify", "peer", id, "adddr", addr)
+			err = fmt.Errorf("panic when identifying %s (%s): %s", id, addr, rerr)
+		}
+
+		// Cleanup by resetting on any kind of failure.
+		if err != nil {
+			s.Reset()
+		}
+	}()
+
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Warnf("error attaching stream to identify service: %s", err)
-		s.Reset()
 		return err
 	}
 
 	if err := s.Scope().ReserveMemory(signedIDSize, network.ReservationPriorityAlways); err != nil {
 		log.Warnf("error reserving memory for identify stream: %s", err)
-		s.Reset()
 		return err
 	}
 	defer s.Scope().ReleaseMemory(signedIDSize)
@@ -444,7 +460,6 @@ func (ids *idService) handleIdentifyResponse(s network.Stream) error {
 
 	if err := readAllIDMessages(r, mes); err != nil {
 		log.Warn("error reading identify message: ", err)
-		s.Reset()
 		return err
 	}
 
