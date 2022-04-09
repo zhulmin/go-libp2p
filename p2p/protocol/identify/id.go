@@ -630,9 +630,26 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn) {
 		log.Errorf("error getting peer record from Identify message: %v", err)
 	}
 
+	ids.consumeAddresses(p, lmaddrs, signedPeerRecord)
+	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
+
+	// get protocol versions
+	pv := mes.GetProtocolVersion()
+	av := mes.GetAgentVersion()
+
+	ids.Host.Peerstore().Put(p, "ProtocolVersion", pv)
+	ids.Host.Peerstore().Put(p, "AgentVersion", av)
+
+	// get the key from the other side. we may not have it (no-auth transport)
+	ids.consumeReceivedPubKey(c, mes.PublicKey)
+}
+
+func (ids *idService) consumeAddresses(p peer.ID, addrs []ma.Multiaddr, record *record.Envelope) {
 	// Extend the TTLs on the known (probably) good addresses.
 	// Taking the lock ensures that we don't concurrently process a disconnect.
 	ids.addrMu.Lock()
+	defer ids.addrMu.Unlock()
+
 	ttl := peerstore.RecentlyConnectedAddrTTL
 	if ids.Host.Network().Connectedness(p) == network.Connected {
 		ttl = peerstore.ConnectedAddrTTL
@@ -648,30 +665,17 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn) {
 
 	// add signed addrs if we have them and the peerstore supports them
 	cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore())
-	if ok && signedPeerRecord != nil {
-		_, addErr := cab.ConsumePeerRecord(signedPeerRecord, ttl)
+	if ok && record != nil {
+		_, addErr := cab.ConsumePeerRecord(record, ttl)
 		if addErr != nil {
 			log.Debugf("error adding signed addrs to peerstore: %v", addErr)
 		}
 	} else {
-		ids.Host.Peerstore().AddAddrs(p, lmaddrs, ttl)
+		ids.Host.Peerstore().AddAddrs(p, addrs, ttl)
 	}
 
 	// Finally, expire all temporary addrs.
 	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
-	ids.addrMu.Unlock()
-
-	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
-
-	// get protocol versions
-	pv := mes.GetProtocolVersion()
-	av := mes.GetAgentVersion()
-
-	ids.Host.Peerstore().Put(p, "ProtocolVersion", pv)
-	ids.Host.Peerstore().Put(p, "AgentVersion", av)
-
-	// get the key from the other side. we may not have it (no-auth transport)
-	ids.consumeReceivedPubKey(c, mes.PublicKey)
 }
 
 func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
