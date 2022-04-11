@@ -353,13 +353,14 @@ func (rf *relayFinder) handleNewCandidate(ctx context.Context) {
 				delete(rf.candidates, id)
 				// We failed to obtain a reservation for too many times. We give up.
 				if cand.numAttempts >= rf.conf.maxAttempts {
-					log.Debugw("failed to obtain a reservation with. Giving up.", "id", id, "num attempts", cand.numAttempts)
+					log.Debugw("failed to obtain a reservation. Giving up.", "id", id, "num attempts", cand.numAttempts)
 				} else {
 					rf.moveCandidateToBackoff(cand)
 				}
 				rf.candidateMx.Unlock()
 				continue
 			}
+			delete(rf.candidates, id)
 			rf.candidateMx.Unlock()
 			log.Debugw("adding new relay", "id", id)
 			rf.relayMx.Lock()
