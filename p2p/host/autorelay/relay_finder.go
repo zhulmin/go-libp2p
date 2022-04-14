@@ -11,7 +11,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
@@ -23,13 +22,10 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-const (
-	protoIDv1 = string(relayv1.ProtoID)
-	protoIDv2 = string(circuitv2_proto.ProtoIDv2Hop)
-)
+const protoIDv2 = string(circuitv2_proto.ProtoIDv2Hop)
 
 // Terminology:
-// Candidate: Once we connect to a node and it supports (v1 / v2) relay protocol,
+// Candidate: Once we connect to a node and it supports the v2 relay protocol,
 // we call it a candidate, and consider using it as a relay.
 // Relay: Out of the list of candidates, we select a relay to connect to.
 // Currently, we just randomly select a candidate, but we can employ more sophisticated
@@ -43,10 +39,9 @@ const (
 )
 
 type candidate struct {
-	added           time.Time
-	supportsRelayV2 bool
-	ai              peer.AddrInfo
-	numAttempts     int
+	added       time.Time
+	ai          peer.AddrInfo
+	numAttempts int
 }
 
 type candidateOnBackoff struct {
@@ -74,7 +69,7 @@ type relayFinder struct {
 	relayUpdated chan struct{}
 
 	relayMx sync.Mutex
-	relays  map[peer.ID]*circuitv2.Reservation // rsvp will be nil if it is a v1 relay
+	relays  map[peer.ID]*circuitv2.Reservation
 
 	cachedAddrs       []ma.Multiaddr
 	cachedAddrsExpiry time.Time
@@ -192,7 +187,7 @@ func (rf *relayFinder) notifyNewCandidate() {
 	}
 }
 
-// handleNewNode tests if a peer supports circuit v1 or v2.
+// handleNewNode tests if a peer supports circuit v2.
 // This method is only run on private nodes.
 // If a peer does, it is added to the candidates map.
 // Note that just supporting the protocol doesn't guarantee that we can also obtain a reservation.
@@ -206,8 +201,7 @@ func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) {
 
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	supportsV2, err := rf.tryNode(ctx, pi)
-	if err != nil {
+	if err := rf.tryNode(ctx, pi); err != nil {
 		log.Debugf("node %s not accepted as a candidate: %s", pi.ID, err)
 		return
 	}
@@ -216,24 +210,24 @@ func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) {
 		rf.candidateMx.Unlock()
 		return
 	}
-	log.Debugw("node supports relay protocol", "peer", pi.ID, "supports circuit v2", supportsV2)
-	rf.candidates[pi.ID] = &candidate{ai: pi, supportsRelayV2: supportsV2}
+	log.Debugw("node supports relay protocol", "peer", pi.ID)
+	rf.candidates[pi.ID] = &candidate{ai: pi}
 	rf.candidateMx.Unlock()
 
 	rf.notifyNewCandidate()
 }
 
-// tryNode checks if a peer actually supports either circuit v1 or circuit v2.
+// tryNode checks if a peer actually supports circuit v2.
 // It does not modify any internal state.
-func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsRelayV2 bool, err error) {
+func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) error {
 	if err := rf.host.Connect(ctx, pi); err != nil {
-		return false, fmt.Errorf("error connecting to relay %s: %w", pi.ID, err)
+		return fmt.Errorf("error connecting to relay %s: %w", pi.ID, err)
 	}
 
 	conns := rf.host.Network().ConnsToPeer(pi.ID)
 	for _, conn := range conns {
 		if isRelayAddr(conn.RemoteMultiaddr()) {
-			return false, errors.New("not a public node")
+			return errors.New("not a public node")
 		}
 	}
 
@@ -255,28 +249,25 @@ func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsR
 	select {
 	case <-ready:
 	case <-ctx.Done():
-		return false, ctx.Err()
+		return ctx.Err()
 	}
 
-	protos, err := rf.host.Peerstore().SupportsProtocols(pi.ID, protoIDv1, protoIDv2)
+	protos, err := rf.host.Peerstore().SupportsProtocols(pi.ID, protoIDv2)
 	if err != nil {
-		return false, fmt.Errorf("error checking relay protocol support for peer %s: %w", pi.ID, err)
+		return fmt.Errorf("error checking relay protocol support for peer %s: %w", pi.ID, err)
 	}
 
 	// If the node speaks both, prefer circuit v2
-	var supportsV1, supportsV2 bool
+	var supportsV2 bool
 	for _, proto := range protos {
-		switch proto {
-		case protoIDv1:
-			supportsV1 = true
-		case protoIDv2:
+		if proto == protoIDv2 {
 			supportsV2 = true
 		}
 	}
-	if !supportsV1 && !supportsV2 {
-		return false, errors.New("doesn't speak circuit v1 or v2")
+	if !supportsV2 {
+		return errors.New("doesn't speak circuit v2")
 	}
-	return supportsV2, nil
+	return nil
 }
 
 func (rf *relayFinder) handleNewCandidate(ctx context.Context) {
@@ -316,8 +307,6 @@ func (rf *relayFinder) handleNewCandidate(ctx context.Context) {
 
 		for _, cand := range candidates {
 			id := cand.ai.ID
-			var failed bool
-			var rsvp *circuitv2.Reservation
 
 			// make sure we're still connected.
 			if rf.host.Network().Connectedness(id) != network.Connected {
@@ -329,26 +318,10 @@ func (rf *relayFinder) handleNewCandidate(ctx context.Context) {
 					continue
 				}
 			}
-			if cand.supportsRelayV2 {
-				var err error
-				rsvp, err = circuitv2.Reserve(ctx, rf.host, cand.ai)
-				if err != nil {
-					failed = true
-					log.Debugw("failed to reserve slot", "id", id, "error", err)
-				}
-			} else {
-				ok, err := relayv1.CanHop(ctx, rf.host, id)
-				if err != nil {
-					failed = true
-					log.Debugw("error querying relay for v1 hop", "id", id, "error", err)
-				}
-				if !ok {
-					failed = true
-					log.Debugw("relay can't hop", "id", id)
-				}
-			}
+			rsvp, err := circuitv2.Reserve(ctx, rf.host, cand.ai)
 			rf.candidateMx.Lock()
-			if failed {
+			if err != nil {
+				log.Debugw("failed to reserve slot", "id", id, "error", err)
 				cand.numAttempts++
 				delete(rf.candidates, id)
 				// We failed to obtain a reservation for too many times. We give up.
@@ -410,10 +383,9 @@ func (rf *relayFinder) checkForCandidatesOnBackoff(now time.Time) {
 		} else {
 			log.Debugw("moving backoff'ed candidate back", "id", cand.ai.ID)
 			rf.candidates[cand.ai.ID] = &candidate{
-				added:           cand.added,
-				supportsRelayV2: cand.supportsRelayV2,
-				ai:              cand.ai,
-				numAttempts:     cand.numAttempts,
+				added:       cand.added,
+				ai:          cand.ai,
+				numAttempts: cand.numAttempts,
 			}
 			rf.notifyNewCandidate()
 		}
@@ -427,9 +399,6 @@ func (rf *relayFinder) refreshReservations(ctx context.Context, now time.Time) b
 	// find reservations about to expire and refresh them in parallel
 	g := new(errgroup.Group)
 	for p, rsvp := range rf.relays {
-		if rsvp == nil { // this is a circuit v1 relay, there is no reservation
-			continue
-		}
 		if now.Add(rsvpExpirationSlack).Before(rsvp.Expiration) {
 			continue
 		}
