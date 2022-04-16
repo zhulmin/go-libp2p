@@ -333,6 +333,13 @@ func (rf *relayFinder) handleNewCandidate(ctx context.Context) {
 
 		for _, cand := range candidates {
 			id := cand.ai.ID
+			rf.relayMx.Lock()
+			usingRelay := rf.usingRelay(id)
+			rf.relayMx.Unlock()
+			if usingRelay {
+				continue
+			}
+
 			var failed bool
 			var rsvp *circuitv2.Reservation
 
