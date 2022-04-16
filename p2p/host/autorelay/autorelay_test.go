@@ -202,12 +202,13 @@ func TestWaitForCandidates(t *testing.T) {
 }
 
 func TestBackoff(t *testing.T) {
+	const backoff = 500 * time.Millisecond
 	peerChan := make(chan peer.AddrInfo)
 	h := newPrivateNode(t,
 		autorelay.WithPeerSource(peerChan),
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(0),
-		autorelay.WithBackoff(500*time.Millisecond),
+		autorelay.WithBackoff(backoff),
 	)
 	defer h.Close()
 
@@ -218,11 +219,11 @@ func TestBackoff(t *testing.T) {
 	// make sure we don't add any relays yet
 	require.Never(t, func() bool {
 		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 400*time.Millisecond, 50*time.Millisecond)
+	}, backoff*2/3, 50*time.Millisecond)
 
 	require.Eventually(t, func() bool {
 		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 400*time.Millisecond, 50*time.Millisecond)
+	}, 2*backoff, 50*time.Millisecond)
 }
 
 func TestMaxBackoffs(t *testing.T) {
