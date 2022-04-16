@@ -37,11 +37,11 @@ func EchoStreamHandler(stream network.Stream) {
 }
 
 type sendChans struct {
-	send   chan struct{}
-	sent   chan struct{}
-	read   chan struct{}
-	close_ chan struct{}
-	closed chan struct{}
+	send   chan struct{} // signals that a message should be sent
+	sent   chan struct{} // receives when a message has been sent
+	read   chan struct{} // receives when a message has ben read
+	close  chan struct{} // used to signal that the host should be closed
+	closed chan struct{} // is closed when the host is closed
 }
 
 func newSendChans() sendChans {
@@ -49,7 +49,7 @@ func newSendChans() sendChans {
 		send:   make(chan struct{}),
 		sent:   make(chan struct{}),
 		read:   make(chan struct{}),
-		close_: make(chan struct{}),
+		close:  make(chan struct{}),
 		closed: make(chan struct{}),
 	}
 }
@@ -61,8 +61,8 @@ func newSender() (chan sendChans, func(s network.Stream)) {
 		scc <- sc
 
 		defer func() {
+			defer close(sc.closed)
 			s.Close()
-			sc.closed <- struct{}{}
 		}()
 
 		buf := make([]byte, 65536)
@@ -71,14 +71,14 @@ func newSender() (chan sendChans, func(s network.Stream)) {
 
 		for {
 			select {
-			case <-sc.close_:
+			case <-sc.close:
 				return
 			case <-sc.send:
 			}
 
 			// send a randomly sized subchunk
 			from := rand.Intn(len(buf) / 2)
-			to := rand.Intn(len(buf) / 2)
+			to := rand.Intn(len(buf)/2) + 1
 			sendbuf := buf[from : from+to]
 
 			log.Debugf("sender sending %d bytes", len(sendbuf))
@@ -108,17 +108,16 @@ func TestReconnect2(t *testing.T) {
 	// We can avoid this by using QUIC in this test.
 	h1, err := bhost.NewHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP), nil)
 	require.NoError(t, err)
+	defer h1.Close()
 	h2, err := bhost.NewHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP), nil)
 	require.NoError(t, err)
+	defer h2.Close()
 	hosts := []host.Host{h1, h2}
 
 	h1.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 	h2.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 
-	rounds := 8
-	if testing.Short() {
-		rounds = 4
-	}
+	const rounds = 8
 	for i := 0; i < rounds; i++ {
 		log.Debugf("TestReconnect: %d/%d\n", i, rounds)
 		subtestConnSendDisc(t, hosts)
@@ -134,14 +133,12 @@ func TestReconnect5(t *testing.T) {
 		// We can avoid this by using QUIC in this test.
 		h, err := bhost.NewHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP), nil)
 		require.NoError(t, err)
+		defer h.Close()
 		h.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 		hosts = append(hosts, h)
 	}
 
-	rounds := 4
-	if testing.Short() {
-		rounds = 2
-	}
+	const rounds = 4
 	for i := 0; i < rounds; i++ {
 		log.Debugf("TestReconnect: %d/%d\n", i, rounds)
 		subtestConnSendDisc(t, hosts)
@@ -149,17 +146,12 @@ func TestReconnect5(t *testing.T) {
 }
 
 func subtestConnSendDisc(t *testing.T, hosts []host.Host) {
-	ctx := context.Background()
+	const numMsgs = 10
 	numStreams := 3 * len(hosts)
-	numMsgs := 10
-
-	if testing.Short() {
-		numStreams = 5 * len(hosts)
-		numMsgs = 4
-	}
 
 	ss, sF := newSender()
 
+	// Connect hosts to each other.
 	for _, h1 := range hosts {
 		for _, h2 := range hosts {
 			if h1.ID() >= h2.ID() {
@@ -168,9 +160,7 @@ func subtestConnSendDisc(t *testing.T, hosts []host.Host) {
 
 			h2pi := h2.Peerstore().PeerInfo(h2.ID())
 			log.Debugf("dialing %s", h2pi.Addrs)
-			if err := h1.Connect(ctx, h2pi); err != nil {
-				t.Fatal("Failed to connect:", err)
-			}
+			require.NoError(t, h1.Connect(context.Background(), h2pi), "failed to connect")
 		}
 	}
 
@@ -179,9 +169,7 @@ func subtestConnSendDisc(t *testing.T, hosts []host.Host) {
 		h1 := hosts[i%len(hosts)]
 		h2 := hosts[(i+1)%len(hosts)]
 		s, err := h1.NewStream(context.Background(), h2.ID(), protocol.TestingID)
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		wg.Add(1)
 		go func(j int) {
@@ -199,7 +187,7 @@ func subtestConnSendDisc(t *testing.T, hosts []host.Host) {
 				<-sc.read
 				log.Debugf("%d read %d", j, k)
 			}
-			sc.close_ <- struct{}{}
+			sc.close <- struct{}{}
 			<-sc.closed
 			log.Debugf("closed %d", j)
 		}(i)
