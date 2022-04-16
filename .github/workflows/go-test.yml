@@ -39,7 +39,7 @@ jobs:
         if: hashFiles('./.github/actions/go-test-setup') != ''
       - name: Run tests
         run: |
-          for i in {1..5}; do
+          for i in {1..25}; do
             GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
           done
       - name: Collect coverage files
