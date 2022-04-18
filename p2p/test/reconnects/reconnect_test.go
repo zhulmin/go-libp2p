@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"math/rand"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -49,6 +50,9 @@ func TestReconnect5(t *testing.T) {
 	}
 
 	t.Run("using TCP", func(t *testing.T) {
+		if runtime.GOOS == "darwin" {
+			t.Skip("TCP RST handling is flaky in OSX, see https://github.com/golang/go/issues/50254")
+		}
 		runTest(t, swarmt.OptDisableQUIC)
 	})
 
@@ -121,5 +125,5 @@ func runRound(t *testing.T, hosts []host.Host) {
 			}
 		}
 		return true
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, 5000*time.Millisecond, 10*time.Millisecond)
 }
