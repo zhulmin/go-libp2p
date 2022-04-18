@@ -95,9 +95,9 @@ func runRound(t *testing.T, hosts []host.Host) {
 					rand.Read(data)
 					str, err := h1.NewStream(context.Background(), h2.ID(), protocol.TestingID)
 					require.NoError(t, err)
+					defer str.Close()
 					_, err = str.Write(data)
 					require.NoError(t, err)
-					require.NoError(t, str.Close())
 				}()
 			}
 			wg.Wait()
