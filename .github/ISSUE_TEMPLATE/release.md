@@ -22,9 +22,9 @@ about: 'Start a new libp2p release.'
     - [ ] Run `go get -u ./...` to see if there are any out-of-date deps that look important. If there are, bubble them. Try to avoid _directly_ updating indirect deps in go-libp2p's go.mod when possible.
     - [ ] Make sure local tests are passing.
 - [ ] **Stage 1 - Upstream Testing**
-  - Create testing branches in lotus & go-ipfs with the new go-libp2p release and run CI/tests. Many upstream projects are tested in CI, but lotus & go-ipfs are not.
-    - [ ] [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
+  - Create testing branches in lotus & go-ipfs with the new go-libp2p release and run CI/tests.
     - [ ] [ipfs/go-ipfs](https://github.com/ipfs/go-ipfs)
+    - [ ] [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
   - _(someday)_ Run upstream testground tests. Unfortunately, this is too time consuming at the moment.
     - _(someday)_ Run bitswap testground tests.
     - _(someday)_ Run DHT testground tests.
@@ -42,16 +42,12 @@ about: 'Start a new libp2p release.'
         - [ ] Check peers (e.g., `ipfs swarm peers`) to make sure we're connecting to peers on all transports.
         - [ ] Check advertised addresses and protocols (e.g., `ipfs id`) to make sure they're sane.
 - [ ] **Stage 3 - Release**
-  - [ ] Tag the release on master.
+  - [ ] Tag the release using the Unified CI Versioning Workflow.
   - [ ] Publish the release through the GitHub UI, adding the release notes. Some users rely on this to receive notifications of new releases.
   - [ ] Announce the release on the [discuss.libp2p.io](https://discuss.libp2p.io).
 - [ ] **Stage 4 - Update Upstream**
   - [ ] Update the examples to the final release
   - [ ] Update the upstream testing branches to the final release and create PRs.
-    - [ ] [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
-    - [ ] [ipfs/go-bitswap](https://github.com/ipfs/go-bitswap)
     - [ ] [ipfs/go-ipfs](https://github.com/ipfs/go-ipfs)
-    - [ ] [libp2p/go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht)
-    - [ ] [libp2p/go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub)
-    - [ ] [libp2p/go-libp2p-daemon](https://github.com/libp2p/go-libp2p-daemon)
+    - [ ] [filecoin-project/lotus](https://github.com/filecoin-project/lotus)
 - [ ] Make required changes to the release process.
