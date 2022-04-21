@@ -376,7 +376,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 		}
 	}
 
-	lzc, protoID, handle, err := h.Mux().NegotiateLazy(s)
+	protoID, handle, err := h.Mux().Negotiate(s)
 	took := time.Since(before)
 	if err != nil {
 		if err == io.EOF {
@@ -390,11 +390,6 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 		}
 		s.Reset()
 		return
-	}
-
-	s = &streamWrapper{
-		Stream: s,
-		rw:     lzc,
 	}
 
 	if h.negtimeout > 0 {
