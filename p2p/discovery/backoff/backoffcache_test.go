@@ -16,6 +16,13 @@ import (
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
 )
 
+func scaleDuration(t time.Duration) time.Duration {
+	if os.Getenv("CI") != "" {
+		return 3 * t
+	}
+	return t
+}
+
 type delayedDiscovery struct {
 	disc  discovery.Discovery
 	delay time.Duration
@@ -78,8 +85,15 @@ func TestBackoffDiscoverySingleBackoff(t *testing.T) {
 	d1 := mocks.NewDiscoveryClient(h1, discServer)
 	d2 := mocks.NewDiscoveryClient(h2, discServer)
 
-	bkf := NewExponentialBackoff(time.Millisecond*100, time.Second*10, NoJitter,
-		time.Millisecond*100, 2.5, 0, rand.NewSource(0))
+	bkf := NewExponentialBackoff(
+		scaleDuration(time.Millisecond*100),
+		scaleDuration(time.Second*10),
+		NoJitter,
+		scaleDuration(time.Millisecond*100),
+		2.5,
+		0,
+		rand.NewSource(0),
+	)
 	dCache, err := NewBackoffDiscovery(d1, bkf)
 	if err != nil {
 		t.Fatal(err)
@@ -96,18 +110,11 @@ func TestBackoffDiscoverySingleBackoff(t *testing.T) {
 	assertNumPeers(t, ctx, dCache, ns, 1)
 
 	// wait for cache to expire and check for the new peer
-	time.Sleep(time.Millisecond * 110)
+	time.Sleep(scaleDuration(time.Millisecond * 110))
 	assertNumPeers(t, ctx, dCache, ns, 2)
 }
 
 func TestBackoffDiscoveryMultipleBackoff(t *testing.T) {
-	scaleDuration := func(t time.Duration) time.Duration {
-		if os.Getenv("CI") != "" {
-			return 3 * t
-		}
-		return t
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -179,9 +186,9 @@ func TestBackoffDiscoverySimultaneousQuery(t *testing.T) {
 		advertisers[i] = mocks.NewDiscoveryClient(h, discServer)
 	}
 
-	d1 := &delayedDiscovery{advertisers[0], time.Millisecond * 10}
+	d1 := &delayedDiscovery{advertisers[0], scaleDuration(time.Millisecond * 10)}
 
-	bkf := NewFixedBackoff(time.Millisecond * 200)
+	bkf := NewFixedBackoff(scaleDuration(time.Millisecond * 200))
 	dCache, err := NewBackoffDiscovery(d1, bkf)
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +248,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 	h1 := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	d1 := mocks.NewDiscoveryClient(h1, discServer)
 
-	const discoveryInterval = time.Millisecond * 100
+	discoveryInterval := scaleDuration(time.Millisecond * 10)
 
 	bkf := NewFixedBackoff(discoveryInterval)
 	dCache, err := NewBackoffDiscovery(d1, bkf)
@@ -271,7 +278,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 	assertNumPeersWithLimit(t, ctx, dCache, ns, n-1, n-1)
 
 	// Wait for next discovery so next request will bypass cache
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(scaleDuration(time.Millisecond * 100))
 
 	// Ask for all peers again
 	assertNumPeersWithLimit(t, ctx, dCache, ns, n, n)
