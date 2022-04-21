@@ -62,7 +62,7 @@ func TestStreamMigrationOnBasicHost(t *testing.T) {
 func testPing(t *testing.T, h *bhost.BasicHost, ps *ping.PingService, pi peer.AddrInfo) {
 	pctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, ts := ping.MigratablePing(pctx, ps.Host, pi.ID)
+	s, ts := ping.PingWithStream(pctx, ps.Host, pi.ID)
 
 	for i := 0; i < 20; i++ {
 		if i%5 == 0 {
