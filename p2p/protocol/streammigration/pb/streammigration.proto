@@ -1,0 +1,24 @@
+syntax = "proto2";
+
+package streammigration.pb;
+
+message StreamMigration {
+  oneof type {
+    LabelMessage label = 1;
+    MigrateMessage migrate = 2;
+  }
+}
+
+message MigrateMessage {
+  required uint32 id=1;
+  required uint32 from=2;
+}
+
+message LabelMessage {
+  required uint32 id=1;
+}
+
+message AckMigrate {
+  required uint32 id=1;
+  required uint32 from=2;
+}
