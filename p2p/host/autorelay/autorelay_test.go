@@ -61,6 +61,14 @@ func newRelay(t *testing.T) host.Host {
 		}),
 	)
 	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		for _, p := range h.Mux().Protocols() {
+			if p == circuitv2_proto.ProtoIDv2Hop {
+				return true
+			}
+		}
+		return false
+	}, 500*time.Millisecond, 10*time.Millisecond)
 	return h
 }
 
