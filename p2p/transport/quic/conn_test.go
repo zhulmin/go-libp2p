@@ -541,6 +541,10 @@ func TestHolePunching(t *testing.T) {
 		require.NoError(t, err)
 		connChan <- conn
 	}()
+	// Make sure the server role (the dial on t2) has progressed far enough.
+	// If it hasn't created the hole punch map entry, the connection will be accepted as a regular connection,
+	// which would make this test fail.
+	time.Sleep(25 * time.Millisecond)
 	conn1, err := t1.Dial(
 		network.WithSimultaneousConnect(context.Background(), true, ""),
 		ln2.Multiaddr(),
