@@ -1,6 +1,7 @@
 package autorelay_test
 
 import (
+	"context"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -61,6 +62,17 @@ func newRelay(t *testing.T) host.Host {
 		}),
 	)
 	require.NoError(t, err)
+
+	// The relay service is started asynchronously (triggered by the reachability event).
+	// Make sure that the relay is up and running before returning.
+	h1, err := libp2p.New()
+	require.NoError(t, err)
+	defer h1.Close()
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h.ID(), Addrs: h.Addrs()}))
+	require.Eventually(t, func() bool {
+		protos, _ := h1.Peerstore().SupportsProtocols(h.ID(), circuitv2_proto.ProtoIDv2Hop)
+		return len(protos) > 0
+	}, 500*time.Millisecond, time.Millisecond)
 	return h
 }
 
