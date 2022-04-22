@@ -303,9 +303,11 @@ func TestConnectionGating(t *testing.T) {
 		defer clientTransport.(io.Closer).Close()
 		// make sure that connection attempts fails
 		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
-		require.NoError(t, err)
-		_, err = conn.AcceptStream()
-		require.Error(t, err)
+		// In rare instances, the connection gating error will already occur on Dial.
+		// In most cases, it will be returned by AcceptStream.
+		if err == nil {
+			_, err = conn.AcceptStream()
+		}
 		require.Contains(t, err.Error(), "connection gated")
 
 		// now allow the address and make sure the connection goes through
