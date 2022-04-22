@@ -534,8 +534,11 @@ func TestResourceManagerAcceptStream(t *testing.T) {
 	rcmgr2.EXPECT().OpenStream(s1.LocalPeer(), network.DirInbound).Return(nil, errors.New("nope"))
 	str, err := s1.NewStream(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
+	// The peer's resource manager is blocking any new stream.
+	// Depending on how quickly we receive the stream reset, it surfaces either during the write or the read call.
 	_, err = str.Write([]byte("foobar"))
-	require.NoError(t, err)
-	_, err = str.Read([]byte{0})
+	if err == nil {
+		_, err = str.Read([]byte{0})
+	}
 	require.EqualError(t, err, "stream reset")
 }
