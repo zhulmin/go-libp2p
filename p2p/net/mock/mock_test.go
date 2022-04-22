@@ -3,10 +3,8 @@ package mocknet
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"math"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -309,100 +307,6 @@ func TestStreams(t *testing.T) {
 		panic("bytes mismatch 2")
 	}
 
-}
-
-func performPing(t *testing.T, st string, n int, s network.Stream) error {
-	t.Helper()
-
-	defer s.Close()
-
-	for i := 0; i < n; i++ {
-		b := make([]byte, 4+len(st))
-		if _, err := s.Write([]byte("ping" + st)); err != nil {
-			return err
-		}
-		if _, err := io.ReadFull(s, b); err != nil {
-			return err
-		}
-		if !bytes.Equal(b, []byte("pong"+st)) {
-			return errors.New("bytes mismatch")
-		}
-	}
-	return nil
-}
-
-func TestStreamsStress(t *testing.T) {
-	ctx := context.Background()
-	nnodes := 100
-	if race.WithRace() {
-		nnodes = 30
-	}
-
-	mn, err := FullMeshConnected(nnodes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mn.Close()
-
-	errs := make(chan error)
-
-	hosts := mn.Hosts()
-	var wg sync.WaitGroup
-	for _, h := range hosts {
-		h.SetStreamHandler(protocol.TestingID, func(s network.Stream) {
-			const st = "pingpong"
-			defer wg.Done()
-			defer s.Close()
-
-			for {
-				b := make([]byte, 4+len(st))
-				if _, err := io.ReadFull(s, b); err != nil {
-					if err == io.EOF {
-						return
-					}
-					errs <- err
-				}
-				if !bytes.Equal(b, []byte("ping"+st)) {
-					errs <- errors.New("bytes mismatch")
-				}
-				if _, err := s.Write([]byte("pong" + st)); err != nil {
-					errs <- err
-				}
-			}
-		})
-	}
-
-	for i := 0; i < 1000; i++ {
-		wg.Add(2)
-		go func(i int) {
-			defer wg.Done()
-			var from, to int
-			for from == to {
-				from = rand.Intn(len(hosts))
-				to = rand.Intn(len(hosts))
-			}
-			s, err := hosts[from].NewStream(ctx, hosts[to].ID(), protocol.TestingID)
-			if err != nil {
-				log.Debugf("%d (%s) %d (%s)", from, hosts[from], to, hosts[to])
-				panic(err)
-			}
-
-			log.Infof("%d start pinging", i)
-			errs <- performPing(t, "pingpong", rand.Intn(100), s)
-			log.Infof("%d done pinging", i)
-		}(i)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errs)
-	}()
-
-	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
 }
 
 func TestAdding(t *testing.T) {
