@@ -171,5 +171,5 @@ func TestReuseGarbageCollect(t *testing.T) {
 		require.Equal(t, num, 1)
 		time.Sleep(2 * time.Millisecond)
 	}
-	require.Eventually(t, func() bool { return numGlobals() == 0 }, 100*time.Millisecond, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return numGlobals() == 0 }, 4*garbageCollectInterval, 5*time.Millisecond)
 }
