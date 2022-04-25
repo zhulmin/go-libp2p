@@ -42,7 +42,7 @@ about: 'Start a new libp2p release.'
         - [ ] Check peers (e.g., `ipfs swarm peers`) to make sure we're connecting to peers on all transports.
         - [ ] Check advertised addresses and protocols (e.g., `ipfs id`) to make sure they're sane.
 - [ ] **Stage 3 - Release**
-  - [ ] Tag the release using the Unified CI Versioning Workflow.
+  - [ ] Tag the release using the [Unified CI Versioning Workflow](https://github.com/protocol/.github/blob/master/VERSIONING.md).
   - [ ] Publish the release through the GitHub UI, adding the release notes. Some users rely on this to receive notifications of new releases.
   - [ ] Announce the release on the [discuss.libp2p.io](https://discuss.libp2p.io).
 - [ ] **Stage 4 - Update Upstream**
