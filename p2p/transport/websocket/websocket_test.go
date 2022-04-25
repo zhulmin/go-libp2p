@@ -22,9 +22,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/sec/insecure"
 	"github.com/libp2p/go-libp2p-core/test"
 	"github.com/libp2p/go-libp2p-core/transport"
+	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 
 	csms "github.com/libp2p/go-conn-security-multistream"
-	mplex "github.com/libp2p/go-libp2p-mplex"
 	ttransport "github.com/libp2p/go-libp2p-testing/suites/transport"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 
@@ -35,7 +35,7 @@ import (
 func newUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 	t.Helper()
 	id, m := newSecureMuxer(t)
-	u, err := tptu.New(m, new(mplex.Transport))
+	u, err := tptu.New(m, yamux.DefaultTransport)
 	if err != nil {
 		t.Fatal(err)
 	}
