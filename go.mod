@@ -24,7 +24,7 @@ require (
 	github.com/libp2p/go-libp2p-noise v0.4.0
 	github.com/libp2p/go-libp2p-peerstore v0.6.0
 	github.com/libp2p/go-libp2p-resource-manager v0.2.1
-	github.com/libp2p/go-libp2p-testing v0.9.2
+	github.com/libp2p/go-libp2p-testing v0.9.3-0.20220425184934-04ba97610ef0
 	github.com/libp2p/go-libp2p-tls v0.4.1
 	github.com/libp2p/go-libp2p-transport-upgrader v0.7.1
 	github.com/libp2p/go-mplex v0.7.0

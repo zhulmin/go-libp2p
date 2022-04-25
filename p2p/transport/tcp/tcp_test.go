@@ -47,6 +47,72 @@ func TestTcpTransport(t *testing.T) {
 	envReuseportVal = true
 }
 
+func TestTcpTransport2(t *testing.T) {
+	for i := 0; i < 2; i++ {
+		peerA, ia := makeInsecureMuxer(t)
+		_, ib := makeInsecureMuxer(t)
+
+		ua, err := tptu.New(ia, new(mplex.Transport))
+		require.NoError(t, err)
+		ta, err := NewTCPTransport(ua, nil)
+		require.NoError(t, err)
+		ub, err := tptu.New(ib, new(mplex.Transport))
+		require.NoError(t, err)
+		tb, err := NewTCPTransport(ub, nil)
+		require.NoError(t, err)
+
+		zero := "/ip4/127.0.0.1/tcp/0"
+		ttransport.SubtestTransport(t, ta, tb, zero, peerA)
+
+		envReuseportVal = false
+	}
+	envReuseportVal = true
+}
+
+func TestTcpTransport3(t *testing.T) {
+	for i := 0; i < 2; i++ {
+		peerA, ia := makeInsecureMuxer(t)
+		_, ib := makeInsecureMuxer(t)
+
+		ua, err := tptu.New(ia, new(mplex.Transport))
+		require.NoError(t, err)
+		ta, err := NewTCPTransport(ua, nil)
+		require.NoError(t, err)
+		ub, err := tptu.New(ib, new(mplex.Transport))
+		require.NoError(t, err)
+		tb, err := NewTCPTransport(ub, nil)
+		require.NoError(t, err)
+
+		zero := "/ip4/127.0.0.1/tcp/0"
+		ttransport.SubtestTransport(t, ta, tb, zero, peerA)
+
+		envReuseportVal = false
+	}
+	envReuseportVal = true
+}
+
+func TestTcpTransport4(t *testing.T) {
+	for i := 0; i < 2; i++ {
+		peerA, ia := makeInsecureMuxer(t)
+		_, ib := makeInsecureMuxer(t)
+
+		ua, err := tptu.New(ia, new(mplex.Transport))
+		require.NoError(t, err)
+		ta, err := NewTCPTransport(ua, nil)
+		require.NoError(t, err)
+		ub, err := tptu.New(ib, new(mplex.Transport))
+		require.NoError(t, err)
+		tb, err := NewTCPTransport(ub, nil)
+		require.NoError(t, err)
+
+		zero := "/ip4/127.0.0.1/tcp/0"
+		ttransport.SubtestTransport(t, ta, tb, zero, peerA)
+
+		envReuseportVal = false
+	}
+	envReuseportVal = true
+}
+
 func TestResourceManager(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
