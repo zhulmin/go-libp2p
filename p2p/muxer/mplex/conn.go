@@ -1,4 +1,4 @@
-package peerstream_multiplex
+package mplex
 
 import (
 	"context"
