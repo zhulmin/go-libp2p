@@ -481,6 +481,7 @@ func TestResourceManager(t *testing.T) {
 	rcmgr2.EXPECT().OpenStream(s1.LocalPeer(), network.DirInbound).Return(streamScope2, nil)
 	str, err := s1.NewStream(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
+	defer str.Close()
 	str.Write([]byte("foobar"))
 
 	p := protocol.ID("proto")
@@ -491,7 +492,6 @@ func TestResourceManager(t *testing.T) {
 	streamScope2.EXPECT().Done()
 	require.NoError(t, sstr.Close())
 	streamScope1.EXPECT().Done()
-	require.NoError(t, str.Close())
 }
 
 func TestResourceManagerNewStream(t *testing.T) {
