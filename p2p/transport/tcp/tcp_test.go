@@ -5,16 +5,16 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 
 	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/sec"
 	"github.com/libp2p/go-libp2p-core/sec/insecure"
 	"github.com/libp2p/go-libp2p-core/transport"
 
 	csms "github.com/libp2p/go-conn-security-multistream"
-	mplex "github.com/libp2p/go-libp2p-mplex"
 	mocknetwork "github.com/libp2p/go-libp2p-testing/mocks/network"
 	ttransport "github.com/libp2p/go-libp2p-testing/suites/transport"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
@@ -30,11 +30,11 @@ func TestTcpTransport(t *testing.T) {
 		peerA, ia := makeInsecureMuxer(t)
 		_, ib := makeInsecureMuxer(t)
 
-		ua, err := tptu.New(ia, new(mplex.Transport))
+		ua, err := tptu.New(ia, yamux.DefaultTransport)
 		require.NoError(t, err)
 		ta, err := NewTCPTransport(ua, nil)
 		require.NoError(t, err)
-		ub, err := tptu.New(ib, new(mplex.Transport))
+		ub, err := tptu.New(ib, yamux.DefaultTransport)
 		require.NoError(t, err)
 		tb, err := NewTCPTransport(ub, nil)
 		require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestResourceManager(t *testing.T) {
 	peerA, ia := makeInsecureMuxer(t)
 	_, ib := makeInsecureMuxer(t)
 
-	ua, err := tptu.New(ia, new(mplex.Transport))
+	ua, err := tptu.New(ia, yamux.DefaultTransport)
 	require.NoError(t, err)
 	ta, err := NewTCPTransport(ua, nil)
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestResourceManager(t *testing.T) {
 	require.NoError(t, err)
 	defer ln.Close()
 
-	ub, err := tptu.New(ib, new(mplex.Transport))
+	ub, err := tptu.New(ib, yamux.DefaultTransport)
 	require.NoError(t, err)
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	tb, err := NewTCPTransport(ub, rcmgr)
