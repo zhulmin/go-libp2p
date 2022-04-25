@@ -1,4 +1,4 @@
-package sm_yamux
+package yamux
 
 import (
 	"time"
