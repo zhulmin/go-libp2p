@@ -42,37 +42,7 @@ jobs:
         # If package ./A imports ./B, and ./A's tests also cover ./B,
         # this means ./B's coverage will be significantly higher than 0%.
         run: |
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./p2p/host/autorelay
-      - name: Run tests (32 bit)
-        if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
-        env:
-          GOARCH: 386
-        run: |
-          export "PATH=${{ env.PATH_386 }}:$PATH"
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v ./p2p/host/autorelay
-      - name: Run tests with race detector
-        if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
-        run: |
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -race ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -race ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -race ./p2p/host/autorelay
-          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -race ./p2p/host/autorelay
+          GOLOG_LOG_LEVEL="autorelay=debug" go test -v -failfast -count 100000000 ./p2p/host/autorelay -timeout 30m
       - name: Collect coverage files
         shell: bash
         run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
