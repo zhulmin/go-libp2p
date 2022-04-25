@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	mplex "github.com/libp2p/go-libp2p/p2p/muxer/mplex"
+
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -24,7 +26,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/transport"
 
 	csms "github.com/libp2p/go-conn-security-multistream"
-	mplex "github.com/libp2p/go-libp2p-mplex"
 	ttransport "github.com/libp2p/go-libp2p-testing/suites/transport"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 

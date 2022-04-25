@@ -20,7 +20,6 @@ require (
 	github.com/libp2p/go-libp2p-asn-util v0.1.0
 	github.com/libp2p/go-libp2p-circuit v0.6.0
 	github.com/libp2p/go-libp2p-core v0.15.1
-	github.com/libp2p/go-libp2p-mplex v0.5.0
 	github.com/libp2p/go-libp2p-nat v0.1.0
 	github.com/libp2p/go-libp2p-noise v0.4.0
 	github.com/libp2p/go-libp2p-peerstore v0.6.0
@@ -28,6 +27,7 @@ require (
 	github.com/libp2p/go-libp2p-testing v0.9.2
 	github.com/libp2p/go-libp2p-tls v0.4.1
 	github.com/libp2p/go-libp2p-transport-upgrader v0.7.1
+	github.com/libp2p/go-mplex v0.7.0
 	github.com/libp2p/go-msgio v0.2.0
 	github.com/libp2p/go-netroute v0.2.0
 	github.com/libp2p/go-reuseport v0.1.0
@@ -86,7 +86,6 @@ require (
 	github.com/libp2p/go-libp2p-quic-transport v0.17.0 // indirect
 	github.com/libp2p/go-libp2p-swarm v0.10.2 // indirect
 	github.com/libp2p/go-libp2p-yamux v0.9.1 // indirect
-	github.com/libp2p/go-mplex v0.4.0 // indirect
 	github.com/libp2p/go-nat v0.1.0 // indirect
 	github.com/libp2p/go-openssl v0.0.7 // indirect
 	github.com/libp2p/go-tcp-transport v0.5.1 // indirect
