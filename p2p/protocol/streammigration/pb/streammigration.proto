@@ -4,21 +4,20 @@ package streammigration.pb;
 
 message StreamMigration {
   oneof type {
-    LabelMessage label = 1;
-    MigrateMessage migrate = 2;
+    Label label = 1;
+    Migrate migrate = 2;
   }
 }
 
-message MigrateMessage {
-  required uint32 id=1;
-  required uint32 from=2;
+message Migrate {
+  required uint64 id=1;
+  required uint64 from=2;
 }
 
-message LabelMessage {
-  required uint32 id=1;
+message Label {
+  required uint64 id=1;
 }
 
 message AckMigrate {
-  required uint32 id=1;
-  required uint32 from=2;
+  optional bool deny_migrate=1;
 }

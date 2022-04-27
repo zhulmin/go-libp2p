@@ -45,18 +45,18 @@ type MigratableStream struct {
 	network.Stream
 	mu                        sync.Mutex
 	newStream                 *network.Stream
-	originalStreamId          uint32
-	newStreamId               uint32
+	originalStreamId          uint64
+	newStreamId               uint64
 	isInitiator               bool
 	state                     migratableStreamState
 	readEOFOnOriginalStream   bool
 	originalStreamClosed      bool
 	originalStreamWriteClosed bool
 
-	onMigrationFinished func(originalStreamID uint32, ms *MigratableStream)
+	onMigrationFinished func(originalStreamID uint64, ms *MigratableStream)
 }
 
-func NewMigratableStream(stream network.Stream, streamID uint32, isInitiator bool) *MigratableStream {
+func NewMigratableStream(stream network.Stream, streamID uint64, isInitiator bool) *MigratableStream {
 	return &MigratableStream{
 		Stream:           stream,
 		originalStreamId: streamID,
@@ -183,8 +183,8 @@ func (ms *MigratableStream) CloseWrite() error {
 	return ms.Stream.CloseWrite()
 }
 
-func (ms *MigratableStream) migrateTo(new network.Stream, newStreamID uint32) error {
-	var originalStreamId uint32
+func (ms *MigratableStream) migrateTo(new network.Stream, newStreamID uint64) error {
+	var originalStreamId uint64
 	ms.mu.Lock()
 	ms.newStream = &new
 	ms.newStreamId = newStreamID
@@ -195,7 +195,7 @@ func (ms *MigratableStream) migrateTo(new network.Stream, newStreamID uint32) er
 
 	wr := protoio.NewDelimitedWriter(new)
 	err := wr.WriteMsg(&streammigration_pb.StreamMigration{
-		Type: &streammigration_pb.StreamMigration_Migrate{Migrate: &streammigration_pb.MigrateMessage{
+		Type: &streammigration_pb.StreamMigration_Migrate{Migrate: &streammigration_pb.Migrate{
 			Id:   &newStreamID,
 			From: &originalStreamId,
 		}},
@@ -208,8 +208,10 @@ func (ms *MigratableStream) migrateTo(new network.Stream, newStreamID uint32) er
 	rdr := protoio.NewDelimitedReader(new, maxMsgSize)
 	var msg streammigration_pb.AckMigrate
 	rdr.ReadMsg(&msg)
-	if msg.GetFrom() != originalStreamId || msg.GetId() != newStreamID {
+	if msg.GetDenyMigrate() {
 		log.Errorf("unexpected message from peer: %v", msg)
+		// TODO handle a deny
+		return nil
 	}
 
 	ms.mu.Lock()
@@ -221,16 +223,16 @@ func (ms *MigratableStream) migrateTo(new network.Stream, newStreamID uint32) er
 
 type StreamMigrator struct {
 	protocol.Switch
-	nextStreamID uint32 // mutated with atomic Add
+	nextStreamID uint64 // mutated with atomic Add
 	mu           sync.Mutex
 	// TODO maybe a sync.Map ?
-	remoteinitiatedStreams map[peer.ID]map[uint32]*MigratableStream
+	remoteinitiatedStreams map[peer.ID]map[uint64]*MigratableStream
 }
 
 func New(sw protocol.Switch) *StreamMigrator {
 	return &StreamMigrator{
 		Switch:                 sw,
-		remoteinitiatedStreams: make(map[peer.ID]map[uint32]*MigratableStream),
+		remoteinitiatedStreams: make(map[peer.ID]map[uint64]*MigratableStream),
 	}
 }
 
@@ -257,7 +259,7 @@ func (sm *StreamMigrator) Handle(s network.Stream) {
 
 		sm.mu.Lock()
 		if sm.remoteinitiatedStreams[remotePeerID] == nil {
-			sm.remoteinitiatedStreams[remotePeerID] = make(map[uint32]*MigratableStream)
+			sm.remoteinitiatedStreams[remotePeerID] = make(map[uint64]*MigratableStream)
 		}
 		sm.remoteinitiatedStreams[remotePeerID][id] = s
 		sm.mu.Unlock()
@@ -284,10 +286,7 @@ func (sm *StreamMigrator) Handle(s network.Stream) {
 		ms := sm.remoteinitiatedStreams[remotePeerID][from]
 
 		wr := protoio.NewDelimitedWriter(s)
-		err := wr.WriteMsg(&streammigration_pb.AckMigrate{
-			From: &from,
-			Id:   &id,
-		})
+		err := wr.WriteMsg(&streammigration_pb.AckMigrate{})
 		if err != nil {
 			log.Error("Failed to ack migrate.")
 		}
@@ -296,7 +295,7 @@ func (sm *StreamMigrator) Handle(s network.Stream) {
 		ms.newStreamId = id
 		ms.newStream = &s
 		ms.state = afterAckForMigration
-		ms.onMigrationFinished = func(originalStreamID uint32, ms *MigratableStream) {
+		ms.onMigrationFinished = func(originalStreamID uint64, ms *MigratableStream) {
 			sm.mu.Lock()
 			defer sm.mu.Unlock()
 
@@ -309,11 +308,11 @@ func (sm *StreamMigrator) Handle(s network.Stream) {
 }
 
 // LabelStream will send the label message over the wire and return this stream's streamID.
-func (sm *StreamMigrator) LabelStream(s network.Stream) (uint32, error) {
-	streamID := atomic.AddUint32(&sm.nextStreamID, 1)
+func (sm *StreamMigrator) LabelStream(s network.Stream) (uint64, error) {
+	streamID := atomic.AddUint64(&sm.nextStreamID, 1)
 	wr := protoio.NewDelimitedWriter(s)
 	err := wr.WriteMsg(&streammigration_pb.StreamMigration{
-		Type: &streammigration_pb.StreamMigration_Label{Label: &streammigration_pb.LabelMessage{Id: &streamID}},
+		Type: &streammigration_pb.StreamMigration_Label{Label: &streammigration_pb.Label{Id: &streamID}},
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to write label stream message: %s", err)
@@ -325,6 +324,6 @@ func (sm *StreamMigrator) LabelStream(s network.Stream) (uint32, error) {
 // Migrate will start migrating the migratable stream s from  the original
 // network stream to the new network stream.
 func (sm *StreamMigrator) Migrate(s *MigratableStream, new network.Stream) {
-	streamID := atomic.AddUint32(&sm.nextStreamID, 1)
+	streamID := atomic.AddUint64(&sm.nextStreamID, 1)
 	s.migrateTo(new, streamID)
 }

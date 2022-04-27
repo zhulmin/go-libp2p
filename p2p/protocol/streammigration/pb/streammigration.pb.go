@@ -73,10 +73,10 @@ type isStreamMigration_Type interface {
 }
 
 type StreamMigration_Label struct {
-	Label *LabelMessage `protobuf:"bytes,1,opt,name=label,oneof" json:"label,omitempty"`
+	Label *Label `protobuf:"bytes,1,opt,name=label,oneof" json:"label,omitempty"`
 }
 type StreamMigration_Migrate struct {
-	Migrate *MigrateMessage `protobuf:"bytes,2,opt,name=migrate,oneof" json:"migrate,omitempty"`
+	Migrate *Migrate `protobuf:"bytes,2,opt,name=migrate,oneof" json:"migrate,omitempty"`
 }
 
 func (*StreamMigration_Label) isStreamMigration_Type()   {}
@@ -89,14 +89,14 @@ func (m *StreamMigration) GetType() isStreamMigration_Type {
 	return nil
 }
 
-func (m *StreamMigration) GetLabel() *LabelMessage {
+func (m *StreamMigration) GetLabel() *Label {
 	if x, ok := m.GetType().(*StreamMigration_Label); ok {
 		return x.Label
 	}
 	return nil
 }
 
-func (m *StreamMigration) GetMigrate() *MigrateMessage {
+func (m *StreamMigration) GetMigrate() *Migrate {
 	if x, ok := m.GetType().(*StreamMigration_Migrate); ok {
 		return x.Migrate
 	}
@@ -111,26 +111,26 @@ func (*StreamMigration) XXX_OneofWrappers() []interface{} {
 	}
 }
 
-type MigrateMessage struct {
-	Id                   *uint32  `protobuf:"varint,1,req,name=id" json:"id,omitempty"`
-	From                 *uint32  `protobuf:"varint,2,req,name=from" json:"from,omitempty"`
+type Migrate struct {
+	Id                   *uint64  `protobuf:"varint,1,req,name=id" json:"id,omitempty"`
+	From                 *uint64  `protobuf:"varint,2,req,name=from" json:"from,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *MigrateMessage) Reset()         { *m = MigrateMessage{} }
-func (m *MigrateMessage) String() string { return proto.CompactTextString(m) }
-func (*MigrateMessage) ProtoMessage()    {}
-func (*MigrateMessage) Descriptor() ([]byte, []int) {
+func (m *Migrate) Reset()         { *m = Migrate{} }
+func (m *Migrate) String() string { return proto.CompactTextString(m) }
+func (*Migrate) ProtoMessage()    {}
+func (*Migrate) Descriptor() ([]byte, []int) {
 	return fileDescriptor_302716e43c9acb2b, []int{1}
 }
-func (m *MigrateMessage) XXX_Unmarshal(b []byte) error {
+func (m *Migrate) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *MigrateMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Migrate) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_MigrateMessage.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Migrate.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -140,51 +140,51 @@ func (m *MigrateMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return b[:n], nil
 	}
 }
-func (m *MigrateMessage) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MigrateMessage.Merge(m, src)
+func (m *Migrate) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Migrate.Merge(m, src)
 }
-func (m *MigrateMessage) XXX_Size() int {
+func (m *Migrate) XXX_Size() int {
 	return m.Size()
 }
-func (m *MigrateMessage) XXX_DiscardUnknown() {
-	xxx_messageInfo_MigrateMessage.DiscardUnknown(m)
+func (m *Migrate) XXX_DiscardUnknown() {
+	xxx_messageInfo_Migrate.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_MigrateMessage proto.InternalMessageInfo
+var xxx_messageInfo_Migrate proto.InternalMessageInfo
 
-func (m *MigrateMessage) GetId() uint32 {
+func (m *Migrate) GetId() uint64 {
 	if m != nil && m.Id != nil {
 		return *m.Id
 	}
 	return 0
 }
 
-func (m *MigrateMessage) GetFrom() uint32 {
+func (m *Migrate) GetFrom() uint64 {
 	if m != nil && m.From != nil {
 		return *m.From
 	}
 	return 0
 }
 
-type LabelMessage struct {
-	Id                   *uint32  `protobuf:"varint,1,req,name=id" json:"id,omitempty"`
+type Label struct {
+	Id                   *uint64  `protobuf:"varint,1,req,name=id" json:"id,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *LabelMessage) Reset()         { *m = LabelMessage{} }
-func (m *LabelMessage) String() string { return proto.CompactTextString(m) }
-func (*LabelMessage) ProtoMessage()    {}
-func (*LabelMessage) Descriptor() ([]byte, []int) {
+func (m *Label) Reset()         { *m = Label{} }
+func (m *Label) String() string { return proto.CompactTextString(m) }
+func (*Label) ProtoMessage()    {}
+func (*Label) Descriptor() ([]byte, []int) {
 	return fileDescriptor_302716e43c9acb2b, []int{2}
 }
-func (m *LabelMessage) XXX_Unmarshal(b []byte) error {
+func (m *Label) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *LabelMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Label) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_LabelMessage.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Label.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -194,19 +194,19 @@ func (m *LabelMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return b[:n], nil
 	}
 }
-func (m *LabelMessage) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_LabelMessage.Merge(m, src)
+func (m *Label) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Label.Merge(m, src)
 }
-func (m *LabelMessage) XXX_Size() int {
+func (m *Label) XXX_Size() int {
 	return m.Size()
 }
-func (m *LabelMessage) XXX_DiscardUnknown() {
-	xxx_messageInfo_LabelMessage.DiscardUnknown(m)
+func (m *Label) XXX_DiscardUnknown() {
+	xxx_messageInfo_Label.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_LabelMessage proto.InternalMessageInfo
+var xxx_messageInfo_Label proto.InternalMessageInfo
 
-func (m *LabelMessage) GetId() uint32 {
+func (m *Label) GetId() uint64 {
 	if m != nil && m.Id != nil {
 		return *m.Id
 	}
@@ -214,8 +214,7 @@ func (m *LabelMessage) GetId() uint32 {
 }
 
 type AckMigrate struct {
-	Id                   *uint32  `protobuf:"varint,1,req,name=id" json:"id,omitempty"`
-	From                 *uint32  `protobuf:"varint,2,req,name=from" json:"from,omitempty"`
+	DenyMigrate          *bool    `protobuf:"varint,1,opt,name=deny_migrate,json=denyMigrate" json:"deny_migrate,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -254,44 +253,38 @@ func (m *AckMigrate) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_AckMigrate proto.InternalMessageInfo
 
-func (m *AckMigrate) GetId() uint32 {
-	if m != nil && m.Id != nil {
-		return *m.Id
+func (m *AckMigrate) GetDenyMigrate() bool {
+	if m != nil && m.DenyMigrate != nil {
+		return *m.DenyMigrate
 	}
-	return 0
-}
-
-func (m *AckMigrate) GetFrom() uint32 {
-	if m != nil && m.From != nil {
-		return *m.From
-	}
-	return 0
+	return false
 }
 
 func init() {
 	proto.RegisterType((*StreamMigration)(nil), "streammigration.pb.StreamMigration")
-	proto.RegisterType((*MigrateMessage)(nil), "streammigration.pb.MigrateMessage")
-	proto.RegisterType((*LabelMessage)(nil), "streammigration.pb.LabelMessage")
+	proto.RegisterType((*Migrate)(nil), "streammigration.pb.Migrate")
+	proto.RegisterType((*Label)(nil), "streammigration.pb.Label")
 	proto.RegisterType((*AckMigrate)(nil), "streammigration.pb.AckMigrate")
 }
 
 func init() { proto.RegisterFile("streammigration.proto", fileDescriptor_302716e43c9acb2b) }
 
 var fileDescriptor_302716e43c9acb2b = []byte{
-	// 199 bytes of a gzipped FileDescriptorProto
+	// 209 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x2d, 0x2e, 0x29, 0x4a,
 	0x4d, 0xcc, 0xcd, 0xcd, 0x4c, 0x2f, 0x4a, 0x2c, 0xc9, 0xcc, 0xcf, 0xd3, 0x2b, 0x28, 0xca, 0x2f,
-	0xc9, 0x17, 0x12, 0xc2, 0x10, 0x4e, 0x52, 0x9a, 0xcc, 0xc8, 0xc5, 0x1f, 0x0c, 0x16, 0xf6, 0x85,
-	0x09, 0x0b, 0x59, 0x70, 0xb1, 0xe6, 0x24, 0x26, 0xa5, 0xe6, 0x48, 0x30, 0x2a, 0x30, 0x6a, 0x70,
-	0x1b, 0x29, 0xe8, 0x61, 0xea, 0xd3, 0xf3, 0x01, 0x29, 0xf0, 0x4d, 0x2d, 0x2e, 0x4e, 0x4c, 0x4f,
-	0xf5, 0x60, 0x08, 0x82, 0x68, 0x10, 0xb2, 0xe3, 0x62, 0x87, 0xa8, 0x4a, 0x95, 0x60, 0x02, 0xeb,
-	0x55, 0xc2, 0xa6, 0x17, 0x62, 0x53, 0x2a, 0x42, 0x37, 0x4c, 0x93, 0x13, 0x1b, 0x17, 0x4b, 0x49,
-	0x65, 0x41, 0xaa, 0x92, 0x09, 0x17, 0x1f, 0xaa, 0x22, 0x21, 0x3e, 0x2e, 0xa6, 0xcc, 0x14, 0x09,
-	0x46, 0x05, 0x26, 0x0d, 0xde, 0x20, 0xa6, 0xcc, 0x14, 0x21, 0x21, 0x2e, 0x96, 0xb4, 0xa2, 0xfc,
-	0x5c, 0x09, 0x26, 0xb0, 0x08, 0x98, 0xad, 0x24, 0xc7, 0xc5, 0x83, 0xec, 0x2c, 0x74, 0x3d, 0x4a,
-	0x06, 0x5c, 0x5c, 0x8e, 0xc9, 0xd9, 0x50, 0x83, 0x89, 0x31, 0xd1, 0x89, 0xe7, 0xc4, 0x23, 0x39,
-	0xc6, 0x0b, 0x8f, 0xe4, 0x18, 0x1f, 0x3c, 0x92, 0x63, 0x04, 0x04, 0x00, 0x00, 0xff, 0xff, 0x4e,
-	0xb0, 0x56, 0x7b, 0x57, 0x01, 0x00, 0x00,
+	0xc9, 0x17, 0x12, 0xc2, 0x10, 0x4e, 0x52, 0x6a, 0x65, 0xe4, 0xe2, 0x0f, 0x06, 0x0b, 0xfb, 0xc2,
+	0x84, 0x85, 0x0c, 0xb9, 0x58, 0x73, 0x12, 0x93, 0x52, 0x73, 0x24, 0x18, 0x15, 0x18, 0x35, 0xb8,
+	0x8d, 0x24, 0xf5, 0x30, 0xf5, 0xe9, 0xf9, 0x80, 0x14, 0x78, 0x30, 0x04, 0x41, 0x54, 0x0a, 0x99,
+	0x73, 0xb1, 0x43, 0xa4, 0x53, 0x25, 0x98, 0xc0, 0x9a, 0xa4, 0xb1, 0x69, 0x82, 0x58, 0x91, 0xea,
+	0xc1, 0x10, 0x04, 0x53, 0xed, 0xc4, 0xc6, 0xc5, 0x52, 0x52, 0x59, 0x90, 0xaa, 0xa4, 0xcb, 0xc5,
+	0x0e, 0x95, 0x15, 0xe2, 0xe3, 0x62, 0xca, 0x4c, 0x91, 0x60, 0x54, 0x60, 0xd2, 0x60, 0x09, 0x62,
+	0xca, 0x4c, 0x11, 0x12, 0xe2, 0x62, 0x49, 0x2b, 0xca, 0xcf, 0x95, 0x60, 0x02, 0x8b, 0x80, 0xd9,
+	0x4a, 0xe2, 0x5c, 0xac, 0x60, 0x17, 0xa0, 0x2b, 0x56, 0xd2, 0xe7, 0xe2, 0x72, 0x4c, 0xce, 0x86,
+	0x19, 0xa5, 0xc8, 0xc5, 0x93, 0x92, 0x9a, 0x57, 0x19, 0x0f, 0x73, 0x1b, 0xc8, 0x43, 0x1c, 0x41,
+	0xdc, 0x20, 0x31, 0xa8, 0x12, 0x27, 0x9e, 0x13, 0x8f, 0xe4, 0x18, 0x2f, 0x3c, 0x92, 0x63, 0x7c,
+	0xf0, 0x48, 0x8e, 0x11, 0x10, 0x00, 0x00, 0xff, 0xff, 0xf0, 0x84, 0xa9, 0x17, 0x3a, 0x01, 0x00,
+	0x00,
 }
 
 func (m *StreamMigration) Marshal() (dAtA []byte, err error) {
@@ -372,7 +365,7 @@ func (m *StreamMigration_Migrate) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	}
 	return len(dAtA) - i, nil
 }
-func (m *MigrateMessage) Marshal() (dAtA []byte, err error) {
+func (m *Migrate) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -382,12 +375,12 @@ func (m *MigrateMessage) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MigrateMessage) MarshalTo(dAtA []byte) (int, error) {
+func (m *Migrate) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MigrateMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Migrate) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -413,7 +406,7 @@ func (m *MigrateMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *LabelMessage) Marshal() (dAtA []byte, err error) {
+func (m *Label) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -423,12 +416,12 @@ func (m *LabelMessage) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *LabelMessage) MarshalTo(dAtA []byte) (int, error) {
+func (m *Label) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *LabelMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Label) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -471,17 +464,13 @@ func (m *AckMigrate) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
 	}
-	if m.From == nil {
-		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("from")
-	} else {
-		i = encodeVarintStreammigration(dAtA, i, uint64(*m.From))
+	if m.DenyMigrate != nil {
 		i--
-		dAtA[i] = 0x10
-	}
-	if m.Id == nil {
-		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("id")
-	} else {
-		i = encodeVarintStreammigration(dAtA, i, uint64(*m.Id))
+		if *m.DenyMigrate {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
 		i--
 		dAtA[i] = 0x8
 	}
@@ -538,7 +527,7 @@ func (m *StreamMigration_Migrate) Size() (n int) {
 	}
 	return n
 }
-func (m *MigrateMessage) Size() (n int) {
+func (m *Migrate) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -556,7 +545,7 @@ func (m *MigrateMessage) Size() (n int) {
 	return n
 }
 
-func (m *LabelMessage) Size() (n int) {
+func (m *Label) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -577,11 +566,8 @@ func (m *AckMigrate) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Id != nil {
-		n += 1 + sovStreammigration(uint64(*m.Id))
-	}
-	if m.From != nil {
-		n += 1 + sovStreammigration(uint64(*m.From))
+	if m.DenyMigrate != nil {
+		n += 2
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -653,7 +639,7 @@ func (m *StreamMigration) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v := &LabelMessage{}
+			v := &Label{}
 			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -688,7 +674,7 @@ func (m *StreamMigration) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v := &MigrateMessage{}
+			v := &Migrate{}
 			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -716,7 +702,7 @@ func (m *StreamMigration) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MigrateMessage) Unmarshal(dAtA []byte) error {
+func (m *Migrate) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
 	l := len(dAtA)
 	iNdEx := 0
@@ -740,17 +726,17 @@ func (m *MigrateMessage) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MigrateMessage: wiretype end group for non-group")
+			return fmt.Errorf("proto: Migrate: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MigrateMessage: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Migrate: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
-			var v uint32
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowStreammigration
@@ -760,7 +746,7 @@ func (m *MigrateMessage) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= uint32(b&0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -771,7 +757,7 @@ func (m *MigrateMessage) Unmarshal(dAtA []byte) error {
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
 			}
-			var v uint32
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowStreammigration
@@ -781,7 +767,7 @@ func (m *MigrateMessage) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= uint32(b&0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -816,7 +802,7 @@ func (m *MigrateMessage) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *LabelMessage) Unmarshal(dAtA []byte) error {
+func (m *Label) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
 	l := len(dAtA)
 	iNdEx := 0
@@ -840,17 +826,17 @@ func (m *LabelMessage) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: LabelMessage: wiretype end group for non-group")
+			return fmt.Errorf("proto: Label: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: LabelMessage: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Label: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
-			var v uint32
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowStreammigration
@@ -860,7 +846,7 @@ func (m *LabelMessage) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= uint32(b&0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -893,7 +879,6 @@ func (m *LabelMessage) Unmarshal(dAtA []byte) error {
 	return nil
 }
 func (m *AckMigrate) Unmarshal(dAtA []byte) error {
-	var hasFields [1]uint64
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -924,9 +909,9 @@ func (m *AckMigrate) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field DenyMigrate", wireType)
 			}
-			var v uint32
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowStreammigration
@@ -936,34 +921,13 @@ func (m *AckMigrate) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= uint32(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Id = &v
-			hasFields[0] |= uint64(0x00000001)
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
-			}
-			var v uint32
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowStreammigration
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.From = &v
-			hasFields[0] |= uint64(0x00000002)
+			b := bool(v != 0)
+			m.DenyMigrate = &b
 		default:
 			iNdEx = preIndex
 			skippy, err := skipStreammigration(dAtA[iNdEx:])
@@ -979,12 +943,6 @@ func (m *AckMigrate) Unmarshal(dAtA []byte) error {
 			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
-	}
-	if hasFields[0]&uint64(0x00000001) == 0 {
-		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("id")
-	}
-	if hasFields[0]&uint64(0x00000002) == 0 {
-		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("from")
 	}
 
 	if iNdEx > l {
