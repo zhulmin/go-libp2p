@@ -2,16 +2,28 @@ package csms
 
 import (
 	"context"
+	"crypto/rand"
 	"net"
 	"sync"
 	"testing"
 
+	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/sec"
 	"github.com/libp2p/go-libp2p-core/sec/insecure"
-	tnet "github.com/libp2p/go-libp2p-testing/net"
+
 	sst "github.com/libp2p/go-libp2p-testing/suites/sec"
+
+	"github.com/stretchr/testify/require"
 )
+
+func newIdentity(t *testing.T) (peer.ID, ic.PrivKey) {
+	key, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
+	require.NoError(t, err)
+	id, err := peer.IDFromPrivateKey(key)
+	require.NoError(t, err)
+	return id, key
+}
 
 type TransportAdapter struct {
 	mux *SSMuxer
@@ -28,26 +40,26 @@ func (sm *TransportAdapter) SecureOutbound(ctx context.Context, insecure net.Con
 }
 
 func TestCommonProto(t *testing.T) {
-	idA := tnet.RandIdentityOrFatal(t)
-	idB := tnet.RandIdentityOrFatal(t)
+	idA, keyA := newIdentity(t)
+	idB, keyB := newIdentity(t)
 
 	var at, bt SSMuxer
 
-	atInsecure := insecure.NewWithIdentity(idA.ID(), idA.PrivateKey())
-	btInsecure := insecure.NewWithIdentity(idB.ID(), idB.PrivateKey())
+	atInsecure := insecure.NewWithIdentity(idA, keyA)
+	btInsecure := insecure.NewWithIdentity(idB, keyB)
 	at.AddTransport("/plaintext/1.0.0", atInsecure)
 	bt.AddTransport("/plaintext/1.1.0", btInsecure)
 	bt.AddTransport("/plaintext/1.0.0", btInsecure)
-	sst.SubtestRW(t, &TransportAdapter{mux: &at}, &TransportAdapter{mux: &bt}, idA.ID(), idB.ID())
+	sst.SubtestRW(t, &TransportAdapter{mux: &at}, &TransportAdapter{mux: &bt}, idA, idB)
 }
 
 func TestNoCommonProto(t *testing.T) {
-	idA := tnet.RandIdentityOrFatal(t)
-	idB := tnet.RandIdentityOrFatal(t)
+	idA, keyA := newIdentity(t)
+	idB, keyB := newIdentity(t)
 
 	var at, bt SSMuxer
-	atInsecure := insecure.NewWithIdentity(idA.ID(), idA.PrivateKey())
-	btInsecure := insecure.NewWithIdentity(idB.ID(), idB.PrivateKey())
+	atInsecure := insecure.NewWithIdentity(idA, keyA)
+	btInsecure := insecure.NewWithIdentity(idB, keyB)
 
 	at.AddTransport("/plaintext/1.0.0", atInsecure)
 	bt.AddTransport("/plaintext/1.1.0", btInsecure)

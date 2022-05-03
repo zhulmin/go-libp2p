@@ -1,6 +1,7 @@
 package testing
 
 import (
+	"crypto/rand"
 	"testing"
 	"time"
 
@@ -22,7 +23,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/transport"
 
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
-	tnet "github.com/libp2p/go-libp2p-testing/net"
 	msmux "github.com/libp2p/go-stream-muxer-multistream"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -109,25 +109,19 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		o(t, &cfg)
 	}
 
-	var p tnet.PeerNetParams
-	if cfg.sk == nil {
-		p = tnet.RandPeerNetParamsOrFatal(t)
-	} else {
-		pk := cfg.sk.GetPublic()
-		id, err := peer.IDFromPublicKey(pk)
-		if err != nil {
-			t.Fatal(err)
-		}
-		p.PrivKey = cfg.sk
-		p.PubKey = pk
-		p.ID = id
-		p.Addr = tnet.ZeroLocalTCPAddress
+	priv := cfg.sk
+	if priv == nil {
+		var err error
+		priv, _, err = crypto.GenerateECDSAKeyPair(rand.Reader)
+		require.NoError(t, err)
 	}
+	id, err := peer.IDFromPrivateKey(priv)
+	require.NoError(t, err)
 
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
-	ps.AddPubKey(p.ID, p.PubKey)
-	ps.AddPrivKey(p.ID, p.PrivKey)
+	ps.AddPubKey(id, priv.GetPublic())
+	ps.AddPrivKey(id, priv)
 	t.Cleanup(func() { ps.Close() })
 
 	swarmOpts := []swarm.Option{swarm.WithMetrics(metrics.NewBandwidthCounter())}
@@ -140,7 +134,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	if cfg.dialTimeout != 0 {
 		swarmOpts = append(swarmOpts, swarm.WithDialTimeout(cfg.dialTimeout))
 	}
-	s, err := swarm.NewSwarm(p.ID, ps, swarmOpts...)
+	s, err := swarm.NewSwarm(id, ps, swarmOpts...)
 	require.NoError(t, err)
 
 	upgrader := GenUpgrader(t, s, tptu.WithConnectionGater(cfg.connectionGater))
@@ -156,13 +150,13 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 			t.Fatal(err)
 		}
 		if !cfg.dialOnly {
-			if err := s.Listen(p.Addr); err != nil {
+			if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0")); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 	if !cfg.disableQUIC {
-		quicTransport, err := quic.NewTransport(p.PrivKey, nil, cfg.connectionGater, nil)
+		quicTransport, err := quic.NewTransport(priv, nil, cfg.connectionGater, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -176,7 +170,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		}
 	}
 	if !cfg.dialOnly {
-		s.Peerstore().AddAddrs(p.ID, s.ListenAddresses(), peerstore.PermanentAddrTTL)
+		s.Peerstore().AddAddrs(id, s.ListenAddresses(), peerstore.PermanentAddrTTL)
 	}
 	return s
 }

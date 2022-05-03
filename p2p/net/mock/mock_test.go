@@ -3,11 +3,15 @@ package mocknet
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"io"
 	"math"
 	"sync"
 	"testing"
 	"time"
+
+	ic "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/stretchr/testify/require"
 
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -18,11 +22,19 @@ import (
 	"github.com/libp2p/go-libp2p-testing/race"
 )
 
+func newIdentity(t *testing.T) (peer.ID, ic.PrivKey) {
+	key, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
+	require.NoError(t, err)
+	id, err := peer.IDFromPrivateKey(key)
+	require.NoError(t, err)
+	return id, key
+}
+
 func TestNetworkSetup(t *testing.T) {
 	ctx := context.Background()
-	id1 := tnet.RandIdentityOrFatal(t)
-	id2 := tnet.RandIdentityOrFatal(t)
-	id3 := tnet.RandIdentityOrFatal(t)
+	_, key1 := newIdentity(t)
+	_, key2 := newIdentity(t)
+	_, key3 := newIdentity(t)
 	mn := New()
 	defer mn.Close()
 
@@ -32,19 +44,19 @@ func TestNetworkSetup(t *testing.T) {
 	a2 := tnet.RandLocalTCPAddress()
 	a3 := tnet.RandLocalTCPAddress()
 
-	h1, err := mn.AddPeer(id1.PrivateKey(), a1)
+	h1, err := mn.AddPeer(key1, a1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p1 := h1.ID()
 
-	h2, err := mn.AddPeer(id2.PrivateKey(), a2)
+	h2, err := mn.AddPeer(key2, a2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p2 := h2.ID()
 
-	h3, err := mn.AddPeer(id3.PrivateKey(), a3)
+	h3, err := mn.AddPeer(key3, a3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,10 +327,10 @@ func TestAdding(t *testing.T) {
 
 	var peers []peer.ID
 	for i := 0; i < 3; i++ {
-		id := tnet.RandIdentityOrFatal(t)
+		_, key := newIdentity(t)
 
 		a := tnet.RandLocalTCPAddress()
-		h, err := mn.AddPeer(id.PrivateKey(), a)
+		h, err := mn.AddPeer(key, a)
 		if err != nil {
 			t.Fatal(err)
 		}
