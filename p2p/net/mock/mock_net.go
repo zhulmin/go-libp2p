@@ -2,6 +2,7 @@ package mocknet
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"net"
 	"sort"
@@ -16,7 +17,6 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
-	p2putil "github.com/libp2p/go-libp2p-testing/netutil"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -64,7 +64,7 @@ func (mn *mocknet) Close() error {
 }
 
 func (mn *mocknet) GenPeer() (host.Host, error) {
-	sk, err := p2putil.RandTestBogusPrivateKey()
+	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
 	if err != nil {
 		return nil, err
 	}

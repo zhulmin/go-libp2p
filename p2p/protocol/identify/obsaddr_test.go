@@ -1,19 +1,20 @@
 package identify_test
 
 import (
+	"crypto/rand"
 	"testing"
 	"time"
 
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 
+	ic "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/libp2p/go-eventbus"
-	p2putil "github.com/libp2p/go-libp2p-testing/netutil"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +30,7 @@ type harness struct {
 
 func (h *harness) add(observer ma.Multiaddr) peer.ID {
 	// create a new fake peer.
-	sk, err := p2putil.RandTestBogusPrivateKey()
+	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func (h *harness) observeInbound(observed ma.Multiaddr, observer peer.ID) networ
 
 func newHarness(t *testing.T) harness {
 	mn := mocknet.New()
-	sk, err := p2putil.RandTestBogusPrivateKey()
+	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
 	require.NoError(t, err)
 	h, err := mn.AddPeer(sk, ma.StringCast("/ip4/127.0.0.1/tcp/10086"))
 	require.NoError(t, err)
