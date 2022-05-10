@@ -112,8 +112,9 @@ func TestDirectDialWorks(t *testing.T) {
 }
 
 func TestEndToEndSimConnect(t *testing.T) {
-	tr := &mockEventTracer{}
-	h1, h2, relay, _ := makeRelayedHosts(t, nil, holepunch.WithTracer(tr), true)
+	h1tr := &mockEventTracer{}
+	h2tr := &mockEventTracer{}
+	h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(h1tr), holepunch.WithTracer(h2tr), true)
 	defer h1.Close()
 	defer h2.Close()
 	defer relay.Close()
@@ -122,18 +123,22 @@ func TestEndToEndSimConnect(t *testing.T) {
 	ensureDirectConn(t, h1, h2)
 	// ensure no hole-punching streams are open on either side
 	ensureNoHolePunchingStream(t, h1, h2)
-	var events []*holepunch.Event
+	var h2Events []*holepunch.Event
 	require.Eventually(t,
 		func() bool {
-			events = tr.getEvents()
-			return len(events) == 3
+			h2Events = h2tr.getEvents()
+			return len(h2Events) == 3
 		},
 		time.Second,
 		10*time.Millisecond,
 	)
-	require.Equal(t, events[0].Type, holepunch.StartHolePunchEvtT)
-	require.Equal(t, events[1].Type, holepunch.HolePunchAttemptEvtT)
-	require.Equal(t, events[2].Type, holepunch.EndHolePunchEvtT)
+	require.Equal(t, holepunch.StartHolePunchEvtT, h2Events[0].Type)
+	require.Equal(t, holepunch.HolePunchAttemptEvtT, h2Events[1].Type)
+	require.Equal(t, holepunch.EndHolePunchEvtT, h2Events[2].Type)
+	h1Events := h1tr.getEvents()
+	require.Len(t, h1Events, 2)
+	require.Equal(t, holepunch.StartHolePunchEvtT, h1Events[0].Type)
+	require.Equal(t, holepunch.HolePunchAttemptEvtT, h1Events[1].Type)
 }
 
 func TestFailuresOnInitiator(t *testing.T) {
