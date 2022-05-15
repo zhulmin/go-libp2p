@@ -197,11 +197,12 @@ func TestResourceManagerAcceptDenied(t *testing.T) {
 	clientConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	clientRcmgr.EXPECT().OpenConnection(network.DirOutbound, false).Return(clientConnScope, nil)
 	clientConnScope.EXPECT().SetPeer(serverID)
+	// In rare instances, the connection gating error will already occur on Dial.
+	// In that case, Done is called on the connection scope.
+	clientConnScope.EXPECT().Done().MaxTimes(1)
 	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
 	// In rare instances, the connection gating error will already occur on Dial.
-	if err != nil {
-		clientConnScope.EXPECT().Done()
-	} else {
+	if err == nil {
 		_, err = conn.AcceptStream()
 		require.Error(t, err)
 	}
