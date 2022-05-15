@@ -33,9 +33,21 @@ func getMockDialFunc() (dialWorkerFunc, func(), context.Context, <-chan struct{}
 }
 
 func TestBasicDialSync(t *testing.T) {
-	df, done, _, callsch := getMockDialFunc()
-	dsync := newDialSync(df)
 	p := peer.ID("testpeer")
+	var counter int32
+	requests := make(chan dialRequest, 2)
+	done := make(chan struct{})
+	dsync := newDialSync(func(id peer.ID, reqs <-chan dialRequest) {
+		require.Equal(t, id, p)
+		atomic.AddInt32(&counter, 1)
+		for req := range reqs {
+			requests <- req
+			go func(req dialRequest) {
+				<-done
+				req.resch <- dialResponse{conn: new(Conn)}
+			}(req)
+		}
+	})
 
 	finished := make(chan struct{}, 2)
 	go func() {
@@ -52,16 +64,14 @@ func TestBasicDialSync(t *testing.T) {
 		finished <- struct{}{}
 	}()
 
-	// short sleep just to make sure we've moved around in the scheduler
-	time.Sleep(time.Millisecond * 20)
-	done()
+	// wait until both requests are registered
+	require.Eventually(t, func() bool { return len(requests) == 2 }, 100*time.Millisecond, 5*time.Millisecond, "expected both requests to be processed")
+	// make the dials return
+	close(done)
+	// make sure the Dial functions return
+	require.Eventually(t, func() bool { return len(finished) == 2 }, 100*time.Millisecond, 5*time.Millisecond, "dial functions should have returned")
 
-	<-finished
-	<-finished
-
-	if len(callsch) > 1 {
-		t.Fatal("should only have called dial func once!")
-	}
+	require.Equal(t, 1, int(atomic.LoadInt32(&counter)), "should only have called dial func once!")
 }
 
 func TestDialSyncCancel(t *testing.T) {
