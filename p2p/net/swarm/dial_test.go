@@ -487,7 +487,10 @@ func TestDialExistingConnection(t *testing.T) {
 	c2, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
 
-	require.Equal(t, c1, c2, "expecting the same connection from both dials")
+	// can't use require.Equal here, as this does a deep comparison
+	if c1 != c2 {
+		t.Fatal("expecting the same connection from both dials")
+	}
 }
 
 func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {
