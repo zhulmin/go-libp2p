@@ -829,12 +829,13 @@ func TestLargeIdentifyMessage(t *testing.T) {
 		t.Fatal("should have no connections")
 	}
 
-	t.Log("testing addrs just after disconnect")
-	// addresses don't immediately expire on disconnect, so we should still have them
-	testKnowsAddrs(t, h2, h1p, h1.Addrs())
-	testKnowsAddrs(t, h1, h2p, h2.Addrs())
-	testHasCertifiedAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
-	testHasCertifiedAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
+	// Removing this check because of: https://github.com/libp2p/go-libp2p/issues/1164#issuecomment-1130232184
+	// t.Log("testing addrs just after disconnect")
+	// // addresses don't immediately expire on disconnect, so we should still have them
+	// testKnowsAddrs(t, h2, h1p, h1.Addrs())
+	// testKnowsAddrs(t, h1, h2p, h2.Addrs())
+	// testHasCertifiedAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
+	// testHasCertifiedAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
 
 	// the addrs had their TTLs reduced on disconnect, and
 	// will be forgotten soon after

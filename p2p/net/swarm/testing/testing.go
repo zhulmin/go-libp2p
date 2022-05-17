@@ -178,6 +178,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	if !cfg.dialOnly {
 		s.Peerstore().AddAddrs(p.ID, s.ListenAddresses(), peerstore.PermanentAddrTTL)
 	}
+	t.Cleanup(func() { s.Close() })
 	return s
 }
 
