@@ -574,7 +574,7 @@ func TestHolePunching(t *testing.T) {
 		default:
 			return false
 		}
-	}, 100*time.Millisecond, 10*time.Millisecond)
+	}, time.Second, 10*time.Millisecond)
 	defer conn2.Close()
 	require.Equal(t, conn2.RemotePeer(), serverID)
 	ln1.Close()
