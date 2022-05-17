@@ -1,0 +1,74 @@
+version: 2.1
+
+orbs:
+  os-detect: circleci/os-detect@0.3.0
+  go: circleci/go@1.7.1
+  win: circleci/windows@4.1.1
+
+executors:
+  linux: &linux-executor
+    # This needs to be a machine image (not docker) so that ipv6 is supported.
+    machine:
+      image: ubuntu-2004:current
+  macos: &macos-executor
+    macos:
+      xcode: 13.3.1
+
+jobs:
+  test:
+    parameters:
+      os:
+        type: executor
+      go-version:
+        type: string
+    executor: << parameters.os >>
+    steps:
+      - checkout
+      - run:
+          name: Install Go
+          command: |
+              cd $HOME
+
+              # Find correct Go version
+              GO_VERSION=$(curl 'https://go.dev/dl/?mode=json&include=stable' | jq -r .[].version | grep $(echo "<< parameters.go-version >>" | sed "s/\./\\\./g" |  sed "s/\\\.x/\.*/"))
+              HOST_OS=$(uname | awk '{print tolower($0)}')
+              GO_ARCHIVE_EXTENSION="tar.gz"
+              if $(echo $HOST_OS | grep --quiet -i msys); then
+                HOST_OS=windows
+                GO_ARCHIVE_EXTENSION="zip"
+              fi
+              curl -L https://go.dev/dl/$GO_VERSION.$HOST_OS-amd64.$GO_ARCHIVE_EXTENSION > go.$GO_ARCHIVE_EXTENSION
+
+              if [[ "$HOST_OS" == "windows" ]]; then
+                unzip go;
+              else
+                tar -xzf go.tar.gz;
+              fi
+
+              echo 'export PATH=$HOME/go/bin:$PATH' >> $BASH_ENV
+      - go/load-cache
+      - go/mod-download
+      - go/save-cache
+      - run: go version
+      - run: go test -v -coverprofile=module-coverage.txt -coverpkg=./... ./...
+      - when:
+          condition:
+            equal: [*linux-executor, << parameters.os >> ]
+          steps:
+            # Only run race detector on linux. Remnant of GH actions running slowly on macOS and windows VMs
+            - run: go test -v -race ./...
+            # Test 32 bit linux
+            - run: GOARCH=386 go test -v ./...
+
+workflows:
+  main:
+    jobs:
+      - test:
+          matrix:
+            parameters:
+              os:
+                - linux
+                - macos
+                - name: win/default
+                  shell: bash.exe
+              go-version: ["1.17.x", "1.18.x"]
