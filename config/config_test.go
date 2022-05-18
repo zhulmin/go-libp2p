@@ -1,8 +1,15 @@
 package config
 
 import (
+	"fmt"
+	"runtime"
 	"testing"
 )
+
+func TestGoMaxProcs(t *testing.T) {
+	fmt.Println("GOMAXPROCS is:", runtime.GOMAXPROCS(0))
+	t.Fail()
+}
 
 func TestNilOption(t *testing.T) {
 	var cfg Config
