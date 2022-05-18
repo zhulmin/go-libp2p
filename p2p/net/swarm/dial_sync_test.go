@@ -38,12 +38,14 @@ func TestBasicDialSync(t *testing.T) {
 	requests := make(chan dialRequest, 2)
 	done := make(chan struct{})
 	dsync := newDialSync(func(id peer.ID, reqs <-chan dialRequest) {
+		fmt.Println("worker func")
 		require.Equal(t, id, p)
 		atomic.AddInt32(&counter, 1)
 		for req := range reqs {
 			requests <- req
 			go func(req dialRequest) {
 				<-done
+				fmt.Println("sending response")
 				req.resch <- dialResponse{conn: new(Conn)}
 			}(req)
 		}
@@ -69,7 +71,12 @@ func TestBasicDialSync(t *testing.T) {
 	// make the dials return
 	close(done)
 	// make sure the Dial functions return
-	require.Eventually(t, func() bool { return len(finished) == 2 }, 100*time.Millisecond, 10*time.Millisecond, "dial functions should have returned")
+	now := time.Now()
+	require.Eventually(t, func() bool {
+		l := len(finished)
+		fmt.Printf("waited %s: %d\n", time.Since(now), l)
+		return l == 2
+	}, 100*time.Millisecond, 10*time.Millisecond, "dial functions should have returned")
 
 	require.Equal(t, 1, int(atomic.LoadInt32(&counter)), "should only have called dial func once!")
 }
