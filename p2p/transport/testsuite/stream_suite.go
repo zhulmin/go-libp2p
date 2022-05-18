@@ -427,6 +427,16 @@ func SubtestStress50Conn10Stream50Msg(t *testing.T, ta, tb transport.Transport, 
 	})
 }
 
+func SubtestStress5Conn10Stream50Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+	SubtestStress(t, ta, tb, maddr, peerA, Options{
+		ConnNum:   5,
+		StreamNum: 10,
+		MsgNum:    50,
+		MsgMax:    100,
+		MsgMin:    100,
+	})
+}
+
 func SubtestStress1Conn1000Stream10Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	SubtestStress(t, ta, tb, maddr, peerA, Options{
 		ConnNum:   1,
