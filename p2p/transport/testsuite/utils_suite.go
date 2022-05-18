@@ -21,7 +21,7 @@ var Subtests = []func(t *testing.T, ta, tb transport.Transport, maddr ma.Multiad
 	SubtestStress1Conn1Stream1Msg,
 	SubtestStress1Conn1Stream100Msg,
 	SubtestStress1Conn100Stream100Msg,
-	SubtestStress5Conn10Stream50Msg,
+	SubtestStressManyConn10Stream50Msg,
 	SubtestStress1Conn1000Stream10Msg,
 	SubtestStress1Conn100Stream100Msg10MB,
 	SubtestStreamOpenStress,
@@ -36,13 +36,6 @@ func SubtestTransport(t *testing.T, ta, tb transport.Transport, addr string, pee
 	maddr, err := ma.NewMultiaddr(addr)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	if runtime.GOOS == "linux" {
-		// Only run this test on Linux since macOS runs into buffering issues on CI
-		// with this many connections. See
-		// https://github.com/libp2p/go-libp2p/issues/1498.
-		Subtests = append(Subtests, SubtestStress50Conn10Stream50Msg)
 	}
 
 	for _, f := range Subtests {

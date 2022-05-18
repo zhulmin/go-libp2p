@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"testing"
@@ -417,19 +418,15 @@ func SubtestStress1Conn100Stream100Msg(t *testing.T, ta, tb transport.Transport,
 	})
 }
 
-func SubtestStress50Conn10Stream50Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStressManyConn10Stream50Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+	connNum := 5
+	if runtime.GOOS == "linux" {
+		// Linux can handle a higher number of conns here than other platforms in CI.
+		// See https://github.com/libp2p/go-libp2p/issues/1498.
+		connNum = 50
+	}
 	SubtestStress(t, ta, tb, maddr, peerA, Options{
-		ConnNum:   50,
-		StreamNum: 10,
-		MsgNum:    50,
-		MsgMax:    100,
-		MsgMin:    100,
-	})
-}
-
-func SubtestStress5Conn10Stream50Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
-	SubtestStress(t, ta, tb, maddr, peerA, Options{
-		ConnNum:   5,
+		ConnNum:   connNum,
 		StreamNum: 10,
 		MsgNum:    50,
 		MsgMax:    100,
