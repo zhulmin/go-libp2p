@@ -12,6 +12,7 @@ jobs:
         os: [ "ubuntu", "windows", "macos" ]
         go: [ "1.17.x", "1.18.x" ]
     env:
+      GOLOG_LOG_LEVEL: warn
       COVERAGES: ""
     runs-on: ${{ format('{0}-latest', matrix.os) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
