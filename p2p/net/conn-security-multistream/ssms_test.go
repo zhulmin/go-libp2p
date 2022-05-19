@@ -2,6 +2,7 @@ package csms
 
 import (
 	"context"
+	"io"
 	"net"
 	"sync"
 	"testing"
@@ -10,7 +11,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/sec"
 	"github.com/libp2p/go-libp2p-core/sec/insecure"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
-	sst "github.com/libp2p/go-libp2p-testing/suites/sec"
+
+	"github.com/stretchr/testify/require"
 )
 
 type TransportAdapter struct {
@@ -38,7 +40,38 @@ func TestCommonProto(t *testing.T) {
 	at.AddTransport("/plaintext/1.0.0", atInsecure)
 	bt.AddTransport("/plaintext/1.1.0", btInsecure)
 	bt.AddTransport("/plaintext/1.0.0", btInsecure)
-	sst.SubtestRW(t, &TransportAdapter{mux: &at}, &TransportAdapter{mux: &bt}, idA.ID(), idB.ID())
+
+	ln, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+	muxB := &TransportAdapter{mux: &bt}
+	connChan := make(chan sec.SecureConn)
+	go func() {
+		conn, err := ln.Accept()
+		require.NoError(t, err)
+		c, err := muxB.SecureInbound(context.Background(), conn, idA.ID())
+		require.NoError(t, err)
+		connChan <- c
+	}()
+
+	muxA := &TransportAdapter{mux: &at}
+
+	cconn, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
+
+	cc, err := muxA.SecureOutbound(context.Background(), cconn, idB.ID())
+	require.NoError(t, err)
+	require.Equal(t, cc.LocalPeer(), idA.ID())
+	require.Equal(t, cc.RemotePeer(), idB.ID())
+	_, err = cc.Write([]byte("foobar"))
+	require.NoError(t, err)
+	require.NoError(t, cc.Close())
+
+	sc := <-connChan
+	require.Equal(t, sc.LocalPeer(), idB.ID())
+	require.Equal(t, sc.RemotePeer(), idA.ID())
+	b, err := io.ReadAll(sc)
+	require.NoError(t, err)
+	require.Equal(t, "foobar", string(b))
 }
 
 func TestNoCommonProto(t *testing.T) {
