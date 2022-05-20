@@ -11,7 +11,6 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
-	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -356,8 +355,7 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1Mux := &swarmt.InstrumetedMultiplexer{Name: "h1", Multiplexer: yamux.DefaultTransport}
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.Multiplexer(h1Mux)))
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC))
 	defer h2.Close()
 	defer h1.Close()
@@ -419,16 +417,12 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	defer sub.Close()
 
 	// Channels that watch the stream mux for when these bytes are read.
-	waitForFoo := h1Mux.ExpectReadBytes([]byte("foo"))
-	waitForBar := h1Mux.ExpectReadBytes([]byte("bar"))
 	h1ProtocolsUpdates, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(2))
 	require.NoError(t, err)
 	defer h1ProtocolsUpdates.Close()
 
 	waitForDelta := make(chan struct{})
 	go func() {
-		recvWithTimeout(t, waitForFoo, 5*time.Second, "Timed out waiting to read foo from the wire")
-		recvWithTimeout(t, waitForBar, 5*time.Second, "Timed out waiting to read bar from the wire")
 		expectedCount := 2
 		for expectedCount > 0 {
 			evt := <-h1ProtocolsUpdates.Out()
@@ -441,11 +435,7 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	h2.SetStreamHandler(protocol.ID("foo"), func(_ network.Stream) {})
 	h2.SetStreamHandler(protocol.ID("bar"), func(_ network.Stream) {})
 
-	select {
-	case <-waitForDelta:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("Timed out waiting to read protocol ids from the wire")
-	}
+	recvWithTimeout(t, waitForDelta, 10*time.Second, "Timed out waiting to read protocol ids from the wire")
 
 	protos, err = h1.Peerstore().GetProtocols(h2.ID())
 	require.NoError(t, err)
@@ -458,12 +448,10 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	require.True(t, have["bar"])
 
 	// remove one of the newly added protocols from h2, and wait for identify to send the delta.
-	waitForBar = h1Mux.ExpectReadBytes([]byte("bar"))
 	h2.RemoveStreamHandler(protocol.ID("bar"))
 
 	waitForDelta = make(chan struct{})
 	go func() {
-		recvWithTimeout(t, waitForBar, 5*time.Second, "Timed out waiting to read removed protocol id from the wire")
 		expectedCount := 1
 		for expectedCount > 0 {
 			evt := <-h1ProtocolsUpdates.Out()
@@ -601,10 +589,8 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1Mux := &swarmt.InstrumetedMultiplexer{Name: "h1", Multiplexer: yamux.DefaultTransport}
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, h1Mux.SwarmOptions()...))
-	h2Mux := &swarmt.InstrumetedMultiplexer{Name: "h2", Multiplexer: yamux.DefaultTransport}
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, h2Mux.SwarmOptions()...))
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 
 	h1p := h1.ID()
 	h2p := h2.ID()
@@ -638,14 +624,10 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	require.NoError(t, h1.Network().Listen(lad))
 	require.Contains(t, h1.Addrs(), lad)
 
-	waitForPush := h2Mux.ExpectReadBytes(lad.Bytes())
 	h2AddrStream := h2.Peerstore().AddrStream(ctx, h1p)
-	// empty addrStream
 
 	emitAddrChangeEvt(t, h1)
 
-	// Wait for h2 to read the multiaddr bytes from the wire
-	recvWithTimeout(t, waitForPush, 10*time.Second, "h2 did not receive addr change over wire")
 	// Wait for h2 to process the new addr
 	waitForAddrInStream(t, h2AddrStream, lad, 10*time.Second, "h2 did not receive addr change")
 
@@ -663,12 +645,9 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	lad = ma.StringCast("/ip4/127.0.0.1/tcp/1235")
 	require.NoError(t, h2.Network().Listen(lad))
 	require.Contains(t, h2.Addrs(), lad)
-	waitForPush = h1Mux.ExpectReadBytes(lad.Bytes())
 	h1AddrStream := h1.Peerstore().AddrStream(ctx, h2p)
 	emitAddrChangeEvt(t, h2)
 
-	// Wait for h1 to read the multiaddr bytes from the wire
-	recvWithTimeout(t, waitForPush, 10*time.Second, "h1 did not receive addr change")
 	// Wait for h1 to process the new addr
 	waitForAddrInStream(t, h1AddrStream, lad, 10*time.Second, "h1 did not receive addr change")
 
@@ -686,11 +665,8 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	lad2 := ma.StringCast("/ip4/127.0.0.1/tcp/1236")
 	require.NoError(t, h2.Network().Listen(lad2))
 	require.Contains(t, h2.Addrs(), lad2)
-	waitForPush = h1Mux.ExpectReadBytes(lad2.Bytes())
 	emitAddrChangeEvt(t, h2)
 
-	// Wait for h1 to read the multiaddr bytes from the wire
-	recvWithTimeout(t, waitForPush, 10*time.Second, "h1 did not receive addr change")
 	// Wait for h1 to process the new addr
 	waitForAddrInStream(t, h1AddrStream, lad2, 10*time.Second, "h1 did not receive addr change")
 
