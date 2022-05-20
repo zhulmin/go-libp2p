@@ -1111,6 +1111,7 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 }
 
 func recvWithTimeout(t *testing.T, s <-chan struct{}, timeout time.Duration, failMsg string) {
+	t.Helper()
 	select {
 	case <-s:
 		return
@@ -1120,6 +1121,7 @@ func recvWithTimeout(t *testing.T, s <-chan struct{}, timeout time.Duration, fai
 }
 
 func waitForAddrInStream(t *testing.T, s <-chan ma.Multiaddr, expected ma.Multiaddr, timeout time.Duration, failMsg string) {
+	t.Helper()
 	for {
 		select {
 		case addr := <-s:
