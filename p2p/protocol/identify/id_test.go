@@ -11,6 +11,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -355,8 +356,9 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h1Mux := &swarmt.InstrumetedMultiplexer{Name: "h1", Multiplexer: yamux.DefaultTransport}
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.Multiplexer(h1Mux)))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC))
 	defer h2.Close()
 	defer h1.Close()
 
@@ -377,11 +379,26 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	idComplete, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{}, eventbus.BufSize(16))
+	require.NoError(t, err)
+	defer idComplete.Close()
+	idFailed, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationFailed{}, eventbus.BufSize(16))
+	require.NoError(t, err)
+	defer idFailed.Close()
+
 	conn := h1.Network().ConnsToPeer(h2.ID())[0]
 	select {
 	case <-ids1.IdentifyWait(conn):
 	case <-time.After(5 * time.Second):
 		t.Fatal("took over 5 seconds to identify")
+	}
+
+	select {
+	case <-idComplete.Out():
+	case evt := <-idFailed.Out():
+		t.Fatalf("Failed to identify: %v", evt.(event.EvtPeerIdentificationFailed).Reason)
+	default:
+		t.Fatal("Missing id event")
 	}
 
 	protos, err := h1.Peerstore().GetProtocols(h2.ID())
@@ -401,43 +418,70 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	}
 	defer sub.Close()
 
+	// Channels that watch the stream mux for when these bytes are read.
+	waitForFoo := h1Mux.ExpectReadBytes([]byte("foo"))
+	waitForBar := h1Mux.ExpectReadBytes([]byte("bar"))
+	h1ProtocolsUpdates, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(2))
+	require.NoError(t, err)
+	defer h1ProtocolsUpdates.Close()
+
+	waitForDelta := make(chan struct{})
+	go func() {
+		recvWithTimeout(t, waitForFoo, 5*time.Second, "Timed out waiting to read foo from the wire")
+		recvWithTimeout(t, waitForBar, 5*time.Second, "Timed out waiting to read bar from the wire")
+		expectedCount := 2
+		for expectedCount > 0 {
+			evt := <-h1ProtocolsUpdates.Out()
+			expectedCount -= len(evt.(event.EvtPeerProtocolsUpdated).Added)
+		}
+		close(waitForDelta)
+	}()
+
 	// add two new protocols in h2 and wait for identify to send deltas.
 	h2.SetStreamHandler(protocol.ID("foo"), func(_ network.Stream) {})
 	h2.SetStreamHandler(protocol.ID("bar"), func(_ network.Stream) {})
 
-	// check that h1 now knows about h2's new protocols.
-	require.Eventually(t, func() bool {
-		protos, err = h1.Peerstore().GetProtocols(h2.ID())
-		if err != nil {
-			return false
-		}
-		have := make(map[string]struct{}, len(protos))
-		for _, p := range protos {
-			have[p] = struct{}{}
-		}
+	select {
+	case <-waitForDelta:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("Timed out waiting to read protocol ids from the wire")
+	}
 
-		_, okfoo := have["foo"]
-		_, okbar := have["bar"]
-		return okfoo && okbar
-	}, time.Second, 10*time.Millisecond)
+	protos, err = h1.Peerstore().GetProtocols(h2.ID())
+	require.NoError(t, err)
+
+	have := make(map[string]bool, len(protos))
+	for _, p := range protos {
+		have[p] = true
+	}
+	require.True(t, have["foo"])
+	require.True(t, have["bar"])
 
 	// remove one of the newly added protocols from h2, and wait for identify to send the delta.
+	waitForBar = h1Mux.ExpectReadBytes([]byte("bar"))
 	h2.RemoveStreamHandler(protocol.ID("bar"))
-	// check that h1 now has forgotten about h2's bar protocol.
-	require.Eventually(t, func() bool {
-		protos, err = h1.Peerstore().GetProtocols(h2.ID())
-		if err != nil {
-			return false
-		}
-		have := make(map[string]struct{}, len(protos))
-		for _, p := range protos {
-			have[p] = struct{}{}
-		}
 
-		_, okfoo := have["foo"]
-		_, okbar := have["bar"]
-		return okfoo && !okbar
-	}, time.Second, 10*time.Millisecond)
+	waitForDelta = make(chan struct{})
+	go func() {
+		recvWithTimeout(t, waitForBar, 5*time.Second, "Timed out waiting to read removed protocol id from the wire")
+		expectedCount := 1
+		for expectedCount > 0 {
+			evt := <-h1ProtocolsUpdates.Out()
+			expectedCount -= len(evt.(event.EvtPeerProtocolsUpdated).Removed)
+		}
+		close(waitForDelta)
+	}()
+
+	// check that h1 now has forgotten about h2's bar protocol.
+	recvWithTimeout(t, waitForDelta, 10*time.Second, "timed out waiting for protocol to be removed")
+	protos, err = h1.Peerstore().GetProtocols(h2.ID())
+	require.NoError(t, err)
+	have = make(map[string]bool, len(protos))
+	for _, p := range protos {
+		have[p] = true
+	}
+	require.True(t, have["foo"])
+	require.False(t, have["bar"])
 
 	// make sure that h1 emitted events in the eventbus for h2's protocol updates.
 	done := make(chan struct{})
@@ -557,8 +601,10 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h1Mux := &swarmt.InstrumetedMultiplexer{Name: "h1", Multiplexer: yamux.DefaultTransport}
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t, h1Mux.SwarmOptions()...))
+	h2Mux := &swarmt.InstrumetedMultiplexer{Name: "h2", Multiplexer: yamux.DefaultTransport}
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, h2Mux.SwarmOptions()...))
 
 	h1p := h1.ID()
 	h2p := h2.ID()
@@ -591,51 +637,71 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	lad := ma.StringCast("/ip4/127.0.0.1/tcp/1234")
 	require.NoError(t, h1.Network().Listen(lad))
 	require.Contains(t, h1.Addrs(), lad)
+
+	waitForPush := h2Mux.ExpectReadBytes(lad.Bytes())
+	h2AddrStream := h2.Peerstore().AddrStream(ctx, h1p)
+	// empty addrStream
+
 	emitAddrChangeEvt(t, h1)
 
-	require.Eventually(t, func() bool {
-		addrs := h2.Peerstore().Addrs(h1p)
-		for _, ad := range addrs {
-			if ad.Equal(lad) {
-				return true
-			}
+	// Wait for h2 to read the multiaddr bytes from the wire
+	recvWithTimeout(t, waitForPush, 10*time.Second, "h2 did not receive addr change over wire")
+	// Wait for h2 to process the new addr
+	waitForAddrInStream(t, h2AddrStream, lad, 10*time.Second, "h2 did not receive addr change")
+
+	found := false
+	addrs := h2.Peerstore().Addrs(h1p)
+	for _, ad := range addrs {
+		if ad.Equal(lad) {
+			found = true
 		}
-		return false
-	}, 1*time.Second, 10*time.Millisecond)
+	}
+	require.True(t, found)
 	require.NotNil(t, getSignedRecord(t, h2, h1p))
 
 	// change addr on host2 and ensure host 1 gets a pus
 	lad = ma.StringCast("/ip4/127.0.0.1/tcp/1235")
 	require.NoError(t, h2.Network().Listen(lad))
 	require.Contains(t, h2.Addrs(), lad)
+	waitForPush = h1Mux.ExpectReadBytes(lad.Bytes())
+	h1AddrStream := h1.Peerstore().AddrStream(ctx, h2p)
 	emitAddrChangeEvt(t, h2)
 
-	require.Eventually(t, func() bool {
-		addrs := h1.Peerstore().Addrs(h2p)
-		for _, ad := range addrs {
-			if ad.Equal(lad) {
-				return true
-			}
+	// Wait for h1 to read the multiaddr bytes from the wire
+	recvWithTimeout(t, waitForPush, 10*time.Second, "h1 did not receive addr change")
+	// Wait for h1 to process the new addr
+	waitForAddrInStream(t, h1AddrStream, lad, 10*time.Second, "h1 did not receive addr change")
+
+	found = false
+	addrs = h1.Peerstore().Addrs(h2p)
+	for _, ad := range addrs {
+		if ad.Equal(lad) {
+			found = true
 		}
-		return false
-	}, 1*time.Second, 10*time.Millisecond)
+	}
+	require.True(t, found)
 	require.NotNil(t, getSignedRecord(t, h1, h2p))
 
 	// change addr on host2 again
 	lad2 := ma.StringCast("/ip4/127.0.0.1/tcp/1236")
 	require.NoError(t, h2.Network().Listen(lad2))
 	require.Contains(t, h2.Addrs(), lad2)
+	waitForPush = h1Mux.ExpectReadBytes(lad2.Bytes())
 	emitAddrChangeEvt(t, h2)
 
-	require.Eventually(t, func() bool {
-		addrs := h1.Peerstore().Addrs(h2p)
-		for _, ad := range addrs {
-			if ad.Equal(lad2) {
-				return true
-			}
+	// Wait for h1 to read the multiaddr bytes from the wire
+	recvWithTimeout(t, waitForPush, 10*time.Second, "h1 did not receive addr change")
+	// Wait for h1 to process the new addr
+	waitForAddrInStream(t, h1AddrStream, lad2, 10*time.Second, "h1 did not receive addr change")
+
+	found = false
+	addrs = h1.Peerstore().Addrs(h2p)
+	for _, ad := range addrs {
+		if ad.Equal(lad2) {
+			found = true
 		}
-		return false
-	}, 1*time.Second, 10*time.Millisecond)
+	}
+	require.True(t, found)
 	require.NotNil(t, getSignedRecord(t, h1, h2p))
 }
 
@@ -1041,5 +1107,28 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 			}
 			return true
 		}, 1*time.Second, 200*time.Millisecond)
+	}
+}
+
+func recvWithTimeout(t *testing.T, s <-chan struct{}, timeout time.Duration, failMsg string) {
+	select {
+	case <-s:
+		return
+	case <-time.After(timeout):
+		t.Fatalf("Hit time while waiting to recv from channel: %s", failMsg)
+	}
+}
+
+func waitForAddrInStream(t *testing.T, s <-chan ma.Multiaddr, expected ma.Multiaddr, timeout time.Duration, failMsg string) {
+	for {
+		select {
+		case addr := <-s:
+			if addr.Equal(expected) {
+				return
+			}
+			continue
+		case <-time.After(timeout):
+			t.Fatalf(failMsg)
+		}
 	}
 }
