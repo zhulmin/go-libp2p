@@ -33,6 +33,7 @@ type config struct {
 	dialOnly         bool
 	disableTCP       bool
 	disableQUIC      bool
+	multiplexer      network.Multiplexer
 	dialTimeout      time.Duration
 	connectionGater  connmgr.ConnectionGater
 	rcmgr            network.ResourceManager
@@ -88,15 +89,21 @@ func DialTimeout(t time.Duration) Option {
 	}
 }
 
+func Multiplexer(m network.Multiplexer) Option {
+	return func(_ *testing.T, c *config) {
+		c.multiplexer = m
+	}
+}
+
 // GenUpgrader creates a new connection upgrader for use with this swarm.
-func GenUpgrader(t *testing.T, n *swarm.Swarm, opts ...tptu.Option) transport.Upgrader {
+func GenUpgrader(t *testing.T, n *swarm.Swarm, multiplexer network.Multiplexer, opts ...tptu.Option) transport.Upgrader {
 	id := n.LocalPeer()
 	pk := n.Peerstore().PrivKey(id)
 	secMuxer := new(csms.SSMuxer)
 	secMuxer.AddTransport(insecure.ID, insecure.NewWithIdentity(id, pk))
 
 	stMuxer := msmux.NewBlankTransport()
-	stMuxer.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
+	stMuxer.AddTransport("/yamux/1.0.0", multiplexer)
 	u, err := tptu.New(secMuxer, stMuxer, opts...)
 	require.NoError(t, err)
 	return u
@@ -143,7 +150,10 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	s, err := swarm.NewSwarm(p.ID, ps, swarmOpts...)
 	require.NoError(t, err)
 
-	upgrader := GenUpgrader(t, s, tptu.WithConnectionGater(cfg.connectionGater))
+	if cfg.multiplexer == nil {
+		cfg.multiplexer = yamux.DefaultTransport
+	}
+	upgrader := GenUpgrader(t, s, cfg.multiplexer, tptu.WithConnectionGater(cfg.connectionGater))
 
 	if !cfg.disableTCP {
 		var tcpOpts []tcp.Option
