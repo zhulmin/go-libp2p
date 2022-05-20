@@ -21,6 +21,8 @@ type BackoffDiscovery struct {
 
 	parallelBufSz int
 	returnedBufSz int
+
+	clock clock
 }
 
 type BackoffDiscoveryOption func(*BackoffDiscovery) error
@@ -33,6 +35,8 @@ func NewBackoffDiscovery(disc discovery.Discovery, stratFactory BackoffFactory, 
 
 		parallelBufSz: 32,
 		returnedBufSz: 32,
+
+		clock: realClock{},
 	}
 
 	for _, opt := range opts {
@@ -68,6 +72,24 @@ func WithBackoffDiscoveryReturnedChannelSize(size int) BackoffDiscoveryOption {
 	}
 }
 
+type clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (c realClock) Now() time.Time {
+	return time.Now()
+}
+
+// withClock lets you override the default time.Now() call. Useful for tests.
+func withClock(c clock) BackoffDiscoveryOption {
+	return func(b *BackoffDiscovery) error {
+		b.clock = c
+		return nil
+	}
+}
+
 type backoffCache struct {
 	// strat is assigned on creation and not written to
 	strat BackoffStrategy
@@ -78,6 +100,8 @@ type backoffCache struct {
 	peers        map[peer.ID]peer.AddrInfo
 	sendingChs   map[chan peer.AddrInfo]int
 	ongoing      bool
+
+	clock clock
 }
 
 func (d *BackoffDiscovery) Advertise(ctx context.Context, ns string, opts ...discovery.Option) (time.Duration, error) {
@@ -112,6 +136,7 @@ func (d *BackoffDiscovery) FindPeers(ctx context.Context, ns string, opts ...dis
 			peers:        make(map[peer.ID]peer.AddrInfo),
 			sendingChs:   make(map[chan peer.AddrInfo]int),
 			strat:        d.stratFactory(),
+			clock:        d.clock,
 		}
 
 		d.peerCacheMux.Lock()
@@ -128,7 +153,7 @@ func (d *BackoffDiscovery) FindPeers(ctx context.Context, ns string, opts ...dis
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
-	timeExpired := time.Now().After(c.nextDiscover)
+	timeExpired := d.clock.Now().After(c.nextDiscover)
 
 	// If it's not yet time to search again and no searches are in progress then return cached peers
 	if !(timeExpired || c.ongoing) {
@@ -180,19 +205,19 @@ func findPeerDispatcher(ctx context.Context, c *backoffCache, pch <-chan peer.Ad
 	defer func() {
 		c.mux.Lock()
 
-		for ch := range c.sendingChs {
-			close(ch)
-		}
-
 		// If the peer addresses have changed reset the backoff
 		if checkUpdates(c.prevPeers, c.peers) {
 			c.strat.Reset()
 			c.prevPeers = c.peers
 		}
-		c.nextDiscover = time.Now().Add(c.strat.Delay())
+		c.nextDiscover = c.clock.Now().Add(c.strat.Delay())
 
 		c.ongoing = false
 		c.peers = make(map[peer.ID]peer.AddrInfo)
+
+		for ch := range c.sendingChs {
+			close(ch)
+		}
 		c.sendingChs = make(map[chan peer.AddrInfo]int)
 		c.mux.Unlock()
 	}()
@@ -221,13 +246,9 @@ func findPeerDispatcher(ctx context.Context, c *backoffCache, pch <-chan peer.Ad
 			c.peers[ai.ID] = sendAi
 
 			for ch, rem := range c.sendingChs {
-				ch <- sendAi
-				if rem == 1 {
-					close(ch)
-					delete(c.sendingChs, ch)
-					break
-				} else if rem > 0 {
-					rem--
+				if rem > 0 {
+					ch <- sendAi
+					c.sendingChs[ch] = rem - 1
 				}
 			}
 

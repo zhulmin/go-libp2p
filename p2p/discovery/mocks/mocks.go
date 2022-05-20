@@ -10,9 +10,31 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
+type clock interface {
+	Now() time.Time
+}
+
+type MockClock struct {
+	currentTime time.Time
+	mu          sync.Mutex
+}
+
+func (m *MockClock) Now() time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.currentTime
+}
+
+func (m *MockClock) Sleep(d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.currentTime = m.currentTime.Add(d)
+}
+
 type MockDiscoveryServer struct {
-	mx sync.Mutex
-	db map[string]map[peer.ID]*discoveryRegistration
+	mx    sync.Mutex
+	db    map[string]map[peer.ID]*discoveryRegistration
+	clock clock
 }
 
 type discoveryRegistration struct {
@@ -20,9 +42,10 @@ type discoveryRegistration struct {
 	expiration time.Time
 }
 
-func NewDiscoveryServer() *MockDiscoveryServer {
+func NewDiscoveryServer(clock clock) *MockDiscoveryServer {
 	return &MockDiscoveryServer{
-		db: make(map[string]map[peer.ID]*discoveryRegistration),
+		db:    make(map[string]map[peer.ID]*discoveryRegistration),
+		clock: clock,
 	}
 }
 
@@ -35,7 +58,7 @@ func (s *MockDiscoveryServer) Advertise(ns string, info peer.AddrInfo, ttl time.
 		peers = make(map[peer.ID]*discoveryRegistration)
 		s.db[ns] = peers
 	}
-	peers[info.ID] = &discoveryRegistration{info, time.Now().Add(ttl)}
+	peers[info.ID] = &discoveryRegistration{info, s.clock.Now().Add(ttl)}
 	return ttl, nil
 }
 
@@ -55,7 +78,7 @@ func (s *MockDiscoveryServer) FindPeers(ns string, limit int) (<-chan peer.AddrI
 		count = limit
 	}
 
-	iterTime := time.Now()
+	iterTime := s.clock.Now()
 	ch := make(chan peer.AddrInfo, count)
 	numSent := 0
 	for p, reg := range peers {
