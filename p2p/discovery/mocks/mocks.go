@@ -14,23 +14,6 @@ type clock interface {
 	Now() time.Time
 }
 
-type MockClock struct {
-	currentTime time.Time
-	mu          sync.Mutex
-}
-
-func (m *MockClock) Now() time.Time {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.currentTime
-}
-
-func (m *MockClock) Sleep(d time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.currentTime = m.currentTime.Add(d)
-}
-
 type MockDiscoveryServer struct {
 	mx    sync.Mutex
 	db    map[string]map[peer.ID]*discoveryRegistration

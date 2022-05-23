@@ -12,11 +12,14 @@ import (
 
 	"github.com/libp2p/go-libp2p-core/discovery"
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	mockClock "github.com/benbjohnson/clock"
 )
 
 type delayedDiscovery struct {
 	disc  discovery.Discovery
 	delay time.Duration
+	clock *mockClock.Mock
 }
 
 func (d *delayedDiscovery) Advertise(ctx context.Context, ns string, opts ...discovery.Option) (time.Duration, error) {
@@ -30,11 +33,25 @@ func (d *delayedDiscovery) FindPeers(ctx context.Context, ns string, opts ...dis
 	}
 
 	ch := make(chan peer.AddrInfo, 32)
+	doneCh := make(chan struct{})
 	go func() {
 		defer close(ch)
+		defer close(doneCh)
 		for ai := range dch {
 			ch <- ai
-			time.Sleep(d.delay)
+			d.clock.Sleep(d.delay)
+		}
+	}()
+
+	// Tick the clock forward to advance the sleep above
+	go func() {
+		for {
+			select {
+			case <-doneCh:
+				return
+			default:
+				d.clock.Add(d.delay)
+			}
 		}
 	}()
 
@@ -67,7 +84,7 @@ func TestBackoffDiscoverySingleBackoff(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	clock := &mocks.MockClock{}
+	clock := mockClock.NewMock()
 	discServer := mocks.NewDiscoveryServer(clock)
 
 	h1 := bhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -96,22 +113,22 @@ func TestBackoffDiscoverySingleBackoff(t *testing.T) {
 	// try adding a peer then find it
 	d1.Advertise(ctx, ns, discovery.TTL(time.Hour))
 	// Advance clock by one step
-	clock.Sleep(1)
+	clock.Add(1)
 	assertNumPeers(t, ctx, dCache, ns, 1)
 
 	// add a new peer and make sure it is still hidden by the caching layer
 	d2.Advertise(ctx, ns, discovery.TTL(time.Hour))
 	// Advance clock by one step
-	clock.Sleep(1)
+	clock.Add(1)
 	assertNumPeers(t, ctx, dCache, ns, 1)
 
 	// wait for cache to expire and check for the new peer
-	clock.Sleep(time.Millisecond * 110)
+	clock.Add(time.Millisecond * 110)
 	assertNumPeers(t, ctx, dCache, ns, 2)
 }
 
 func TestBackoffDiscoveryMultipleBackoff(t *testing.T) {
-	clock := &mocks.MockClock{}
+	clock := mockClock.NewMock()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -144,28 +161,28 @@ func TestBackoffDiscoveryMultipleBackoff(t *testing.T) {
 	// try adding a peer then find it
 	d1.Advertise(ctx, ns, discovery.TTL(time.Hour))
 	// Advance clock by one step
-	clock.Sleep(1)
+	clock.Add(1)
 	assertNumPeers(t, ctx, dCache, ns, 1)
 
 	// wait a little to make sure the extra request doesn't modify the backoff
-	clock.Sleep(time.Millisecond * 50) // 50 < 100
+	clock.Add(time.Millisecond * 50) // 50 < 100
 	assertNumPeers(t, ctx, dCache, ns, 1)
 
 	// wait for backoff to expire and check if we increase it
-	clock.Sleep(time.Millisecond * 60) // 50+60 > 100
+	clock.Add(time.Millisecond * 60) // 50+60 > 100
 	assertNumPeers(t, ctx, dCache, ns, 1)
 
 	d2.Advertise(ctx, ns, discovery.TTL(time.Millisecond*400))
 
-	clock.Sleep(time.Millisecond * 150) // 150 < 250
+	clock.Add(time.Millisecond * 150) // 150 < 250
 	assertNumPeers(t, ctx, dCache, ns, 1)
 
-	clock.Sleep(time.Millisecond * 150) // 150 + 150 > 250
+	clock.Add(time.Millisecond * 150) // 150 + 150 > 250
 	assertNumPeers(t, ctx, dCache, ns, 2)
 
 	// check that the backoff has been reset
 	// also checks that we can decrease our peer count (i.e. not just growing a set)
-	clock.Sleep(time.Millisecond * 110) // 110 > 100, also 150+150+110>400
+	clock.Add(time.Millisecond * 110) // 110 > 100, also 150+150+110>400
 	assertNumPeers(t, ctx, dCache, ns, 1)
 }
 
@@ -173,7 +190,7 @@ func TestBackoffDiscoverySimultaneousQuery(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	clock := &mocks.MockClock{}
+	clock := mockClock.NewMock()
 	discServer := mocks.NewDiscoveryServer(clock)
 
 	// Testing with n larger than most internal buffer sizes (32)
@@ -186,7 +203,7 @@ func TestBackoffDiscoverySimultaneousQuery(t *testing.T) {
 		advertisers[i] = mocks.NewDiscoveryClient(h, discServer)
 	}
 
-	d1 := &delayedDiscovery{advertisers[0], time.Millisecond * 10}
+	d1 := &delayedDiscovery{advertisers[0], time.Millisecond * 10, clock}
 
 	bkf := NewFixedBackoff(time.Millisecond * 200)
 	dCache, err := NewBackoffDiscovery(d1, bkf, withClock(clock))
@@ -202,7 +219,7 @@ func TestBackoffDiscoverySimultaneousQuery(t *testing.T) {
 		}
 	}
 	// Advance clock by one step
-	clock.Sleep(1)
+	clock.Add(1)
 
 	ch1, err := dCache.FindPeers(ctx, ns)
 	if err != nil {
@@ -235,7 +252,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	clock := &mocks.MockClock{}
+	clock := mockClock.NewMock()
 	discServer := mocks.NewDiscoveryServer(clock)
 
 	// Testing with n larger than most internal buffer sizes (32)
@@ -266,7 +283,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 		advertisers[i].Advertise(ctx, ns, discovery.TTL(time.Hour))
 	}
 	// Advance clock by one step
-	clock.Sleep(1)
+	clock.Add(1)
 
 	// Request all peers, all will be present
 	assertNumPeersWithLimit(t, ctx, dCache, ns, n, n)
@@ -275,7 +292,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 	assertNumPeersWithLimit(t, ctx, dCache, ns, n-1, n-1)
 
 	// Wait a little time but don't allow cache to expire
-	clock.Sleep(discoveryInterval / 10)
+	clock.Add(discoveryInterval / 10)
 
 	// Request peers with a lower limit this time using cache
 	// Here we are testing that the cache logic does not block when there are more peers known than the limit requested
@@ -283,7 +300,7 @@ func TestBackoffDiscoveryCacheCapacity(t *testing.T) {
 	assertNumPeersWithLimit(t, ctx, dCache, ns, n-1, n-1)
 
 	// Wait for next discovery so next request will bypass cache
-	clock.Sleep(time.Millisecond * 100)
+	clock.Add(time.Millisecond * 100)
 
 	// Ask for all peers again
 	assertNumPeersWithLimit(t, ctx, dCache, ns, n, n)

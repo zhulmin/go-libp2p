@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mocks"
 	"github.com/libp2p/go-libp2p/p2p/discovery/util"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
@@ -115,7 +116,8 @@ func TestDiscoveryRouting(t *testing.T) {
 	h1 := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	h2 := bhost.NewBlankHost(swarmt.GenSwarm(t))
 
-	dserver := mocks.NewDiscoveryServer()
+	clock := clock.NewMock()
+	dserver := mocks.NewDiscoveryServer(clock)
 	d1 := mocks.NewDiscoveryClient(h1, dserver)
 	d2 := mocks.NewDiscoveryClient(h2, dserver)
 
