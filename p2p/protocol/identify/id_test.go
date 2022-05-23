@@ -168,7 +168,7 @@ func TestIDService(t *testing.T) {
 	require.NoError(t, err)
 	defer ids2.Close()
 
-	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.BufSize(16))
+	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,10 +377,10 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idComplete, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{}, eventbus.BufSize(16))
+	idComplete, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
 	require.NoError(t, err)
 	defer idComplete.Close()
-	idFailed, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationFailed{}, eventbus.BufSize(16))
+	idFailed, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationFailed{})
 	require.NoError(t, err)
 	defer idFailed.Close()
 
@@ -410,14 +410,13 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 
 	// set up a subscriber to listen to peer protocol updated events in h1. We expect to receive events from h2
 	// as protocols are added and removed.
-	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sub.Close()
 
-	// Channels that watch the stream mux for when these bytes are read.
-	h1ProtocolsUpdates, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(2))
+	h1ProtocolsUpdates, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
 	require.NoError(t, err)
 	defer h1ProtocolsUpdates.Close()
 
@@ -558,7 +557,7 @@ func TestIdentifyDeltaWhileIdentifyingConn(t *testing.T) {
 	<-time.After(500 * time.Millisecond)
 
 	// subscribe to events in h1; after identify h1 should receive the delta from h2 and publish an event in the bus.
-	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{}, eventbus.BufSize(16))
+	sub, err := h1.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -822,7 +821,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	require.NoError(t, err)
 	defer ids2.Close()
 
-	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.BufSize(16))
+	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted))
 	require.NoError(t, err)
 
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
@@ -1025,7 +1024,7 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 		time.Sleep(100 * time.Second)
 	})
 
-	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationFailed), eventbus.BufSize(16))
+	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationFailed))
 	require.NoError(t, err)
 
 	h2pi := h2.Peerstore().PeerInfo(h2p)
