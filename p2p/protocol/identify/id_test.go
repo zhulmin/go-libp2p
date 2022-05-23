@@ -356,7 +356,7 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	defer cancel()
 
 	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
-	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
 	defer h2.Close()
 	defer h1.Close()
 
