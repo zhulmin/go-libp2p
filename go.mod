@@ -2,6 +2,8 @@ module github.com/libp2p/go-libp2p
 
 go 1.17
 
+replace github.com/btcsuite/btcd => github.com/btcsuite/btcd v0.22.1
+
 require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
@@ -55,7 +57,6 @@ require (
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/btcsuite/btcd v0.22.0-beta // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/cheekybits/genny v1.0.0 // indirect
