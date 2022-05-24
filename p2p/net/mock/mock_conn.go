@@ -97,33 +97,20 @@ func (c *conn) teardown() error {
 
 func (c *conn) addStream(s *stream) {
 	c.Lock()
+	defer c.Unlock()
 	s.conn = c
 	c.streams.PushBack(s)
-	s.notifLk.Lock()
-	defer s.notifLk.Unlock()
-	c.Unlock()
-	c.net.notifyAll(func(n network.Notifiee) {
-		n.OpenedStream(c.net, s)
-	})
 }
 
 func (c *conn) removeStream(s *stream) {
 	c.Lock()
+	defer c.Unlock()
 	for e := c.streams.Front(); e != nil; e = e.Next() {
 		if s == e.Value {
 			c.streams.Remove(e)
-			break
+			return
 		}
 	}
-	c.Unlock()
-
-	go func() {
-		s.notifLk.Lock()
-		defer s.notifLk.Unlock()
-		s.conn.net.notifyAll(func(n network.Notifiee) {
-			n.ClosedStream(s.conn.net, s)
-		})
-	}()
 }
 
 func (c *conn) allStreams() []network.Stream {

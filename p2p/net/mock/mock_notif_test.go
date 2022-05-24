@@ -203,28 +203,3 @@ func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
 	nn.disconnected <- v
 }
-func (nn *netNotifiee) OpenedStream(n network.Network, s network.Stream) {
-	nn.streamState.Lock()
-	defer nn.streamState.Unlock()
-	_, ok := nn.streamState.m[s]
-	if ok {
-		nn.t.Error("duplicate stream open")
-		return
-	}
-	nn.streamState.m[s] = make(chan struct{})
-}
-func (nn *netNotifiee) ClosedStream(n network.Network, s network.Stream) {
-	nn.streamState.Lock()
-	defer nn.streamState.Unlock()
-	ch, ok := nn.streamState.m[s]
-	if !ok {
-		nn.t.Error("saw close event but no open event")
-		return
-	}
-	select {
-	case <-ch:
-		nn.t.Error("duplicate close event")
-	default:
-		close(ch)
-	}
-}

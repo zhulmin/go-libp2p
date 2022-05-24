@@ -24,8 +24,6 @@ type Stream struct {
 
 	closeOnce sync.Once
 
-	notifyLk sync.Mutex
-
 	protocol atomic.Value
 
 	stat network.Stats
@@ -90,14 +88,14 @@ func (s *Stream) Reset() error {
 	return err
 }
 
-// Close closes the stream for writing, flushing all data and sending an EOF.
+// CloseWrite closes the stream for writing, flushing all data and sending an EOF.
 // This function does not free resources, call Close or Reset when done with the
 // stream.
 func (s *Stream) CloseWrite() error {
 	return s.stream.CloseWrite()
 }
 
-// Close closes the stream for reading. This function does not free resources,
+// CloseRead closes the stream for reading. This function does not free resources,
 // call Close or Reset when done with the stream.
 func (s *Stream) CloseRead() error {
 	return s.stream.CloseRead()
@@ -105,18 +103,7 @@ func (s *Stream) CloseRead() error {
 
 func (s *Stream) remove() {
 	s.conn.removeStream(s)
-
-	// We *must* do this in a goroutine. This can be called during a
-	// an open notification and will block until that notification is done.
-	go func() {
-		s.notifyLk.Lock()
-		defer s.notifyLk.Unlock()
-
-		s.conn.swarm.notifyAll(func(f network.Notifiee) {
-			f.ClosedStream(s.conn.swarm, s)
-		})
-		s.conn.swarm.refs.Done()
-	}()
+	s.conn.swarm.refs.Done()
 }
 
 // Protocol returns the protocol negotiated on this stream (if set).

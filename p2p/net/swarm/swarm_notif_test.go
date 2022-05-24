@@ -107,55 +107,6 @@ func TestNotifications(t *testing.T) {
 		return nil, nil, nil
 	}
 
-	testOCStream := func(n *netNotifiee, s network.Stream) {
-		var s2 network.Stream
-		select {
-		case s2 = <-n.openedStream:
-			t.Log("got notif for opened stream")
-		case <-time.After(timeout):
-			t.Fatal("timeout")
-		}
-		if s != s2 {
-			t.Fatal("got incorrect stream", s.Conn(), s2.Conn())
-		}
-
-		select {
-		case s2 = <-n.closedStream:
-			t.Log("got notif for closed stream")
-		case <-time.After(timeout):
-			t.Fatal("timeout")
-		}
-		if s != s2 {
-			t.Fatal("got incorrect stream", s.Conn(), s2.Conn())
-		}
-	}
-
-	streams := make(chan network.Stream)
-	for _, s := range swarms {
-		s.SetStreamHandler(func(s network.Stream) {
-			streams <- s
-			s.Reset()
-		})
-	}
-
-	// open a streams in each conn
-	for i, s := range swarms {
-		for _, c := range s.Conns() {
-			_, n2, _ := complement(c)
-
-			st1, err := c.NewStream(context.Background())
-			if err != nil {
-				t.Error(err)
-			} else {
-				st1.Write([]byte("hello"))
-				st1.Reset()
-				testOCStream(notifiees[i], st1)
-				st2 := <-streams
-				testOCStream(n2, st2)
-			}
-		}
-	}
-
 	// close conns
 	for i, s := range swarms {
 		n := notifiees[i]
@@ -191,8 +142,6 @@ type netNotifiee struct {
 	listenClose  chan ma.Multiaddr
 	connected    chan network.Conn
 	disconnected chan network.Conn
-	openedStream chan network.Stream
-	closedStream chan network.Stream
 }
 
 func newNetNotifiee(buffer int) *netNotifiee {
@@ -201,8 +150,6 @@ func newNetNotifiee(buffer int) *netNotifiee {
 		listenClose:  make(chan ma.Multiaddr, buffer),
 		connected:    make(chan network.Conn, buffer),
 		disconnected: make(chan network.Conn, buffer),
-		openedStream: make(chan network.Stream, buffer),
-		closedStream: make(chan network.Stream, buffer),
 	}
 }
 
@@ -217,10 +164,4 @@ func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 }
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
 	nn.disconnected <- v
-}
-func (nn *netNotifiee) OpenedStream(n network.Network, v network.Stream) {
-	nn.openedStream <- v
-}
-func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {
-	nn.closedStream <- v
 }
