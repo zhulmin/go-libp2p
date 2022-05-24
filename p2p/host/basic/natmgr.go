@@ -228,7 +228,5 @@ func (nn *nmgrNetNotifiee) ListenClose(n network.Network, addr ma.Multiaddr) {
 	nn.natManager().sync()
 }
 
-func (nn *nmgrNetNotifiee) Connected(network.Network, network.Conn)      {}
-func (nn *nmgrNetNotifiee) Disconnected(network.Network, network.Conn)   {}
-func (nn *nmgrNetNotifiee) OpenedStream(network.Network, network.Stream) {}
-func (nn *nmgrNetNotifiee) ClosedStream(network.Network, network.Stream) {}
+func (nn *nmgrNetNotifiee) Connected(network.Network, network.Conn)    {}
+func (nn *nmgrNetNotifiee) Disconnected(network.Network, network.Conn) {}

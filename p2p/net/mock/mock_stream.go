@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,8 +17,6 @@ var streamCounter int64
 
 // stream implements network.Stream
 type stream struct {
-	notifLk sync.Mutex
-
 	rstream *stream
 	conn    *conn
 	id      int64
@@ -38,7 +35,7 @@ type stream struct {
 	stat     network.Stats
 }
 
-var ErrClosed error = errors.New("stream closed")
+var ErrClosed = errors.New("stream closed")
 
 type transportObject struct {
 	msg         []byte

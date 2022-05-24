@@ -233,17 +233,7 @@ func (c *Conn) addStream(ts network.MuxedStream, dir network.Direction, scope ne
 	// firing (in Swarm.remove).
 	c.swarm.refs.Add(1)
 
-	// Take the notification lock before releasing the streams lock to block
-	// StreamClose notifications until after the StreamOpen notifications
-	// done.
-	s.notifyLk.Lock()
 	c.streams.Unlock()
-
-	c.swarm.notifyAll(func(f network.Notifiee) {
-		f.OpenedStream(c.swarm, s)
-	})
-	s.notifyLk.Unlock()
-
 	return s, nil
 }
 
