@@ -482,26 +482,24 @@ func TestInvalidCerts(t *testing.T) {
 				_, err := conn.Read([]byte{0})
 				clientErrChan <- err
 			}()
-			var clientErr error
 			select {
-			case clientErr = <-clientErrChan:
+			case err := <-clientErrChan:
+				require.Error(t, err)
+				if err.Error() != "remote error: tls: error decrypting message" &&
+					err.Error() != "remote error: tls: bad certificate" {
+					t.Fatalf("unexpected error: %s", err.Error())
+				}
 			case <-time.After(250 * time.Millisecond):
 				t.Fatal("expected the server handshake to return")
-			}
-			require.Error(t, clientErr)
-			if clientErr.Error() != "remote error: tls: error decrypting message" &&
-				clientErr.Error() != "remote error: tls: bad certificate" {
-				t.Fatalf("unexpected error: %s", err.Error())
 			}
 
-			var serverErr error
 			select {
-			case serverErr = <-serverErrChan:
+			case err := <-serverErrChan:
+				require.Error(t, err)
+				tr.checkErr(t, err)
 			case <-time.After(250 * time.Millisecond):
 				t.Fatal("expected the server handshake to return")
 			}
-			require.Error(t, serverErr)
-			tr.checkErr(t, serverErr)
 		})
 
 		t.Run(fmt.Sprintf("server offending: %s", tr.name), func(t *testing.T) {
