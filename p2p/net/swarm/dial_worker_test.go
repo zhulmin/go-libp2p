@@ -84,7 +84,8 @@ func TestDialWorkerLoopBasic(t *testing.T) {
 	defer s1.Close()
 	defer s2.Close()
 
-	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
+	// Only pass in a single address here, otherwise we might end up with a TCP and QUIC connection dialed.
+	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{s2.ListenAddresses()[0]}, peerstore.PermanentAddrTTL)
 
 	reqch := make(chan dialRequest)
 	resch := make(chan dialResponse)
@@ -97,7 +98,7 @@ func TestDialWorkerLoopBasic(t *testing.T) {
 	case res := <-resch:
 		require.NoError(t, res.err)
 		conn = res.conn
-	case <-time.After(time.Minute):
+	case <-time.After(10 * time.Second):
 		t.Fatal("dial didn't complete")
 	}
 
@@ -111,13 +112,13 @@ func TestDialWorkerLoopBasic(t *testing.T) {
 	case res := <-resch:
 		require.NoError(t, res.err)
 		conn2 = res.conn
-	case <-time.After(time.Minute):
+	case <-time.After(10 * time.Second):
 		t.Fatal("dial didn't complete")
 	}
 
 	// can't use require.Equal here, as this does a deep comparison
 	if conn != conn2 {
-		t.Fatal("expecting the same connection from both dials")
+		t.Fatalf("expecting the same connection from both dials. %s <-> %s vs. %s <-> %s", conn.LocalMultiaddr(), conn.RemoteMultiaddr(), conn2.LocalMultiaddr(), conn2.RemoteMultiaddr())
 	}
 
 	close(reqch)
