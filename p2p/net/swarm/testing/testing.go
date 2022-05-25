@@ -37,10 +37,28 @@ type config struct {
 	connectionGater  connmgr.ConnectionGater
 	rcmgr            network.ResourceManager
 	sk               crypto.PrivKey
+	clock
+}
+
+type clock interface {
+	Now() time.Time
+}
+
+type realclock struct{}
+
+func (rc realclock) Now() time.Time {
+	return time.Now()
 }
 
 // Option is an option that can be passed when constructing a test swarm.
 type Option func(*testing.T, *config)
+
+// WithClock sets the clock to use for this swarm
+func WithClock(clock clock) Option {
+	return func(_ *testing.T, c *config) {
+		c.clock = clock
+	}
+}
 
 // OptDisableReuseport disables reuseport in this test swarm.
 var OptDisableReuseport Option = func(_ *testing.T, c *config) {
@@ -105,6 +123,7 @@ func GenUpgrader(t *testing.T, n *swarm.Swarm, opts ...tptu.Option) transport.Up
 // GenSwarm generates a new test swarm.
 func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	var cfg config
+	cfg.clock = realclock{}
 	for _, o := range opts {
 		o(t, &cfg)
 	}
@@ -124,7 +143,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		p.Addr = tnet.ZeroLocalTCPAddress
 	}
 
-	ps, err := pstoremem.NewPeerstore()
+	ps, err := pstoremem.NewPeerstore(pstoremem.WithClock(cfg.clock))
 	require.NoError(t, err)
 	ps.AddPubKey(p.ID, p.PubKey)
 	ps.AddPrivKey(p.ID, p.PrivKey)
@@ -240,4 +259,34 @@ func (m *MockConnectionGater) InterceptSecured(d network.Direction, p peer.ID, c
 
 func (m *MockConnectionGater) InterceptUpgraded(tc network.Conn) (allow bool, reason control.DisconnectReason) {
 	return m.Upgraded(tc)
+}
+
+// WaitForDisconnectNotificationDone is a hack that lets you wait until a
+// disconnect network notification has been sent to all notifees. It makes
+// _heavy_ use of internal knowledge of swarm.
+func WaitForDisconnectNotification(swarm *swarm.Swarm) <-chan struct{} {
+	fullyDone := make(chan struct{})
+
+	go func() {
+		// This tracks when we're done with this temporary notify bundle
+		done := make(chan struct{})
+		nb := &network.NotifyBundle{
+			DisconnectedF: func(n network.Network, c network.Conn) {
+				dummyBundle := &network.NotifyBundle{}
+				// The .Notify method grabs the lock. We can use that to know when all notifees have been notified.
+				// But we need to do it in another goroutine so that we don't deadlock.
+				go func() {
+					swarm.Notify(dummyBundle)
+					swarm.StopNotify(dummyBundle)
+					close(done)
+				}()
+			},
+		}
+		swarm.Notify(nb)
+		defer swarm.StopNotify(nb)
+		<-done
+		close(fullyDone)
+	}()
+
+	return fullyDone
 }
