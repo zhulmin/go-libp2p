@@ -53,18 +53,6 @@ Examples can be found in the [examples folder](examples).
 
 ## Development
 
-### Using the go-libp2p Workspace
-
-While developing, you may need to make changes to several modules at once, or you may want changes made locally in one module to be available for import by another.
-
-The [go-libp2p workspace](https://github.com/libp2p/workspace-go-libp2p) provides a developer-oriented view of the modules that comprise go-libp2p.
-
-Using the tooling in the workspace repository, you can checkout all of go-libp2p's module repos and enter "local mode", which adds [replace directives](https://github.com/golang/go/wiki/Modules#gomod) to the go.mod files in each local working copy. When you build locally, the libp2p depdendencies will be resolved from your local working copies.
-
-Once you've committed your changes, you can switch back to "remote mode", which removes the replace directives and pulls imports from the main go module cache.
-
-See the [workspace repo](https://github.com/libp2p/workspace-go-libp2p) for more information.
-
 ### Tests
 
 `go test ./...` will run all tests in the repo.
