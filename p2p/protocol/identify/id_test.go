@@ -395,7 +395,7 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 	case <-idComplete.Out():
 	case evt := <-idFailed.Out():
 		t.Fatalf("Failed to identify: %v", evt.(event.EvtPeerIdentificationFailed).Reason)
-	default:
+	case <-time.After(5 * time.Second):
 		t.Fatal("Missing id event")
 	}
 
