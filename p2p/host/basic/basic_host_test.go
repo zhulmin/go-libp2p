@@ -113,7 +113,6 @@ func TestSignedPeerRecordWithNoListenAddrs(t *testing.T) {
 	rec, err := env.Record()
 	require.NoError(t, err)
 	require.NotEmpty(t, rec.(*peer.PeerRecord).Addrs)
-
 }
 
 func TestProtocolHandlerEvents(t *testing.T) {
