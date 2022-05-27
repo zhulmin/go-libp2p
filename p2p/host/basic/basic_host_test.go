@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	testutils "github.com/libp2p/go-libp2p/testing"
 
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/helpers"
@@ -105,7 +106,7 @@ func TestSignedPeerRecordWithNoListenAddrs(t *testing.T) {
 		t.Fatalf("peerstore doesn't support certified addrs")
 	}
 	// the signed record with the new addr is added async
-	require.Eventually(t, func() bool { return cab.GetPeerRecord(h.ID()) != nil }, 100*time.Millisecond, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return cab.GetPeerRecord(h.ID()) != nil }, testutils.ScaleDuration(100*time.Millisecond), testutils.ScaleDuration(10*time.Millisecond))
 }
 
 func TestProtocolHandlerEvents(t *testing.T) {
