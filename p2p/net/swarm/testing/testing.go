@@ -267,24 +267,25 @@ func (m *MockConnectionGater) InterceptUpgraded(tc network.Conn) (allow bool, re
 func WaitForDisconnectNotification(swarm *swarm.Swarm) <-chan struct{} {
 	fullyDone := make(chan struct{})
 
+	// This tracks when we're done with this temporary notify bundle
+	done := make(chan struct{})
+	nb := &network.NotifyBundle{
+		DisconnectedF: func(n network.Network, c network.Conn) {
+			dummyBundle := &network.NotifyBundle{}
+			// The .Notify method grabs the lock. We can use that to know when all notifees have been notified.
+			// But we need to do it in another goroutine so that we don't deadlock.
+			go func() {
+				swarm.Notify(dummyBundle)
+				swarm.StopNotify(dummyBundle)
+				close(done)
+			}()
+		},
+	}
+	swarm.Notify(nb)
+
 	go func() {
-		// This tracks when we're done with this temporary notify bundle
-		done := make(chan struct{})
-		nb := &network.NotifyBundle{
-			DisconnectedF: func(n network.Network, c network.Conn) {
-				dummyBundle := &network.NotifyBundle{}
-				// The .Notify method grabs the lock. We can use that to know when all notifees have been notified.
-				// But we need to do it in another goroutine so that we don't deadlock.
-				go func() {
-					swarm.Notify(dummyBundle)
-					swarm.StopNotify(dummyBundle)
-					close(done)
-				}()
-			},
-		}
-		swarm.Notify(nb)
-		defer swarm.StopNotify(nb)
 		<-done
+		swarm.StopNotify(nb)
 		close(fullyDone)
 	}()
 
