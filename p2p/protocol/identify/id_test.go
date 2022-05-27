@@ -836,7 +836,9 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	forgetMe, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 	h2.Peerstore().AddAddr(h1p, forgetMe, peerstore.RecentlyConnectedAddrTTL)
 
-	require.NoError(t, h1.Connect(context.Background(), h2.Peerstore().PeerInfo(h2p)))
+	h2pi := h2.Peerstore().PeerInfo(h2p)
+	h2pi.Addrs = h2pi.Addrs[:1]
+	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	h1t2c := h1.Network().ConnsToPeer(h2p)
 	require.Equal(t, 1, len(h1t2c), "should have a conn here")
