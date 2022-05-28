@@ -20,17 +20,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func isRelayAddr(a ma.Multiaddr) (isRelay bool) {
-	ma.ForEach(a, func(c ma.Component) bool {
-		switch c.Protocol().Code {
-		case ma.P_CIRCUIT:
-			isRelay = true
-			return false
-		default:
-			return true
+func numRelays(h host.Host) int {
+	peers := make(map[peer.ID]struct{})
+	for _, addr := range h.Addrs() {
+		addr, comp := ma.SplitLast(addr)
+		if comp.Protocol().Code != ma.P_CIRCUIT { // not a relay addr
+			continue
 		}
-	})
-	return isRelay
+		_, comp = ma.SplitLast(addr)
+		if comp.Protocol().Code != ma.P_P2P {
+			panic("expected p2p component")
+		}
+		id, err := peer.Decode(comp.Value())
+		if err != nil {
+			panic(err)
+		}
+		peers[id] = struct{}{}
+	}
+	return len(peers)
 }
 
 func newPrivateNode(t *testing.T, opts ...autorelay.Option) host.Host {
@@ -147,14 +154,10 @@ func TestSingleRelay(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 	<-done
 	// test that we don't add any more relays
-	require.Never(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) != 1
-	}, 200*time.Millisecond, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) != 1 }, 200*time.Millisecond, 50*time.Millisecond)
 }
 
 func TestPreferRelayV2(t *testing.T) {
@@ -176,9 +179,7 @@ func TestPreferRelayV2(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 }
 
 func TestWaitForCandidates(t *testing.T) {
@@ -197,16 +198,12 @@ func TestWaitForCandidates(t *testing.T) {
 
 	// make sure we don't add any relays yet
 	// We need to wait until we have at least 2 candidates before we connect.
-	require.Never(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 200*time.Millisecond, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 0 }, 200*time.Millisecond, 50*time.Millisecond)
 
 	r2 := newRelay(t)
 	t.Cleanup(func() { r2.Close() })
 	peerChan <- peer.AddrInfo{ID: r2.ID(), Addrs: r2.Addrs()}
-	require.Eventually(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 }
 
 func TestBackoff(t *testing.T) {
@@ -226,12 +223,10 @@ func TestBackoff(t *testing.T) {
 
 	// make sure we don't add any relays yet
 	require.Never(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
+		return numRelays(h) > 0
 	}, backoff*2/3, 50*time.Millisecond)
 
-	require.Eventually(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 2*backoff, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 2*backoff, 50*time.Millisecond)
 }
 
 func TestMaxBackoffs(t *testing.T) {
@@ -250,15 +245,13 @@ func TestMaxBackoffs(t *testing.T) {
 	peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
 
 	// make sure we don't add any relays yet
-	require.Never(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 300*time.Millisecond, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 0 }, 300*time.Millisecond, 50*time.Millisecond)
 }
 
 func TestStaticRelays(t *testing.T) {
-	const numRelays = 3
+	const numStaticRelays = 3
 	var staticRelays []peer.AddrInfo
-	for i := 0; i < numRelays; i++ {
+	for i := 0; i < numStaticRelays; i++ {
 		r := newRelay(t)
 		t.Cleanup(func() { r.Close() })
 		staticRelays = append(staticRelays, peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()})
@@ -270,9 +263,7 @@ func TestStaticRelays(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool {
-		return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-	}, 2*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 2*time.Second, 50*time.Millisecond)
 }
 
 func TestRelayV1(t *testing.T) {
@@ -289,9 +280,7 @@ func TestRelayV1(t *testing.T) {
 		)
 		defer h.Close()
 
-		require.Never(t, func() bool {
-			return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-		}, 3*time.Second, 100*time.Millisecond)
+		require.Never(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 	})
 
 	t.Run("relay v1 support enabled", func(t *testing.T) {
@@ -308,8 +297,6 @@ func TestRelayV1(t *testing.T) {
 		)
 		defer h.Close()
 
-		require.Eventually(t, func() bool {
-			return len(ma.FilterAddrs(h.Addrs(), isRelayAddr)) > 0
-		}, 3*time.Second, 100*time.Millisecond)
+		require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 	})
 }
