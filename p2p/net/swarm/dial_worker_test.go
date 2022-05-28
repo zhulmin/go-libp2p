@@ -289,7 +289,7 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 	p2 := tnet.RandPeerNetParamsOrFatal(t)
 
 	var addrs []ma.Multiaddr
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 16; i++ {
 		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/11.0.0.%d/tcp/%d", i%256, 1234+i)))
 	}
 	s1.Peerstore().AddAddrs(p2.ID, addrs, peerstore.PermanentAddrTTL)
@@ -310,8 +310,9 @@ func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
 			reqch <- dialRequest{ctx: context.Background(), resch: reschgo}
 			select {
 			case res := <-reschgo:
+				t.Log("received result")
 				resch <- res
-			case <-time.After(5 * time.Minute):
+			case <-time.After(15 * time.Second):
 				resch <- dialResponse{err: errTimeout}
 			}
 		}()
