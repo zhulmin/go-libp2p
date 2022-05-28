@@ -6,9 +6,12 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	"github.com/benbjohnson/clock"
 )
 
 type config struct {
+	clock        clock.Clock
 	peerChan     <-chan peer.AddrInfo
 	staticRelays []peer.AddrInfo
 	// see WithMinCandidates
@@ -29,6 +32,7 @@ type config struct {
 }
 
 var defaultConfig = config{
+	clock:         clock.New(),
 	minCandidates: 4,
 	maxCandidates: 20,
 	bootDelay:     3 * time.Minute,
@@ -150,6 +154,13 @@ func WithMaxAttempts(n int) Option {
 func WithCircuitV1Support() Option {
 	return func(c *config) error {
 		c.enableCircuitV1 = true
+		return nil
+	}
+}
+
+func WithClock(cl clock.Clock) Option {
+	return func(c *config) error {
+		c.clock = cl
 		return nil
 	}
 }

@@ -85,7 +85,7 @@ type relayFinder struct {
 
 func newRelayFinder(host *basic.BasicHost, peerChan <-chan peer.AddrInfo, conf *config) *relayFinder {
 	r := &relayFinder{
-		bootTime:                  time.Now(),
+		bootTime:                  conf.clock.Now(),
 		host:                      host,
 		conf:                      conf,
 		peerChan:                  peerChan,
@@ -117,11 +117,11 @@ func (rf *relayFinder) background(ctx context.Context) {
 	}
 	defer subConnectedness.Close()
 
-	bootDelayTimer := time.NewTimer(rf.conf.bootDelay)
+	bootDelayTimer := rf.conf.clock.Timer(rf.conf.bootDelay)
 	defer bootDelayTimer.Stop()
-	refreshTicker := time.NewTicker(rsvpRefreshInterval)
+	refreshTicker := rf.conf.clock.Ticker(rsvpRefreshInterval)
 	defer refreshTicker.Stop()
-	backoffTicker := time.NewTicker(rf.conf.backoff / 5)
+	backoffTicker := rf.conf.clock.Ticker(rf.conf.backoff / 5)
 	defer backoffTicker.Stop()
 
 	for {
@@ -159,6 +159,7 @@ func (rf *relayFinder) background(ctx context.Context) {
 		case now := <-refreshTicker.C:
 			push = rf.refreshReservations(ctx, now)
 		case now := <-backoffTicker.C:
+			log.Debug("backoff timer fired")
 			rf.checkForCandidatesOnBackoff(now)
 		case <-ctx.Done():
 			return
@@ -344,11 +345,11 @@ func (rf *relayFinder) handleNewCandidate(ctx context.Context) {
 	rf.candidateMx.Lock()
 	if len(rf.conf.staticRelays) != 0 {
 		// make sure we read all static relays before continuing
-		if len(rf.peerChan) > 0 && len(rf.candidates) < rf.conf.minCandidates && time.Since(rf.bootTime) < rf.conf.bootDelay {
+		if len(rf.peerChan) > 0 && len(rf.candidates) < rf.conf.minCandidates && rf.conf.clock.Since(rf.bootTime) < rf.conf.bootDelay {
 			rf.candidateMx.Unlock()
 			return
 		}
-	} else if len(rf.relays) == 0 && len(rf.candidates) < rf.conf.minCandidates && time.Since(rf.bootTime) < rf.conf.bootDelay {
+	} else if len(rf.relays) == 0 && len(rf.candidates) < rf.conf.minCandidates && rf.conf.clock.Since(rf.bootTime) < rf.conf.bootDelay {
 		// During the startup phase, we don't want to connect to the first candidate that we find.
 		// Instead, we wait until we've found at least minCandidates, and then select the best of those.
 		// However, if that takes too long (longer than bootDelay), we still go ahead.
@@ -448,7 +449,7 @@ func (rf *relayFinder) moveCandidateToBackoff(cand *candidate) {
 	backoff = (backoff * time.Duration(16+rand.Intn(8))) / time.Duration(20)
 	rf.candidatesOnBackoff = append(rf.candidatesOnBackoff, &candidateOnBackoff{
 		candidate:       *cand,
-		nextConnAttempt: time.Now().Add(backoff),
+		nextConnAttempt: rf.conf.clock.Now().Add(backoff),
 	})
 }
 
@@ -458,6 +459,7 @@ func (rf *relayFinder) checkForCandidatesOnBackoff(now time.Time) {
 
 	for _, cand := range rf.candidatesOnBackoff {
 		if cand.nextConnAttempt.After(now) {
+			log.Debug("break")
 			break
 		}
 		if len(rf.candidates) >= rf.conf.maxCandidates {
@@ -552,7 +554,7 @@ func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	rf.relayMx.Lock()
 	defer rf.relayMx.Unlock()
 
-	if rf.cachedAddrs != nil && time.Now().Before(rf.cachedAddrsExpiry) {
+	if rf.cachedAddrs != nil && rf.conf.clock.Now().Before(rf.cachedAddrsExpiry) {
 		return rf.cachedAddrs
 	}
 
@@ -577,7 +579,7 @@ func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	}
 
 	rf.cachedAddrs = raddrs
-	rf.cachedAddrsExpiry = time.Now().Add(30 * time.Second)
+	rf.cachedAddrsExpiry = rf.conf.clock.Now().Add(30 * time.Second)
 
 	return raddrs
 }

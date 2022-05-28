@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 
+	"github.com/benbjohnson/clock"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -207,13 +208,15 @@ func TestWaitForCandidates(t *testing.T) {
 }
 
 func TestBackoff(t *testing.T) {
-	const backoff = 500 * time.Millisecond
+	const backoff = 10 * time.Second
 	peerChan := make(chan peer.AddrInfo)
+	cl := clock.NewMock()
 	h := newPrivateNode(t,
 		autorelay.WithPeerSource(peerChan),
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(0),
 		autorelay.WithBackoff(backoff),
+		autorelay.WithClock(cl),
 	)
 	defer h.Close()
 
@@ -222,21 +225,24 @@ func TestBackoff(t *testing.T) {
 	peerChan <- peer.AddrInfo{ID: r1.ID(), Addrs: r1.Addrs()}
 
 	// make sure we don't add any relays yet
-	require.Never(t, func() bool {
-		return numRelays(h) > 0
-	}, backoff*2/3, 50*time.Millisecond)
-
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 2*backoff, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 0 }, 100*time.Millisecond, 20*time.Millisecond)
+	cl.Add(backoff * 2 / 3)
+	require.Never(t, func() bool { return numRelays(h) > 0 }, 100*time.Millisecond, 20*time.Millisecond)
+	cl.Add(backoff * 2 / 3)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 500*time.Millisecond, 10*time.Millisecond)
 }
 
 func TestMaxBackoffs(t *testing.T) {
+	const backoff = 20 * time.Second
+	cl := clock.NewMock()
 	peerChan := make(chan peer.AddrInfo)
 	h := newPrivateNode(t,
 		autorelay.WithPeerSource(peerChan),
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(0),
-		autorelay.WithBackoff(25*time.Millisecond),
+		autorelay.WithBackoff(backoff),
 		autorelay.WithMaxAttempts(3),
+		autorelay.WithClock(cl),
 	)
 	defer h.Close()
 
@@ -245,7 +251,10 @@ func TestMaxBackoffs(t *testing.T) {
 	peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
 
 	// make sure we don't add any relays yet
-	require.Never(t, func() bool { return numRelays(h) > 0 }, 300*time.Millisecond, 50*time.Millisecond)
+	for i := 0; i < 5; i++ {
+		cl.Add(backoff * 3 / 2)
+		require.Never(t, func() bool { return numRelays(h) > 0 }, 50*time.Millisecond, 20*time.Millisecond)
+	}
 }
 
 func TestStaticRelays(t *testing.T) {
@@ -280,7 +289,7 @@ func TestRelayV1(t *testing.T) {
 		)
 		defer h.Close()
 
-		require.Never(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+		require.Never(t, func() bool { return numRelays(h) > 0 }, 250*time.Millisecond, 100*time.Millisecond)
 	})
 
 	t.Run("relay v1 support enabled", func(t *testing.T) {
