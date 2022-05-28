@@ -237,6 +237,42 @@ func TestWaitForCandidates(t *testing.T) {
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 }
 
+func TestMaxCandidateAge(t *testing.T) {
+	const numCandidates = 3
+	var counter int32 // to be used atomically
+	cl := clock.NewMock()
+	h := newPrivateNode(t,
+		autorelay.WithPeerSource(func(num int) <-chan peer.AddrInfo {
+			atomic.AddInt32(&counter, 1)
+			require.Equal(t, numCandidates, num)
+			peerChan := make(chan peer.AddrInfo, num)
+			defer close(peerChan)
+			for i := 0; i < num; i++ {
+				r := newRelay(t)
+				t.Cleanup(func() { r.Close() })
+				peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+			}
+			return peerChan
+		}),
+		autorelay.WithMaxCandidates(numCandidates),
+		autorelay.WithNumRelays(1),
+		autorelay.WithMaxCandidateAge(time.Hour),
+		autorelay.WithBootDelay(0),
+		autorelay.WithClock(cl),
+	)
+	defer h.Close()
+
+	r1 := newRelay(t)
+	t.Cleanup(func() { r1.Close() })
+
+	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 5*time.Second, 50*time.Millisecond)
+	require.Equal(t, 1, int(atomic.LoadInt32(&counter)))
+	cl.Add(40 * time.Minute)
+	require.Never(t, func() bool { return numRelays(h) > 1 }, 100*time.Millisecond, 25*time.Millisecond)
+	cl.Add(30 * time.Minute)
+	require.Eventually(t, func() bool { return atomic.LoadInt32(&counter) == 2 }, time.Second, 25*time.Millisecond)
+}
+
 func TestBackoff(t *testing.T) {
 	const backoff = 10 * time.Second
 	peerChan := make(chan peer.AddrInfo)

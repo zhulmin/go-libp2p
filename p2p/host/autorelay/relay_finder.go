@@ -192,7 +192,6 @@ func (rf *relayFinder) background(ctx context.Context) {
 func (rf *relayFinder) findNodes(ctx context.Context, relayDisconnected <-chan struct{}) {
 	peerChan := rf.peerSource(rf.conf.maxCandidates)
 	const tick = 5 * time.Minute
-	const maxAge = 30 * time.Minute
 	timer := rf.conf.clock.Timer(tick)
 	defer timer.Stop()
 	for {
@@ -217,7 +216,8 @@ func (rf *relayFinder) findNodes(ctx context.Context, relayDisconnected <-chan s
 
 			// Even if we are connected to the desired number of relays, or have enough candidates,
 			// we want to make sure that our candidate list doesn't become outdated.
-			if (numRelays >= rf.conf.desiredRelays || numCandidates >= rf.conf.maxCandidates) && now.Sub(rf.lastCandidateAdded) < maxAge {
+			if (numRelays >= rf.conf.desiredRelays || numCandidates >= rf.conf.maxCandidates) &&
+				now.Sub(rf.lastCandidateAdded) < rf.conf.maxCandidateAge {
 				timer.Reset(tick)
 				continue
 			}

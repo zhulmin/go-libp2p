@@ -26,19 +26,22 @@ type config struct {
 	// If we fail to obtain a reservation more than maxAttempts, we stop trying.
 	maxAttempts int
 	// Number of relays we strive to obtain a reservation with.
-	desiredRelays    int
+	desiredRelays int
+	// see WithMaxCandidateAge
+	maxCandidateAge  time.Duration
 	setMinCandidates bool
 	enableCircuitV1  bool
 }
 
 var defaultConfig = config{
-	clock:         clock.New(),
-	minCandidates: 4,
-	maxCandidates: 20,
-	bootDelay:     3 * time.Minute,
-	backoff:       time.Hour,
-	maxAttempts:   3,
-	desiredRelays: 2,
+	clock:           clock.New(),
+	minCandidates:   4,
+	maxCandidates:   20,
+	bootDelay:       3 * time.Minute,
+	backoff:         time.Hour,
+	maxAttempts:     3,
+	desiredRelays:   2,
+	maxCandidateAge: 30 * time.Minute,
 }
 
 var (
@@ -168,6 +171,18 @@ func WithMaxAttempts(n int) Option {
 func WithCircuitV1Support() Option {
 	return func(c *config) error {
 		c.enableCircuitV1 = true
+		return nil
+	}
+}
+
+// WithMaxCandidateAge sets the maximum age of a candidate.
+// When we are connected to the desired number of relays, we don't ask the peer source for new candidates.
+// This can lead to AutoRelay's candidate list becoming outdated, and means we won't be able
+// to quickly establish a new relay connection if our existing connection breaks, if all the candidates
+// have become stale.
+func WithMaxCandidateAge(d time.Duration) Option {
+	return func(c *config) error {
+		c.maxCandidateAge = d
 		return nil
 	}
 }
