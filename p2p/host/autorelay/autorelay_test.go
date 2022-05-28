@@ -135,20 +135,19 @@ func newBrokenRelay(t *testing.T, workAfter int) host.Host {
 	return h
 }
 
-func TestSingleRelay(t *testing.T) {
-	const numPeers = 5
-	peerChan := make(chan peer.AddrInfo)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for i := 0; i < numPeers; i++ {
+func TestSingleCandidate(t *testing.T) {
+	var counter int
+	h := newPrivateNode(t,
+		autorelay.WithPeerSource(func(num int) <-chan peer.AddrInfo {
+			counter++
+			require.Equal(t, 1, num)
+			peerChan := make(chan peer.AddrInfo, num)
+			defer close(peerChan)
 			r := newRelay(t)
 			t.Cleanup(func() { r.Close() })
 			peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
-		}
-	}()
-	h := newPrivateNode(t,
-		autorelay.WithPeerSource(peerChan),
+			return peerChan
+		}),
 		autorelay.WithMaxCandidates(1),
 		autorelay.WithNumRelays(99999),
 		autorelay.WithBootDelay(0),
@@ -156,11 +155,38 @@ func TestSingleRelay(t *testing.T) {
 	defer h.Close()
 
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
-	<-done
 	// test that we don't add any more relays
-	require.Never(t, func() bool { return numRelays(h) != 1 }, 200*time.Millisecond, 50*time.Millisecond)
+	require.Never(t, func() bool { return numRelays(h) > 1 }, 200*time.Millisecond, 50*time.Millisecond)
+	require.Equal(t, 1, counter, "expected the peer source callback to only have been called once")
 }
 
+func TestSingleRelay(t *testing.T) {
+	const numCandidates = 3
+	var counter int
+	h := newPrivateNode(t,
+		autorelay.WithPeerSource(func(num int) <-chan peer.AddrInfo {
+			counter++
+			require.Equal(t, numCandidates, num)
+			peerChan := make(chan peer.AddrInfo, num)
+			defer close(peerChan)
+			for i := 0; i < num; i++ {
+				r := newRelay(t)
+				t.Cleanup(func() { r.Close() })
+				peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+			}
+			return peerChan
+		}),
+		autorelay.WithMaxCandidates(numCandidates),
+		autorelay.WithNumRelays(1),
+		autorelay.WithBootDelay(0),
+	)
+	defer h.Close()
+
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 5*time.Second, 100*time.Millisecond)
+	// test that we don't add any more relays
+	require.Never(t, func() bool { return numRelays(h) > 1 }, 200*time.Millisecond, 50*time.Millisecond)
+	require.Equal(t, 1, counter, "expected the peer source callback to only have been called once")
+}
 func TestPreferRelayV2(t *testing.T) {
 	r := newRelay(t)
 	defer r.Close()
@@ -170,10 +196,14 @@ func TestPreferRelayV2(t *testing.T) {
 		str.Reset()
 		t.Fatal("used relay v1")
 	})
-	peerChan := make(chan peer.AddrInfo, 1)
-	peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+
 	h := newPrivateNode(t,
-		autorelay.WithPeerSource(peerChan),
+		autorelay.WithPeerSource(func(int) <-chan peer.AddrInfo {
+			peerChan := make(chan peer.AddrInfo, 1)
+			defer close(peerChan)
+			peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
+			return peerChan
+		}),
 		autorelay.WithMaxCandidates(1),
 		autorelay.WithNumRelays(99999),
 		autorelay.WithBootDelay(0),
@@ -186,7 +216,7 @@ func TestPreferRelayV2(t *testing.T) {
 func TestWaitForCandidates(t *testing.T) {
 	peerChan := make(chan peer.AddrInfo)
 	h := newPrivateNode(t,
-		autorelay.WithPeerSource(peerChan),
+		autorelay.WithPeerSource(func(int) <-chan peer.AddrInfo { return peerChan }),
 		autorelay.WithMinCandidates(2),
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(time.Hour),
@@ -212,7 +242,7 @@ func TestBackoff(t *testing.T) {
 	peerChan := make(chan peer.AddrInfo)
 	cl := clock.NewMock()
 	h := newPrivateNode(t,
-		autorelay.WithPeerSource(peerChan),
+		autorelay.WithPeerSource(func(int) <-chan peer.AddrInfo { return peerChan }),
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(0),
 		autorelay.WithBackoff(backoff),
@@ -237,7 +267,7 @@ func TestMaxBackoffs(t *testing.T) {
 	cl := clock.NewMock()
 	peerChan := make(chan peer.AddrInfo)
 	h := newPrivateNode(t,
-		autorelay.WithPeerSource(peerChan),
+		autorelay.WithPeerSource(func(int) <-chan peer.AddrInfo { return peerChan }),
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(0),
 		autorelay.WithBackoff(backoff),
@@ -284,7 +314,7 @@ func TestRelayV1(t *testing.T) {
 			t.Cleanup(func() { r.Close() })
 		}()
 		h := newPrivateNode(t,
-			autorelay.WithPeerSource(peerChan),
+			autorelay.WithPeerSource(func(int) <-chan peer.AddrInfo { return peerChan }),
 			autorelay.WithBootDelay(0),
 		)
 		defer h.Close()
@@ -300,7 +330,7 @@ func TestRelayV1(t *testing.T) {
 			t.Cleanup(func() { r.Close() })
 		}()
 		h := newPrivateNode(t,
-			autorelay.WithPeerSource(peerChan),
+			autorelay.WithPeerSource(func(int) <-chan peer.AddrInfo { return peerChan }),
 			autorelay.WithBootDelay(0),
 			autorelay.WithCircuitV1Support(),
 		)

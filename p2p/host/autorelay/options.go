@@ -12,7 +12,7 @@ import (
 
 type config struct {
 	clock        clock.Clock
-	peerChan     <-chan peer.AddrInfo
+	peerSource   func(num int) <-chan peer.AddrInfo
 	staticRelays []peer.AddrInfo
 	// see WithMinCandidates
 	minCandidates int
@@ -41,7 +41,10 @@ var defaultConfig = config{
 	desiredRelays: 2,
 }
 
-var errStaticRelaysMinCandidates = errors.New("cannot use WithMinCandidates and WithStaticRelays")
+var (
+	errStaticRelaysMinCandidates = errors.New("cannot use WithMinCandidates and WithStaticRelays")
+	errStaticRelaysPeerSource    = errors.New("cannot use WithPeerSource and WithStaticRelays")
+)
 
 // DefaultRelays are the known PL-operated v1 relays; will be decommissioned in 2022.
 var DefaultRelays = []string{
@@ -72,6 +75,9 @@ func WithStaticRelays(static []peer.AddrInfo) Option {
 		if c.setMinCandidates {
 			return errStaticRelaysMinCandidates
 		}
+		if c.peerSource != nil {
+			return errStaticRelaysPeerSource
+		}
 		if len(c.staticRelays) > 0 {
 			return errors.New("can't set static relays, static relays already configured")
 		}
@@ -85,9 +91,17 @@ func WithDefaultStaticRelays() Option {
 	return WithStaticRelays(defaultStaticRelays)
 }
 
-func WithPeerSource(peerChan <-chan peer.AddrInfo) Option {
+// WithPeerSource defines a callback for AutoRelay to query for more relay candidates.
+// AutoRelay will call this function in regular intervals, until it  is connected to the desired number of
+// relays, and it has enough candidates (in case we get disconnected from one of the relays).
+// Implementations must send *at most* numPeers, and close the channel when they don't intend to provide
+// any more peers. AutoRelay will not call the callback again until the channel is closed.
+func WithPeerSource(f func(numPeers int) <-chan peer.AddrInfo) Option {
 	return func(c *config) error {
-		c.peerChan = peerChan
+		if len(c.staticRelays) > 0 {
+			return errStaticRelaysPeerSource
+		}
+		c.peerSource = f
 		return nil
 	}
 }

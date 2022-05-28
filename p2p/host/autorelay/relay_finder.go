@@ -66,10 +66,11 @@ type relayFinder struct {
 	ctxCancel   context.CancelFunc
 	ctxCancelMx sync.Mutex
 
-	peerChan <-chan peer.AddrInfo
+	peerSource func(int) <-chan peer.AddrInfo
 
 	candidateFound            chan struct{} // receives every time we find a new relay candidate
 	candidateMx               sync.Mutex
+	lastCandidateAdded        time.Time
 	candidates                map[peer.ID]*candidate
 	candidatesOnBackoff       []*candidateOnBackoff // this slice is always sorted by the nextConnAttempt time
 	handleNewCandidateTrigger chan struct{}         // cap: 1
@@ -83,28 +84,34 @@ type relayFinder struct {
 	cachedAddrsExpiry time.Time
 }
 
-func newRelayFinder(host *basic.BasicHost, peerChan <-chan peer.AddrInfo, conf *config) *relayFinder {
-	r := &relayFinder{
+func newRelayFinder(host *basic.BasicHost, peerSource func(int) <-chan peer.AddrInfo, conf *config) *relayFinder {
+	return &relayFinder{
 		bootTime:                  conf.clock.Now(),
 		host:                      host,
 		conf:                      conf,
-		peerChan:                  peerChan,
+		peerSource:                peerSource,
 		candidates:                make(map[peer.ID]*candidate),
 		candidateFound:            make(chan struct{}, 1),
 		handleNewCandidateTrigger: make(chan struct{}, 1),
 		relays:                    make(map[peer.ID]*circuitv2.Reservation),
 		relayUpdated:              make(chan struct{}, 1),
 	}
-	return r
 }
 
 func (rf *relayFinder) background(ctx context.Context) {
-	rf.refCount.Add(1)
-	go func() {
-		defer rf.refCount.Done()
-		rf.findNodes(ctx)
-	}()
-	rf.refCount.Add(1)
+	relayDisconnected := make(chan struct{}, 1)
+	rf.refCount.Add(2)
+	if rf.usesStaticRelay() {
+		go func() {
+			defer rf.refCount.Done()
+			rf.handleStaticRelays(ctx)
+		}()
+	} else {
+		go func() {
+			defer rf.refCount.Done()
+			rf.findNodes(ctx, relayDisconnected)
+		}()
+	}
 	go func() {
 		defer rf.refCount.Done()
 		rf.handleNewCandidates(ctx)
@@ -141,6 +148,10 @@ func (rf *relayFinder) background(ctx context.Context) {
 			if rf.usingRelay(evt.Peer) { // we were disconnected from a relay
 				log.Debugw("disconnected from relay", "id", evt.Peer)
 				delete(rf.relays, evt.Peer)
+				select {
+				case relayDisconnected <- struct{}{}:
+				default:
+				}
 				push = true
 			}
 			rf.relayMx.Unlock()
@@ -178,10 +189,44 @@ func (rf *relayFinder) background(ctx context.Context) {
 // It is run on both public and private nodes.
 // It garbage collects old entries, so that nodes doesn't overflow.
 // This makes sure that as soon as we need to find relay candidates, we have them available.
-func (rf *relayFinder) findNodes(ctx context.Context) {
+func (rf *relayFinder) findNodes(ctx context.Context, relayDisconnected <-chan struct{}) {
+	peerChan := rf.peerSource(rf.conf.maxCandidates)
+	const tick = 5 * time.Minute
+	const maxAge = 30 * time.Minute
+	timer := rf.conf.clock.Timer(tick)
+	defer timer.Stop()
 	for {
 		select {
-		case pi := <-rf.peerChan:
+		case <-relayDisconnected:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			timer.Reset(0)
+		case now := <-timer.C:
+			if peerChan != nil {
+				// We're still reading peers from the peerChan. No need to query for more peers now.
+				timer.Reset(tick)
+				continue
+			}
+			rf.relayMx.Lock()
+			numRelays := len(rf.relays)
+			rf.relayMx.Unlock()
+			rf.candidateMx.Lock()
+			numCandidates := len(rf.candidates)
+			rf.candidateMx.Unlock()
+
+			// Even if we are connected to the desired number of relays, or have enough candidates,
+			// we want to make sure that our candidate list doesn't become outdated.
+			if (numRelays >= rf.conf.desiredRelays || numCandidates >= rf.conf.maxCandidates) && now.Sub(rf.lastCandidateAdded) < maxAge {
+				timer.Reset(tick)
+				continue
+			}
+			peerChan = rf.peerSource(rf.conf.maxCandidates)
+		case pi, ok := <-peerChan:
+			if !ok {
+				peerChan = nil
+				continue
+			}
 			log.Debugw("found node", "id", pi.ID)
 			rf.candidateMx.Lock()
 			numCandidates := len(rf.candidates)
@@ -199,6 +244,23 @@ func (rf *relayFinder) findNodes(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (rf *relayFinder) handleStaticRelays(ctx context.Context) {
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	wg.Add(len(rf.conf.staticRelays))
+	for _, pi := range rf.conf.staticRelays {
+		sem <- struct{}{}
+		go func(pi peer.AddrInfo) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			rf.handleNewNode(ctx, pi)
+		}(pi)
+	}
+	wg.Wait()
+	log.Debug("processed all static relays")
+	rf.notifyNewCandidate()
 }
 
 func (rf *relayFinder) notifyNewCandidate() {
@@ -236,7 +298,10 @@ func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) {
 	rf.candidates[pi.ID] = &candidate{ai: pi, supportsRelayV2: supportsV2}
 	rf.candidateMx.Unlock()
 
-	rf.notifyNewCandidate()
+	// Don't notify when we're using static relays. We need to process all entries first.
+	if !rf.usesStaticRelay() {
+		rf.notifyNewCandidate()
+	}
 }
 
 // tryNode checks if a peer actually supports either circuit v1 or circuit v2.
@@ -343,13 +408,7 @@ func (rf *relayFinder) handleNewCandidate(ctx context.Context) {
 	}
 
 	rf.candidateMx.Lock()
-	if len(rf.conf.staticRelays) != 0 {
-		// make sure we read all static relays before continuing
-		if len(rf.peerChan) > 0 && len(rf.candidates) < rf.conf.minCandidates && rf.conf.clock.Since(rf.bootTime) < rf.conf.bootDelay {
-			rf.candidateMx.Unlock()
-			return
-		}
-	} else if len(rf.relays) == 0 && len(rf.candidates) < rf.conf.minCandidates && rf.conf.clock.Since(rf.bootTime) < rf.conf.bootDelay {
+	if !rf.usesStaticRelay() && len(rf.relays) == 0 && len(rf.candidates) < rf.conf.minCandidates && rf.conf.clock.Since(rf.bootTime) < rf.conf.bootDelay {
 		// During the startup phase, we don't want to connect to the first candidate that we find.
 		// Instead, we wait until we've found at least minCandidates, and then select the best of those.
 		// However, if that takes too long (longer than bootDelay), we still go ahead.
@@ -582,6 +641,10 @@ func (rf *relayFinder) relayAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	rf.cachedAddrsExpiry = rf.conf.clock.Now().Add(30 * time.Second)
 
 	return raddrs
+}
+
+func (rf *relayFinder) usesStaticRelay() bool {
+	return len(rf.conf.staticRelays) > 0
 }
 
 func (rf *relayFinder) Start() error {
