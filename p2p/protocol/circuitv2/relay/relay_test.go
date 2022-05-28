@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
@@ -48,7 +49,7 @@ func getNetHosts(t *testing.T, ctx context.Context, n int) (hosts []host.Host, u
 		}
 
 		bwr := metrics.NewBandwidthCounter()
-		netw, err := swarm.NewSwarm(p, ps, swarm.WithMetrics(bwr))
+		netw, err := swarm.NewSwarm(p, ps, eventbus.NewBus(), swarm.WithMetrics(bwr))
 		if err != nil {
 			t.Fatal(err)
 		}

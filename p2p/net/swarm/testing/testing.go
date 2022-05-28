@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
-
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/control"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -17,11 +15,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -140,7 +140,8 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	if cfg.connectionGater != nil {
 		swarmOpts = append(swarmOpts, swarm.WithConnectionGater(cfg.connectionGater))
 	}
-	s, err := swarm.NewSwarm(id, ps, swarmOpts...)
+
+	s, err := swarm.NewSwarm(id, ps, eventbus.NewBus(), swarmOpts...)
 	require.NoError(t, err)
 
 	upgrader := GenUpgrader(t, s, cfg.connectionGater)

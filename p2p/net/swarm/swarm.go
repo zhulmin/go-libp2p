@@ -100,13 +100,6 @@ func WithResourceManager(m network.ResourceManager) Option {
 	}
 }
 
-func WithEventBus(b event.Bus) Option {
-	return func(s *Swarm) error {
-		s.eventBus = b
-		return nil
-	}
-}
-
 // Swarm is a connection muxer, allowing connections to other peers to
 // be opened and closed, while still using the same Chan for all
 // communication. The Chan sends/receives Messages, which note the
@@ -173,11 +166,12 @@ type Swarm struct {
 }
 
 // NewSwarm constructs a Swarm.
-func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm, error) {
+func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts ...Option) (*Swarm, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Swarm{
 		local:            local,
 		peers:            peers,
+		eventBus:         eventBus,
 		ctx:              ctx,
 		ctxCancel:        cancel,
 		dialTimeout:      defaultDialTimeout,
