@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/metrics"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -99,6 +100,13 @@ func WithResourceManager(m network.ResourceManager) Option {
 	}
 }
 
+func WithEventBus(b event.Bus) Option {
+	return func(s *Swarm) error {
+		s.eventBus = b
+		return nil
+	}
+}
+
 // Swarm is a connection muxer, allowing connections to other peers to
 // be opened and closed, while still using the same Chan for all
 // communication. The Chan sends/receives Messages, which note the
@@ -110,6 +118,8 @@ type Swarm struct {
 	// Close refcount. This allows us to fully wait for the swarm to be torn
 	// down before continuing.
 	refs sync.WaitGroup
+
+	eventBus event.Bus
 
 	rcmgr network.ResourceManager
 

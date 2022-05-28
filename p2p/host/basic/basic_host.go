@@ -32,7 +32,6 @@ import (
 	"github.com/libp2p/go-netroute"
 
 	logging "github.com/ipfs/go-log/v2"
-
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -108,6 +107,9 @@ var _ host.Host = (*BasicHost)(nil)
 // HostOpts holds options that can be passed to NewHost in order to
 // customize construction of the *BasicHost.
 type HostOpts struct {
+	// EventBus sets the event bus. Will construct a new event bus if omitted.
+	EventBus event.Bus
+
 	// MultistreamMuxer is essential for the *BasicHost and will use a sensible default value if omitted.
 	MultistreamMuxer *msmux.MultistreamMuxer[protocol.ID]
 
@@ -164,16 +166,11 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	if opts == nil {
 		opts = &HostOpts{}
 	}
-
-	var eventBus event.Bus
-	if opts.EnableMetrics {
-		eventBus = eventbus.NewBus(
-			eventbus.WithMetricsTracer(eventbus.NewMetricsTracer(eventbus.WithRegisterer(opts.PrometheusRegisterer))))
-	} else {
-		eventBus = eventbus.NewBus()
+	if opts.EventBus == nil {
+		opts.EventBus = eventbus.NewBus()
 	}
 
-	psManager, err := pstoremanager.NewPeerstoreManager(n.Peerstore(), eventBus)
+	psManager, err := pstoremanager.NewPeerstoreManager(n.Peerstore(), opts.EventBus)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +183,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		negtimeout:              DefaultNegotiationTimeout,
 		AddrsFactory:            DefaultAddrsFactory,
 		maResolver:              madns.DefaultResolver,
-		eventbus:                eventBus,
+		eventbus:                opts.EventBus,
 		addrChangeChan:          make(chan struct{}, 1),
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
