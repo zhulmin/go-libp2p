@@ -1,6 +1,7 @@
 package autorelay_test
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -161,6 +162,7 @@ func TestSingleCandidate(t *testing.T) {
 }
 
 func TestSingleRelay(t *testing.T) {
+	start := time.Now()
 	const numCandidates = 3
 	var counter int
 	h := newPrivateNode(t,
@@ -172,6 +174,7 @@ func TestSingleRelay(t *testing.T) {
 			for i := 0; i < num; i++ {
 				r := newRelay(t)
 				t.Cleanup(func() { r.Close() })
+				fmt.Println("providing relay", i, time.Since(start))
 				peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
 			}
 			return peerChan
@@ -182,6 +185,7 @@ func TestSingleRelay(t *testing.T) {
 	)
 	defer h.Close()
 
+	fmt.Println("starting eventually", time.Since(start))
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 5*time.Second, 100*time.Millisecond)
 	// test that we don't add any more relays
 	require.Never(t, func() bool { return numRelays(h) > 1 }, 200*time.Millisecond, 50*time.Millisecond)
