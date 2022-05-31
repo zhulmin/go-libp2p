@@ -373,16 +373,16 @@ func TestIdentifyDeltaOnProtocolChange(t *testing.T) {
 		ids2.Close()
 	}()
 
-	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
-		t.Fatal(err)
-	}
-
 	idComplete, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
 	require.NoError(t, err)
 	defer idComplete.Close()
 	idFailed, err := h1.EventBus().Subscribe(&event.EvtPeerIdentificationFailed{})
 	require.NoError(t, err)
 	defer idFailed.Close()
+
+	if err := h1.Connect(ctx, peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}); err != nil {
+		t.Fatal(err)
+	}
 
 	conn := h1.Network().ConnsToPeer(h2.ID())[0]
 	select {
