@@ -8,7 +8,6 @@ import (
 	pb "github.com/libp2p/go-libp2p/p2p/host/autonat/pb"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
-	testutils "github.com/libp2p/go-libp2p/testing"
 
 	"github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -121,7 +120,7 @@ func TestAutoNATPrivate(t *testing.T) {
 	}
 
 	connect(t, hs, hc)
-	expectEvent(t, s, network.ReachabilityPrivate, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 }
 
 func TestAutoNATPublic(t *testing.T) {
@@ -143,7 +142,7 @@ func TestAutoNATPublic(t *testing.T) {
 	}
 
 	connect(t, hs, hc)
-	expectEvent(t, s, network.ReachabilityPublic, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 }
 
 func TestAutoNATPublictoPrivate(t *testing.T) {
@@ -164,14 +163,14 @@ func TestAutoNATPublictoPrivate(t *testing.T) {
 	}
 
 	connect(t, hs, hc)
-	expectEvent(t, s, network.ReachabilityPublic, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
 	hs.SetStreamHandler(AutoNATProto, sayPrivateStreamHandler(t))
 	hps := makeAutoNATServicePrivate(t)
 	connect(t, hps, hc)
 	identifyAsServer(hps, hc)
 
-	expectEvent(t, s, network.ReachabilityPrivate, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 }
 
 func TestAutoNATIncomingEvents(t *testing.T) {
@@ -229,7 +228,7 @@ func TestAutoNATObservationRecording(t *testing.T) {
 		t.Fatalf("failed to transition to public.")
 	}
 
-	expectEvent(t, s, network.ReachabilityPublic, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
 	// a single recording should have confidence still at 0, and transition to private quickly.
 	an.recordObservation(autoNATResult{network.ReachabilityPrivate, nil})
@@ -237,7 +236,7 @@ func TestAutoNATObservationRecording(t *testing.T) {
 		t.Fatalf("failed to transition to private.")
 	}
 
-	expectEvent(t, s, network.ReachabilityPrivate, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 
 	// stronger public confidence should be harder to undo.
 	an.recordObservation(autoNATResult{network.ReachabilityPublic, addr})
@@ -246,7 +245,7 @@ func TestAutoNATObservationRecording(t *testing.T) {
 		t.Fatalf("failed to transition to public.")
 	}
 
-	expectEvent(t, s, network.ReachabilityPublic, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPublic, 3*time.Second)
 
 	an.recordObservation(autoNATResult{network.ReachabilityPrivate, nil})
 	if an.Status() != network.ReachabilityPublic {
@@ -270,5 +269,5 @@ func TestStaticNat(t *testing.T) {
 	if nat.Status() != network.ReachabilityPrivate {
 		t.Fatalf("should be private")
 	}
-	expectEvent(t, s, network.ReachabilityPrivate, testutils.ScaleDuration(2*time.Second))
+	expectEvent(t, s, network.ReachabilityPrivate, 3*time.Second)
 }
