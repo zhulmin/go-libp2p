@@ -96,10 +96,18 @@ func TestClose(t *testing.T) {
 	}))
 
 	// make sure the event is sent before we close
-	<-sub.Out()
+	select {
+	case <-sub.Out():
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Hit timeout")
+	}
 
 	done := make(chan struct{})
 	pstore.EXPECT().RemovePeer(peer.ID("foobar")).Do(func(peer.ID) { close(done) })
 	require.NoError(t, man.Close())
-	<-done
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Hit timeout")
+	}
 }
