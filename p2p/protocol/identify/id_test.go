@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	pb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
@@ -212,8 +213,8 @@ func TestIDService(t *testing.T) {
 	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p)) // h1 should have h2's public key
 
 	// Need both sides to actually notice that the connection has been closed.
-	sentDisconnect1 := swarmt.WaitForDisconnectNotification(swarm1)
-	sentDisconnect2 := swarmt.WaitForDisconnectNotification(swarm2)
+	sentDisconnect1 := waitForDisconnectNotification(swarm1)
+	sentDisconnect2 := waitForDisconnectNotification(swarm2)
 	h1.Network().ClosePeer(h2p)
 	h2.Network().ClosePeer(h1p)
 	if len(h2.Network().ConnsToPeer(h1.ID())) != 0 || len(h1.Network().ConnsToPeer(h2.ID())) != 0 {
@@ -233,7 +234,7 @@ func TestIDService(t *testing.T) {
 	// the addrs had their TTLs reduced on disconnect, and
 	// will be forgotten soon after
 	t.Log("testing addrs after TTL expiration")
-	clk.Add(10 * time.Second)
+	clk.Add(time.Second)
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{})
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{})
 	testHasCertifiedAddrs(t, h1, h2p, []ma.Multiaddr{})
@@ -869,8 +870,8 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p)) // h1 should have h2's public key
 
 	// Need both sides to actually notice that the connection has been closed.
-	sentDisconnect1 := swarmt.WaitForDisconnectNotification(swarm1)
-	sentDisconnect2 := swarmt.WaitForDisconnectNotification(swarm2)
+	sentDisconnect1 := waitForDisconnectNotification(swarm1)
+	sentDisconnect2 := waitForDisconnectNotification(swarm2)
 	h1.Network().ClosePeer(h2p)
 	h2.Network().ClosePeer(h1p)
 	if len(h2.Network().ConnsToPeer(h1.ID())) != 0 || len(h1.Network().ConnsToPeer(h2.ID())) != 0 {
@@ -1113,4 +1114,20 @@ func waitForAddrInStream(t *testing.T, s <-chan ma.Multiaddr, expected ma.Multia
 			t.Fatalf(failMsg)
 		}
 	}
+}
+
+func waitForDisconnectNotification(swarm *swarm.Swarm) <-chan struct{} {
+	done := make(chan struct{})
+	var nb *network.NotifyBundle
+	nb = &network.NotifyBundle{
+		DisconnectedF: func(n network.Network, c network.Conn) {
+			go func() {
+				swarm.StopNotify(nb)
+			}()
+			close(done)
+		},
+	}
+	swarm.Notify(nb)
+
+	return done
 }
