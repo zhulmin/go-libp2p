@@ -1,0 +1,143 @@
+#+TITLE: Info
+
+#+begin_src bash :results table
+gh run list -L 200 -w "Go Test" | ag failure > ./failures.tsv
+#+end_src
+
+#+RESULTS:
+| completed | failure | update go-libp2p-core, remove stream methods from network.Notifiee (#1521) | Go Test | master | push | 2384868440 | 16m24s     |           1d |
+| completed | failure | chore: update deps (#1522)                                                 | Go Test | master | push | 2383644610 | 14m34s     |           1d |
+| completed | failure | Merge pull request #1513 from libp2p/merge-nat                             | Go Test | master | push | 2359324647 | 12m35s     |           6d |
+| completed | failure | swarm: fix flaky TestDialExistingConnection test (#1509)                   | Go Test | master | push | 2350655852 | 13m27s     |           7d |
+| completed | failure | increase overly short require.Eventually intervals (#1501)                 | Go Test | master | push | 2347674794 | 2h25m9s    |           8d |
+| completed | failure | holepunch: fix incorrect message type for the SYNC message (#1478)         | Go Test | master | push | 2303112695 | 115h21m50s |          16d |
+| completed | failure | Merge pull request #1465 from libp2p/merge-pnet                            | Go Test | master | push | 2265041238 | 13m29s     |          23d |
+| completed | failure | Merge pull request #1466 from libp2p/merge-tls                             | Go Test | master | push | 2265013609 | 11m8s      |          23d |
+| completed | failure | remove flaky TestTcpSimultaneousConnect (#1425)                            | Go Test | master | push | 2208855309 | 14m10s     | Apr 22, 2022 |
+| completed | failure | fix flaky TestResourceManagerAcceptStream test (#1420)                     | Go Test | master | push | 2208434543 | 14m26s     | Apr 22, 2022 |
+| completed | failure | Merge pull request #1418 from libp2p/merge-tcp                             | Go Test | master | push | 2208382347 | 14m37s     | Apr 22, 2022 |
+| completed | failure | reduce flakiness of AutoRelay TestBackoff test (#1400)                     | Go Test | master | push | 2177444896 | 55m49s     | Apr 16, 2022 |
+| completed | failure | remove note about gx from README (#1385)                                   | Go Test | master | push | 2168143276 | 1h15m23s   | Apr 14, 2022 |
+| completed | failure | chore: update transport dependencies (#1387)                               | Go Test | master | push | 2150452230 | 50m37s     | Apr 11, 2022 |
+
+#+begin_src bash :results output
+gh run view -h
+#+end_src
+
+#+RESULTS:
+#+begin_example
+View a summary of a workflow run
+
+USAGE
+  gh run view [<run-id>] [flags]
+
+FLAGS
+      --exit-status   Exit with non-zero status if run failed
+  -j, --job string    View a specific job ID from a run
+      --log           View full log for either a run or specific job
+      --log-failed    View the log for any failed steps in a run or specific job
+  -v, --verbose       Show job steps
+  -w, --web           Open run in the browser
+
+INHERITED FLAGS
+      --help                     Show help for command
+  -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
+
+EXAMPLES
+  # Interactively select a run to view, optionally selecting a single job
+  $ gh run view
+
+  # View a specific run
+  $ gh run view 12345
+
+  # View a specific job within a run
+  $ gh run view --job 456789
+
+  # View the full log for a specific job
+  $ gh run view --log --job 456789
+
+  # Exit non-zero if a run failed
+  $ gh run view 0451 --exit-status && echo "run pending or passed"
+
+LEARN MORE
+  Use 'gh <command> <subcommand> --help' for more information about a command.
+  Read the manual at https://cli.github.com/manual
+
+#+end_example
+
+
+#+begin_src bash :results table
+cat /tmp/stuff.tsv | cut -f7 | xargs -I{} gh run view --log-failed {} | ag "FAIL:"
+#+end_src
+
+#+RESULTS:
+| windows (go 1.18.x) | Run tests (32 bit)           | 2022-05-26T19:43:31.8871881Z --- FAIL: TestSignedPeerRecordWithNoListenAddrs (0.15s)            |
+| windows (go 1.17.x) | Run tests (32 bit)           | 2022-05-26T12:28:35.2584375Z --- FAIL: TestSignedPeerRecordWithNoListenAddrs (0.16s)            |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.6412796Z --- FAIL: TestSingleRelay (5.70s)                                  |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.6501125Z --- FAIL: TestMaxBackoffs (2.36s)                                  |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.6608971Z --- FAIL: TestRelayV1 (5.19s)                                      |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.6610149Z     --- FAIL: TestRelayV1/relay_v1_support_enabled (0.97s)         |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.6771305Z --- FAIL: TestHostProtoMismatch (0.10s)                            |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.6963180Z --- FAIL: TestNewDialOld (0.13s)                                   |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.7220594Z --- FAIL: TestProtoDowngrade (0.17s)                               |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:21:19.7426317Z --- FAIL: TestPeerConnectedness (0.05s)                            |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:08.4162589Z --- FAIL: TestReservationFailures (10.63s)                         |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:08.4163154Z     --- FAIL: TestReservationFailures/unsupported_protocol (2.22s) |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:08.4163754Z     --- FAIL: TestReservationFailures/wrong_message_type (3.33s)   |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:08.4253275Z --- FAIL: TestNoHolePunchIfDirectConnExists (3.83s)                |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:08.4299241Z --- FAIL: TestDirectDialWorks (1.91s)                              |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:28.2851556Z --- FAIL: TestFastDisconnect (0.15s)                               |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:28.3072073Z --- FAIL: TestLargeIdentifyMessage (6.98s)                         |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:34.4061852Z --- FAIL: TestReconnect5 (14.59s)                                  |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:34.4062318Z     --- FAIL: TestReconnect5/using_TCP (7.24s)                     |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:34.4062797Z     --- FAIL: TestReconnect5/using_QUIC (7.34s)                    |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:54.3831592Z --- FAIL: TestEcho (3.94s)                                         |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:54.4029403Z --- FAIL: TestResourceManagerConnInbound (6.16s)                   |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:54.4141630Z --- FAIL: TestResourceManagerConnOutbound (5.18s)                  |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:54.4273005Z --- FAIL: TestResourceManagerServiceInbound (3.05s)                |
+| ubuntu (go 1.18.x)  | Run tests with race detector | 2022-05-26T12:24:54.4379679Z --- FAIL: TestResourceManagerServicePeerInbound (5.39s)            |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:17:52.2284513Z --- FAIL: TestResourceManagerConnInbound (2.75s)                   |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:17:52.2419119Z --- FAIL: TestResourceManagerServiceInbound (2.58s)                |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:17:52.2554662Z --- FAIL: TestResourceManagerServicePeerInbound (4.47s)            |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.6797632Z --- FAIL: TestSingleRelay (3.89s)                                  |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.6833479Z --- FAIL: TestBackoff (1.16s)                                      |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.6878746Z --- FAIL: TestMaxBackoffs (2.16s)                                  |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.6927773Z --- FAIL: TestRelayV1 (4.60s)                                      |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.6928215Z     --- FAIL: TestRelayV1/relay_v1_support_disabled (3.75s)        |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.7235654Z --- FAIL: TestHostSimple (0.09s)                                   |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.7354160Z --- FAIL: TestProtoDowngrade (0.11s)                               |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:18:14.7389758Z --- FAIL: TestPeerConnectedness (0.02s)                            |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:19:53.0794992Z --- FAIL: TestReservationFailures (9.21s)                          |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:19:53.0795496Z     --- FAIL: TestReservationFailures/unsupported_protocol (2.53s) |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:20:02.8441264Z --- FAIL: TestNoHolePunchIfDirectConnExists (1.13s)                |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:20:31.2839518Z --- FAIL: TestFastDisconnect (0.12s)                               |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:20:31.2905396Z --- FAIL: TestUserAgent (1.73s)                                    |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:20:31.2991124Z --- FAIL: TestLargeIdentifyMessage (12.78s)                        |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:20:31.3378290Z --- FAIL: TestReconnect5 (11.63s)                                  |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:20:31.3378672Z     --- FAIL: TestReconnect5/using_TCP (6.39s)                     |
+| ubuntu (go 1.17.x)  | Run tests with race detector | 2022-05-26T12:20:31.3379082Z     --- FAIL: TestReconnect5/using_QUIC (5.25s)                    |
+
+
+
+#+begin_src bash :results output
+gh api \
+  -H "Accept: application/vnd.github.v3+json" \
+  /repos/libp2p/go-libp2p/actions/runs/2390844639/attempts/1 | jq -r .logs_url | cut -c 23-
+#+end_src
+
+#+RESULTS:
+: /repos/libp2p/go-libp2p/actions/runs/2390844639/attempts/1/logs
+
+#+begin_src bash :results output
+
+cat flakyRunIDs.json | jq -r .[] | wc -l
+#+end_src
+
+#+RESULTS:
+: 205
+
+#+begin_src bash :results output
+cat flakyRunIDs.json | jq -r .[] | xargs -I {} env RUN_ID={} ./find-failure.sh
+#+end_src
+
+#+RESULTS:
