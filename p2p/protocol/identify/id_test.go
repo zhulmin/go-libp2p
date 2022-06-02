@@ -1123,13 +1123,16 @@ func waitForAddrInStream(t *testing.T, s <-chan ma.Multiaddr, expected ma.Multia
 
 func waitForDisconnectNotification(swarm *swarm.Swarm) <-chan struct{} {
 	done := make(chan struct{})
+	var once sync.Once
 	var nb *network.NotifyBundle
 	nb = &network.NotifyBundle{
 		DisconnectedF: func(n network.Network, c network.Conn) {
-			go func() {
-				swarm.StopNotify(nb)
-			}()
-			close(done)
+			once.Do(func() {
+				go func() {
+					swarm.StopNotify(nb)
+					close(done)
+				}()
+			})
 		},
 	}
 	swarm.Notify(nb)
