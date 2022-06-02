@@ -31,11 +31,16 @@ import (
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 
 	mockClock "github.com/benbjohnson/clock"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-msgio/protoio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	logging.SetLogLevel("net/identify", "debug")
+}
 
 func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
 	t.Helper()
