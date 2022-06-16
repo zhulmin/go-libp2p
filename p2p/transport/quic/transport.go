@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/hkdf"
@@ -38,17 +39,54 @@ var quicDialContext = quic.DialContext // so we can mock it in tests
 
 var HolePunchTimeout = 5 * time.Second
 
+type accept struct {
+	failures   [3]uint64
+	total      [3]uint64
+	startTime  time.Time
+	duration   time.Duration
+	percentage int
+}
+
+func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (b bool) {
+	d := a.duration / 3
+	// 0, 1, 2, 3, 4 --> 0, 1, 2, 0
+	cycle := int64(time.Now().Sub(a.startTime) / d)
+	arrayPos := cycle % 3
+
+	if token == nil {
+		return true
+	}
+
+	defer func() {
+		if !b {
+			atomic.AddUint64(&a.failures[arrayPos], 1)
+		} else if b && cycle >= 3 {
+			fail := atomic.LoadUint64(&a.failures[arrayPos])
+			total := atomic.LoadUint64(&a.total[arrayPos])
+
+			if (fail/total)*100 > uint64(a.percentage) {
+				b = false
+			}
+		}
+		atomic.AddUint64(&a.total[arrayPos], 1)
+	}()
+
+	var sourceAddr string
+	if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
+		sourceAddr = udpAddr.IP.String()
+	} else {
+		sourceAddr = clientAddr.String()
+	}
+	return sourceAddr == token.RemoteAddr
+}
+
 var quicConfig = &quic.Config{
 	MaxIncomingStreams:         256,
 	MaxIncomingUniStreams:      -1,             // disable unidirectional streams
 	MaxStreamReceiveWindow:     10 * (1 << 20), // 10 MB
 	MaxConnectionReceiveWindow: 15 * (1 << 20), // 15 MB
-	AcceptToken: func(clientAddr net.Addr, _ *quic.Token) bool {
-		// TODO(#6): require source address validation when under load
-		return true
-	},
-	KeepAlive: true,
-	Versions:  []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
+	KeepAlive:                  true,
+	Versions:                   []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
 }
 
 const statelessResetKeyInfo = "libp2p quic stateless reset key"
@@ -139,6 +177,7 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
 	}
+
 	localPeer, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
@@ -155,6 +194,8 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 		rcmgr = network.NullResourceManager
 	}
 	config := quicConfig.Clone()
+	config.AcceptToken = new(accept).acceptFunction
+
 	keyBytes, err := key.Raw()
 	if err != nil {
 		return nil, err
@@ -179,6 +220,7 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	config.AllowConnectionWindowIncrease = tr.allowWindowIncrease
 	tr.serverConfig = config
 	tr.clientConfig = config.Clone()
+	tr.clientConfig.AcceptToken = new(accept).acceptFunction
 	return tr, nil
 }
 

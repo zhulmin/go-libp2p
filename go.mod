@@ -32,7 +32,7 @@ require (
 	github.com/libp2p/go-reuseport v0.2.0
 	github.com/libp2p/go-yamux/v3 v3.1.1
 	github.com/libp2p/zeroconf/v2 v2.1.1
-	github.com/lucas-clemente/quic-go v0.27.1
+	github.com/lucas-clemente/quic-go v0.27.2
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b
 	github.com/minio/sha256-simd v1.0.0
@@ -81,8 +81,8 @@ require (
 	github.com/libp2p/go-flow-metrics v0.0.3 // indirect
 	github.com/libp2p/go-openssl v0.0.7 // indirect
 	github.com/marten-seemann/qtls-go1-16 v0.1.5 // indirect
-	github.com/marten-seemann/qtls-go1-17 v0.1.1 // indirect
-	github.com/marten-seemann/qtls-go1-18 v0.1.1 // indirect
+	github.com/marten-seemann/qtls-go1-17 v0.1.2 // indirect
+	github.com/marten-seemann/qtls-go1-18 v0.1.2 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
