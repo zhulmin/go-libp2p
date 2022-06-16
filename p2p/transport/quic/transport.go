@@ -31,8 +31,6 @@ import (
 	"github.com/minio/sha256-simd"
 )
 
-const LENGTH = 3
-
 var log = logging.Logger("quic-transport")
 
 var ErrHolePunching = errors.New("hole punching attempted; no active dial")
@@ -41,19 +39,21 @@ var quicDialContext = quic.DialContext // so we can mock it in tests
 
 var HolePunchTimeout = 5 * time.Second
 
+const bufferLength = 3
+
 type accept struct {
-	failures   [LENGTH]uint64
-	total      [LENGTH]uint64
+	failures   [bufferLength]uint64
+	total      [bufferLength]uint64
 	startTime  time.Time
 	duration   time.Duration
 	percentage int
 }
 
 func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (b bool) {
-	d := a.duration / 3
+	d := a.duration / bufferLength
 	// 0, 1, 2, 3, 4 --> 0, 1, 2, 0
 	cycle := int64(time.Now().Sub(a.startTime) / d)
-	arrayPos := cycle % LENGTH
+	arrayPos := cycle % bufferLength
 
 	if token == nil {
 		return true
@@ -62,7 +62,7 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (b bool)
 	defer func() {
 		if !b {
 			atomic.AddUint64(&a.failures[arrayPos], 1)
-		} else if b && cycle >= 3 {
+		} else if b && cycle >= bufferLength {
 			fail := atomic.LoadUint64(&a.failures[arrayPos])
 			total := atomic.LoadUint64(&a.total[arrayPos])
 
