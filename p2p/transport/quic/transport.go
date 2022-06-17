@@ -42,19 +42,19 @@ var HolePunchTimeout = 5 * time.Second
 // The higher the value, the more accurate the result, but more resources will be used
 const bufferLength = 3
 
-type circularBuffer struct {
+type bufferEntry struct {
 	failedRetries, retries, total uint
 }
 
 type accept struct {
-	buffer           [bufferLength]circularBuffer
+	buffer           [bufferLength]bufferEntry
 	mtx              sync.Mutex
 	duration         time.Duration
 	fraction         float64
 	start            sync.Once
-	startTime        time.Time
-	lastCycle        int64
-	retryProbability float64
+	startTime        time.Time // Time of the first execution
+	lastCycle        int64     // last period id (incremental)
+	retryProbability float64   // probability for the Retry packet in the actual time window
 }
 
 func (a *accept) setOptions(duration time.Duration, fraction float64) *accept {
@@ -73,55 +73,54 @@ func (a *accept) setOptions(duration time.Duration, fraction float64) *accept {
 
 func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 	a.start.Do(func() { a.startTime = time.Now() })
-	success := true
 	durationOfArrayPosition := a.duration / bufferLength
 	currentCycle := int64(time.Since(a.startTime) / durationOfArrayPosition)
 	arrayPosition := currentCycle % bufferLength
+	current := &a.buffer[arrayPosition]
+	success := true
 
 	a.mtx.Lock()
 	if currentCycle > a.lastCycle {
-		// Set the probability for the Retry packet in this time window
-		var total uint
+		var sumTotal uint
 		for i := range a.buffer {
-			total += a.buffer[i].total
+			sumTotal += a.buffer[i].total
 		}
-		a.retryProbability = math.Log2(float64(total))
-
-		// Reset counters in circular buffer
-		a.buffer[arrayPosition] = circularBuffer{}
+		if sumTotal > 0 {
+			a.retryProbability = math.Log2(float64(sumTotal))
+		} else {
+			a.retryProbability = 0
+		}
+		*current = bufferEntry{}
 		a.lastCycle = currentCycle
 	}
 
 	if token == nil {
 		if currentCycle >= bufferLength {
-			var fail uint
-			var total uint
-			var retries uint
+			sumAll := bufferEntry{}
 			for i := 0; i < bufferLength; i++ {
-				buf := a.buffer[i]
-				fail += buf.failedRetries
-				retries += buf.retries
-				total += buf.total
+				sumAll = bufferEntry{
+					failedRetries: sumAll.failedRetries + a.buffer[i].failedRetries,
+					retries:       sumAll.retries + a.buffer[i].retries,
+					total:         sumAll.total + a.buffer[i].total,
+				}
 			}
 
-			// Random sampling if in the current time window
-			// the connections are above the average
-			otherPositionsAverage := float64(total-a.buffer[arrayPosition].total) / (bufferLength - 1)
-			if float64(a.buffer[arrayPosition].total) >= otherPositionsAverage {
+			// Random sampling if in the current time window the connections are above the average
+			otherPositionsAverage := float64(sumAll.total-current.total) / (bufferLength - 1)
+			if float64(current.total) >= otherPositionsAverage {
 				// Use a predefined probability to limit the number of Retry packets
-				if rand.Intn(int(total)) > int(math.Round(a.retryProbability)) {
+				if rand.Intn(int(sumAll.total)) > int(math.Round(a.retryProbability)) {
 					success = false
 				}
 			}
 
 			// Check Retry fail ratio
-			if retries > 0 && float64(fail)/float64(retries) > a.fraction {
+			if sumAll.retries > 0 && float64(sumAll.failedRetries)/float64(sumAll.retries) > a.fraction {
 				success = false
 			}
 		}
-
 		if success {
-			a.buffer[arrayPosition].total += 1
+			current.total += 1
 		}
 	} else {
 		var sourceAddr string
@@ -132,10 +131,10 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 		}
 		success = sourceAddr == token.RemoteAddr
 
-		a.buffer[arrayPosition].total += 1
-		a.buffer[arrayPosition].retries += 1
+		current.total += 1
+		current.retries += 1
 		if !success {
-			a.buffer[arrayPosition].failedRetries += 1
+			current.failedRetries += 1
 		}
 	}
 	a.mtx.Unlock()
