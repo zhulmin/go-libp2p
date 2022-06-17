@@ -350,7 +350,7 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 	dials := 0
 	for {
 		// will prefer direct connections over relayed connections for opening streams
-		c := s.bestConnToPeer(p)
+		c := s.bestAcceptableConnToPeer(ctx, p)
 		if c == nil {
 			if nodial, _ := network.GetNoDial(ctx); nodial {
 				return nil, network.ErrNoConn
