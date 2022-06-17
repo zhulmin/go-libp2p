@@ -65,6 +65,7 @@ func newAccept(duration time.Duration, fraction float64) *accept {
 
 	a.duration = duration
 	a.fraction = fraction
+	a.lastCycle = -1
 	a.startTime = time.Now()
 	a.buffer = make([]bufferEntry, 0, bufferCap)
 	return a
