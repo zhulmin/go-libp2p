@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/rand"
 	"net"
 	"sync"
@@ -39,88 +38,81 @@ var quicDialContext = quic.DialContext // so we can mock it in tests
 
 var HolePunchTimeout = 5 * time.Second
 
-// The higher the value, the more accurate the result, but more resources will be used
-const bufferLength = 3
+const bufferCap = 5
 
 type bufferEntry struct {
-	failedRetries, retries, total uint
+	handshakes, total uint
 }
 
 type accept struct {
-	buffer           [bufferLength]bufferEntry
-	mtx              sync.Mutex
-	duration         time.Duration
-	fraction         float64
-	start            sync.Once
-	startTime        time.Time // Time of the first execution
-	lastCycle        int64     // last period id (incremental)
-	retryProbability float64   // probability for the Retry packet in the actual time window
+	buffer    []bufferEntry
+	mtx       sync.Mutex
+	duration  time.Duration
+	fraction  float64
+	startTime time.Time // Time of the first execution
+	lastCycle int       // last period id (incremental)
 }
 
-func (a *accept) setOptions(duration time.Duration, fraction float64) *accept {
-	if duration == 0 {
-		duration = 5 * time.Minute
-	}
+func newAccept(duration time.Duration, fraction float64) *accept {
+	a := new(accept)
 
+	if duration == 0 {
+		duration = 1 * time.Minute
+	}
 	if fraction == 0 {
 		fraction = 0.5
 	}
 
 	a.duration = duration
 	a.fraction = fraction
+	a.startTime = time.Now()
+	a.buffer = make([]bufferEntry, 0, bufferCap)
 	return a
 }
 
-func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
-	a.start.Do(func() { a.startTime = time.Now() })
-	durationOfArrayPosition := a.duration / bufferLength
-	currentCycle := int64(time.Since(a.startTime) / durationOfArrayPosition)
-	arrayPosition := currentCycle % bufferLength
-	current := &a.buffer[arrayPosition]
-	success := true
-
-	a.mtx.Lock()
+func (a *accept) getPosition() (currentCycle, arrayPosition int) {
+	currentCycle = int(time.Since(a.startTime) / a.duration)
+	arrayPosition = currentCycle % len(a.buffer)
 	if currentCycle > a.lastCycle {
-		var sumTotal uint
-		for i := range a.buffer {
-			sumTotal += a.buffer[i].total
-		}
-		if sumTotal > 0 {
-			a.retryProbability = math.Log2(float64(sumTotal))
+		if len(a.buffer) < cap(a.buffer) {
+			a.buffer = append(a.buffer, bufferEntry{})
+			arrayPosition = len(a.buffer) - 1
 		} else {
-			a.retryProbability = 0
+			a.buffer[arrayPosition] = bufferEntry{}
 		}
-		*current = bufferEntry{}
 		a.lastCycle = currentCycle
 	}
+	return
+}
 
+func (a *accept) newHandshake() {
+	a.mtx.Lock()
+	_, i := a.getPosition()
+	a.buffer[i].handshakes += 1
+	a.mtx.Unlock()
+}
+
+func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
+	success := true
+	a.mtx.Lock()
+	currentCycle, index := a.getPosition()
 	if token == nil {
-		if currentCycle >= bufferLength {
+		if currentCycle >= cap(a.buffer) {
 			sumAll := bufferEntry{}
-			for i := 0; i < bufferLength; i++ {
+			for i := range a.buffer {
 				sumAll = bufferEntry{
-					failedRetries: sumAll.failedRetries + a.buffer[i].failedRetries,
-					retries:       sumAll.retries + a.buffer[i].retries,
-					total:         sumAll.total + a.buffer[i].total,
-				}
-			}
-
-			// Random sampling if in the current time window the connections are above the average
-			otherPositionsAverage := float64(sumAll.total-current.total) / (bufferLength - 1)
-			if float64(current.total) >= otherPositionsAverage {
-				// Use a predefined probability to limit the number of Retry packets
-				if rand.Intn(int(sumAll.total)) > int(math.Round(a.retryProbability)) {
-					success = false
+					handshakes: sumAll.handshakes + a.buffer[i].handshakes,
+					total:      sumAll.total + a.buffer[i].total,
 				}
 			}
 
 			// Check Retry fail ratio
-			if sumAll.retries > 0 && float64(sumAll.failedRetries)/float64(sumAll.retries) > a.fraction {
+			if sumAll.total > 0 && float64(sumAll.handshakes)/float64(sumAll.total) < a.fraction {
 				success = false
 			}
 		}
 		if success {
-			current.total += 1
+			a.buffer[index].total += 1
 		}
 	} else {
 		var sourceAddr string
@@ -130,15 +122,11 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 			sourceAddr = clientAddr.String()
 		}
 		success = sourceAddr == token.RemoteAddr
-
-		current.total += 1
-		current.retries += 1
-		if !success {
-			current.failedRetries += 1
+		if !token.IsRetryToken {
+			a.buffer[index].total += 1
 		}
 	}
 	a.mtx.Unlock()
-
 	return success
 }
 
@@ -232,6 +220,8 @@ type transport struct {
 
 	fraction float64
 	period   time.Duration
+
+	acceptor *accept
 }
 
 var _ tpt.Transport = &transport{}
@@ -286,7 +276,6 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	}
 
 	config := quicConfig.Clone()
-	config.AcceptToken = new(accept).setOptions(tr.period, tr.fraction).acceptFunction
 
 	keyBytes, err := key.Raw()
 	if err != nil {
@@ -302,7 +291,9 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	config.AllowConnectionWindowIncrease = tr.allowWindowIncrease
 	tr.serverConfig = config
 	tr.clientConfig = config.Clone()
-	tr.clientConfig.AcceptToken = new(accept).setOptions(tr.period, tr.fraction).acceptFunction
+
+	tr.acceptor = newAccept(tr.period, tr.fraction)
+	tr.serverConfig.AcceptToken = tr.acceptor.acceptFunction
 	return tr, nil
 }
 
@@ -383,6 +374,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 }
 
 func (t *transport) addConn(conn quic.Connection, c *conn) {
+	t.acceptor.newHandshake()
 	t.connMx.Lock()
 	t.conns[conn] = c
 	t.connMx.Unlock()
