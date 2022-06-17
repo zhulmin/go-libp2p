@@ -68,30 +68,30 @@ func (a *accept) setOptions(duration time.Duration, fraction float64) *accept {
 	return a
 }
 
-func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (success bool) {
+func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 	a.start.Do(func() { a.startTime = time.Now() })
+	success := true
+	durationOfArrayPosition := a.duration / bufferLength
+	currentCycle := int64(time.Since(a.startTime) / durationOfArrayPosition)
+	arrayPosition := currentCycle % bufferLength
 
-	defer func() {
-		durationOfArrayPosition := a.duration / bufferLength
-		currentCycle := int64(time.Since(a.startTime) / durationOfArrayPosition)
-		arrayPosition := currentCycle % bufferLength
-
-		a.mtx.Lock()
-		if currentCycle > a.lastCycle {
-			// Set the probability for the Retry packet in this time window
-			var total uint
-			for i := range a.total {
-				total += a.total[i]
-			}
-			a.retryProbability = math.Log2(float64(total))
-
-			// Reset counters in circular buffer
-			a.failures[arrayPosition] = 0
-			a.total[arrayPosition] = 0
-			a.lastCycle = currentCycle
+	a.mtx.Lock()
+	if currentCycle > a.lastCycle {
+		// Set the probability for the Retry packet in this time window
+		var total uint
+		for i := range a.total {
+			total += a.total[i]
 		}
+		a.retryProbability = math.Log2(float64(total))
 
-		if token == nil && currentCycle >= bufferLength {
+		// Reset counters in circular buffer
+		a.failures[arrayPosition] = 0
+		a.total[arrayPosition] = 0
+		a.lastCycle = currentCycle
+	}
+
+	if token == nil {
+		if currentCycle >= bufferLength {
 			var fail uint
 			var total uint
 			for i := 0; i < bufferLength; i++ {
@@ -115,28 +115,26 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (success
 			}
 		}
 
-		if token == nil && success {
-			a.total[arrayPosition] += 1
-		} else if token != nil {
-			if !success {
-				a.failures[arrayPosition] += 1
-			}
+		if success {
 			a.total[arrayPosition] += 1
 		}
-		a.mtx.Unlock()
-	}()
-
-	if token == nil {
-		return true
-	}
-
-	var sourceAddr string
-	if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
-		sourceAddr = udpAddr.IP.String()
 	} else {
-		sourceAddr = clientAddr.String()
+		var sourceAddr string
+		if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
+			sourceAddr = udpAddr.IP.String()
+		} else {
+			sourceAddr = clientAddr.String()
+		}
+		success = sourceAddr == token.RemoteAddr
+
+		a.total[arrayPosition] += 1
+		if !success {
+			a.failures[arrayPosition] += 1
+		}
 	}
-	return sourceAddr == token.RemoteAddr
+	a.mtx.Unlock()
+
+	return success
 }
 
 var quicConfig = &quic.Config{
@@ -249,7 +247,6 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
 	}
-
 	localPeer, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
