@@ -54,7 +54,7 @@ type accept struct {
 	logarithmic float64
 }
 
-func (a *accept) SetOptions(duration time.Duration, fraction float64) *accept {
+func (a *accept) setOptions(duration time.Duration, fraction float64) *accept {
 	if duration == 0 {
 		duration = 5 * time.Minute
 	}
@@ -194,6 +194,16 @@ func (c *connManager) Close() error {
 	return c.reuseUDP4.Close()
 }
 
+type Option func(*transport) error
+
+func WithRetry(fraction float64, period time.Duration) Option {
+	return func(tr *transport) error {
+		tr.fraction = fraction
+		tr.period = period
+		return nil
+	}
+}
+
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
 	privKey      ic.PrivKey
@@ -210,6 +220,9 @@ type transport struct {
 
 	connMx sync.Mutex
 	conns  map[quic.Connection]*conn
+
+	fraction float64
+	period   time.Duration
 }
 
 var _ tpt.Transport = &transport{}
@@ -225,7 +238,7 @@ type activeHolePunch struct {
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
+func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
@@ -246,8 +259,26 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	if rcmgr == nil {
 		rcmgr = network.NullResourceManager
 	}
+
+	tr := &transport{
+		privKey:      key,
+		localPeer:    localPeer,
+		identity:     identity,
+		connManager:  connManager,
+		gater:        gater,
+		rcmgr:        rcmgr,
+		conns:        make(map[quic.Connection]*conn),
+		holePunching: make(map[holePunchKey]*activeHolePunch),
+	}
+
+	for _, o := range opts {
+		if err := o(tr); err != nil {
+			return nil, err
+		}
+	}
+
 	config := quicConfig.Clone()
-	config.AcceptToken = new(accept).acceptFunction
+	config.AcceptToken = new(accept).setOptions(tr.period, tr.fraction).acceptFunction
 
 	keyBytes, err := key.Raw()
 	if err != nil {
@@ -260,20 +291,10 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	}
 	config.Tracer = tracer
 
-	tr := &transport{
-		privKey:      key,
-		localPeer:    localPeer,
-		identity:     identity,
-		connManager:  connManager,
-		gater:        gater,
-		rcmgr:        rcmgr,
-		conns:        make(map[quic.Connection]*conn),
-		holePunching: make(map[holePunchKey]*activeHolePunch),
-	}
 	config.AllowConnectionWindowIncrease = tr.allowWindowIncrease
 	tr.serverConfig = config
 	tr.clientConfig = config.Clone()
-	tr.clientConfig.AcceptToken = new(accept).acceptFunction
+	tr.clientConfig.AcceptToken = new(accept).setOptions(tr.period, tr.fraction).acceptFunction
 	return tr, nil
 }
 
