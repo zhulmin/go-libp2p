@@ -42,9 +42,12 @@ var HolePunchTimeout = 5 * time.Second
 // The higher the value, the more accurate the result, but more resources will be used
 const bufferLength = 3
 
+type circularBuffer struct {
+	failedRetries, retries, total uint
+}
+
 type accept struct {
-	failures         [bufferLength]uint
-	total            [bufferLength]uint
+	buffer           [bufferLength]circularBuffer
 	mtx              sync.Mutex
 	duration         time.Duration
 	fraction         float64
@@ -79,14 +82,13 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 	if currentCycle > a.lastCycle {
 		// Set the probability for the Retry packet in this time window
 		var total uint
-		for i := range a.total {
-			total += a.total[i]
+		for i := range a.buffer {
+			total += a.buffer[i].total
 		}
 		a.retryProbability = math.Log2(float64(total))
 
 		// Reset counters in circular buffer
-		a.failures[arrayPosition] = 0
-		a.total[arrayPosition] = 0
+		a.buffer[arrayPosition] = circularBuffer{}
 		a.lastCycle = currentCycle
 	}
 
@@ -94,15 +96,18 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 		if currentCycle >= bufferLength {
 			var fail uint
 			var total uint
+			var retries uint
 			for i := 0; i < bufferLength; i++ {
-				fail += a.failures[i]
-				total += a.total[i]
+				buf := a.buffer[i]
+				fail += buf.failedRetries
+				retries += buf.retries
+				total += buf.total
 			}
 
 			// Random sampling if in the current time window
 			// the connections are above the average
-			otherPositionsAverage := float64(total-a.total[arrayPosition]) / (bufferLength - 1)
-			if float64(a.total[arrayPosition]) >= otherPositionsAverage {
+			otherPositionsAverage := float64(total-a.buffer[arrayPosition].total) / (bufferLength - 1)
+			if float64(a.buffer[arrayPosition].total) >= otherPositionsAverage {
 				// Use a predefined probability to limit the number of Retry packets
 				if rand.Intn(int(total)) > int(math.Round(a.retryProbability)) {
 					success = false
@@ -110,13 +115,13 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 			}
 
 			// Check Retry fail ratio
-			if float64(fail)/float64(total) > a.fraction {
+			if retries > 0 && float64(fail)/float64(retries) > a.fraction {
 				success = false
 			}
 		}
 
 		if success {
-			a.total[arrayPosition] += 1
+			a.buffer[arrayPosition].total += 1
 		}
 	} else {
 		var sourceAddr string
@@ -127,9 +132,10 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 		}
 		success = sourceAddr == token.RemoteAddr
 
-		a.total[arrayPosition] += 1
+		a.buffer[arrayPosition].total += 1
+		a.buffer[arrayPosition].retries += 1
 		if !success {
-			a.failures[arrayPosition] += 1
+			a.buffer[arrayPosition].failedRetries += 1
 		}
 	}
 	a.mtx.Unlock()
