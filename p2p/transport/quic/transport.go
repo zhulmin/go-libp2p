@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/hkdf"
@@ -39,39 +39,90 @@ var quicDialContext = quic.DialContext // so we can mock it in tests
 
 var HolePunchTimeout = 5 * time.Second
 
+// The higher the value, the more accurate the result, but more resources will be used
 const bufferLength = 3
 
 type accept struct {
-	failures   [bufferLength]uint64
-	total      [bufferLength]uint64
-	startTime  time.Time
-	duration   time.Duration
-	percentage int
+	failures    [bufferLength]uint64
+	total       [bufferLength]uint64
+	mtx         sync.Mutex
+	duration    time.Duration
+	fraction    float64
+	start       sync.Once
+	startTime   time.Time
+	lastCycle   int64
+	logarithmic float64
 }
 
-func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (b bool) {
-	d := a.duration / bufferLength
-	// 0, 1, 2, 3, 4 --> 0, 1, 2, 0
-	cycle := int64(time.Now().Sub(a.startTime) / d)
-	arrayPos := cycle % bufferLength
+func (a *accept) SetOptions(duration time.Duration, fraction float64) *accept {
+	if duration == 0 {
+		duration = 5 * time.Minute
+	}
+
+	if fraction == 0 {
+		fraction = 0.5
+	}
+
+	a.duration = duration
+	a.fraction = fraction
+	return a
+}
+
+func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (success bool) {
+	a.start.Do(func() { a.startTime = time.Now() })
+
+	defer func() {
+		singlePositionTime := a.duration / bufferLength
+		cycle := int64(time.Since(a.startTime) / singlePositionTime)
+		arrayPos := cycle % bufferLength
+
+		a.mtx.Lock()
+		if cycle > a.lastCycle {
+			var total uint64
+			for i := range a.total {
+				total += a.total[i]
+			}
+			a.logarithmic = math.Log2(float64(total))
+
+			// Reset counter in circular buffer
+			a.failures[arrayPos] = 0
+			a.lastCycle = cycle
+		}
+
+		if token != nil {
+			if !success {
+				a.failures[arrayPos] += 1
+			}
+			a.total[arrayPos] += 1
+		} else if cycle >= bufferLength {
+			var fail uint64
+			var total uint64
+			for i := 0; i < bufferLength; i++ {
+				fail += a.failures[i]
+				total += a.total[i]
+			}
+
+			// Random sampling if in the current time window
+			// the connections are above the average
+			otherPositionsAverage := (total - a.total[arrayPos]) / (bufferLength - 1)
+			if a.total[arrayPos] > otherPositionsAverage {
+				// Use Log base 2 as probability reference to limit the number of Retry packets
+				if rand.Intn(int(total)) > int(math.Round(a.logarithmic)) {
+					success = false
+				}
+			}
+
+			// Check Retry fail ratio
+			if float64(fail)/float64(total) > a.fraction {
+				success = false
+			}
+		}
+		a.mtx.Unlock()
+	}()
 
 	if token == nil {
 		return true
 	}
-
-	defer func() {
-		if !b {
-			atomic.AddUint64(&a.failures[arrayPos], 1)
-		} else if b && cycle >= bufferLength {
-			fail := atomic.LoadUint64(&a.failures[arrayPos])
-			total := atomic.LoadUint64(&a.total[arrayPos])
-
-			if (fail/total)*100 > uint64(a.percentage) {
-				b = false
-			}
-		}
-		atomic.AddUint64(&a.total[arrayPos], 1)
-	}()
 
 	var sourceAddr string
 	if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
