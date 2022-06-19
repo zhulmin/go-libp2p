@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/hkdf"
@@ -39,47 +38,109 @@ var quicDialContext = quic.DialContext // so we can mock it in tests
 
 var HolePunchTimeout = 5 * time.Second
 
-const bufferLength = 3
+const bufferCap = 5
 
-type accept struct {
-	failures   [bufferLength]uint64
-	total      [bufferLength]uint64
-	startTime  time.Time
-	duration   time.Duration
-	percentage int
+type bufferEntry struct {
+	handshakes, total uint
 }
 
-func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) (b bool) {
-	d := a.duration / bufferLength
-	// 0, 1, 2, 3, 4 --> 0, 1, 2, 0
-	cycle := int64(time.Now().Sub(a.startTime) / d)
-	arrayPos := cycle % bufferLength
+type status struct {
+	cycle, pos int
+	check      bool
+}
 
-	if token == nil {
-		return true
+type accept struct {
+	buffer    []bufferEntry
+	mtx       sync.Mutex
+	duration  time.Duration
+	fraction  float64
+	startTime time.Time
+	current   status
+}
+
+func newAccept(duration time.Duration, fraction float64) *accept {
+	a := new(accept)
+
+	if duration == 0 {
+		duration = 1 * time.Minute
+	}
+	if fraction == 0 {
+		fraction = 0.5
 	}
 
-	defer func() {
-		if !b {
-			atomic.AddUint64(&a.failures[arrayPos], 1)
-		} else if b && cycle >= bufferLength {
-			fail := atomic.LoadUint64(&a.failures[arrayPos])
-			total := atomic.LoadUint64(&a.total[arrayPos])
+	a.duration = duration
+	a.fraction = fraction
+	a.startTime = time.Now()
+	a.buffer = make([]bufferEntry, 1, bufferCap)
+	return a
+}
 
-			if (fail/total)*100 > uint64(a.percentage) {
-				b = false
+// Call it from inside a mutex to avoid a data race
+func (a *accept) getPosition() (bool, int) {
+	currentCycle := int(time.Since(a.startTime) / a.duration)
+	if currentCycle > a.current.cycle {
+		if len(a.buffer) < cap(a.buffer) {
+			a.buffer = append(a.buffer, bufferEntry{})
+			a.current = status{
+				cycle: currentCycle,
+				pos:   len(a.buffer) - 1,
+				check: false,
+			}
+		} else {
+			a.current = status{
+				cycle: currentCycle,
+				pos:   a.current.cycle % len(a.buffer),
+				check: true,
+			}
+			a.buffer[a.current.pos] = bufferEntry{}
+		}
+	}
+	return a.current.check, a.current.pos
+}
+
+func (a *accept) newHandshake() {
+	a.mtx.Lock()
+	_, i := a.getPosition()
+	a.buffer[i].handshakes += 1
+	a.mtx.Unlock()
+}
+
+func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
+	success := true
+	a.mtx.Lock()
+	checkRatio, index := a.getPosition()
+	if token == nil {
+		if checkRatio {
+			sumAll := bufferEntry{}
+			for i := range a.buffer {
+				sumAll = bufferEntry{
+					handshakes: sumAll.handshakes + a.buffer[i].handshakes,
+					total:      sumAll.total + a.buffer[i].total,
+				}
+			}
+
+			// Check Retry fail ratio
+			if sumAll.total > 0 && float64(sumAll.handshakes)/float64(sumAll.total) < a.fraction {
+				success = false
 			}
 		}
-		atomic.AddUint64(&a.total[arrayPos], 1)
-	}()
-
-	var sourceAddr string
-	if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
-		sourceAddr = udpAddr.IP.String()
+		if success {
+			a.buffer[index].total += 1
+		}
 	} else {
-		sourceAddr = clientAddr.String()
+		var sourceAddr string
+		if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
+			sourceAddr = udpAddr.IP.String()
+		} else {
+			sourceAddr = clientAddr.String()
+		}
+		success = sourceAddr == token.RemoteAddr
+		if !token.IsRetryToken {
+			a.buffer[index].total += 1
+		}
 	}
-	return sourceAddr == token.RemoteAddr
+	a.mtx.Unlock()
+	return success
 }
 
 var quicConfig = &quic.Config{
@@ -143,6 +204,16 @@ func (c *connManager) Close() error {
 	return c.reuseUDP4.Close()
 }
 
+type Option func(*transport) error
+
+func WithRetry(fraction float64, period time.Duration) Option {
+	return func(tr *transport) error {
+		tr.fraction = fraction
+		tr.period = period
+		return nil
+	}
+}
+
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
 	privKey      ic.PrivKey
@@ -159,6 +230,11 @@ type transport struct {
 
 	connMx sync.Mutex
 	conns  map[quic.Connection]*conn
+
+	fraction float64
+	period   time.Duration
+
+	acceptor *accept
 }
 
 var _ tpt.Transport = &transport{}
@@ -174,12 +250,11 @@ type activeHolePunch struct {
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
+func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
 	}
-
 	localPeer, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
@@ -195,8 +270,25 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	if rcmgr == nil {
 		rcmgr = network.NullResourceManager
 	}
+
+	tr := &transport{
+		privKey:      key,
+		localPeer:    localPeer,
+		identity:     identity,
+		connManager:  connManager,
+		gater:        gater,
+		rcmgr:        rcmgr,
+		conns:        make(map[quic.Connection]*conn),
+		holePunching: make(map[holePunchKey]*activeHolePunch),
+	}
+
+	for _, o := range opts {
+		if err := o(tr); err != nil {
+			return nil, err
+		}
+	}
+
 	config := quicConfig.Clone()
-	config.AcceptToken = new(accept).acceptFunction
 
 	keyBytes, err := key.Raw()
 	if err != nil {
@@ -209,20 +301,12 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	}
 	config.Tracer = tracer
 
-	tr := &transport{
-		privKey:      key,
-		localPeer:    localPeer,
-		identity:     identity,
-		connManager:  connManager,
-		gater:        gater,
-		rcmgr:        rcmgr,
-		conns:        make(map[quic.Connection]*conn),
-		holePunching: make(map[holePunchKey]*activeHolePunch),
-	}
 	config.AllowConnectionWindowIncrease = tr.allowWindowIncrease
 	tr.serverConfig = config
 	tr.clientConfig = config.Clone()
-	tr.clientConfig.AcceptToken = new(accept).acceptFunction
+
+	tr.acceptor = newAccept(tr.period, tr.fraction)
+	tr.serverConfig.AcceptToken = tr.acceptor.acceptFunction
 	return tr, nil
 }
 
@@ -303,6 +387,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 }
 
 func (t *transport) addConn(conn quic.Connection, c *conn) {
+	t.acceptor.newHandshake()
 	t.connMx.Lock()
 	t.conns[conn] = c
 	t.connMx.Unlock()
