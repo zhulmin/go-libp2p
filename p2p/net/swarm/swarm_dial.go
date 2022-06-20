@@ -248,10 +248,11 @@ func (s *Swarm) dialPeer(ctx context.Context, p peer.ID) (*Conn, error) {
 		return nil, ErrDialToSelf
 	}
 
-	// check if we already have an open (usable) connection first
-	conn := s.bestAcceptableConnToPeer(ctx, p)
-	if conn != nil {
-		return conn, nil
+	// check if we already have an open (usable) connection first, or can't have a usable
+	// connection.
+	conn, err := s.bestAcceptableConnToPeer(ctx, p)
+	if conn != nil || err != nil {
+		return conn, err
 	}
 
 	// apply the DialPeer timeout
