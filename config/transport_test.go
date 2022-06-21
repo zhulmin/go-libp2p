@@ -36,7 +36,7 @@ func TestConstructorWithOpts(t *testing.T) {
 		return tcp.NewTCPTransport(nil, nil)
 	}, 42, 1337)
 	require.NoError(t, err)
-	_, err = c(nil, nil, nil, nil, nil)
+	_, err = c(nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, []int{42, 1337}, options)
 }

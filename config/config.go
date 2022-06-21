@@ -188,7 +188,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 	if err != nil {
 		return err
 	}
-	tpts, err := makeTransports(h, upgrader, cfg.ConnectionGater, cfg.PSK, cfg.ResourceManager, cfg.Transports)
+	tpts, err := makeTransports(h, upgrader, cfg.ConnectionGater, cfg.PSK, cfg.ResourceManager, cfg.MultiaddrResolver, cfg.Transports)
 	if err != nil {
 		return err
 	}
