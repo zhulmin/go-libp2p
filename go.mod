@@ -40,7 +40,7 @@ require (
 	github.com/multiformats/go-multiaddr-dns v0.3.1
 	github.com/multiformats/go-multiaddr-fmt v0.1.0
 	github.com/multiformats/go-multihash v0.1.0
-	github.com/multiformats/go-multistream v0.3.1
+	github.com/multiformats/go-multistream v0.3.2
 	github.com/multiformats/go-varint v0.0.6
 	github.com/prometheus/client_golang v1.12.1
 	github.com/raulk/go-watchdog v1.2.0
