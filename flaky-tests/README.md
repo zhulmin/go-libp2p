@@ -22,7 +22,7 @@ id and attempt number.
    then unzip them in the logs folder, and highlight the failures in the log
    folder under failures.txt.
 1. Coalesce all the failures into a single failure txt file with:  `cat
-   */failures.txt > all-failures.txt`
+   logs/*/failures.txt > all-failures.txt`
 
 Now time to load this data into our second top flakey tests notebook.
 
