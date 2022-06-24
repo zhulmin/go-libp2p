@@ -64,18 +64,28 @@ var RandomIdentity = func(cfg *Config) error {
 
 // DefaultListenAddrs configures libp2p to use default listen address.
 var DefaultListenAddrs = func(cfg *Config) error {
-	defaultIP4ListenAddr, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+	defaultIP4TCPListenAddr, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/0")
+	if err != nil {
+		return err
+	}
+	defaultIP4QUICListenAddr, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/udp/0/quic")
 	if err != nil {
 		return err
 	}
 
-	defaultIP6ListenAddr, err := multiaddr.NewMultiaddr("/ip6/::/tcp/0")
+	defaultIP6TCPListenAddr, err := multiaddr.NewMultiaddr("/ip6/::/tcp/0")
+	if err != nil {
+		return err
+	}
+	defaultIP6QUICListenAddr, err := multiaddr.NewMultiaddr("/ip6/::/udp/0/quic")
 	if err != nil {
 		return err
 	}
 	return cfg.Apply(ListenAddrs(
-		defaultIP4ListenAddr,
-		defaultIP6ListenAddr,
+		defaultIP4TCPListenAddr,
+		defaultIP4QUICListenAddr,
+		defaultIP6TCPListenAddr,
+		defaultIP6QUICListenAddr,
 	))
 }
 
