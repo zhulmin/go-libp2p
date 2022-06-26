@@ -343,14 +343,7 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 	}
 
 	return ma.FilterAddrs(addrs,
-		func(addr ma.Multiaddr) bool {
-			for _, a := range ourAddrs {
-				if a.Equal(addr) {
-					return false
-				}
-			}
-			return true
-		},
+		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
 		s.canDial,
 		// TODO: Consider allowing link-local addresses
 		func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },

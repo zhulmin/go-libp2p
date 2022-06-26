@@ -110,14 +110,7 @@ func TestObsAddrSet(t *testing.T) {
 			return false
 		}
 		for _, aa := range a {
-			var found bool
-			for _, bb := range b {
-				if aa.Equal(bb) {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !ma.Contains(b, aa) {
 				return false
 			}
 		}
