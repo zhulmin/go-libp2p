@@ -116,7 +116,9 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 				success = false
 			}
 		}
-		a.history[len(a.history)-1].total += 1
+		if success {
+			a.history[len(a.history)-1].total += 1
+		}
 		a.mtx.Unlock()
 	} else {
 		var sourceAddr string
