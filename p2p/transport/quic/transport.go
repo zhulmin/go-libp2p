@@ -65,6 +65,7 @@ func newAccept(duration time.Duration, fraction float64) *accept {
 
 	a.duration = duration
 	a.fraction = fraction
+	a.history = make([]bufferEntry, 1, bufferCap)
 
 	ticker := time.NewTicker(duration)
 	a.quit = make(chan struct{})
@@ -88,7 +89,6 @@ func newAccept(duration time.Duration, fraction float64) *accept {
 		}
 	}()
 
-	a.history = make([]bufferEntry, 1, bufferCap)
 	return a
 }
 
@@ -100,8 +100,8 @@ func (a *accept) newHandshake() {
 
 func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 	success := true
-	a.mtx.Lock()
 	if token == nil {
+		a.mtx.Lock()
 		if a.checkRatio {
 			sumAll := bufferEntry{}
 			for i := range a.history {
@@ -117,6 +117,7 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 			}
 		}
 		a.history[len(a.history)-1].total += 1
+		a.mtx.Unlock()
 	} else {
 		var sourceAddr string
 		if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
@@ -126,11 +127,16 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 		}
 		success = sourceAddr == token.RemoteAddr
 		if !token.IsRetryToken {
+			a.mtx.Lock()
 			a.history[len(a.history)-1].total += 1
+			a.mtx.Unlock()
 		}
 	}
-	a.mtx.Unlock()
 	return success
+}
+
+func (a *accept) close() {
+	close(a.quit)
 }
 
 var quicConfig = &quic.Config{
@@ -523,6 +529,6 @@ func (t *transport) String() string {
 }
 
 func (t *transport) Close() error {
-	close(t.acceptor.quit)
+	t.acceptor.close()
 	return t.connManager.Close()
 }
