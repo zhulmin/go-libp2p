@@ -44,18 +44,13 @@ type bufferEntry struct {
 	handshakes, total uint
 }
 
-type status struct {
-	cycle, pos int
-	check      bool
-}
-
 type accept struct {
-	buffer    []bufferEntry
-	mtx       sync.Mutex
-	duration  time.Duration
-	fraction  float64
-	startTime time.Time
-	current   status
+	history    []bufferEntry
+	mtx        sync.Mutex
+	duration   time.Duration
+	fraction   float64
+	checkRatio bool
+	quit       chan struct{}
 }
 
 func newAccept(duration time.Duration, fraction float64) *accept {
@@ -70,52 +65,49 @@ func newAccept(duration time.Duration, fraction float64) *accept {
 
 	a.duration = duration
 	a.fraction = fraction
-	a.startTime = time.Now()
-	a.buffer = make([]bufferEntry, 1, bufferCap)
-	return a
-}
 
-// Call it from inside a mutex to avoid a data race
-func (a *accept) getPosition() (bool, int) {
-	currentCycle := int(time.Since(a.startTime) / a.duration)
-	if currentCycle > a.current.cycle {
-		if len(a.buffer) < cap(a.buffer) {
-			a.buffer = append(a.buffer, bufferEntry{})
-			a.current = status{
-				cycle: currentCycle,
-				pos:   len(a.buffer) - 1,
-				check: false,
+	ticker := time.NewTicker(duration)
+	a.quit = make(chan struct{})
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.mtx.Lock()
+				a.history = append(a.history, bufferEntry{})
+				if len(a.history) > bufferCap {
+					a.history = a.history[len(a.history)-bufferCap:]
+					a.checkRatio = true
+				}
+				a.mtx.Unlock()
+			case _, open := <-a.quit:
+				if !open {
+					return
+				}
 			}
-		} else {
-			a.current = status{
-				cycle: currentCycle,
-				pos:   a.current.cycle % len(a.buffer),
-				check: true,
-			}
-			a.buffer[a.current.pos] = bufferEntry{}
 		}
-	}
-	return a.current.check, a.current.pos
+	}()
+
+	a.history = make([]bufferEntry, 1, bufferCap)
+	return a
 }
 
 func (a *accept) newHandshake() {
 	a.mtx.Lock()
-	_, i := a.getPosition()
-	a.buffer[i].handshakes += 1
+	a.history[len(a.history)-1].handshakes += 1
 	a.mtx.Unlock()
 }
 
 func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 	success := true
 	a.mtx.Lock()
-	checkRatio, index := a.getPosition()
 	if token == nil {
-		if checkRatio {
+		if a.checkRatio {
 			sumAll := bufferEntry{}
-			for i := range a.buffer {
+			for i := range a.history {
 				sumAll = bufferEntry{
-					handshakes: sumAll.handshakes + a.buffer[i].handshakes,
-					total:      sumAll.total + a.buffer[i].total,
+					handshakes: sumAll.handshakes + a.history[i].handshakes,
+					total:      sumAll.total + a.history[i].total,
 				}
 			}
 
@@ -124,9 +116,7 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 				success = false
 			}
 		}
-		if success {
-			a.buffer[index].total += 1
-		}
+		a.history[len(a.history)-1].total += 1
 	} else {
 		var sourceAddr string
 		if udpAddr, ok := clientAddr.(*net.UDPAddr); ok {
@@ -136,7 +126,7 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 		}
 		success = sourceAddr == token.RemoteAddr
 		if !token.IsRetryToken {
-			a.buffer[index].total += 1
+			a.history[len(a.history)-1].total += 1
 		}
 	}
 	a.mtx.Unlock()
@@ -387,7 +377,6 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 }
 
 func (t *transport) addConn(conn quic.Connection, c *conn) {
-	t.acceptor.newHandshake()
 	t.connMx.Lock()
 	t.conns[conn] = c
 	t.connMx.Unlock()
@@ -534,5 +523,6 @@ func (t *transport) String() string {
 }
 
 func (t *transport) Close() error {
+	close(t.acceptor.quit)
 	return t.connManager.Close()
 }
