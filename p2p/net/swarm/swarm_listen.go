@@ -125,7 +125,7 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 				return
 			}
 
-			log.Debugf("swarm listener accepted connection: %s", c)
+			log.Debugf("swarm listener accepted connection: %s <-> %s", c.LocalMultiaddr(), c.RemoteMultiaddr())
 			s.refs.Add(1)
 			go func() {
 				defer s.refs.Done()
