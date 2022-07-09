@@ -425,9 +425,10 @@ func isFdConsumingAddr(addr ma.Multiaddr) bool {
 }
 
 func isExpensiveAddr(addr ma.Multiaddr) bool {
-	_, err1 := addr.ValueForProtocol(ma.P_WS)
-	_, err2 := addr.ValueForProtocol(ma.P_WSS)
-	return err1 == nil || err2 == nil
+	_, wsErr := addr.ValueForProtocol(ma.P_WS)
+	_, wssErr := addr.ValueForProtocol(ma.P_WSS)
+	_, wtErr := addr.ValueForProtocol(ma.P_WEBTRANSPORT)
+	return wsErr == nil || wssErr == nil || wtErr == nil
 }
 
 func isRelayAddr(addr ma.Multiaddr) bool {
