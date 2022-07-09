@@ -74,7 +74,6 @@ func TestReconnect(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
-	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	eventBus := eventbus.NewBus()
@@ -98,6 +97,7 @@ func TestClose(t *testing.T) {
 	// make sure the event is sent before we close
 	select {
 	case <-sub.Out():
+		time.Sleep(100 * time.Millisecond) // make sure this event is also picked up by the pstoremanager
 	case <-time.After(5 * time.Second):
 		t.Fatalf("Hit timeout")
 	}
