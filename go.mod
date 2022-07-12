@@ -13,7 +13,6 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/ipfs/go-cid v0.2.0
 	github.com/ipfs/go-datastore v0.5.1
-	github.com/ipfs/go-ipfs-util v0.0.2
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/jbenet/go-temp-err-catcher v0.1.0
 	github.com/klauspost/compress v1.15.1
