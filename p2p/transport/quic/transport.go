@@ -45,15 +45,16 @@ type bufferEntry struct {
 }
 
 type accept struct {
-	history    []bufferEntry
-	mtx        sync.Mutex
-	duration   time.Duration
-	fraction   float64
-	checkRatio bool
-	quit       chan struct{}
+	history     []bufferEntry
+	mtx         sync.Mutex
+	duration    time.Duration
+	fraction    float64
+	minAttempts uint
+	checkRatio  bool
+	quit        chan struct{}
 }
 
-func newAccept(duration time.Duration, fraction float64) *accept {
+func newAccept(duration time.Duration, fraction float64, attempts uint) *accept {
 	a := new(accept)
 
 	if duration == 0 {
@@ -62,9 +63,13 @@ func newAccept(duration time.Duration, fraction float64) *accept {
 	if fraction == 0 {
 		fraction = 0.5
 	}
+	if attempts == 0 {
+		attempts = 256
+	}
 
 	a.duration = duration
 	a.fraction = fraction
+	a.minAttempts = attempts
 	a.history = make([]bufferEntry, 1, bufferCap)
 
 	ticker := time.NewTicker(duration)
@@ -77,8 +82,12 @@ func newAccept(duration time.Duration, fraction float64) *accept {
 				a.mtx.Lock()
 				a.history = append(a.history, bufferEntry{})
 				if len(a.history) > bufferCap {
+					var numTotal uint
+					for i := range a.history {
+						numTotal += a.history[i].total
+					}
+					a.checkRatio = numTotal >= a.minAttempts
 					a.history = a.history[len(a.history)-bufferCap:]
-					a.checkRatio = true
 				}
 				a.mtx.Unlock()
 			case _, open := <-a.quit:
@@ -103,16 +112,14 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 	if token == nil {
 		a.mtx.Lock()
 		if a.checkRatio {
-			sumAll := bufferEntry{}
+			var numHandshakes, numTotal uint
 			for i := range a.history {
-				sumAll = bufferEntry{
-					handshakes: sumAll.handshakes + a.history[i].handshakes,
-					total:      sumAll.total + a.history[i].total,
-				}
+				numHandshakes += a.history[i].handshakes
+				numTotal += a.history[i].total
 			}
 
 			// Check Retry fail ratio
-			if sumAll.total > 0 && float64(sumAll.handshakes)/float64(sumAll.total) < a.fraction {
+			if numTotal > 0 && float64(numHandshakes)/float64(numTotal) < a.fraction {
 				success = false
 			}
 		}
@@ -146,8 +153,8 @@ var quicConfig = &quic.Config{
 	MaxIncomingUniStreams:      -1,             // disable unidirectional streams
 	MaxStreamReceiveWindow:     10 * (1 << 20), // 10 MB
 	MaxConnectionReceiveWindow: 15 * (1 << 20), // 15 MB
-	KeepAlivePeriod: 15 * time.Second,
-	Versions:        []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
+	KeepAlivePeriod:            15 * time.Second,
+	Versions:                   []quic.VersionNumber{quic.VersionDraft29, quic.Version1},
 }
 
 const statelessResetKeyInfo = "libp2p quic stateless reset key"
@@ -204,10 +211,11 @@ func (c *connManager) Close() error {
 
 type Option func(*transport) error
 
-func WithRetry(fraction float64, period time.Duration) Option {
+func WithRetry(fraction float64, period time.Duration, attempts uint) Option {
 	return func(tr *transport) error {
 		tr.fraction = fraction
 		tr.period = period
+		tr.attempts = attempts
 		return nil
 	}
 }
@@ -231,6 +239,7 @@ type transport struct {
 
 	fraction float64
 	period   time.Duration
+	attempts uint
 
 	acceptor *accept
 }
@@ -303,7 +312,7 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	tr.serverConfig = config
 	tr.clientConfig = config.Clone()
 
-	tr.acceptor = newAccept(tr.period, tr.fraction)
+	tr.acceptor = newAccept(tr.period, tr.fraction, tr.attempts)
 	tr.serverConfig.AcceptToken = tr.acceptor.acceptFunction
 	return tr, nil
 }
