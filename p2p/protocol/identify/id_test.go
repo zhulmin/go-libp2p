@@ -641,14 +641,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// Wait for h2 to process the new addr
 	waitForAddrInStream(t, h2AddrStream, lad, 10*time.Second, "h2 did not receive addr change")
 
-	found := false
-	addrs := h2.Peerstore().Addrs(h1p)
-	for _, ad := range addrs {
-		if ad.Equal(lad) {
-			found = true
-		}
-	}
-	require.True(t, found)
+	require.True(t, ma.Contains(h2.Peerstore().Addrs(h1p), lad))
 	require.NotNil(t, getSignedRecord(t, h2, h1p))
 
 	// change addr on host2 and ensure host 1 gets a pus
@@ -661,14 +654,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// Wait for h1 to process the new addr
 	waitForAddrInStream(t, h1AddrStream, lad, 10*time.Second, "h1 did not receive addr change")
 
-	found = false
-	addrs = h1.Peerstore().Addrs(h2p)
-	for _, ad := range addrs {
-		if ad.Equal(lad) {
-			found = true
-		}
-	}
-	require.True(t, found)
+	require.True(t, ma.Contains(h1.Peerstore().Addrs(h2p), lad))
 	require.NotNil(t, getSignedRecord(t, h1, h2p))
 
 	// change addr on host2 again
@@ -680,14 +666,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// Wait for h1 to process the new addr
 	waitForAddrInStream(t, h1AddrStream, lad2, 10*time.Second, "h1 did not receive addr change")
 
-	found = false
-	addrs = h1.Peerstore().Addrs(h2p)
-	for _, ad := range addrs {
-		if ad.Equal(lad2) {
-			found = true
-		}
-	}
-	require.True(t, found)
+	require.True(t, ma.Contains(h1.Peerstore().Addrs(h2p), lad2))
 	require.NotNil(t, getSignedRecord(t, h1, h2p))
 }
 
@@ -961,13 +940,7 @@ func TestLargePushMessage(t *testing.T) {
 	emitAddrChangeEvt(t, h1)
 
 	require.Eventually(t, func() bool {
-		addrs := h2.Peerstore().Addrs(h1p)
-		for _, ad := range addrs {
-			if ad.Equal(lad) {
-				return true
-			}
-		}
-		return false
+		return ma.Contains(h2.Peerstore().Addrs(h1p), lad)
 	}, time.Second, 10*time.Millisecond)
 	require.NotNil(t, getSignedRecord(t, h2, h1p))
 
@@ -978,13 +951,7 @@ func TestLargePushMessage(t *testing.T) {
 	emitAddrChangeEvt(t, h2)
 
 	require.Eventually(t, func() bool {
-		addrs := h1.Peerstore().Addrs(h2p)
-		for _, ad := range addrs {
-			if ad.Equal(lad) {
-				return true
-			}
-		}
-		return false
+		return ma.Contains(h1.Peerstore().Addrs(h2p), lad)
 	}, time.Second, 10*time.Millisecond)
 	testHasCertifiedAddrs(t, h1, h2p, h2.Addrs())
 
@@ -995,13 +962,7 @@ func TestLargePushMessage(t *testing.T) {
 	emitAddrChangeEvt(t, h2)
 
 	require.Eventually(t, func() bool {
-		addrs := h1.Peerstore().Addrs(h2p)
-		for _, ad := range addrs {
-			if ad.Equal(lad2) {
-				return true
-			}
-		}
-		return false
+		return ma.Contains(h1.Peerstore().Addrs(h2p), lad2)
 	}, time.Second, 10*time.Millisecond)
 	testHasCertifiedAddrs(t, h2, h1p, h1.Addrs())
 }

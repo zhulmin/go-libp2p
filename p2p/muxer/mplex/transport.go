@@ -22,5 +22,5 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 	if err != nil {
 		return nil, err
 	}
-	return (*conn)(m), nil
+	return NewMuxedConn(m), nil
 }

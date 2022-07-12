@@ -240,12 +240,7 @@ func TestAllAddrs(t *testing.T) {
 	// should contain localhost and private local addr along with previous listen address
 	require.Len(t, h.AllAddrs(), 3)
 	// Should still contain the original addr.
-	for _, a := range h.AllAddrs() {
-		if a.Equal(firstAddr) {
-			return
-		}
-	}
-	t.Fatal("expected addrs to contain original addr")
+	require.True(t, ma.Contains(h.AllAddrs(), firstAddr), "should still contain the original addr")
 }
 
 // getHostPair gets a new pair of hosts.

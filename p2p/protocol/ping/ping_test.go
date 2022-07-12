@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	"github.com/libp2p/go-libp2p-core/peer"
+
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPing(t *testing.T) {
@@ -19,12 +20,14 @@ func TestPing(t *testing.T) {
 	defer cancel()
 	h1, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	defer h1.Close()
 	h2, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	defer h2.Close()
 
 	err = h1.Connect(ctx, peer.AddrInfo{
 		ID:    h2.ID(),
-		Addrs: h2.Addrs(),
+		Addrs: []ma.Multiaddr{h2.Addrs()[0]},
 	})
 	require.NoError(t, err)
 

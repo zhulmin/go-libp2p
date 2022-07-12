@@ -12,6 +12,11 @@ type conn mp.Multiplex
 
 var _ network.MuxedConn = &conn{}
 
+// NewMuxedConn constructs a new Conn from a *mp.Multiplex.
+func NewMuxedConn(m *mp.Multiplex) network.MuxedConn {
+	return (*conn)(m)
+}
+
 func (c *conn) Close() error {
 	return c.mplex().Close()
 }

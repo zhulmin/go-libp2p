@@ -763,15 +763,6 @@ func (ids *idService) consumeObservedAddress(observed []byte, c network.Conn) {
 	ids.observedAddrs.Record(c, maddr)
 }
 
-func addrInAddrs(a ma.Multiaddr, as []ma.Multiaddr) bool {
-	for _, b := range as {
-		if a.Equal(b) {
-			return true
-		}
-	}
-	return false
-}
-
 func signedPeerRecordFromMessage(msg *pb.Identify) (*record.Envelope, error) {
 	if msg.SignedPeerRecord == nil || len(msg.SignedPeerRecord) == 0 {
 		return nil, nil
