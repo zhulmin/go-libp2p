@@ -42,6 +42,7 @@ const bufferCap = 5
 
 type bufferEntry struct {
 	handshakes, total uint
+	creationTime      time.Time
 }
 
 type accept struct {
@@ -51,7 +52,6 @@ type accept struct {
 	fraction    float64
 	minAttempts uint
 	checkRatio  bool
-	quit        chan struct{}
 }
 
 func newAccept(duration time.Duration, fraction float64, attempts uint) *accept {
@@ -71,38 +71,33 @@ func newAccept(duration time.Duration, fraction float64, attempts uint) *accept 
 	a.fraction = fraction
 	a.minAttempts = attempts
 	a.history = make([]bufferEntry, 1, bufferCap)
-
-	ticker := time.NewTicker(duration)
-	a.quit = make(chan struct{})
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				a.mtx.Lock()
-				a.history = append(a.history, bufferEntry{})
-				if len(a.history) > bufferCap {
-					var numTotal uint
-					for i := range a.history {
-						numTotal += a.history[i].total
-					}
-					a.checkRatio = numTotal >= a.minAttempts
-					a.history = a.history[len(a.history)-bufferCap:]
-				}
-				a.mtx.Unlock()
-			case _, open := <-a.quit:
-				if !open {
-					return
-				}
-			}
-		}
-	}()
-
+	a.history[0].creationTime = time.Now()
 	return a
+}
+
+func (a *accept) checkTime() {
+	now := time.Now()
+	lastEntry := a.history[len(a.history)-1]
+	sinceLast := now.Sub(lastEntry.creationTime)
+
+	for sinceLast > a.duration {
+		a.history = append(a.history, bufferEntry{})
+		sinceLast -= a.duration
+	}
+
+	if len(a.history) > bufferCap {
+		a.history = a.history[len(a.history)-bufferCap:]
+		var numTotal uint
+		for i := range a.history {
+			numTotal += a.history[i].total
+		}
+		a.checkRatio = numTotal >= a.minAttempts
+	}
 }
 
 func (a *accept) newHandshake() {
 	a.mtx.Lock()
+	a.checkTime()
 	a.history[len(a.history)-1].handshakes += 1
 	a.mtx.Unlock()
 }
@@ -111,6 +106,7 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 	success := true
 	if token == nil {
 		a.mtx.Lock()
+		a.checkTime()
 		if a.checkRatio {
 			var numHandshakes, numTotal uint
 			for i := range a.history {
@@ -137,15 +133,12 @@ func (a *accept) acceptFunction(clientAddr net.Addr, token *quic.Token) bool {
 		success = sourceAddr == token.RemoteAddr
 		if !token.IsRetryToken {
 			a.mtx.Lock()
+			a.checkTime()
 			a.history[len(a.history)-1].total += 1
 			a.mtx.Unlock()
 		}
 	}
 	return success
-}
-
-func (a *accept) close() {
-	close(a.quit)
 }
 
 var quicConfig = &quic.Config{
@@ -540,6 +533,5 @@ func (t *transport) String() string {
 }
 
 func (t *transport) Close() error {
-	t.acceptor.close()
 	return t.connManager.Close()
 }
