@@ -80,18 +80,19 @@ func (a *accept) checkTime() {
 	lastEntry := a.history[len(a.history)-1]
 	sinceLast := now.Sub(lastEntry.creationTime)
 
-	for sinceLast > a.duration {
-		a.history = append(a.history, bufferEntry{})
-		sinceLast -= a.duration
-	}
-
-	if len(a.history) > bufferCap {
-		a.history = a.history[len(a.history)-bufferCap:]
+	nPosToAdd := sinceLast / a.duration
+	if nPosToAdd >= 1 {
+		a.history = append(a.history, make([]bufferEntry, nPosToAdd)...)
 		var numTotal uint
-		for i := range a.history {
+
+		// Add the next to last 5 elements
+		// Last element is the next time slot just added
+		for i := range a.history[len(a.history)-1-bufferCap : len(a.history)-1] {
 			numTotal += a.history[i].total
 		}
+
 		a.checkRatio = numTotal >= a.minAttempts
+		a.history = a.history[len(a.history)-bufferCap:]
 	}
 }
 
