@@ -31,7 +31,7 @@ type listener struct {
 
 var _ tpt.Listener = &listener{}
 
-func newListener(rconn *reuseConn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (tpt.Listener, error) {
+func newListener(rconn *reuseConn, t *transport, localPeer peer.ID, key ic.PrivKey, identity tlsIdentity, rcmgr network.ResourceManager) (tpt.Listener, error) {
 	var tlsConf tls.Config
 	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 		// return a tls.Config that verifies the peer's certificate chain.

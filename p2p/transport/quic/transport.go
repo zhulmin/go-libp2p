@@ -2,6 +2,7 @@ package libp2pquic
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -214,11 +215,15 @@ func WithRetry(fraction float64, period time.Duration, attempts uint) Option {
 	}
 }
 
+type tlsIdentity interface {
+	ConfigForPeer(remote peer.ID) (*tls.Config, <-chan ic.PubKey)
+}
+
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
 	privKey      ic.PrivKey
 	localPeer    peer.ID
-	identity     *p2ptls.Identity
+	identity     tlsIdentity // in production, this will always be a p2ptls.Identity, but in tests we can mock it
 	connManager  *connManager
 	serverConfig *quic.Config
 	clientConfig *quic.Config

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -583,4 +584,41 @@ func TestHolePunching(t *testing.T) {
 	ln2.Close()
 	<-done1
 	<-done2
+}
+
+type mockTLSIdentity struct {
+	identity tlsIdentity
+}
+
+func (i *mockTLSIdentity) ConfigForPeer(p peer.ID) (*tls.Config, <-chan ic.PubKey) {
+	tlsConf, c := i.identity.ConfigForPeer(p)
+	tlsConf.NextProtos = nil
+	return tlsConf, c
+}
+
+func TestAcceptToken(t *testing.T) {
+	serverID, serverKey := createPeer(t)
+	_, clientKey := createPeer(t)
+
+	t1, err := NewTransport(serverKey, nil, nil, nil)
+	require.NoError(t, err)
+	defer t1.(io.Closer).Close()
+	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
+	require.NoError(t, err)
+	ln1, err := t1.Listen(laddr)
+	require.NoError(t, err)
+	done1 := make(chan struct{})
+	go func() {
+		defer close(done1)
+		_, err := ln1.Accept()
+		require.Error(t, err, "didn't expect to accept any connections")
+	}()
+
+	t2, err := NewTransport(clientKey, nil, nil, nil)
+	require.NoError(t, err)
+	defer t2.(io.Closer).Close()
+	t2.(*transport).identity = &mockTLSIdentity{identity: t2.(*transport).identity}
+
+	_, err = t2.Dial(context.Background(), ln1.Multiaddr(), serverID)
+	fmt.Println(err)
 }
