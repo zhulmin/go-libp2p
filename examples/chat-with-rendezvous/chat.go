@@ -12,7 +12,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	discovery "github.com/libp2p/go-libp2p-discovery"
+	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/multiformats/go-multiaddr"
@@ -145,8 +146,8 @@ func main() {
 	// We use a rendezvous point "meet me here" to announce our location.
 	// This is like telling your friends to meet you at the Eiffel Tower.
 	logger.Info("Announcing ourselves...")
-	routingDiscovery := discovery.NewRoutingDiscovery(kademliaDHT)
-	discovery.Advertise(ctx, routingDiscovery, config.RendezvousString)
+	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
+	dutil.Advertise(ctx, routingDiscovery, config.RendezvousString)
 	logger.Debug("Successfully announced!")
 
 	// Now, look for others who have announced
