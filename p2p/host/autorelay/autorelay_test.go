@@ -400,8 +400,11 @@ func TestMaxAge(t *testing.T) {
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
-	cl.Add(time.Second)
-	require.Eventually(t, func() bool { return len(peerChans) == 0 }, time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool {
+		// we don't know exactly when the timer is reset, just advance our timer multiple times if necessary
+		cl.Add(time.Second)
+		return len(peerChans) == 0
+	}, 500*time.Millisecond, 100*time.Millisecond)
 
 	cl.Add(10 * time.Minute)
 	for _, r := range relays2 {
