@@ -10,8 +10,11 @@ import (
 )
 
 type dialer struct {
-	specific    []*net.TCPAddr
-	loopback    []*net.TCPAddr
+	// All address that are _not_ loopback or unspecified (0.0.0.0 or ::).
+	specific []*net.TCPAddr
+	// All loopback addresses (127.*.*.*, ::1).
+	loopback []*net.TCPAddr
+	// Unspecified addresses (0.0.0.0, ::)
 	unspecified []*net.TCPAddr
 }
 
@@ -27,12 +30,20 @@ func randAddr(addrs []*net.TCPAddr) *net.TCPAddr {
 }
 
 // DialContext dials a target addr.
-// Dialing preference is
-// * If there is a listener on the local interface the OS expects to use to route towards addr, use that.
-// * If there is a listener on a loopback address, addr is loopback, use that.
-// * If there is a listener on an undefined address (0.0.0.0 or ::), use that.
-// * Otherwise, dial with a random port on the unspecified address.
+//
+// In-order:
+//
+//  1. If we're _explicitly_ listening on the prefered source address for the destination address
+//     (per the system's routes), we'll use that listener's port as the source port.
+//  2. If we're listening on one or more _unspecified_ addresses (zero address), we'll pick a source
+//     port from one of these listener's.
+//  3. Otherwise, we'll let the system pick the source port.
 func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	// We only check this case if the user is listening on a specific address (loopback or
+	// otherwise). Generally, users will listen on the "unspecified" address (0.0.0.0 or ::) and
+	// we can skip this section.
+	//
+	// This lets us avoid resolving the address twice, in most cases.
 	if len(d.specific) > 0 || len(d.loopback) > 0 {
 		tcpAddr, err := net.ResolveTCPAddr(network, addr)
 		if err != nil {
@@ -43,6 +54,13 @@ func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 			return nil, fmt.Errorf("undialable IP: %s", ip)
 		}
 
+		// If we're listening on some specific address and that specific address happens to
+		// be the preferred source address for the target destination address, we try to
+		// dial with that address/port.
+		//
+		// We skip this check if we _aren't_ listening on any specific addresses, because
+		// checking routing tables can be expensive and users rarely listen on specific IP
+		// addresses.
 		if len(d.specific) > 0 {
 			if router, err := netroute.New(); err == nil {
 				if _, _, preferredSrc, err := router.Route(ip); err == nil {
@@ -55,15 +73,20 @@ func (d *dialer) DialContext(ctx context.Context, network, addr string) (net.Con
 			}
 		}
 
+		// Otherwise, if we are listening on a loopback address and the destination is also
+		// a loopback address, use the port from our loopback listener.
 		if len(d.loopback) > 0 && ip.IsLoopback() {
 			return reuseDial(ctx, randAddr(d.loopback), network, addr)
 		}
 	}
 
+	// If we're listening on any uspecified addresses, use a randomly chosen port from one of
+	// these listeners.
 	if len(d.unspecified) > 0 {
 		return reuseDial(ctx, randAddr(d.unspecified), network, addr)
 	}
 
+	// Finally, just pick a random port.
 	var dialer net.Dialer
 	return dialer.DialContext(ctx, network, addr)
 }
