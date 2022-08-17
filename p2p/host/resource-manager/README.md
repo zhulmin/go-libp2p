@@ -7,6 +7,50 @@ The implementation is based on the concept of Resource Management
 Scopes, whereby resource usage is constrained by a DAG of scopes,
 accounting for multiple levels of resource constraints.
 
+The Resource Manager doesn't prioritize resource requests at all, it simply
+checks if the resource being requested is currently below the defined limits and
+returns an error if the limit is reached. It has no notion of honest vs bad peers.
+
+The Resource Manager does have a special notion of [allowlisted](#allowlisting-multiaddrs-to-mitigate-eclipse-attacks) multiaddrs that
+have their own limits if the normal system limits are reached.
+
+## Usage
+
+The Resource Manager is intended to be used with go-libp2p. go-libp2p sets up a
+resource manager with the default autoscaled limits if none is provided, but if
+you want to configure things or if you want to enable metrics you'll use the
+resource manager like so:
+
+```go
+// Start with the default scaling limits.
+scalingLimits := rcmgr.DefaultLimits
+
+// Add limits around included libp2p protocols
+libp2p.SetDefaultServiceLimits(&scalingLimits)
+
+// Turn the scaling limits into a static set of limits using `.AutoScale`. This
+// scales the limits proportional to your system memory.
+limits := scalingLimits.AutoScale()
+
+// The resource manager expects a limiter, se we create one from our limits.
+limiter := rcmgr.NewFixedLimiter(limits)
+
+// (Optional if you want metrics) Construct the OpenCensus metrics reporter.
+str, err := rcmgrObs.NewStatsTraceReporter()
+if err != nil {
+  panic(err)
+}
+
+// Initialize the resource manager
+rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+if err != nil {
+  panic(err)
+}
+
+// Create a libp2p host
+host, err := libp2p.New(libp2p.ResourceManager(rm))
+```
+
 ## Basic Resources
 
 ### Memory
@@ -28,13 +72,13 @@ File descriptors are an important resource that uses memory (and
 computational time) at the system level. They are also a scarce
 resource, as typically (unless the user explicitly intervenes) they
 are constrained by the system. Exhaustion of file descriptors may
-render the application incapable of operating (e.g. because it is
-unable to open a file), this is important for libp2p because most
+render the application incapable of operating (e.g., because it is
+unable to open a file).  This is important for libp2p because most
 operating systems represent sockets as file descriptors.
 
 ### Connections
 
-Connections are a higher level concept endemic to libp2p; in order to
+Connections are a higher-level concept endemic to libp2p; in order to
 communicate with another peer, a connection must first be
 established. Connections are an important resource in libp2p, as they
 consume memory, goroutines, and possibly file descriptors.
@@ -114,6 +158,22 @@ constrained by the transient scope.
 The transient scope effectively represents a DMZ (DeMilitarized Zone),
 where resource usage can be accounted for connections and streams that
 are not fully established.
+
+### The Allowlist System Scope
+
+Same as the normal system scope above, but is used if the normal system scope is
+already at its limits and the resource is from an allowlisted peer. See
+[Allowlisting multiaddrs to mitigate eclipse
+attacks](#allowlisting-multiaddrs-to-mitigate-eclipse-attacks) see for more
+information.
+
+### The Allowlist Transient Scope
+
+Same as the normal transient scope above, but is used if the normal transient
+scope is already at its limits and the resource is from an allowlisted peer. See
+[Allowlisting multiaddrs to mitigate eclipse
+attacks](#allowlisting-multiaddrs-to-mitigate-eclipse-attacks) see for more
+information.
 
 ### Service Scopes
 
@@ -198,11 +258,11 @@ uses a buffer.
 ## Limits
 
 Each resource scope has an associated limit object, which designates
-limits for all basic resources.  The limit is checked every time some
+limits for all [basic resources](#basic-resources).  The limit is checked every time some
 resource is reserved and provides the system with an opportunity to
 constrain resource usage.
 
-There are separate limits for each class of scope, allowing us for
+There are separate limits for each class of scope, allowing for
 multiresolution and aggregate resource accounting.  As such, we have
 limits for the system and transient scopes, default and specific
 limits for services, protocols, and peers, and limits for connections
@@ -219,11 +279,11 @@ struct defines the absolutely bare minimum limits, and an (optional) increase of
 these limits, which will be applied on nodes that have sufficient memory.
 
 A `ScalingLimitConfig` can be converted into a `LimitConfig` (which can then be
-used to initialize a fixed limiter as shown above) by calling the `Scale` method.
+used to initialize a fixed limiter with `NewFixedLimiter`) by calling the `Scale` method.
 The `Scale` method takes two parameters: the amount of memory and the number of file
 descriptors that an application is willing to dedicate to libp2p.
 
-These amounts will differ between use cases: A blockchain node running on a dedicated
+These amounts will differ between use cases. A blockchain node running on a dedicated
 server might have a lot of memory, and dedicate 1/4 of that memory to libp2p. On the
 other end of the spectrum, a desktop companion application running as a background
 task on a consumer laptop will probably dedicate significantly less than 1/4 of its system
@@ -262,14 +322,15 @@ var scalingLimits = ScalingLimitConfig{
 
 The base limit (`SystemBaseLimit`) here is the minimum configuration that any
 node will have, no matter how little memory it possesses. For every GB of memory
-passed into the `Scale` method, an increase  of (`SystemLimitIncrease`) is added.
+passed into the `Scale` method, an increase of (`SystemLimitIncrease`) is added.
 
 For Example, calling `Scale` with 4 GB of memory will result in a limit of 384 for
 `Conns` (128 + 4*64).
 
 The `FDFraction` defines how many of the file descriptors are allocated to this
 scope. In the example above, when called with a file descriptor value of 1000,
-this would result in a limit of 1256 file descriptors for the system scope.
+this would result in a limit of 1000 (1000 * 1) file descriptors for the system
+scope. See `TestReadmeExample` in `limit_test.go`.
 
 Note that we only showed the configuration for the system scope here, equivalent
 configuration options apply to all other scopes as well.
@@ -278,12 +339,12 @@ configuration options apply to all other scopes as well.
 
 By default the resource manager ships with some reasonable scaling limits and
 makes a reasonable guess at how much system memory you want to dedicate to the
-go-libp2p process. For the default definitions see `DefaultLimits` and
-`ScalingLimitConfig.AutoScale()`.
+go-libp2p process. For the default definitions see [`DefaultLimits` and
+`ScalingLimitConfig.AutoScale()`](./limit_defaults.go).
 
 ### Tweaking Defaults
 
-If the defaults seem mostly okay, but you want to adjust one facet you can do
+If the defaults seem mostly okay, but you want to adjust one facet you can
 simply copy the default struct object and update the field you want to change. You can
 apply changes to a `BaseLimit`, `BaseLimitIncrease`, and `LimitConfig` with
 `.Apply`.
@@ -292,21 +353,19 @@ Example
 ```
 // An example on how to tweak the default limits
 tweakedDefaults := DefaultLimits
-tweakedDefaults.ProtocolBaseLimit.Apply(BaseLimit{
-  Streams:         1024,
-  StreamsInbound:  512,
-  StreamsOutbound: 512,
-})
+tweakedDefaults.ProtocolBaseLimit.Streams = 1024
+tweakedDefaults.ProtocolBaseLimit.StreamsInbound = 512
+tweakedDefaults.ProtocolBaseLimit.StreamsOutbound = 512
 ```
 
 ### How to tune your limits
 
-Once you've set your limits and monitoring (see [Monitoring](#monitoring) below) you can now tune your
-limits better.  The `blocked_resources` metric will tell you what was blocked
-and for what scope. If you see a steady stream of these blocked requests it
-means your resource limits are too low for your usage. If you see a rare sudden
-spike, this is okay and it means the resource manager protected you from some
-anamoly.
+Once you've set your limits and monitoring (see [Monitoring](#monitoring) below)
+you can now tune your limits better.  The `rcmgr_blocked_resources` metric will
+tell you what was blocked and for what scope. If you see a steady stream of
+these blocked requests it means your resource limits are too low for your usage.
+If you see a rare sudden spike, this is okay and it means the resource manager
+protected you from some anomaly.
 
 ### How to disable limits
 
@@ -316,26 +375,57 @@ define your initial limits. Disable the limits by using `InfiniteLimits`.
 
 ### Debug "resource limit exceeded" errors
 
-These errors occur whenever a limit is hit. For example you'll get this error if
+These errors occur whenever a limit is hit. For example, you'll get this error if
 you are at your limit for the number of streams you can have, and you try to
 open one more.
 
-If you're seeing a lot of "resource limit exceeded" errors take a look at the
-`blocked_resources` metric for some information on what was blocked. Also take
-a look at the resources used per stream, and per protocol (the Grafana
-Dashboard is ideal for this) and check if you're routinely hitting limits or if
-these are rare (but noisy) spikes.
+Example Log:
+```
+2022-08-12T15:49:35.459-0700	DEBUG	rcmgr	go-libp2p-resource-manager@v0.5.3/scope.go:541	blocked connection from constraining edge	{"scope": "conn-19667", "edge": "system", "direction": "Inbound", "usefd": false, "current": 100, "attempted": 1, "limit": 100, "stat": {"NumStreamsInbound":28,"NumStreamsOutbound":66,"NumConnsInbound":37,"NumConnsOutbound":63,"NumFD":33,"Memory":8687616}, "error": "system: cannot reserve connection: resource limit exceeded"}
+```
 
-When debugging in general, in may help to search your logs for errors that match
-the string "resource limit exceeded" to see if you're hitting some limits
-routinely.
+The log line above is an example log line that gets emitted if you enable debug
+logging in the resource manager. You can do this by setting the environment
+variable `GOLOG_LOG_LEVEL="rcmgr=info"`. By default only the error is
+returned to the caller, and nothing is logged by the resource manager itself.
+
+The log line message (and returned error) will tell you which resource limit was
+hit (connection in the log above) and what blocked it (in this case it was the
+system scope that blocked it). The log will also include some more information
+about the current usage of the resources. In the example log above, there is a
+limit of 100 connections, and you can see that we have 37 inbound connections
+and 63 outbound connections. We've reached the limit and the resource manager
+will block any further connections.
+
+The next step in debugging is seeing if this is a recurring problem or just a
+transient error. If it's a transient error it's okay to ignore it since the
+resource manager was doing its job in keeping resource usage under the limit. If
+it's recurring then you should understand what's causing you to hit these limits
+and either refactor your application or raise the limits.
+
+To check if it's a recurring problem you can count the number of times you've
+seen the `"resource limit exceeded"` error over time. You can also check the
+`rcmgr_blocked_resources` metric to see how many times the resource manager has
+blocked a resource over time.
+
+![Example graph of blocked resources over time](https://bafkreibul6qipnax5s42abv3jc6bolhd7pju3zbl4rcvdaklmk52f6cznu.ipfs.w3s.link/)
+
+If the resource is blocked by a protocol-level scope, take a look at the various
+resource usages in the metrics. For example, if you run into a new stream being blocked,
+you can check the
+`rcmgr_streams` metric and the "Streams by protocol" graph in the Grafana
+dashboard (assuming you've set that up or something similar – see
+[Monitoring](#monitoring)) to understand the usage pattern of that specific
+protocol. This can help answer questions such as: "Am I constantly around my
+limit?", "Does it make sense to raise my limit?", "Are there any patterns around
+hitting this limit?", and "should I refactor my protocol implementation?"
 
 ## Monitoring
 
 Once you have limits set, you'll want to monitor to see if you're running into
 your limits often. This could be a sign that you need to raise your limits
 (your process is more intensive than you originally thought) or that you need
-fix something in your application (surely you don't need over 1000 streams?).
+to fix something in your application (surely you don't need over 1000 streams?).
 
 There are OpenCensus metrics that can be hooked up to the resource manager. See
 `obs/stats_test.go` for an example on how to enable this, and `DefaultViews` in
@@ -344,7 +434,7 @@ or any other OpenCensus supported platform.
 
 There is also an included Grafana dashboard to help kickstart your
 observability into the resource manager. Find more information about it at
-`./obs/grafana-dashboards/README.md`.
+[here](./obs/grafana-dashboards/README.md).
 
 ## Allowlisting multiaddrs to mitigate eclipse attacks
 
@@ -355,6 +445,43 @@ the normal limits are reached. This means you will always be able to connect to
 these trusted peers even if you've already reached your system limits.
 
 Look at `WithAllowlistedMultiaddrs` and its example in the GoDoc to learn more.
+
+## ConnManager vs Resource Manager
+
+go-libp2p already includes a [connection
+manager](https://pkg.go.dev/github.com/libp2p/go-libp2p-core/connmgr#ConnManager),
+so what's the difference between the `ConnManager` and the `ResourceManager`?
+
+ConnManager:
+1. Configured with a low and high watermark number of connections.
+2. Attempts to maintain the number of connections between the low and high
+   markers.
+3. Connections can be given metadata and weight (e.g. a hole punched
+   connection is more valuable than a connection to a publicly addressable
+   endpoint since it took more effort to make the hole punched connection).
+4. The ConnManager will trim connections once the high watermark is reached. and
+   trim down to the low watermark.
+5. Won't block adding another connection above the high watermark, but will
+   trigger the trim mentioned above.
+6. Can trim and prioritize connections with custom logic.
+7. No concept of scopes (like the resource manager).
+
+Resource Manager:
+1. Configured with limits on the number of outgoing and incoming connections at
+   different [resource scopes](#resource-scopes).
+2. Will block adding any more connections if any of the scope-specific limits would be exceeded.
+
+The natural question when comparing these two managers is "how do the watermarks
+and limits interact with each other?". The short answer is that they don't know
+about each other. This can lead to some surprising subtleties, such as the
+trimming never happening because the resource manager's limit is lower than the
+high watermark. This is confusing, and we'd like to fix it. The issue is
+captured in [go-libp2p#1640](https://github.com/libp2p/go-libp2p/issues/1640).
+
+When configuring the resource manager and connection manager, you should set the
+limits in the resource manager as your hard limits that you would never want to
+go over, and set the low/high watermarks as the range at which your application
+works best.
 
 ## Examples
 
@@ -407,13 +534,6 @@ aid understanding of applicable limits.  Note that the (wrapped) error
 implements `net.Error` and is marked as temporary, so that the
 programmer can handle by backoff retry.
 
-## Usage
-
-This package provides a limiter implementation that applies fixed limits:
-```go
-limiter := NewFixedLimiter(limits)
-```
-The `limits` allows fine-grained control of resource usage on all scopes.
 
 ## Implementation Notes
 
@@ -440,11 +560,11 @@ The `limits` allows fine-grained control of resource usage on all scopes.
 - The design must support seamless integration for user applications,
   which should reap the benefits of resource management without any
   changes. That is, existing applications should be oblivious of the
-  resource manager and transparently obtain limits which protect it
+  resource manager and transparently obtain limits which protects it
   from resource exhaustion and OOM conditions.
 - At the same time, the design must support opt-in resource usage
-  accounting for applications who want to explicitly utilize the
+  accounting for applications that want to explicitly utilize the
   facilities of the system to inform about and constrain their own
   resource usage.
-- The design must allow the user to set its own limits, which can be
+- The design must allow the user to set their own limits, which can be
   static (fixed) or dynamic.
