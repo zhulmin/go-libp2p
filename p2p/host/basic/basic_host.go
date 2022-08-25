@@ -406,7 +406,8 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 		return
 	}
 
-	log.Debugf("set protocol to %s: negotiation took %s", protoID, took)
+	log.Debugf("set protocol to %s: negotiation with %s (%s) took %s",
+		protoID, s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr(), took)
 
 	go handle(protoID, s)
 }
