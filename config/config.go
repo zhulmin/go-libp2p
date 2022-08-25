@@ -155,6 +155,9 @@ func (cfg *Config) makeSwarm() (*swarm.Swarm, error) {
 	if cfg.ResourceManager != nil {
 		opts = append(opts, swarm.WithResourceManager(cfg.ResourceManager))
 	}
+	if cfg.MultiaddrResolver != nil {
+		opts = append(opts, swarm.WithMultiaddrResolver(cfg.MultiaddrResolver))
+	}
 	// TODO: Make the swarm implementation configurable.
 	return swarm.NewSwarm(pid, cfg.Peerstore, opts...)
 }
@@ -229,7 +232,6 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		EnablePing:          !cfg.DisablePing,
 		UserAgent:           cfg.UserAgent,
 		ProtocolVersion:     cfg.ProtocolVersion,
-		MultiaddrResolver:   cfg.MultiaddrResolver,
 		EnableHolePunching:  cfg.EnableHolePunching,
 		HolePunchingOptions: cfg.HolePunchingOptions,
 		EnableRelayService:  cfg.EnableRelayService,
