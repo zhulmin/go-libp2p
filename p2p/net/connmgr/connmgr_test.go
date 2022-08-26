@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -411,7 +412,8 @@ func TestDisconnected(t *testing.T) {
 
 func TestGracePeriod(t *testing.T) {
 	const gp = 100 * time.Millisecond
-	cm, err := NewConnManager(10, 20, WithGracePeriod(gp), WithSilencePeriod(time.Hour))
+	mockClock := clock.NewMock()
+	cm, err := NewConnManager(10, 20, WithGracePeriod(gp), WithSilencePeriod(time.Hour), WithClock(mockClock))
 	require.NoError(t, err)
 	defer cm.Close()
 
@@ -425,7 +427,7 @@ func TestGracePeriod(t *testing.T) {
 		conns = append(conns, rc)
 		not.Connected(nil, rc)
 
-		time.Sleep(2 * gp)
+		mockClock.Add(2 * gp)
 
 		if rc.(*tconn).isClosed() {
 			t.Fatal("expected conn to remain open")
@@ -447,7 +449,7 @@ func TestGracePeriod(t *testing.T) {
 		}
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	mockClock.Add(200 * time.Millisecond)
 
 	cm.TrimOpenConns(context.Background())
 
@@ -465,7 +467,8 @@ func TestGracePeriod(t *testing.T) {
 
 // see https://github.com/libp2p/go-libp2p-connmgr/issues/23
 func TestQuickBurstRespectsSilencePeriod(t *testing.T) {
-	cm, err := NewConnManager(10, 20, WithGracePeriod(0))
+	mockClock := clock.NewMock()
+	cm, err := NewConnManager(10, 20, WithGracePeriod(0), WithClock(mockClock))
 	require.NoError(t, err)
 	defer cm.Close()
 	not := cm.Notifee()
@@ -480,7 +483,7 @@ func TestQuickBurstRespectsSilencePeriod(t *testing.T) {
 	}
 
 	// wait for a few seconds
-	time.Sleep(time.Second * 3)
+	mockClock.Add(3 * time.Second)
 
 	// only the first trim is allowed in; make sure we close at most 20 connections, not all of them.
 	var closed int

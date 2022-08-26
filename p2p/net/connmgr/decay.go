@@ -221,7 +221,7 @@ func (d *decayer) process() {
 			s := d.mgr.segments.get(peer)
 			s.Lock()
 
-			p := s.tagInfoFor(peer)
+			p := s.tagInfoFor(peer, d.clock.Now())
 			v, ok := p.decaying[tag]
 			if !ok {
 				v = &connmgr.DecayingValue{
@@ -244,7 +244,7 @@ func (d *decayer) process() {
 			s := d.mgr.segments.get(rm.peer)
 			s.Lock()
 
-			p := s.tagInfoFor(rm.peer)
+			p := s.tagInfoFor(rm.peer, d.clock.Now())
 			v, ok := p.decaying[rm.tag]
 			if !ok {
 				s.Unlock()
