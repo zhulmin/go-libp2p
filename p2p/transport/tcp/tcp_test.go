@@ -11,7 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	csms "github.com/libp2p/go-libp2p/p2p/net/conn-security-multistream"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
@@ -99,7 +98,7 @@ func TestTcpTransportCantDialDNS(t *testing.T) {
 		dnsa, err := ma.NewMultiaddr("/dns4/example.com/tcp/1234")
 		require.NoError(t, err)
 
-		var u transport.Upgrader
+		var u network.Upgrader
 		tpt, err := NewTCPTransport(u, nil)
 		require.NoError(t, err)
 
@@ -117,7 +116,7 @@ func TestTcpTransportCantListenUtp(t *testing.T) {
 		utpa, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/utp")
 		require.NoError(t, err)
 
-		var u transport.Upgrader
+		var u network.Upgrader
 		tpt, err := NewTCPTransport(u, nil)
 		require.NoError(t, err)
 

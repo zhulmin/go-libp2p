@@ -10,14 +10,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
 	compatv1 "github.com/libp2p/go-libp2p/p2p/protocol/internal/circuitv1-deprecated"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func addTransportV1(t *testing.T, h host.Host, upgrader transport.Upgrader) {
+func addTransportV1(t *testing.T, h host.Host, upgrader network.Upgrader) {
 	err := compatv1.AddRelayTransport(h, upgrader)
 	if err != nil {
 		t.Fatal(err)

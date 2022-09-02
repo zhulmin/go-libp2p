@@ -14,7 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	pool "github.com/libp2p/go-buffer-pool"
 
@@ -43,7 +42,7 @@ var (
 // Relay is the relay transport and service.
 type Relay struct {
 	host      host.Host
-	upgrader  transport.Upgrader
+	upgrader  network.Upgrader
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	self      peer.ID
@@ -95,7 +94,7 @@ func (e RelayError) Error() string {
 }
 
 // NewRelay constructs a new relay.
-func NewRelay(h host.Host, upgrader transport.Upgrader, opts ...RelayOpt) (*Relay, error) {
+func NewRelay(h host.Host, upgrader network.Upgrader, opts ...RelayOpt) (*Relay, error) {
 	r := &Relay{
 		upgrader: upgrader,
 		host:     h,

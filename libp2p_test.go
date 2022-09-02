@@ -10,8 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 
 	"github.com/stretchr/testify/require"
@@ -40,8 +40,8 @@ func TestTransportConstructor(t *testing.T) {
 	ctor := func(
 		h host.Host,
 		_ connmgr.ConnectionGater,
-		upgrader transport.Upgrader,
-	) transport.Transport {
+		upgrader network.Upgrader,
+	) network.Transport {
 		tpt, err := tcp.NewTCPTransport(upgrader, nil)
 		require.NoError(t, err)
 		return tpt

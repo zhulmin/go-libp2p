@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/libp2p/go-libp2p/core/transport"
-
+	"github.com/libp2p/go-libp2p/core/network"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 // TransportForDialing retrieves the appropriate transport for dialing the given
 // multiaddr.
-func (s *Swarm) TransportForDialing(a ma.Multiaddr) transport.Transport {
+func (s *Swarm) TransportForDialing(a ma.Multiaddr) network.Transport {
 	protocols := a.Protocols()
 	if len(protocols) == 0 {
 		return nil
@@ -42,7 +41,7 @@ func (s *Swarm) TransportForDialing(a ma.Multiaddr) transport.Transport {
 
 // TransportForListening retrieves the appropriate transport for listening on
 // the given multiaddr.
-func (s *Swarm) TransportForListening(a ma.Multiaddr) transport.Transport {
+func (s *Swarm) TransportForListening(a ma.Multiaddr) network.Transport {
 	protocols := a.Protocols()
 	if len(protocols) == 0 {
 		return nil
@@ -74,7 +73,7 @@ func (s *Swarm) TransportForListening(a ma.Multiaddr) transport.Transport {
 // AddTransport adds a transport to this swarm.
 //
 // Satisfies the Network interface from go-libp2p-transport.
-func (s *Swarm) AddTransport(t transport.Transport) error {
+func (s *Swarm) AddTransport(t network.Transport) error {
 	protocols := t.Protocols()
 
 	if len(protocols) == 0 {

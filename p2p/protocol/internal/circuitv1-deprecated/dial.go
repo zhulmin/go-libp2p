@@ -7,11 +7,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func (d *RelayTransport) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (d *RelayTransport) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) (network.CapableConn, error) {
 	c, err := d.Relay().Dial(ctx, a, p)
 	if err != nil {
 		return nil, err

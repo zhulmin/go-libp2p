@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/sec"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
@@ -160,7 +159,7 @@ func (cfg *Config) makeSwarm() (*swarm.Swarm, error) {
 }
 
 func (cfg *Config) addTransports(h host.Host) error {
-	swrm, ok := h.Network().(transport.TransportNetwork)
+	swrm, ok := h.Network().(network.TransportNetwork)
 	if !ok {
 		// Should probably skip this if no transports.
 		return fmt.Errorf("swarm does not support transports")

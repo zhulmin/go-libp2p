@@ -9,7 +9,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
@@ -63,16 +62,16 @@ func WithTLSConfig(conf *tls.Config) Option {
 
 // WebsocketTransport is the actual go-libp2p transport
 type WebsocketTransport struct {
-	upgrader transport.Upgrader
+	upgrader network.Upgrader
 	rcmgr    network.ResourceManager
 
 	tlsClientConf *tls.Config
 	tlsConf       *tls.Config
 }
 
-var _ transport.Transport = (*WebsocketTransport)(nil)
+var _ network.Transport = (*WebsocketTransport)(nil)
 
-func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*WebsocketTransport, error) {
+func New(u network.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*WebsocketTransport, error) {
 	if rcmgr == nil {
 		rcmgr = network.NullResourceManager
 	}
@@ -100,7 +99,7 @@ func (t *WebsocketTransport) Proxy() bool {
 	return false
 }
 
-func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (network.CapableConn, error) {
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
 		return nil, err
@@ -146,7 +145,7 @@ func (t *WebsocketTransport) maListen(a ma.Multiaddr) (manet.Listener, error) {
 	return l, nil
 }
 
-func (t *WebsocketTransport) Listen(a ma.Multiaddr) (transport.Listener, error) {
+func (t *WebsocketTransport) Listen(a ma.Multiaddr) (network.Listener, error) {
 	malist, err := t.maListen(a)
 	if err != nil {
 		return nil, err

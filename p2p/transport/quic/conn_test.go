@@ -17,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
 
 	"github.com/golang/mock/gomock"
 	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
@@ -57,7 +56,7 @@ func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 	return id, priv
 }
 
-func runServer(t *testing.T, tr tpt.Transport, addr string) tpt.Listener {
+func runServer(t *testing.T, tr network.Transport, addr string) network.Listener {
 	t.Helper()
 
 	ln, err := tr.Listen(ma.StringCast(addr))
@@ -80,7 +79,7 @@ func testHandshake(t *testing.T, tc *connTestCase) {
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
 
-	handshake := func(t *testing.T, ln tpt.Listener) {
+	handshake := func(t *testing.T, ln network.Listener) {
 		clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 		require.NoError(t, err)
 		defer clientTransport.(io.Closer).Close()
@@ -143,7 +142,7 @@ func testResourceManagerSuccess(t *testing.T, tc *connTestCase) {
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
 
-	connChan := make(chan tpt.CapableConn)
+	connChan := make(chan network.CapableConn)
 	serverConnScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	go func() {
 		serverRcmgr.EXPECT().OpenConnection(network.DirInbound, false, gomock.Not(ln.Multiaddr())).Return(serverConnScope, nil)
@@ -231,7 +230,7 @@ func testResourceManagerAcceptDenied(t *testing.T, tc *connTestCase) {
 	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic"))
 	require.NoError(t, err)
 	defer ln.Close()
-	connChan := make(chan tpt.CapableConn)
+	connChan := make(chan network.CapableConn)
 	go func() {
 		ln.Accept()
 		close(connChan)
@@ -460,8 +459,8 @@ func testDialTwo(t *testing.T, tc *connTestCase) {
 		serverConn2, err := ln2.Accept()
 		require.NoError(t, err)
 
-		for _, c := range []tpt.CapableConn{serverConn1, serverConn2} {
-			go func(conn tpt.CapableConn) {
+		for _, c := range []network.CapableConn{serverConn1, serverConn2} {
+			go func(conn network.CapableConn) {
 				str, err := conn.OpenStream(context.Background())
 				require.NoError(t, err)
 				defer str.Close()
@@ -483,8 +482,8 @@ func testDialTwo(t *testing.T, tc *connTestCase) {
 
 	done := make(chan struct{}, 2)
 	// receive the data on both connections at the same time
-	for _, c := range []tpt.CapableConn{c1, c2} {
-		go func(conn tpt.CapableConn) {
+	for _, c := range []network.CapableConn{c1, c2} {
+		go func(conn network.CapableConn) {
 			str, err := conn.AcceptStream()
 			require.NoError(t, err)
 			str.CloseWrite()
@@ -554,7 +553,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	require.NoError(t, err)
 	conn, err := clientTransport.Dial(context.Background(), proxyAddr, serverID)
 	require.NoError(t, err)
-	connChan := make(chan tpt.CapableConn)
+	connChan := make(chan network.CapableConn)
 	go func() {
 		conn, err := ln.Accept()
 		require.NoError(t, err)
@@ -623,7 +622,7 @@ func TestHolePunching(t *testing.T) {
 		_, err := ln2.Accept()
 		require.Error(t, err, "didn't expect to accept any connections")
 	}()
-	connChan := make(chan tpt.CapableConn)
+	connChan := make(chan network.CapableConn)
 	go func() {
 		conn, err := t2.Dial(
 			network.WithSimultaneousConnect(context.Background(), false, ""),
@@ -651,7 +650,7 @@ func TestHolePunching(t *testing.T) {
 	require.NoError(t, err)
 	defer conn1.Close()
 	require.Equal(t, conn1.RemotePeer(), clientID)
-	var conn2 tpt.CapableConn
+	var conn2 network.CapableConn
 	require.Eventually(t, func() bool {
 		select {
 		case conn2 = <-connChan:

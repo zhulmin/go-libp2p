@@ -14,7 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/metrics"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
@@ -26,7 +25,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func getNetHosts(t *testing.T, ctx context.Context, n int) (hosts []host.Host, upgraders []transport.Upgrader) {
+func getNetHosts(t *testing.T, ctx context.Context, n int) (hosts []host.Host, upgraders []network.Upgrader) {
 	for i := 0; i < n; i++ {
 		privk, pubk, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
 		if err != nil {
@@ -85,7 +84,7 @@ func connect(t *testing.T, a, b host.Host) {
 	}
 }
 
-func addTransport(t *testing.T, h host.Host, upgrader transport.Upgrader) {
+func addTransport(t *testing.T, h host.Host, upgrader network.Upgrader) {
 	if err := client.AddTransport(h, upgrader); err != nil {
 		t.Fatal(err)
 	}

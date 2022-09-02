@@ -8,7 +8,6 @@ import (
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
 	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	"github.com/lucas-clemente/quic-go"
@@ -28,9 +27,9 @@ type listener struct {
 	localMultiaddr ma.Multiaddr
 }
 
-var _ tpt.Listener = &listener{}
+var _ network.Listener = &listener{}
 
-func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (tpt.Listener, error) {
+func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (network.Listener, error) {
 	var tlsConf tls.Config
 	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 		// return a tls.Config that verifies the peer's certificate chain.
@@ -60,7 +59,7 @@ func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, i
 }
 
 // Accept accepts new connections.
-func (l *listener) Accept() (tpt.CapableConn, error) {
+func (l *listener) Accept() (network.CapableConn, error) {
 	for {
 		qconn, err := l.quicListener.Accept(context.Background())
 		if err != nil {

@@ -5,15 +5,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/pnet"
-	"github.com/libp2p/go-libp2p/core/transport"
-
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 // TptC is the type for libp2p transport constructors. You probably won't ever
 // implement this function interface directly. Instead, pass your transport
 // constructor to TransportConstructor.
-type TptC func(host.Host, transport.Upgrader, pnet.PSK, connmgr.ConnectionGater, network.ResourceManager, *madns.Resolver) (transport.Transport, error)
+type TptC func(host.Host, network.Upgrader, pnet.PSK, connmgr.ConnectionGater, network.ResourceManager, *madns.Resolver) (network.Transport, error)
 
 var transportArgTypes = argTypes
 
@@ -21,7 +19,7 @@ var transportArgTypes = argTypes
 // transport into a TptC.
 //
 // You can pass either a constructed transport (something that implements
-// `transport.Transport`) or a function that takes any of:
+// `network.Transport`) or a function that takes any of:
 //
 // * The local peer ID.
 // * A transport connection upgrader.
@@ -36,12 +34,12 @@ var transportArgTypes = argTypes
 // * A private network protection key.
 // * A connection gater.
 //
-// And returns a type implementing transport.Transport and, optionally, an error
+// And returns a type implementing network.Transport and, optionally, an error
 // (as the second argument).
 func TransportConstructor(tpt interface{}, opts ...interface{}) (TptC, error) {
 	// Already constructed?
-	if t, ok := tpt.(transport.Transport); ok {
-		return func(_ host.Host, _ transport.Upgrader, _ pnet.PSK, _ connmgr.ConnectionGater, _ network.ResourceManager, _ *madns.Resolver) (transport.Transport, error) {
+	if t, ok := tpt.(network.Transport); ok {
+		return func(_ host.Host, _ network.Upgrader, _ pnet.PSK, _ connmgr.ConnectionGater, _ network.ResourceManager, _ *madns.Resolver) (network.Transport, error) {
 			return t, nil
 		}, nil
 	}
@@ -49,17 +47,17 @@ func TransportConstructor(tpt interface{}, opts ...interface{}) (TptC, error) {
 	if err != nil {
 		return nil, err
 	}
-	return func(h host.Host, u transport.Upgrader, psk pnet.PSK, cg connmgr.ConnectionGater, rcmgr network.ResourceManager, resolver *madns.Resolver) (transport.Transport, error) {
+	return func(h host.Host, u network.Upgrader, psk pnet.PSK, cg connmgr.ConnectionGater, rcmgr network.ResourceManager, resolver *madns.Resolver) (network.Transport, error) {
 		t, err := ctor(h, u, psk, cg, rcmgr, resolver)
 		if err != nil {
 			return nil, err
 		}
-		return t.(transport.Transport), nil
+		return t.(network.Transport), nil
 	}, nil
 }
 
-func makeTransports(h host.Host, u transport.Upgrader, cg connmgr.ConnectionGater, psk pnet.PSK, rcmgr network.ResourceManager, resolver *madns.Resolver, tpts []TptC) ([]transport.Transport, error) {
-	transports := make([]transport.Transport, len(tpts))
+func makeTransports(h host.Host, u network.Upgrader, cg connmgr.ConnectionGater, psk pnet.PSK, rcmgr network.ResourceManager, resolver *madns.Resolver, tpts []TptC) ([]network.Transport, error) {
+	transports := make([]network.Transport, len(tpts))
 	for i, tC := range tpts {
 		t, err := tC(h, u, psk, cg, rcmgr, resolver)
 		if err != nil {

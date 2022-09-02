@@ -15,7 +15,6 @@ import (
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/upgrader"
 
 	"github.com/golang/mock/gomock"
@@ -40,7 +39,7 @@ func (mux *MuxAdapter) SecureOutbound(ctx context.Context, insecure net.Conn, p 
 	return sconn, false, err
 }
 
-func createListener(t *testing.T, u transport.Upgrader) transport.Listener {
+func createListener(t *testing.T, u network.Upgrader) network.Listener {
 	t.Helper()
 	addr, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/0")
 	require.NoError(t, err)
@@ -187,7 +186,7 @@ func TestListenerCloseClosesQueued(t *testing.T) {
 	id, upgrader := createUpgrader(t)
 	ln := createListener(t, upgrader)
 
-	var conns []transport.CapableConn
+	var conns []network.CapableConn
 	for i := 0; i < 10; i++ {
 		conn, err := dial(t, upgrader, ln.Multiaddr(), id, network.NullScope)
 		require.NoError(err)
@@ -229,7 +228,7 @@ func TestConcurrentAccept(t *testing.T) {
 	ln := createListener(t, u)
 	defer ln.Close()
 
-	accepted := make(chan transport.CapableConn, num)
+	accepted := make(chan network.CapableConn, num)
 	go func() {
 		for {
 			conn, err := ln.Accept()

@@ -11,7 +11,6 @@ import (
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -25,7 +24,7 @@ var ErrConnClosed = errors.New("connection closed")
 // type directly.
 type Conn struct {
 	id    uint64
-	conn  transport.CapableConn
+	conn  network.CapableConn
 	swarm *Swarm
 
 	closeOnce sync.Once

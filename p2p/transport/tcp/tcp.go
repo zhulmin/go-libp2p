@@ -11,7 +11,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/reuseport"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -110,7 +109,7 @@ func WithConnectionTimeout(d time.Duration) Option {
 type TcpTransport struct {
 	// Connection upgrader for upgrading insecure stream connections to
 	// secure multiplex connections.
-	upgrader transport.Upgrader
+	upgrader network.Upgrader
 
 	// Explicitly disable reuseport.
 	disableReuseport bool
@@ -123,11 +122,11 @@ type TcpTransport struct {
 	reuse reuseport.Transport
 }
 
-var _ transport.Transport = &TcpTransport{}
+var _ network.Transport = &TcpTransport{}
 
 // NewTCPTransport creates a tcp transport object that tracks dialers and listeners
 // created. It represents an entire TCP stack (though it might not necessarily be).
-func NewTCPTransport(upgrader transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*TcpTransport, error) {
+func NewTCPTransport(upgrader network.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*TcpTransport, error) {
 	if rcmgr == nil {
 		rcmgr = network.NullResourceManager
 	}
@@ -168,7 +167,7 @@ func (t *TcpTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Co
 }
 
 // Dial dials the peer at the remote address.
-func (t *TcpTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (t *TcpTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (network.CapableConn, error) {
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
 		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
@@ -214,7 +213,7 @@ func (t *TcpTransport) maListen(laddr ma.Multiaddr) (manet.Listener, error) {
 }
 
 // Listen listens on the given multiaddr.
-func (t *TcpTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
+func (t *TcpTransport) Listen(laddr ma.Multiaddr) (network.Listener, error) {
 	list, err := t.maListen(laddr)
 	if err != nil {
 		return nil, err

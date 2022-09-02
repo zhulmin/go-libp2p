@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -27,7 +27,7 @@ type Client struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	host      host.Host
-	upgrader  transport.Upgrader
+	upgrader  network.Upgrader
 
 	incoming chan accept
 
@@ -37,7 +37,7 @@ type Client struct {
 }
 
 var _ io.Closer = &Client{}
-var _ transport.Transport = &Client{}
+var _ network.Transport = &Client{}
 
 type accept struct {
 	conn          *Conn
@@ -52,7 +52,7 @@ type completion struct {
 
 // New constructs a new p2p-circuit/v2 client, attached to the given host and using the given
 // upgrader to perform connection upgrades.
-func New(h host.Host, upgrader transport.Upgrader) (*Client, error) {
+func New(h host.Host, upgrader network.Upgrader) (*Client, error) {
 	cl := &Client{
 		host:        h,
 		upgrader:    upgrader,

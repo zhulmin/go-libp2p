@@ -7,7 +7,6 @@ import (
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
 
 	"github.com/lucas-clemente/quic-go"
 	ma "github.com/multiformats/go-multiaddr"
@@ -36,7 +35,7 @@ type conn struct {
 	remoteMultiaddr ma.Multiaddr
 }
 
-var _ tpt.CapableConn = &conn{}
+var _ network.CapableConn = &conn{}
 
 // Close closes the connection.
 // It must be called even if the peer closed the connection in order for
@@ -100,7 +99,7 @@ func (c *conn) RemoteMultiaddr() ma.Multiaddr {
 	return c.remoteMultiaddr
 }
 
-func (c *conn) Transport() tpt.Transport {
+func (c *conn) Transport() network.Transport {
 	return c.transport
 }
 

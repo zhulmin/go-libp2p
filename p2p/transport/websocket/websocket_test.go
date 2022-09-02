@@ -20,7 +20,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/test"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	csms "github.com/libp2p/go-libp2p/p2p/net/conn-security-multistream"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
@@ -30,7 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
+func newUpgrader(t *testing.T) (peer.ID, network.Upgrader) {
 	t.Helper()
 	id, m := newSecureMuxer(t)
 	u, err := tptu.New(m, yamux.DefaultTransport)

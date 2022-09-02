@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
@@ -19,7 +19,7 @@ type dummyTransport struct {
 	closed    bool
 }
 
-func (dt *dummyTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (dt *dummyTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (network.CapableConn, error) {
 	panic("unimplemented")
 }
 
@@ -27,7 +27,7 @@ func (dt *dummyTransport) CanDial(addr ma.Multiaddr) bool {
 	panic("unimplemented")
 }
 
-func (dt *dummyTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
+func (dt *dummyTransport) Listen(laddr ma.Multiaddr) (network.Listener, error) {
 	panic("unimplemented")
 }
 

@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	logging "github.com/ipfs/go-log/v2"
 	tec "github.com/jbenet/go-temp-err-catcher"
@@ -18,11 +17,11 @@ var log = logging.Logger("upgrader")
 type listener struct {
 	manet.Listener
 
-	transport transport.Transport
+	transport network.Transport
 	upgrader  *upgrader
 	rcmgr     network.ResourceManager
 
-	incoming chan transport.CapableConn
+	incoming chan network.CapableConn
 	err      error
 
 	// Used for backpressure
@@ -158,7 +157,7 @@ func (l *listener) handleIncoming() {
 }
 
 // Accept accepts a connection.
-func (l *listener) Accept() (transport.CapableConn, error) {
+func (l *listener) Accept() (network.CapableConn, error) {
 	for c := range l.incoming {
 		// Could have been sitting there for a while.
 		if !c.IsClosed() {
@@ -175,4 +174,4 @@ func (l *listener) String() string {
 	return fmt.Sprintf("<stream.Listener %s>", l.Multiaddr())
 }
 
-var _ transport.Listener = (*listener)(nil)
+var _ network.Listener = (*listener)(nil)

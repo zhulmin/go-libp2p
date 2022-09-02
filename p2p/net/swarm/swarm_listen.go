@@ -6,7 +6,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/canonicallog"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -39,7 +38,7 @@ func (s *Swarm) Listen(addrs ...ma.Multiaddr) error {
 
 // ListenClose stop and delete listeners for all of the given addresses.
 func (s *Swarm) ListenClose(addrs ...ma.Multiaddr) {
-	var listenersToClose []transport.Listener
+	var listenersToClose []network.Listener
 
 	s.listeners.Lock()
 	for l := range s.listeners.m {

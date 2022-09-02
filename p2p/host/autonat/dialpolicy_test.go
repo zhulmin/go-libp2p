@@ -6,8 +6,8 @@ import (
 	"net"
 	"testing"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
@@ -27,11 +27,11 @@ type mockT struct {
 	addr multiaddr.Multiaddr
 }
 
-func (m *mockT) Dial(ctx context.Context, a multiaddr.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (m *mockT) Dial(ctx context.Context, a multiaddr.Multiaddr, p peer.ID) (network.CapableConn, error) {
 	return nil, nil
 }
 func (m *mockT) CanDial(_ multiaddr.Multiaddr) bool { return true }
-func (m *mockT) Listen(a multiaddr.Multiaddr) (transport.Listener, error) {
+func (m *mockT) Listen(a multiaddr.Multiaddr) (network.Listener, error) {
 	return &mockL{m.ctx, m.addr}, nil
 }
 func (m *mockT) Protocols() []int { return []int{multiaddr.P_IP4} }
@@ -43,7 +43,7 @@ type mockL struct {
 	addr multiaddr.Multiaddr
 }
 
-func (l *mockL) Accept() (transport.CapableConn, error) {
+func (l *mockL) Accept() (network.CapableConn, error) {
 	<-l.ctx.Done()
 	return nil, errors.New("expected in mocked test")
 }

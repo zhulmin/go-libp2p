@@ -12,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	ipnet "github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/sec"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
 
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -75,9 +74,9 @@ type upgrader struct {
 	acceptTimeout time.Duration
 }
 
-var _ transport.Upgrader = &upgrader{}
+var _ network.Upgrader = &upgrader{}
 
-func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, opts ...Option) (transport.Upgrader, error) {
+func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, opts ...Option) (network.Upgrader, error) {
 	u := &upgrader{
 		secure:        secureMuxer,
 		muxer:         muxer,
@@ -95,7 +94,7 @@ func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, opts ...Option)
 }
 
 // UpgradeListener upgrades the passed multiaddr-net listener into a full libp2p-transport listener.
-func (u *upgrader) UpgradeListener(t transport.Transport, list manet.Listener) transport.Listener {
+func (u *upgrader) UpgradeListener(t network.Transport, list manet.Listener) network.Listener {
 	ctx, cancel := context.WithCancel(context.Background())
 	l := &listener{
 		Listener:  list,
@@ -103,7 +102,7 @@ func (u *upgrader) UpgradeListener(t transport.Transport, list manet.Listener) t
 		transport: t,
 		rcmgr:     u.rcmgr,
 		threshold: newThreshold(AcceptQueueLength),
-		incoming:  make(chan transport.CapableConn),
+		incoming:  make(chan network.CapableConn),
 		cancel:    cancel,
 		ctx:       ctx,
 	}
@@ -112,7 +111,7 @@ func (u *upgrader) UpgradeListener(t transport.Transport, list manet.Listener) t
 }
 
 // Upgrade upgrades the multiaddr/net connection into a full libp2p-transport connection.
-func (u *upgrader) Upgrade(ctx context.Context, t transport.Transport, maconn manet.Conn, dir network.Direction, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {
+func (u *upgrader) Upgrade(ctx context.Context, t network.Transport, maconn manet.Conn, dir network.Direction, p peer.ID, connScope network.ConnManagementScope) (network.CapableConn, error) {
 	c, err := u.upgrade(ctx, t, maconn, dir, p, connScope)
 	if err != nil {
 		connScope.Done()
@@ -121,7 +120,7 @@ func (u *upgrader) Upgrade(ctx context.Context, t transport.Transport, maconn ma
 	return c, nil
 }
 
-func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn manet.Conn, dir network.Direction, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {
+func (u *upgrader) upgrade(ctx context.Context, t network.Transport, maconn manet.Conn, dir network.Direction, p peer.ID, connScope network.ConnManagementScope) (network.CapableConn, error) {
 	if dir == network.DirOutbound && p == "" {
 		return nil, ErrNilPeer
 	}

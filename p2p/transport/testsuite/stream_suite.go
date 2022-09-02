@@ -18,7 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -84,7 +83,7 @@ func echoStream(t *testing.T, s network.MuxedStream) {
 	}
 }
 
-func echo(t *testing.T, c transport.CapableConn) {
+func echo(t *testing.T, c network.CapableConn) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	for {
@@ -101,7 +100,7 @@ func echo(t *testing.T, c transport.CapableConn) {
 	}
 }
 
-func serve(t *testing.T, l transport.Listener) {
+func serve(t *testing.T, l network.Listener) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -120,7 +119,7 @@ func serve(t *testing.T, l transport.Listener) {
 	}
 }
 
-func SubtestStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID, opt Options) {
+func SubtestStress(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID, opt Options) {
 	msgsize := 1 << 11
 
 	rateLimitN := 5000 // max of 5k funcs, because -race has 8k max.
@@ -234,7 +233,7 @@ func SubtestStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr,
 	}
 }
 
-func SubtestStreamOpenStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStreamOpenStress(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	l, err := ta.Listen(maddr)
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +249,7 @@ func SubtestStreamOpenStress(t *testing.T, ta, tb transport.Transport, maddr ma.
 	}
 
 	var (
-		connA, connB transport.CapableConn
+		connA, connB network.CapableConn
 	)
 
 	accepted := make(chan error, 1)
@@ -332,7 +331,7 @@ func SubtestStreamOpenStress(t *testing.T, ta, tb transport.Transport, maddr ma.
 	}
 }
 
-func SubtestStreamReset(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStreamReset(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -387,7 +386,7 @@ func SubtestStreamReset(t *testing.T, ta, tb transport.Transport, maddr ma.Multi
 	str.Reset()
 }
 
-func SubtestStress1Conn1Stream1Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStress1Conn1Stream1Msg(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	SubtestStress(t, ta, tb, maddr, peerA, Options{
 		ConnNum:   1,
 		StreamNum: 1,
@@ -397,7 +396,7 @@ func SubtestStress1Conn1Stream1Msg(t *testing.T, ta, tb transport.Transport, mad
 	})
 }
 
-func SubtestStress1Conn1Stream100Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStress1Conn1Stream100Msg(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	SubtestStress(t, ta, tb, maddr, peerA, Options{
 		ConnNum:   1,
 		StreamNum: 1,
@@ -407,7 +406,7 @@ func SubtestStress1Conn1Stream100Msg(t *testing.T, ta, tb transport.Transport, m
 	})
 }
 
-func SubtestStress1Conn100Stream100Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStress1Conn100Stream100Msg(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	SubtestStress(t, ta, tb, maddr, peerA, Options{
 		ConnNum:   1,
 		StreamNum: 100,
@@ -417,7 +416,7 @@ func SubtestStress1Conn100Stream100Msg(t *testing.T, ta, tb transport.Transport,
 	})
 }
 
-func SubtestStressManyConn10Stream50Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStressManyConn10Stream50Msg(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	connNum := 5
 	if runtime.GOOS == "linux" {
 		// Linux can handle a higher number of conns here than other platforms in CI.
@@ -433,7 +432,7 @@ func SubtestStressManyConn10Stream50Msg(t *testing.T, ta, tb transport.Transport
 	})
 }
 
-func SubtestStress1Conn1000Stream10Msg(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStress1Conn1000Stream10Msg(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	SubtestStress(t, ta, tb, maddr, peerA, Options{
 		ConnNum:   1,
 		StreamNum: 1000,
@@ -443,7 +442,7 @@ func SubtestStress1Conn1000Stream10Msg(t *testing.T, ta, tb transport.Transport,
 	})
 }
 
-func SubtestStress1Conn100Stream100Msg10MB(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestStress1Conn100Stream100Msg10MB(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	SubtestStress(t, ta, tb, maddr, peerA, Options{
 		ConnNum:   1,
 		StreamNum: 100,

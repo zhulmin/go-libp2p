@@ -14,14 +14,13 @@ import (
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
 
 	"github.com/lucas-clemente/quic-go"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
-func newTransport(t *testing.T, rcmgr network.ResourceManager) tpt.Transport {
+func newTransport(t *testing.T, rcmgr network.ResourceManager) network.Transport {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	key, err := ic.UnmarshalRsaPrivateKey(x509.MarshalPKCS1PrivateKey(rsaKey))

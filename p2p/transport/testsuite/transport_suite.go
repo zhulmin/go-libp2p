@@ -8,15 +8,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 var testData = []byte("this is some test data")
 
-func SubtestProtocols(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestProtocols(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	rawIPAddr, _ := ma.NewMultiaddr("/ip4/1.2.3.4")
 	if ta.CanDial(rawIPAddr) || tb.CanDial(rawIPAddr) {
 		t.Error("nothing should be able to dial raw IP")
@@ -47,7 +47,7 @@ func SubtestProtocols(t *testing.T, ta, tb transport.Transport, maddr ma.Multiad
 	}
 }
 
-func SubtestBasic(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestBasic(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -58,7 +58,7 @@ func SubtestBasic(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, 
 	defer list.Close()
 
 	var (
-		connA, connB transport.CapableConn
+		connA, connB network.CapableConn
 		done         = make(chan struct{})
 	)
 	defer func() {
@@ -156,7 +156,7 @@ func SubtestBasic(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, 
 	}
 }
 
-func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestPingPong(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	streams := 100
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -169,7 +169,7 @@ func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiadd
 	defer list.Close()
 
 	var (
-		connA, connB transport.CapableConn
+		connA, connB network.CapableConn
 	)
 	defer func() {
 		if connA != nil {
@@ -288,7 +288,7 @@ func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiadd
 	wg.Wait()
 }
 
-func SubtestCancel(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID) {
+func SubtestCancel(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID) {
 	list, err := ta.Listen(maddr)
 	if err != nil {
 		t.Fatal(err)

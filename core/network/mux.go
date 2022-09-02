@@ -68,7 +68,7 @@ type MuxedStream interface {
 // independent bidirectional streams of binary data.
 //
 // Together with network.ConnSecurity, MuxedConn is a component of the
-// transport.CapableConn interface, which represents a "raw" network
+// network.CapableConn interface, which represents a "raw" network
 // connection that has been "upgraded" to support the libp2p capabilities
 // of secure communication and stream multiplexing.
 type MuxedConn interface {

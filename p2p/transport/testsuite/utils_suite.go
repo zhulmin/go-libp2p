@@ -5,13 +5,13 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-var Subtests = []func(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, peerA peer.ID){
+var Subtests = []func(t *testing.T, ta, tb network.Transport, maddr ma.Multiaddr, peerA peer.ID){
 	SubtestProtocols,
 	SubtestBasic,
 	SubtestCancel,
@@ -32,7 +32,7 @@ func getFunctionName(i interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
-func SubtestTransport(t *testing.T, ta, tb transport.Transport, addr string, peerA peer.ID) {
+func SubtestTransport(t *testing.T, ta, tb network.Transport, addr string, peerA peer.ID) {
 	maddr, err := ma.NewMultiaddr(addr)
 	if err != nil {
 		t.Fatal(err)

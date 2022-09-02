@@ -12,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/test"
-	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/upgrader"
 
@@ -22,11 +21,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createUpgrader(t *testing.T, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
+func createUpgrader(t *testing.T, opts ...upgrader.Option) (peer.ID, network.Upgrader) {
 	return createUpgraderWithMuxer(t, &negotiatingMuxer{}, opts...)
 }
 
-func createUpgraderWithMuxer(t *testing.T, muxer network.Multiplexer, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
+func createUpgraderWithMuxer(t *testing.T, muxer network.Multiplexer, opts ...upgrader.Option) (peer.ID, network.Upgrader) {
 	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 	require.NoError(t, err)
 	id, err := peer.IDFromPrivateKey(priv)
@@ -83,7 +82,7 @@ func (m *errorMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope)
 	return nil, errors.New("mux error")
 }
 
-func testConn(t *testing.T, clientConn, serverConn transport.CapableConn) {
+func testConn(t *testing.T, clientConn, serverConn network.CapableConn) {
 	t.Helper()
 	require := require.New(t)
 
@@ -102,7 +101,7 @@ func testConn(t *testing.T, clientConn, serverConn transport.CapableConn) {
 	require.Equal([]byte("foobar"), b)
 }
 
-func dial(t *testing.T, upgrader transport.Upgrader, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (transport.CapableConn, error) {
+func dial(t *testing.T, upgrader network.Upgrader, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (network.CapableConn, error) {
 	t.Helper()
 
 	macon, err := manet.Dial(raddr)

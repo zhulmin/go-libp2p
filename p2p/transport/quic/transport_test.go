@@ -12,14 +12,14 @@ import (
 	"testing"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/core/network"
 
 	"github.com/lucas-clemente/quic-go"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
-func getTransport(t *testing.T) tpt.Transport {
+func getTransport(t *testing.T) network.Transport {
 	t.Helper()
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)

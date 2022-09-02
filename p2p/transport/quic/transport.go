@@ -17,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/pnet"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
 	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -134,7 +133,7 @@ func (c *connManager) Close() error {
 	return c.reuseUDP4.Close()
 }
 
-// The Transport implements the tpt.Transport interface for QUIC connections.
+// The Transport implements the network.Transport interface for QUIC connections.
 type transport struct {
 	privKey      ic.PrivKey
 	localPeer    peer.ID
@@ -152,7 +151,7 @@ type transport struct {
 	conns  map[quic.Connection]*conn
 }
 
-var _ tpt.Transport = &transport{}
+var _ network.Transport = &transport{}
 
 type holePunchKey struct {
 	addr string
@@ -160,12 +159,12 @@ type holePunchKey struct {
 }
 
 type activeHolePunch struct {
-	connCh    chan tpt.CapableConn
+	connCh    chan network.CapableConn
 	fulfilled bool
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (network.Transport, error) {
 	var cfg config
 	if err := cfg.apply(opts...); err != nil {
 		return nil, fmt.Errorf("unable to apply quic-tpt option(s): %w", err)
@@ -228,7 +227,7 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 }
 
 // Dial dials a new QUIC connection
-func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
+func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (network.CapableConn, error) {
 	netw, host, err := manet.DialArgs(raddr)
 	if err != nil {
 		return nil, err
@@ -315,8 +314,8 @@ func (t *transport) removeConn(conn quic.Connection) {
 	t.connMx.Unlock()
 }
 
-func (t *transport) holePunch(ctx context.Context, network string, addr *net.UDPAddr, p peer.ID) (tpt.CapableConn, error) {
-	pconn, err := t.connManager.Dial(network, addr)
+func (t *transport) holePunch(ctx context.Context, net string, addr *net.UDPAddr, p peer.ID) (network.CapableConn, error) {
+	pconn, err := t.connManager.Dial(net, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +330,7 @@ func (t *transport) holePunch(ctx context.Context, network string, addr *net.UDP
 		t.holePunchingMx.Unlock()
 		return nil, fmt.Errorf("already punching hole for %s", addr)
 	}
-	connCh := make(chan tpt.CapableConn, 1)
+	connCh := make(chan network.CapableConn, 1)
 	t.holePunching[key] = &activeHolePunch{connCh: connCh}
 	t.holePunchingMx.Unlock()
 
@@ -400,7 +399,7 @@ func (t *transport) CanDial(addr ma.Multiaddr) bool {
 }
 
 // Listen listens for new QUIC connections on the passed multiaddr.
-func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
+func (t *transport) Listen(addr ma.Multiaddr) (network.Listener, error) {
 	lnet, host, err := manet.DialArgs(addr)
 	if err != nil {
 		return nil, err

@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -114,7 +113,7 @@ type Swarm struct {
 		ifaceListenAddres []ma.Multiaddr
 		cacheEOL          time.Time
 
-		m map[transport.Listener]struct{}
+		m map[network.Listener]struct{}
 	}
 
 	notifs struct {
@@ -124,7 +123,7 @@ type Swarm struct {
 
 	transports struct {
 		sync.RWMutex
-		m map[int]transport.Transport
+		m map[int]network.Transport
 	}
 
 	// stream handlers
@@ -156,8 +155,8 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 	}
 
 	s.conns.m = make(map[peer.ID][]*Conn)
-	s.listeners.m = make(map[transport.Listener]struct{})
-	s.transports.m = make(map[int]transport.Transport)
+	s.listeners.m = make(map[network.Listener]struct{})
+	s.transports.m = make(map[int]network.Transport)
 	s.notifs.m = make(map[network.Notifiee]struct{})
 
 	for _, opt := range opts {
@@ -198,7 +197,7 @@ func (s *Swarm) close() {
 	// possible.
 
 	for l := range listeners {
-		go func(l transport.Listener) {
+		go func(l network.Listener) {
 			if err := l.Close(); err != nil {
 				log.Errorf("error when shutting down listener: %s", err)
 			}
@@ -240,7 +239,7 @@ func (s *Swarm) close() {
 	wg.Wait()
 }
 
-func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn, error) {
+func (s *Swarm) addConn(tc network.CapableConn, dir network.Direction) (*Conn, error) {
 	var (
 		p    = tc.RemotePeer()
 		addr = tc.RemoteMultiaddr()
@@ -611,4 +610,4 @@ func (s *Swarm) ResourceManager() network.ResourceManager {
 
 // Swarm is a Network.
 var _ network.Network = (*Swarm)(nil)
-var _ transport.TransportNetwork = (*Swarm)(nil)
+var _ network.TransportNetwork = (*Swarm)(nil)

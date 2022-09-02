@@ -112,7 +112,7 @@ func Muxer(name string, tpt interface{}) Option {
 // Transport configures libp2p to use the given transport (or transport
 // constructor).
 //
-// The transport can be a constructed transport.Transport or a function taking
+// The transport can be a constructed network.Transport or a function taking
 // any subset of this libp2p node's:
 // * Transport Upgrader (*tptu.Upgrader)
 // * Host

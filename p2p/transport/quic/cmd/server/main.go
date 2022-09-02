@@ -8,8 +8,8 @@ import (
 	"os"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -63,7 +63,7 @@ func run(port string) error {
 	}
 }
 
-func handleConn(conn tpt.CapableConn) error {
+func handleConn(conn network.CapableConn) error {
 	str, err := conn.AcceptStream()
 	if err != nil {
 		return err

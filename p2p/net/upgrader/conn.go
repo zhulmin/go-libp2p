@@ -4,21 +4,20 @@ import (
 	"fmt"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/transport"
 )
 
 type transportConn struct {
 	network.MuxedConn
 	network.ConnMultiaddrs
 	network.ConnSecurity
-	transport transport.Transport
+	transport network.Transport
 	scope     network.ConnManagementScope
 	stat      network.ConnStats
 }
 
-var _ transport.CapableConn = &transportConn{}
+var _ network.CapableConn = &transportConn{}
 
-func (t *transportConn) Transport() transport.Transport {
+func (t *transportConn) Transport() network.Transport {
 	return t.transport
 }
 
