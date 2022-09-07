@@ -12,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	testutil "github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
-	. "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
 	"github.com/libp2p/go-libp2p-testing/ci"
@@ -23,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func closeSwarms(swarms []*Swarm) {
+func closeSwarms(swarms []*swarm.Swarm) {
 	for _, s := range swarms {
 		s.Close()
 	}
@@ -130,7 +129,7 @@ func TestSimultDials(t *testing.T) {
 	{
 		var wg sync.WaitGroup
 		errs := make(chan error, 20) // 2 connect calls in each of the 10 for-loop iterations
-		connect := func(s *Swarm, dst peer.ID, addr ma.Multiaddr) {
+		connect := func(s *swarm.Swarm, dst peer.ID, addr ma.Multiaddr) {
 			// copy for other peer
 			log.Debugf("TestSimultOpen: connecting: %s --> %s (%s)", s.LocalPeer(), dst, addr)
 			s.Peerstore().AddAddr(dst, addr, peerstore.TempAddrTTL)
@@ -216,11 +215,11 @@ func TestDialWait(t *testing.T) {
 	}
 	duration := time.Since(before)
 
-	if duration < dialTimeout*DialAttempts {
-		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*DialAttempts)
+	if duration < dialTimeout*swarm.DialAttempts {
+		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*swarm.DialAttempts)
 	}
-	if duration > 2*dialTimeout*DialAttempts {
-		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*DialAttempts)
+	if duration > 2*dialTimeout*swarm.DialAttempts {
+		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*swarm.DialAttempts)
 	}
 
 	if !s1.Backoff().Backoff(s2p, s2addr) {
@@ -458,11 +457,11 @@ func TestDialBackoffClears(t *testing.T) {
 	require.Error(t, err, "dialing to broken addr worked...")
 	duration := time.Since(before)
 
-	if duration < dialTimeout*DialAttempts {
-		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*DialAttempts)
+	if duration < dialTimeout*swarm.DialAttempts {
+		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*swarm.DialAttempts)
 	}
-	if duration > 2*dialTimeout*DialAttempts {
-		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*DialAttempts)
+	if duration > 2*dialTimeout*swarm.DialAttempts {
+		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*swarm.DialAttempts)
 	}
 	require.True(t, s1.Backoff().Backoff(s2.LocalPeer(), s2bad), "s2 should now be on backoff")
 
@@ -502,7 +501,7 @@ func TestDialPeerFailed(t *testing.T) {
 	//   * [/ip4/127.0.0.1/tcp/34881] failed to negotiate security protocol: context deadline exceeded
 	// ...
 
-	dialErr, ok := err.(*DialError)
+	dialErr, ok := err.(*swarm.DialError)
 	if !ok {
 		t.Fatalf("expected *DialError, got %T", err)
 	}
@@ -657,5 +656,5 @@ func TestDialSelf(t *testing.T) {
 	s1 := swarms[0]
 
 	_, err := s1.DialPeer(context.Background(), s1.LocalPeer())
-	require.ErrorIs(t, err, ErrDialToSelf, "expected error from self dial")
+	require.ErrorIs(t, err, swarm.ErrDialToSelf, "expected error from self dial")
 }

@@ -709,13 +709,6 @@ func (h *BasicHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		}
 	}
 
-	// TODO remove this
-	// resolved, err := h.resolveAddrs(ctx, h.Peerstore().PeerInfo(pi.ID))
-	// if err != nil {
-	// 	return err
-	// }
-	// h.Peerstore().AddAddrs(pi.ID, resolved, peerstore.TempAddrTTL)
-
 	return h.dialPeer(ctx, pi.ID)
 }
 

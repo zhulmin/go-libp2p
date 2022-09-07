@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/canonicallog"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -331,8 +332,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 		return nil, ErrNoGoodAddresses
 	}
 
-	// Do we store the addrs?
-	// h.Peerstore().AddAddrs(pi.ID, goodAddrs, peerstore.TempAddrTTL)
+	s.peers.AddAddrs(p, goodAddrs, peerstore.TempAddrTTL)
 
 	return resolved, nil
 }
