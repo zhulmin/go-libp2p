@@ -16,7 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	"github.com/multiformats/go-multiaddr"
-	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	"github.com/stretchr/testify/require"
 )
@@ -94,11 +93,11 @@ func TestAddrResolution(t *testing.T) {
 
 	p1 := test.RandPeerIDFatal(t)
 	p2 := test.RandPeerIDFatal(t)
-	addr1 := ma.StringCast("/dnsaddr/example.com")
-	addr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123")
+	addr1 := multiaddr.StringCast("/dnsaddr/example.com")
+	addr2 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123")
 
-	p2paddr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
-	p2paddr3 := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p2.Pretty())
+	p2paddr2 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
+	p2paddr3 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p2.Pretty())
 
 	backend := &madns.MockResolver{
 		TXT: map[string][]string{"_dnsaddr.example.com": {
@@ -137,13 +136,13 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	addr1 := ma.StringCast("/dnsaddr/example.com")
-	addr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123")
-	p2paddr1 := ma.StringCast("/dnsaddr/example.com/p2p/" + p1.Pretty())
-	p2paddr2 := ma.StringCast("/dnsaddr/example.com/p2p/" + p2.Pretty())
-	p2paddr1i := ma.StringCast("/dnsaddr/foo.example.com/p2p/" + p1.Pretty())
-	p2paddr2i := ma.StringCast("/dnsaddr/bar.example.com/p2p/" + p2.Pretty())
-	p2paddr1f := ma.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
+	addr1 := multiaddr.StringCast("/dnsaddr/example.com")
+	addr2 := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123")
+	p2paddr1 := multiaddr.StringCast("/dnsaddr/example.com/p2p/" + p1.Pretty())
+	p2paddr2 := multiaddr.StringCast("/dnsaddr/example.com/p2p/" + p2.Pretty())
+	p2paddr1i := multiaddr.StringCast("/dnsaddr/foo.example.com/p2p/" + p1.Pretty())
+	p2paddr2i := multiaddr.StringCast("/dnsaddr/bar.example.com/p2p/" + p2.Pretty())
+	p2paddr1f := multiaddr.StringCast("/ip4/192.0.2.1/tcp/123/p2p/" + p1.Pretty())
 
 	backend := &madns.MockResolver{
 		TXT: map[string][]string{
