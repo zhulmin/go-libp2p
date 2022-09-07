@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	. "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
@@ -407,7 +408,7 @@ func TestPreventDialListenAddr(t *testing.T) {
 			break
 		}
 	}
-	remote := peer.ID("foobar")
+	remote := test.RandPeerIDFatal(t)
 	s.Peerstore().AddAddr(remote, addr, time.Hour)
 	_, err = s.DialPeer(context.Background(), remote)
 	if !errors.Is(err, swarm.ErrNoGoodAddresses) {
