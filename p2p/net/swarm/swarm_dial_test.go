@@ -163,10 +163,6 @@ func TestAddrResolutionRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// h, err := NewHost(swarmt.GenSwarm(t), &HostOpts{MultiaddrResolver: resolver})
-	// require.NoError(t, err)
-	// defer h.Close()
-
 	s := newTestSwarmWithResolver(t, resolver)
 
 	pi1, err := peer.AddrInfoFromP2pAddr(p2paddr1)
