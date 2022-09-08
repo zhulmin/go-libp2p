@@ -105,25 +105,17 @@ func ParseWebsocketNetAddr(a net.Addr) (ma.Multiaddr, error) {
 }
 
 func parseMultiaddr(maddr ma.Multiaddr) (*url.URL, error) {
+	parsed, err := parseWebsocketMultiaddr(maddr)
+	if err != nil {
+		return nil, err
+	}
+
 	scheme := "ws"
-
-	restMultiaddr := maddr.Decapsulate(wssComponent)
-	if restMultiaddr.Equal(maddr) {
-		// no wss, check for tls + ws
-		withoutWs := maddr.Decapsulate(wsComponent)
-		if withoutWs.Equal(maddr) {
-			return nil, fmt.Errorf("not a websocket multiaddr")
-		}
-
-		restMultiaddr = withoutWs.Decapsulate(tlsComponent)
-		if !restMultiaddr.Equal(withoutWs) {
-			scheme = "wss"
-		}
-	} else {
+	if parsed.isWSS {
 		scheme = "wss"
 	}
 
-	network, host, err := manet.DialArgs(restMultiaddr)
+	network, host, err := manet.DialArgs(parsed.restMultiaddr)
 	if err != nil {
 		return nil, err
 	}
@@ -136,4 +128,50 @@ func parseMultiaddr(maddr ma.Multiaddr) (*url.URL, error) {
 		Scheme: scheme,
 		Host:   host,
 	}, nil
+}
+
+type parsedWebsocketMultiaddr struct {
+	isWSS bool
+	// sni is the SNI value for the TLS handshake
+	sni *ma.Component
+	// the rest of the multiaddr before the /tls/sni/example.com/ws or /ws or /wss
+	restMultiaddr ma.Multiaddr
+}
+
+func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
+	out := parsedWebsocketMultiaddr{}
+	// First check if we have a WSS component. If so we'll canonicalize it into a /tls/ws
+	withoutWss := a.Decapsulate(wssComponent)
+	if !withoutWss.Equal(a) {
+		a = withoutWss.Encapsulate(tlsWsComponent)
+	}
+
+	// Remove the ws component
+	withoutWs := a.Decapsulate(wsComponent)
+	if withoutWs.Equal(a) {
+		return out, fmt.Errorf("not a websocket multiaddr")
+	}
+
+	rest := withoutWs
+	// If this is not a wss then withoutWs is the rest of the multiaddr
+	out.restMultiaddr = withoutWs
+	for {
+		var head *ma.Component
+		rest, head = ma.SplitLast(rest)
+		fmt.Println("head", head)
+		fmt.Println("rest", rest)
+		if head == nil || rest == nil {
+			break
+		}
+
+		if head.Protocol().Code == ma.P_SNI {
+			out.sni = head
+		} else if head.Protocol().Code == ma.P_TLS {
+			out.isWSS = true
+			out.restMultiaddr = rest
+			break
+		}
+	}
+
+	return out, nil
 }

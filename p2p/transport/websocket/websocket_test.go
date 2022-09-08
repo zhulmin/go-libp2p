@@ -2,6 +2,8 @@ package websocket
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -87,11 +89,11 @@ func lastComponent(t *testing.T, a ma.Multiaddr) ma.Multiaddr {
 	t.Helper()
 	_, wscomponent := ma.SplitLast(a)
 	require.NotNil(t, wscomponent)
-	if wscomponent.Equal(wsma) {
-		return wsma
+	if wscomponent.Equal(wsComponent) {
+		return wsComponent
 	}
-	if wscomponent.Equal(wssma) {
-		return wssma
+	if wscomponent.Equal(wssComponent) {
+		return wssComponent
 	}
 	t.Fatal("expected a ws or wss component")
 	return nil
@@ -144,58 +146,103 @@ func TestCanDial(t *testing.T) {
 	}
 }
 
-func TestDialWss(t *testing.T) {
-	// update/fill this test with `dig +short txt _dnsaddr.bootstrap.libp2p.io`
-	ips, err := net.LookupIP("ny5.bootstrap.libp2p.io")
-	if err != nil {
-		t.Skip("this test requries an internet connection and it seems like we currently don't have one")
+// testWSSServer returns a client hello info
+func testWSSServer(t *testing.T, listenAddr ma.Multiaddr) (ma.Multiaddr, peer.ID, chan error) {
+	errChan := make(chan error, 1)
+
+	ip := net.ParseIP("::")
+	tlsConf := getTLSConf(t, ip, time.Now(), time.Now().Add(time.Hour))
+	tlsConf.GetConfigForClient = func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+		if chi.ServerName != "example.com" {
+			errChan <- fmt.Errorf("didn't get the expected sni")
+		}
+		return tlsConf, nil
 	}
 
-	raddr := ma.StringCast("/dns4/ny5.bootstrap.libp2p.io/tcp/443/wss")
-	rid, err := peer.Decode("QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa")
+	id, u := newSecureUpgrader(t)
+	tpt, err := New(u, network.NullResourceManager, WithTLSConfig(tlsConf))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tlsConfig := &tls.Config{}
+	// l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/wss"))
+	// l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/tls/ws"))
+	l, err := tpt.Listen(listenAddr)
+	fmt.Println("here", listenAddr)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		l.Close()
+	})
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			errChan <- fmt.Errorf("error in accepting conn: %w", err)
+			return
+		}
+		defer conn.Close()
+
+		strm, err := conn.AcceptStream()
+		if err != nil {
+			errChan <- fmt.Errorf("error in accepting stream: %w", err)
+			return
+		}
+		defer strm.Close()
+		close(errChan)
+	}()
+
+	return l.Multiaddr(), id, errChan
+}
+
+func getTLSConf(t *testing.T, ip net.IP, start, end time.Time) *tls.Config {
+	t.Helper()
+	certTempl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1234),
+		Subject:               pkix.Name{Organization: []string{"websocket"}},
+		NotBefore:             start,
+		NotAfter:              end,
+		IsCA:                  true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IPAddresses:           []net.IP{ip},
+	}
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	caBytes, err := x509.CreateCertificate(rand.Reader, certTempl, certTempl, &priv.PublicKey, priv)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(caBytes)
+	require.NoError(t, err)
+	return &tls.Config{
+		Certificates: []tls.Certificate{{
+			Certificate: [][]byte{cert.Raw},
+			PrivateKey:  priv,
+			Leaf:        cert,
+		}},
+	}
+}
+
+func TestDialWss(t *testing.T) {
+	serverMA, rid, errChan := testWSSServer(t, ma.StringCast("/ip4/127.0.0.1/tcp/0/tls/sni/example.com/ws"))
+	require.Contains(t, serverMA.String(), "tls")
+
+	tlsConfig := &tls.Config{InsecureSkipVerify: true} // Our test server doesn't have a cert signed by a CA
 	_, u := newSecureUpgrader(t)
 	tpt, err := New(u, network.NullResourceManager, WithTLSClientConfig(tlsConfig))
-	if err != nil {
-		t.Fatal(err)
-	}
-	masToDial, err := tpt.Resolve(context.Background(), raddr)
 	require.NoError(t, err)
-	require.Len(t, masToDial, 1)
-	maToDial := masToDial[0]
-	// Replace the dns with the ip4
-	_, maWithoutDNS := ma.SplitFirst(maToDial)
-	for _, ip := range ips {
-		if ip.To4() == nil {
-			// Skipping ipv6 test for now (I can't run this locally on my network)
-			// maWithIP6 := ma.StringCast("/ip6/" + ips[1].String()).Encapsulate(maWithoutDNS)
-			// masToDial = append(masToDial, maWithIP6)
-		} else {
-			maWithIP4 := ma.StringCast("/ip4/" + ips[0].To4().String()).Encapsulate(maWithoutDNS)
-			masToDial = append(masToDial, maWithIP4)
 
-		}
+	masToDial, err := tpt.Resolve(context.Background(), serverMA)
+	require.NoError(t, err)
 
-	}
+	conn, err := tpt.Dial(context.Background(), masToDial[0], rid)
+	require.NoError(t, err)
+	defer conn.Close()
 
-	for _, maToDial := range masToDial {
-		t.Run(maToDial.String(), func(t *testing.T) {
-			conn, err := tpt.Dial(context.Background(), maToDial, rid)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer conn.Close()
-			stream, err := conn.OpenStream(context.Background())
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer stream.Close()
-		})
-	}
+	stream, err := conn.OpenStream(context.Background())
+	require.NoError(t, err)
+	defer stream.Close()
+
+	err = <-errChan
+	require.NoError(t, err)
 }
 
 func TestWebsocketTransport(t *testing.T) {
@@ -227,9 +274,9 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 	l, err := tpt.Listen(laddr)
 	require.NoError(t, err)
 	if secure {
-		require.Equal(t, lastComponent(t, l.Multiaddr()), wssma)
+		require.Equal(t, lastComponent(t, l.Multiaddr()), wssComponent)
 	} else {
-		require.Equal(t, lastComponent(t, l.Multiaddr()), wsma)
+		require.Equal(t, lastComponent(t, l.Multiaddr()), wsComponent)
 	}
 	defer l.Close()
 
@@ -301,8 +348,8 @@ func TestWebsocketListenSecureAndInsecure(t *testing.T) {
 		conn, err := client.Dial(context.Background(), lnInsecure.Multiaddr(), serverID)
 		require.NoError(t, err)
 		defer conn.Close()
-		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()).String(), wsma.String())
-		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()).String(), wsma.String())
+		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()).String(), wsComponent.String())
+		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()).String(), wsComponent.String())
 
 		// dialing the secure address should fail
 		_, err = client.Dial(context.Background(), lnSecure.Multiaddr(), serverID)
@@ -318,8 +365,8 @@ func TestWebsocketListenSecureAndInsecure(t *testing.T) {
 		conn, err := client.Dial(context.Background(), lnSecure.Multiaddr(), serverID)
 		require.NoError(t, err)
 		defer conn.Close()
-		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()), wssma)
-		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()), wssma)
+		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()), wssComponent)
+		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()), wssComponent)
 
 		// dialing the insecure address should fail
 		_, err = client.Dial(context.Background(), lnInsecure.Multiaddr(), serverID)

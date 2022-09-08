@@ -36,6 +36,13 @@ var dialMatcher = mafmt.And(
 			mafmt.Base(ma.P_WS)),
 		mafmt.Base(ma.P_WSS)))
 
+var (
+	wssComponent   = ma.StringCast("/wss")
+	tlsWsComponent = ma.StringCast("/tls/ws")
+	tlsComponent   = ma.StringCast("/tls")
+	wsComponent    = ma.StringCast("/ws")
+)
+
 func init() {
 	manet.RegisterFromNetAddr(ParseWebsocketNetAddr, "websocket")
 	manet.RegisterToNetAddr(ConvertWebsocketMultiaddrToNetAddr, "ws")
@@ -111,52 +118,40 @@ func (t *WebsocketTransport) Proxy() bool {
 	return false
 }
 
-var wssComponent = ma.StringCast("/wss")
-var tlsWsComponent = ma.StringCast("/tls/ws")
-var tlsComponent = ma.StringCast("/tls")
-var wsComponent = ma.StringCast("/ws")
-
 func (t *WebsocketTransport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
-	// Are we a WSS or /tls/ws multiaddr
-	multiaddrBeforeWs := maddr.Decapsulate(wssComponent)
-	if maddr.Equal(multiaddrBeforeWs) {
-		// maddr didn't have a WSS component. Let's check if there's a /tls/ws component
-		multiaddrBeforeWs = maddr.Decapsulate(tlsWsComponent)
-		if maddr.Equal(multiaddrBeforeWs) {
-			// No /tls/ws component, this isn't a secure websocket multiaddr. We can just return it here
-			return []ma.Multiaddr{maddr}, nil
-		}
+	parsed, err := parseWebsocketMultiaddr(maddr)
+	if err != nil {
+		return nil, err
 	}
 
-	// Is there an sni component?
-	sni, err := multiaddrBeforeWs.ValueForProtocol(ma.P_SNI)
-	if err != nil {
+	if !parsed.isWSS {
+		// No /tls/ws component, this isn't a secure websocket multiaddr. We can just return it here
+		return []ma.Multiaddr{maddr}, nil
+	}
+
+	if parsed.sni == nil {
+		var err error
 		// We don't have an sni component, we'll use dns/dnsaddr
-		sni = ""
-		ma.ForEach(multiaddrBeforeWs, func(c ma.Component) bool {
+		ma.ForEach(parsed.restMultiaddr, func(c ma.Component) bool {
 			switch c.Protocol().Code {
 			case ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
-				sni = c.Value()
+				// errr shouldn't happen since this means we couldn't parse a dns hostname for an sni value.
+				parsed.sni, err = ma.NewComponent("sni", c.Value())
 				return false
 			}
 			return true
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
-	if sni == "" {
+
+	if parsed.sni == nil {
 		// we didn't find anything to set the sni with. So we just return the given multiaddr
 		return []ma.Multiaddr{maddr}, nil
 	}
 
-	sniMA, err := ma.NewMultiaddr("/sni/" + sni)
-	if err != nil {
-		// shouldn't happen since this means we couldn't parse a dns hostname for an sni value.
-		return nil, err
-	}
-
-	return []ma.Multiaddr{
-			multiaddrBeforeWs.Encapsulate(tlsComponent).Encapsulate(sniMA).Encapsulate(wsComponent),
-		},
-		nil
+	return []ma.Multiaddr{parsed.toMultiaddr()}, nil
 }
 
 func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
