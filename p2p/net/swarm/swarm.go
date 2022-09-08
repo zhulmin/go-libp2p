@@ -55,7 +55,7 @@ func WithConnectionGater(gater connmgr.ConnectionGater) Option {
 	}
 }
 
-// WithMultiaddrResolver sets a custom multiaddr.Resolver
+// WithMultiaddrResolver sets a custom multiaddress resolver
 func WithMultiaddrResolver(maResolver *madns.Resolver) Option {
 	return func(s *Swarm) error {
 		s.maResolver = maResolver
