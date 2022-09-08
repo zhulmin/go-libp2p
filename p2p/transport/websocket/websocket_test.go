@@ -11,7 +11,6 @@ import (
 	"io"
 	"math/big"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -416,19 +415,20 @@ func TestWriteZero(t *testing.T) {
 }
 
 func TestResolveMultiaddr(t *testing.T) {
-	testCases := []string{
-		"/dns4/example.com/tcp/1234/wss",
-		"/dns6/example.com/tcp/1234/wss",
-		"/dnsaddr/example.com/tcp/1234/wss",
-		"/dns4/example.com/tcp/1234/tls/ws",
-		"/dns6/example.com/tcp/1234/tls/ws",
-		"/dnsaddr/example.com/tcp/1234/tls/ws",
+	// map[unresolved]resolved
+	testCases := map[string]string{
+		"/dns4/example.com/tcp/1234/wss":       "/dns4/example.com/tcp/1234/tls/sni/example.com/ws",
+		"/dns6/example.com/tcp/1234/wss":       "/dns6/example.com/tcp/1234/tls/sni/example.com/ws",
+		"/dnsaddr/example.com/tcp/1234/wss":    "/dnsaddr/example.com/tcp/1234/tls/sni/example.com/ws",
+		"/dns4/example.com/tcp/1234/tls/ws":    "/dns4/example.com/tcp/1234/tls/sni/example.com/ws",
+		"/dns6/example.com/tcp/1234/tls/ws":    "/dns6/example.com/tcp/1234/tls/sni/example.com/ws",
+		"/dnsaddr/example.com/tcp/1234/tls/ws": "/dnsaddr/example.com/tcp/1234/tls/sni/example.com/ws",
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc, func(t *testing.T) {
+	for unresolved, expectedMA := range testCases {
+		t.Run(unresolved, func(t *testing.T) {
 
-			m1 := ma.StringCast(tc)
+			m1 := ma.StringCast(unresolved)
 			wsTpt := WebsocketTransport{}
 			ctx := context.Background()
 
@@ -436,15 +436,7 @@ func TestResolveMultiaddr(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, addrs, 1)
 
-			var expectedMA ma.Multiaddr
-			if strings.Contains(tc, "tls/ws") {
-				expectedMA = m1.Decapsulate(ma.StringCast("/tls/ws"))
-			} else {
-				expectedMA = m1.Decapsulate(ma.StringCast("/wss"))
-			}
-			expectedMA = expectedMA.Encapsulate(ma.StringCast("/tls/sni/example.com/ws"))
-
-			require.Equal(t, expectedMA.String(), addrs[0].String())
+			require.Equal(t, expectedMA, addrs[0].String())
 		})
 	}
 }
