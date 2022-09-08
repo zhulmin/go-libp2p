@@ -128,28 +128,25 @@ func (t *WebsocketTransport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([
 		}
 	}
 
-	// do we have a dns/dnsaddr here that we should use as a SNI?
-	sni := ""
-	ma.ForEach(maddr, func(c ma.Component) bool {
-		switch c.Protocol().Code {
-		case ma.P_DNS:
-			fallthrough
-		case ma.P_DNS4:
-			fallthrough
-		case ma.P_DNS6:
-			fallthrough
-		case ma.P_DNSADDR:
-			sni = c.Value()
-			return false
-		}
-		return true
-	})
+	// Is there an sni component?
+	sni, err := multiaddrBeforeWs.ValueForProtocol(ma.P_SNI)
+	if err != nil {
+		// We don't have an sni component, we'll use dns/dnsaddr
+		sni = ""
+		ma.ForEach(multiaddrBeforeWs, func(c ma.Component) bool {
+			switch c.Protocol().Code {
+			case ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
+				sni = c.Value()
+				return false
+			}
+			return true
+		})
+	}
 	if sni == "" {
 		// we didn't find anything to set the sni with. So we just return the given multiaddr
 		return []ma.Multiaddr{maddr}, nil
 	}
 
-	// TODO add the sni here
 	sniMA, err := ma.NewMultiaddr("/sni/" + sni)
 	if err != nil {
 		// shouldn't happen since this means we couldn't parse a dns hostname for an sni value.
@@ -184,18 +181,12 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
 	if isWss {
 		sni := ""
-		ma.ForEach(raddr, func(c ma.Component) bool {
-			if c.Protocol().Code == ma.P_SNI {
-				sni = c.Value()
-				return false
-			}
-			return true
-		})
+		raddr.ValueForProtocol(ma.P_SNI)
 
 		if sni != "" {
-			copytlsClientConf := *t.tlsClientConf
+			copytlsClientConf := t.tlsClientConf.Clone()
 			copytlsClientConf.ServerName = sni
-			dialer.TLSClientConfig = &copytlsClientConf
+			dialer.TLSClientConfig = copytlsClientConf
 		} else {
 			dialer.TLSClientConfig = t.tlsClientConf
 		}
