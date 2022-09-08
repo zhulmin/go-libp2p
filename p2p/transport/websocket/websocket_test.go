@@ -274,7 +274,7 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 	l, err := tpt.Listen(laddr)
 	require.NoError(t, err)
 	if secure {
-		require.Equal(t, lastComponent(t, l.Multiaddr()), wssComponent)
+		require.Contains(t, l.Multiaddr().String(), "tls")
 	} else {
 		require.Equal(t, lastComponent(t, l.Multiaddr()), wsComponent)
 	}

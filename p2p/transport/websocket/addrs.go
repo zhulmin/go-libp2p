@@ -158,8 +158,6 @@ func parseWebsocketMultiaddr(a ma.Multiaddr) (parsedWebsocketMultiaddr, error) {
 	for {
 		var head *ma.Component
 		rest, head = ma.SplitLast(rest)
-		fmt.Println("head", head)
-		fmt.Println("rest", rest)
 		if head == nil || rest == nil {
 			break
 		}

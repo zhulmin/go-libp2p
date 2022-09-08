@@ -32,9 +32,7 @@ type config struct {
 	dialOnly         bool
 	disableTCP       bool
 	disableQUIC      bool
-	dialTimeout      time.Duration
 	connectionGater  connmgr.ConnectionGater
-	rcmgr            network.ResourceManager
 	sk               crypto.PrivKey
 	swarmOpts        []swarm.Option
 	clock
@@ -60,7 +58,7 @@ func WithClock(clock clock) Option {
 	}
 }
 
-func WithSwarmOpts(swarmOpts []swarm.Option) Option {
+func WithSwarmOpts(swarmOpts ...swarm.Option) Option {
 	return func(_ *testing.T, c *config) {
 		c.swarmOpts = swarmOpts
 	}
@@ -93,22 +91,10 @@ func OptConnGater(cg connmgr.ConnectionGater) Option {
 	}
 }
 
-func OptResourceManager(rcmgr network.ResourceManager) Option {
-	return func(_ *testing.T, c *config) {
-		c.rcmgr = rcmgr
-	}
-}
-
 // OptPeerPrivateKey configures the peer private key which is then used to derive the public key and peer ID.
 func OptPeerPrivateKey(sk crypto.PrivKey) Option {
 	return func(_ *testing.T, c *config) {
 		c.sk = sk
-	}
-}
-
-func DialTimeout(t time.Duration) Option {
-	return func(_ *testing.T, c *config) {
-		c.dialTimeout = t
 	}
 }
 
@@ -155,12 +141,6 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	swarmOpts = append(swarmOpts, swarm.WithMetrics(metrics.NewBandwidthCounter()))
 	if cfg.connectionGater != nil {
 		swarmOpts = append(swarmOpts, swarm.WithConnectionGater(cfg.connectionGater))
-	}
-	if cfg.rcmgr != nil {
-		swarmOpts = append(swarmOpts, swarm.WithResourceManager(cfg.rcmgr))
-	}
-	if cfg.dialTimeout != 0 {
-		swarmOpts = append(swarmOpts, swarm.WithDialTimeout(cfg.dialTimeout))
 	}
 	s, err := swarm.NewSwarm(id, ps, swarmOpts...)
 	require.NoError(t, err)
