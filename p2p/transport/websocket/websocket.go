@@ -181,7 +181,10 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
 	if isWss {
 		sni := ""
-		raddr.ValueForProtocol(ma.P_SNI)
+		sni, err = raddr.ValueForProtocol(ma.P_SNI)
+		if err != nil {
+			sni = ""
+		}
 
 		if sni != "" {
 			copytlsClientConf := t.tlsClientConf.Clone()
