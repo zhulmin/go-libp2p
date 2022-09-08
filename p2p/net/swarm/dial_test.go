@@ -196,7 +196,7 @@ func newSilentPeer(t *testing.T) (peer.ID, ma.Multiaddr, net.Listener) {
 func TestDialWait(t *testing.T) {
 	const dialTimeout = 250 * time.Millisecond
 
-	swarms := makeSwarms(t, 1, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 1, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	s1 := swarms[0]
 	defer s1.Close()
 
@@ -236,7 +236,7 @@ func TestDialBackoff(t *testing.T) {
 	const dialTimeout = 100 * time.Millisecond
 
 	ctx := context.Background()
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
 	s2 := swarms[1]
@@ -439,7 +439,7 @@ func TestDialBackoffClears(t *testing.T) {
 	t.Parallel()
 
 	const dialTimeout = 250 * time.Millisecond
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
 	s2 := swarms[1]
@@ -480,7 +480,7 @@ func TestDialBackoffClears(t *testing.T) {
 func TestDialPeerFailed(t *testing.T) {
 	t.Parallel()
 
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(100*time.Millisecond))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(100*time.Millisecond)))
 	defer closeSwarms(swarms)
 	testedSwarm, targetSwarm := swarms[0], swarms[1]
 
@@ -554,7 +554,7 @@ func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {
 func TestDialSimultaneousJoin(t *testing.T) {
 	const dialTimeout = 250 * time.Millisecond
 
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
 	s2 := swarms[1]
