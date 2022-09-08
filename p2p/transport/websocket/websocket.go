@@ -21,9 +21,20 @@ import (
 // WsFmt is multiaddr formatter for WsProtocol
 var WsFmt = mafmt.And(mafmt.TCP, mafmt.Base(ma.P_WS))
 
-// This is _not_ WsFmt because we want the transport to stick to dialing fully
-// resolved addresses.
-var dialMatcher = mafmt.And(mafmt.Or(mafmt.IP, mafmt.DNS), mafmt.Base(ma.P_TCP), mafmt.Or(mafmt.Base(ma.P_WS), mafmt.And(mafmt.Base(ma.P_TLS), mafmt.Base(ma.P_WS)), mafmt.Base(ma.P_WSS)))
+var dialMatcher = mafmt.And(
+	mafmt.Or(mafmt.IP, mafmt.DNS),
+	mafmt.Base(ma.P_TCP),
+	mafmt.Or(
+		mafmt.Base(ma.P_WS),
+		mafmt.And(
+			mafmt.Or(
+				mafmt.And(
+					mafmt.Base(ma.P_TLS),
+					mafmt.Base(ma.P_SNI)),
+				mafmt.Base(ma.P_TLS),
+			),
+			mafmt.Base(ma.P_WS)),
+		mafmt.Base(ma.P_WSS)))
 
 func init() {
 	manet.RegisterFromNetAddr(ParseWebsocketNetAddr, "websocket")
@@ -100,8 +111,55 @@ func (t *WebsocketTransport) Proxy() bool {
 	return false
 }
 
+var wssComponent = ma.StringCast("/wss")
+var tlsWsComponent = ma.StringCast("/tls/ws")
+var tlsComponent = ma.StringCast("/tls")
+var wsComponent = ma.StringCast("/ws")
+
 func (t *WebsocketTransport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
-	return []ma.Multiaddr{maddr.Decapsulate(ma.StringCast("/wss")).Encapsulate(ma.StringCast("/tls/ws"))}, nil
+	// Are we a WSS or /tls/ws multiaddr
+	multiaddrBeforeWs := maddr.Decapsulate(wssComponent)
+	if maddr.Equal(multiaddrBeforeWs) {
+		// maddr didn't have a WSS component. Let's check if there's a /tls/ws component
+		multiaddrBeforeWs = maddr.Decapsulate(tlsWsComponent)
+		if maddr.Equal(multiaddrBeforeWs) {
+			// No /tls/ws component, this isn't a secure websocket multiaddr. We can just return it here
+			return []ma.Multiaddr{maddr}, nil
+		}
+	}
+
+	// do we have a dns/dnsaddr here that we should use as a SNI?
+	sni := ""
+	ma.ForEach(maddr, func(c ma.Component) bool {
+		switch c.Protocol().Code {
+		case ma.P_DNS:
+			fallthrough
+		case ma.P_DNS4:
+			fallthrough
+		case ma.P_DNS6:
+			fallthrough
+		case ma.P_DNSADDR:
+			sni = c.Value()
+			return false
+		}
+		return true
+	})
+	if sni == "" {
+		// we didn't find anything to set the sni with. So we just return the given multiaddr
+		return []ma.Multiaddr{maddr}, nil
+	}
+
+	// TODO add the sni here
+	sniMA, err := ma.NewMultiaddr("/sni/" + sni)
+	if err != nil {
+		// shouldn't happen since this means we couldn't parse a dns hostname for an sni value.
+		return nil, err
+	}
+
+	return []ma.Multiaddr{
+			multiaddrBeforeWs.Encapsulate(tlsComponent).Encapsulate(sniMA).Encapsulate(wsComponent),
+		},
+		nil
 }
 
 func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
@@ -125,9 +183,24 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (ma
 	isWss := wsurl.Scheme == "wss"
 	dialer := ws.Dialer{HandshakeTimeout: 30 * time.Second}
 	if isWss {
-		dialer.TLSClientConfig = t.tlsClientConf
+		sni := ""
+		ma.ForEach(raddr, func(c ma.Component) bool {
+			if c.Protocol().Code == ma.P_SNI {
+				sni = c.Value()
+				return false
+			}
+			return true
+		})
 
+		if sni != "" {
+			copytlsClientConf := *t.tlsClientConf
+			copytlsClientConf.ServerName = sni
+			dialer.TLSClientConfig = &copytlsClientConf
+		} else {
+			dialer.TLSClientConfig = t.tlsClientConf
+		}
 	}
+
 	wscon, _, err := dialer.DialContext(ctx, wsurl.String(), nil)
 	if err != nil {
 		return nil, err

@@ -105,23 +105,25 @@ func ParseWebsocketNetAddr(a net.Addr) (ma.Multiaddr, error) {
 }
 
 func parseMultiaddr(maddr ma.Multiaddr) (*url.URL, error) {
-	// Only look at the _last_ component.
-	maddr, wscomponent := ma.SplitLast(maddr)
-	if maddr == nil || wscomponent == nil {
-		return nil, fmt.Errorf("websocket addrs need at least two components")
-	}
+	scheme := "ws"
 
-	var scheme string
-	switch wscomponent.Protocol().Code {
-	case ma.P_WS:
-		scheme = "ws"
-	case ma.P_WSS:
+	restMultiaddr := maddr.Decapsulate(wssComponent)
+	if restMultiaddr.Equal(maddr) {
+		// no wss, check for tls + ws
+		withoutWs := maddr.Decapsulate(wsComponent)
+		if withoutWs.Equal(maddr) {
+			return nil, fmt.Errorf("not a websocket multiaddr")
+		}
+
+		restMultiaddr = withoutWs.Decapsulate(tlsComponent)
+		if !restMultiaddr.Equal(withoutWs) {
+			scheme = "wss"
+		}
+	} else {
 		scheme = "wss"
-	default:
-		return nil, fmt.Errorf("not a websocket multiaddr")
 	}
 
-	network, host, err := manet.DialArgs(maddr)
+	network, host, err := manet.DialArgs(restMultiaddr)
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	csms "github.com/libp2p/go-libp2p/p2p/net/conn-security-multistream"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -32,12 +34,37 @@ import (
 
 func newUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 	t.Helper()
+	id, m := newInsecureMuxer(t)
+	u, err := tptu.New(m, yamux.DefaultTransport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id, u
+}
+
+func newSecureUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
+	t.Helper()
 	id, m := newSecureMuxer(t)
 	u, err := tptu.New(m, yamux.DefaultTransport)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return id, u
+}
+
+func newInsecureMuxer(t *testing.T) (peer.ID, sec.SecureMuxer) {
+	t.Helper()
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := peer.IDFromPrivateKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var secMuxer csms.SSMuxer
+	secMuxer.AddTransport(insecure.ID, insecure.NewWithIdentity(id, priv))
+	return id, &secMuxer
 }
 
 func newSecureMuxer(t *testing.T) (peer.ID, sec.SecureMuxer) {
@@ -51,7 +78,9 @@ func newSecureMuxer(t *testing.T) (peer.ID, sec.SecureMuxer) {
 		t.Fatal(err)
 	}
 	var secMuxer csms.SSMuxer
-	secMuxer.AddTransport(insecure.ID, insecure.NewWithIdentity(id, priv))
+	noiseTpt, err := noise.New(priv)
+	require.NoError(t, err)
+	secMuxer.AddTransport(noise.ID, noiseTpt)
 	return id, &secMuxer
 }
 
@@ -102,33 +131,72 @@ func TestCanDial(t *testing.T) {
 	if d.CanDial(ma.StringCast("/ip4/127.0.0.1/tcp/5555")) {
 		t.Fatal("expected to not match tcp maddr, but did")
 	}
+	if !d.CanDial(ma.StringCast("/ip4/127.0.0.1/tcp/5555/tls/ws")) {
+		t.Fatal("expected to match secure websocket maddr, but did not")
+	}
+	if !d.CanDial(ma.StringCast("/ip4/127.0.0.1/tcp/5555/tls/sni/example.com/ws")) {
+		t.Fatal("expected to match secure websocket maddr with sni, but did not")
+	}
+	if !d.CanDial(ma.StringCast("/dns4/example.com/tcp/5555/tls/sni/example.com/ws")) {
+		t.Fatal("expected to match secure websocket maddr with sni, but did not")
+	}
+	if !d.CanDial(ma.StringCast("/dnsaddr/example.com/tcp/5555/tls/sni/example.com/ws")) {
+		t.Fatal("expected to match secure websocket maddr with sni, but did not")
+	}
 }
 
 func TestDialWss(t *testing.T) {
-	if _, err := net.LookupIP("nyc-1.bootstrap.libp2p.io"); err != nil {
+	// update/fill this test with `dig +short txt _dnsaddr.bootstrap.libp2p.io`
+	ips, err := net.LookupIP("ny5.bootstrap.libp2p.io")
+	if err != nil {
 		t.Skip("this test requries an internet connection and it seems like we currently don't have one")
 	}
-	raddr := ma.StringCast("/dns4/nyc-1.bootstrap.libp2p.io/tcp/443/wss")
-	rid, err := peer.Decode("QmSoLueR4xBeUbY9WZ9xGUUxunbKWcrNFTDAadQJmocnWm")
+
+	raddr := ma.StringCast("/dns4/ny5.bootstrap.libp2p.io/tcp/443/wss")
+	rid, err := peer.Decode("QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tlsConfig := &tls.Config{InsecureSkipVerify: true}
-	_, u := newUpgrader(t)
+	tlsConfig := &tls.Config{}
+	_, u := newSecureUpgrader(t)
 	tpt, err := New(u, network.NullResourceManager, WithTLSClientConfig(tlsConfig))
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, err := tpt.Dial(context.Background(), raddr, rid)
-	if err != nil {
-		t.Fatal(err)
+	masToDial, err := tpt.Resolve(context.Background(), raddr)
+	require.NoError(t, err)
+	require.Len(t, masToDial, 1)
+	maToDial := masToDial[0]
+	// Replace the dns with the ip4
+	_, maWithoutDNS := ma.SplitFirst(maToDial)
+	for _, ip := range ips {
+		if ip.To4() == nil {
+			// Skipping ipv6 test for now (I can't run this locally on my network)
+			// maWithIP6 := ma.StringCast("/ip6/" + ips[1].String()).Encapsulate(maWithoutDNS)
+			// masToDial = append(masToDial, maWithIP6)
+		} else {
+			maWithIP4 := ma.StringCast("/ip4/" + ips[0].To4().String()).Encapsulate(maWithoutDNS)
+			masToDial = append(masToDial, maWithIP4)
+
+		}
+
 	}
-	stream, err := conn.OpenStream(context.Background())
-	if err != nil {
-		t.Fatal(err)
+
+	for _, maToDial := range masToDial {
+		t.Run(maToDial.String(), func(t *testing.T) {
+			conn, err := tpt.Dial(context.Background(), maToDial, rid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			stream, err := conn.OpenStream(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+		})
 	}
-	defer stream.Close()
 }
 
 func TestWebsocketTransport(t *testing.T) {
@@ -344,5 +412,39 @@ func TestWriteZero(t *testing.T) {
 	}
 	if err != io.EOF {
 		t.Errorf("expected EOF, got err: %s", err)
+	}
+}
+
+func TestResolveMultiaddr(t *testing.T) {
+	testCases := []string{
+		"/dns4/example.com/tcp/1234/wss",
+		"/dns6/example.com/tcp/1234/wss",
+		"/dnsaddr/example.com/tcp/1234/wss",
+		"/dns4/example.com/tcp/1234/tls/ws",
+		"/dns6/example.com/tcp/1234/tls/ws",
+		"/dnsaddr/example.com/tcp/1234/tls/ws",
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc, func(t *testing.T) {
+
+			m1 := ma.StringCast(tc)
+			wsTpt := WebsocketTransport{}
+			ctx := context.Background()
+
+			addrs, err := wsTpt.Resolve(ctx, m1)
+			require.NoError(t, err)
+			require.Len(t, addrs, 1)
+
+			var expectedMA ma.Multiaddr
+			if strings.Contains(tc, "tls/ws") {
+				expectedMA = m1.Decapsulate(ma.StringCast("/tls/ws"))
+			} else {
+				expectedMA = m1.Decapsulate(ma.StringCast("/wss"))
+			}
+			expectedMA = expectedMA.Encapsulate(ma.StringCast("/tls/sni/example.com/ws"))
+
+			require.Equal(t, expectedMA.String(), addrs[0].String())
+		})
 	}
 }
