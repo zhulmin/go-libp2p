@@ -106,13 +106,17 @@ func New(key ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceMa
 	t.noise = n
 	return t, nil
 }
-
 func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
-	_, addr, err := manet.DialArgs(raddr)
+	certHashes, err := extractCertHashes(raddr)
 	if err != nil {
 		return nil, err
 	}
-	certHashes, err := extractCertHashes(raddr)
+
+	return t.DialWithCerthash(ctx, raddr, p, certHashes)
+}
+
+func (t *transport) DialWithCerthash(ctx context.Context, raddr ma.Multiaddr, p peer.ID, certHashes []multihash.DecodedMultihash) (tpt.CapableConn, error) {
+	_, addr, err := manet.DialArgs(raddr)
 	if err != nil {
 		return nil, err
 	}

@@ -77,6 +77,11 @@ type Transport interface {
 	Proxy() bool
 }
 
+type CanListen interface {
+	// CanListen returns true if this can listen on this multiaddr. Similar to CanDial
+	CanListen(laddr ma.Multiaddr) bool
+}
+
 // Listener is an interface closely resembling the net.Listener interface. The
 // only real difference is that Accept() returns Conn's of the type in this
 // package, and also exposes a Multiaddr method as opposed to a regular Addr

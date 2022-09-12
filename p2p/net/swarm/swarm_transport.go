@@ -2,7 +2,6 @@ package swarm
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/libp2p/go-libp2p/core/transport"
 
@@ -28,9 +27,15 @@ func (s *Swarm) TransportForDialing(a ma.Multiaddr) transport.Transport {
 		return nil
 	}
 	if isRelayAddr(a) {
-		return s.transports.m[ma.P_CIRCUIT]
+		tpts := s.transports.m[ma.P_CIRCUIT]
+		if len(tpts) == 0 {
+			return nil
+		}
+		return tpts[0]
 	}
-	for _, t := range s.transports.m {
+
+	selectedTpts := s.transports.m[protocols[len(protocols)-1].Code]
+	for _, t := range selectedTpts {
 		if t.CanDial(a) {
 			return t
 		}
@@ -56,12 +61,29 @@ func (s *Swarm) TransportForListening(a ma.Multiaddr) transport.Transport {
 		return nil
 	}
 
-	selected := s.transports.m[protocols[len(protocols)-1].Code]
+	selectedTpts := s.transports.m[protocols[len(protocols)-1].Code]
+	if len(selectedTpts) == 0 {
+		return nil
+	}
+
+	selected := selectedTpts[0]
+	for _, tpt := range selectedTpts {
+		if canListen, ok := tpt.(transport.CanListen); ok && canListen.CanListen(a) {
+			selected = tpt
+			break
+		} else {
+			break
+		}
+	}
+
+	// TODO this is a hacky way to support p2p circuits.
+	// Instead this should be a proxy transport that wraps other transports
 	for _, p := range protocols {
-		transport, ok := s.transports.m[p.Code]
-		if !ok {
+		transports, ok := s.transports.m[p.Code]
+		if !ok || len(transports) == 0 {
 			continue
 		}
+		transport := transports[0]
 		if transport.Proxy() {
 			selected = transport
 		}
@@ -84,26 +106,8 @@ func (s *Swarm) AddTransport(t transport.Transport) error {
 	if s.transports.m == nil {
 		return ErrSwarmClosed
 	}
-	var registered []string
 	for _, p := range protocols {
-		if _, ok := s.transports.m[p]; ok {
-			proto := ma.ProtocolWithCode(p)
-			name := proto.Name
-			if name == "" {
-				name = fmt.Sprintf("unknown (%d)", p)
-			}
-			registered = append(registered, name)
-		}
-	}
-	if len(registered) > 0 {
-		return fmt.Errorf(
-			"transports already registered for protocol(s): %s",
-			strings.Join(registered, ", "),
-		)
-	}
-
-	for _, p := range protocols {
-		s.transports.m[p] = t
+		s.transports.m[p] = append(s.transports.m[p], t)
 	}
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	"github.com/libp2p/go-libp2p/p2p/transport/params"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
@@ -86,6 +87,12 @@ func TestDialAddressSelection(t *testing.T) {
 	webtransportTr, err := webtransport.New(priv, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.AddTransport(webtransportTr))
+
+	webtransportCerthashTr := &params.Certhash[params.TransportWithCerthash]{
+		InnerTransport: webtransportTr.(params.TransportWithCerthash),
+	}
+	require.NoError(t, s.AddTransport(webtransportCerthashTr))
+
 	h := sha256.Sum256([]byte("foo"))
 	hash, err := multihash.Encode(h[:], multihash.SHA2_256)
 	require.NoError(t, err)
@@ -98,7 +105,7 @@ func TestDialAddressSelection(t *testing.T) {
 	require.Equal(t, tcpTr, s.TransportForDialing(ma.StringCast("/ip4/127.0.0.1/tcp/1234")))
 	require.Equal(t, quicTr, s.TransportForDialing(ma.StringCast("/ip4/127.0.0.1/udp/1234/quic")))
 	require.Equal(t, circuitTr, s.TransportForDialing(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic/p2p-circuit/p2p/%s", id))))
-	require.Equal(t, webtransportTr, s.TransportForDialing(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic/webtransport/certhash/%s", certHash))))
+	require.Equal(t, webtransportCerthashTr, s.TransportForDialing(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic/webtransport/certhash/%s", certHash))))
 	require.Nil(t, s.TransportForDialing(ma.StringCast("/ip4/1.2.3.4")))
 	require.Nil(t, s.TransportForDialing(ma.StringCast("/ip4/1.2.3.4/tcp/443/ws")))
 }

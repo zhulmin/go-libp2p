@@ -124,7 +124,7 @@ type Swarm struct {
 
 	transports struct {
 		sync.RWMutex
-		m map[int]transport.Transport
+		m map[int][]transport.Transport
 	}
 
 	// stream handlers
@@ -157,7 +157,7 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 
 	s.conns.m = make(map[peer.ID][]*Conn)
 	s.listeners.m = make(map[transport.Listener]struct{})
-	s.transports.m = make(map[int]transport.Transport)
+	s.transports.m = make(map[int][]transport.Transport)
 	s.notifs.m = make(map[network.Notifiee]struct{})
 
 	for _, opt := range opts {
@@ -221,20 +221,22 @@ func (s *Swarm) close() {
 	// Now close out any transports (if necessary). Do this after closing
 	// all connections/listeners.
 	s.transports.Lock()
-	transports := s.transports.m
+	transportLists := s.transports.m
 	s.transports.m = nil
 	s.transports.Unlock()
 
 	var wg sync.WaitGroup
-	for _, t := range transports {
-		if closer, ok := t.(io.Closer); ok {
-			wg.Add(1)
-			go func(c io.Closer) {
-				defer wg.Done()
-				if err := closer.Close(); err != nil {
-					log.Errorf("error when closing down transport %T: %s", c, err)
-				}
-			}(closer)
+	for _, tpts := range transportLists {
+		for _, t := range tpts {
+			if closer, ok := t.(io.Closer); ok {
+				wg.Add(1)
+				go func(c io.Closer) {
+					defer wg.Done()
+					if err := closer.Close(); err != nil {
+						log.Errorf("error when closing down transport %T: %s", c, err)
+					}
+				}(closer)
+			}
 		}
 	}
 	wg.Wait()
