@@ -449,10 +449,10 @@ func (e *earlyDataHandler) Received(ctx context.Context, conn net.Conn, data []b
 func TestEarlyDataAccepted(t *testing.T) {
 	handshake := func(t *testing.T, client, server EarlyDataHandler) {
 		t.Helper()
-		initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(client))
+		initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(client, nil))
 		require.NoError(t, err)
 		tpt := newTestTransport(t, crypto.Ed25519, 2048)
-		respTransport, err := tpt.WithSessionOptions(EarlyData(server))
+		respTransport, err := tpt.WithSessionOptions(EarlyData(nil, server))
 		require.NoError(t, err)
 
 		initConn, respConn := newConnPair(t)
@@ -495,10 +495,10 @@ func TestEarlyDataAccepted(t *testing.T) {
 func TestEarlyDataRejected(t *testing.T) {
 	handshake := func(t *testing.T, client, server EarlyDataHandler) (clientErr, serverErr error) {
 		t.Helper()
-		initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(client))
+		initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(client, nil))
 		require.NoError(t, err)
 		tpt := newTestTransport(t, crypto.Ed25519, 2048)
-		respTransport, err := tpt.WithSessionOptions(EarlyData(server))
+		respTransport, err := tpt.WithSessionOptions(EarlyData(nil, server))
 		require.NoError(t, err)
 
 		initConn, respConn := newConnPair(t)
@@ -545,7 +545,7 @@ func TestEarlyDataAcceptedWithNoHandler(t *testing.T) {
 	clientEDH := &earlyDataHandler{
 		send: func(ctx context.Context, conn net.Conn, id peer.ID) []byte { return []byte("foobar") },
 	}
-	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(clientEDH))
+	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(clientEDH, nil))
 	require.NoError(t, err)
 	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
 

@@ -208,7 +208,7 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal WebTransport protobuf: %w", err)
 	}
-	n, err := t.noise.WithSessionOptions(noise.EarlyData(newEarlyDataSender(msgBytes)))
+	n, err := t.noise.WithSessionOptions(noise.EarlyData(newEarlyDataSender(msgBytes), nil))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Noise transport: %w", err)
 	}
