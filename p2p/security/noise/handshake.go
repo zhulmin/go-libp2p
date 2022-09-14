@@ -10,8 +10,6 @@ import (
 	"runtime/debug"
 	"time"
 
-	"golang.org/x/crypto/chacha20poly1305"
-
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
@@ -73,12 +71,8 @@ func (s *secureSession) runHandshake(ctx context.Context) (err error) {
 		}
 	}
 
-	// We can re-use this buffer for all handshake messages as its size
-	// will be the size of the maximum handshake message for the Noise XX pattern.
-	// Also, since we prefix every noise handshake message with its length, we need to account for
-	// it when we fetch the buffer from the pool
-	maxMsgSize := 2*noise.DH25519.DHLen() + 2*chacha20poly1305.Overhead + 1024 /* payload */
-	hbuf := pool.Get(maxMsgSize + LengthPrefixLength)
+	// We can re-use this buffer for all handshake messages.
+	hbuf := pool.Get(2 << 10)
 	defer pool.Put(hbuf)
 
 	if s.initiator {
