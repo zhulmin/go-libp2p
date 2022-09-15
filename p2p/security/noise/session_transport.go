@@ -22,15 +22,27 @@ func Prologue(prologue []byte) SessionOption {
 	}
 }
 
-// EarlyDataHandler allows attaching an (unencrypted) application payload to the first handshake message.
-// While unencrypted, the integrity of this early data is retroactively authenticated on completion of the handshake.
+// EarlyDataHandler defines what the application payload is for either the first
+// (if initiator) or second (if responder) handshake message. And defines the
+// logic for handling the other side's early data. Note the early data in the
+// first handshake message is **unencrypted**, but will be retroactively
+// authenticated if the handshake completes.
 type EarlyDataHandler interface {
-	// Send is called for the client before sending the first handshake message.
+	// Send for the initiator is called for the client before sending the first
+	// handshake message. Defines the application payload for the first message.
+	// This payload is sent **unencrypted**.
+	// Send for the responder is called before sending the second handshake message. This is encrypted.
 	Send(context.Context, net.Conn, peer.ID) []byte
-	// Received is called for the server when the first handshake message from the client is received.
+	// Received for the initiator is called when the second handshake message
+	// from the responder is received.
+	// Received for the responder is called when the first handshake message
+	// from the initiator is received.
 	Received(context.Context, net.Conn, []byte) error
 }
 
+// EarlyData sets the `EarlyDataHandler` for the initiator and responder roles.
+// See `EarlyDataHandler` for more details. Note: an initiator's early data will
+// be sent **unencrypted** in the first handshake message.
 func EarlyData(initiator, responder EarlyDataHandler) SessionOption {
 	return func(s *SessionTransport) error {
 		s.initiatorEarlyDataHandler = initiator
