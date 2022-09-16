@@ -465,6 +465,12 @@ func TestEarlyDataAccepted(t *testing.T) {
 
 		conn, err := initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
 		require.NoError(t, err)
+		select {
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("timeout")
+		case err := <-errChan:
+			require.NoError(t, err)
+		}
 		defer conn.Close()
 	}
 
@@ -494,7 +500,6 @@ func TestEarlyDataAccepted(t *testing.T) {
 
 func TestEarlyDataRejected(t *testing.T) {
 	handshake := func(t *testing.T, client, server EarlyDataHandler) (clientErr, serverErr error) {
-		t.Helper()
 		initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(client, nil))
 		require.NoError(t, err)
 		tpt := newTestTransport(t, crypto.Ed25519, 2048)
@@ -509,7 +514,13 @@ func TestEarlyDataRejected(t *testing.T) {
 			errChan <- err
 		}()
 
-		_, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
+		// As early data is sent with the last handshake message, the handshake will appear
+		// to succeed for the client.
+		var conn sec.SecureConn
+		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
+		if clientErr == nil {
+			_, clientErr = conn.Read([]byte{0})
+		}
 
 		select {
 		case <-time.After(500 * time.Millisecond):
@@ -541,7 +552,7 @@ func TestEarlyDataRejected(t *testing.T) {
 	})
 }
 
-func TestEarlyDataAcceptedWithNoHandler(t *testing.T) {
+func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 	clientEDH := &earlyDataHandler{
 		send: func(ctx context.Context, conn net.Conn, id peer.ID) []byte { return []byte("foobar") },
 	}

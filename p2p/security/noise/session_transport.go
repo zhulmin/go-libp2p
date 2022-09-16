@@ -22,27 +22,24 @@ func Prologue(prologue []byte) SessionOption {
 	}
 }
 
-// EarlyDataHandler defines what the application payload is for either the first
-// (if initiator) or second (if responder) handshake message. And defines the
+// EarlyDataHandler defines what the application payload is for either the second
+// (if initiator) or third (if responder) handshake message, and defines the
 // logic for handling the other side's early data. Note the early data in the
-// first handshake message is **unencrypted**, but will be retroactively
-// authenticated if the handshake completes.
+// second handshake message is encrypted, but the peer is not authenticated at that point.
 type EarlyDataHandler interface {
-	// Send for the initiator is called for the client before sending the first
-	// handshake message. Defines the application payload for the first message.
-	// This payload is sent **unencrypted**.
-	// Send for the responder is called before sending the second handshake message. This is encrypted.
+	// Send for the initiator is called for the client before sending the third
+	// handshake message. Defines the application payload for the third message.
+	// Send for the responder is called before sending the second handshake message.
 	Send(context.Context, net.Conn, peer.ID) []byte
 	// Received for the initiator is called when the second handshake message
 	// from the responder is received.
-	// Received for the responder is called when the first handshake message
+	// Received for the responder is called when the third handshake message
 	// from the initiator is received.
 	Received(context.Context, net.Conn, []byte) error
 }
 
 // EarlyData sets the `EarlyDataHandler` for the initiator and responder roles.
-// See `EarlyDataHandler` for more details. Note: an initiator's early data will
-// be sent **unencrypted** in the first handshake message.
+// See `EarlyDataHandler` for more details.
 func EarlyData(initiator, responder EarlyDataHandler) SessionOption {
 	return func(s *SessionTransport) error {
 		s.initiatorEarlyDataHandler = initiator
