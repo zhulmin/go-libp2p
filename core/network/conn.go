@@ -48,6 +48,9 @@ type ConnSecurity interface {
 
 	// RemotePublicKey returns the public key of the remote peer.
 	RemotePublicKey() ic.PubKey
+
+	// Early data negotiated by the security protocol. Empty if not supported.
+	EarlyData() string
 }
 
 // ConnMultiaddrs is an interface mixin for connection types that provide multiaddr

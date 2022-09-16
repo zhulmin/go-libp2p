@@ -51,8 +51,11 @@ var _ sec.SecureTransport = &Transport{}
 
 // SecureInbound runs the TLS handshake as a server.
 // If p is empty, connections from any peer are accepted.
-func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
+func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
+	// >>>>>> the above returned config consists of the tls nextprotocol fields that can be amended here.
+	config.NextProtos = append(muxers, config.NextProtos...)
+	fmt.Println(">>>>>> this is where TLS server is created and handshake carried out <<<<<<")
 	cs, err := t.handshake(ctx, tls.Server(insecure, config), keyCh)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
@@ -71,8 +74,10 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 // application data immediately afterwards.
 // If the handshake fails, the server will close the connection. The client will
 // notice this after 1 RTT when calling Read.
-func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
+func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
+	// >>>>>> the above returned config consists of the tls nextprotocol fields that can be amended here.
+	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {
 		insecure.Close()
@@ -89,9 +94,14 @@ func (t *Transport) handshake(ctx context.Context, tlsConn *tls.Conn, keyCh <-ch
 		}
 	}()
 
+	// handshaking...
+	fmt.Printf(">>> TLS handshaking <<< \n")
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
+	///
+	ac := tlsConn.ConnectionState().NegotiatedProtocol
+	fmt.Printf(">>>> TLS negotiated app protocol is %s", ac)
 
 	// Should be ready by this point, don't block.
 	var remotePubKey ci.PubKey
@@ -111,11 +121,21 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 	if err != nil {
 		return nil, err
 	}
+
+	nextProto := tlsConn.ConnectionState().NegotiatedProtocol
+	if len(nextProto) > 0 && nextProto == "libp2p" {
+		nextProto = ""
+	}
+
+	// here is where we can insert the NegotiatedProtocol data in te secureConn return value.
+	// fmt.Println(" >>>>>> Adopted next proto: ", nextProto)
+
 	return &conn{
 		Conn:         tlsConn,
 		localPeer:    t.localPeer,
 		privKey:      t.privKey,
 		remotePeer:   remotePeerID,
 		remotePubKey: remotePubKey,
+		earlyData:    nextProto,
 	}, nil
 }

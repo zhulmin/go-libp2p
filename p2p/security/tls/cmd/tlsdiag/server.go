@@ -57,7 +57,7 @@ func StartServer() error {
 func handleConn(tp *libp2ptls.Transport, conn net.Conn) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	sconn, err := tp.SecureInbound(ctx, conn, "")
+	sconn, err := tp.SecureInbound(ctx, conn, "", nil)
 	if err != nil {
 		return err
 	}
@@ -66,3 +66,5 @@ func handleConn(tp *libp2ptls.Transport, conn net.Conn) error {
 	fmt.Printf("Closing connection to %s\n", conn.RemoteAddr())
 	return sconn.Close()
 }
+
+// >>>>>> TODO <<<<<< Add early data diagcase.

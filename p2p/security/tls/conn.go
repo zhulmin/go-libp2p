@@ -16,6 +16,7 @@ type conn struct {
 
 	remotePeer   peer.ID
 	remotePubKey ci.PubKey
+	earlyData    string
 }
 
 var _ sec.SecureConn = &conn{}
@@ -34,4 +35,8 @@ func (c *conn) RemotePeer() peer.ID {
 
 func (c *conn) RemotePublicKey() ci.PubKey {
 	return c.remotePubKey
+}
+
+func (c *conn) EarlyData() string {
+	return c.earlyData
 }

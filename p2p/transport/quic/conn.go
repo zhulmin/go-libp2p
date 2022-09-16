@@ -90,6 +90,12 @@ func (c *conn) RemotePublicKey() ic.PubKey {
 	return c.remotePubKey
 }
 
+// EearlyData returns the early data negotiated from the security protocol
+// handshake, empty if not supported.
+func (c *conn) EarlyData() string {
+	return ""
+}
+
 // LocalMultiaddr returns the local Multiaddr associated
 func (c *conn) LocalMultiaddr() ma.Multiaddr {
 	return c.localMultiaddr

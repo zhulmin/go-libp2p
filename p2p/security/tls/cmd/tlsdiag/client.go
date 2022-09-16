@@ -49,7 +49,7 @@ func StartClient() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	sconn, err := tp.SecureOutbound(ctx, conn, peerID)
+	sconn, err := tp.SecureOutbound(ctx, conn, peerID, nil)
 	if err != nil {
 		return err
 	}
@@ -61,3 +61,5 @@ func StartClient() error {
 	fmt.Printf("Received message from server: %s\n", string(data))
 	return nil
 }
+
+// >>>>>> TODO <<<<<< Add an early data test case here.

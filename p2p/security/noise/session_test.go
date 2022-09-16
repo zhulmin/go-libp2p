@@ -20,7 +20,7 @@ func TestContextCancellationRespected(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := initTransport.SecureOutbound(ctx, init, respTransport.localID)
+	_, err := initTransport.SecureOutbound(ctx, init, respTransport.localID, nil)
 	require.Error(t, err)
 	require.Equal(t, ctx.Err(), err)
 }

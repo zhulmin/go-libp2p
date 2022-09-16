@@ -60,7 +60,7 @@ func (t *Transport) LocalPrivateKey() ci.PrivKey {
 //
 // SecureInbound may fail if the remote peer sends an ID and public key that are inconsistent
 // with each other, or if a network error occurs during the ID exchange.
-func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
+func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	conn := &Conn{
 		Conn:         insecure,
 		local:        t.id,
@@ -87,7 +87,7 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 // SecureOutbound may fail if the remote peer sends an ID and public key that are inconsistent
 // with each other, or if the ID sent by the remote peer does not match the one dialed. It may
 // also fail if a network error occurs during the ID exchange.
-func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
+func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	conn := &Conn{
 		Conn:         insecure,
 		local:        t.id,
@@ -228,6 +228,12 @@ func (ic *Conn) RemotePublicKey() ci.PubKey {
 // LocalPrivateKey returns the private key for the local peer.
 func (ic *Conn) LocalPrivateKey() ci.PrivKey {
 	return ic.localPrivKey
+}
+
+// EarlyData returns the security protocol's early data negotiated by handshake.
+// Returns (empty string, false) if early data is not supported.
+func (ic *Conn) EarlyData() string {
+	return ""
 }
 
 var _ sec.SecureTransport = (*Transport)(nil)

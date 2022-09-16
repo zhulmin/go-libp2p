@@ -178,6 +178,11 @@ func (c *conn) RemotePublicKey() ic.PubKey {
 	return c.remotePubKey
 }
 
+// EarlyData from security protocol handshake. Empty if not supported.
+func (c *conn) EarlyData() string {
+	return ""
+}
+
 // Stat returns metadata about the connection
 func (c *conn) Stat() network.ConnStats {
 	return c.stat

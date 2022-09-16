@@ -178,6 +178,11 @@ func (c *Conn) RemotePublicKey() ic.PubKey {
 	return c.conn.RemotePublicKey()
 }
 
+// EarlyData is the security protocol's early data result. Empty of not supported.
+func (c *Conn) EarlyData() string {
+	return c.conn.EarlyData()
+}
+
 // Stat returns metadata pertaining to this connection
 func (c *Conn) Stat() network.ConnStats {
 	c.streams.Lock()

@@ -30,13 +30,13 @@ type MuxAdapter struct {
 
 var _ sec.SecureMuxer = &MuxAdapter{}
 
-func (mux *MuxAdapter) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, bool, error) {
-	sconn, err := mux.tpt.SecureInbound(ctx, insecure, p)
+func (mux *MuxAdapter) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, bool, error) {
+	sconn, err := mux.tpt.SecureInbound(ctx, insecure, p, muxers)
 	return sconn, true, err
 }
 
-func (mux *MuxAdapter) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, bool, error) {
-	sconn, err := mux.tpt.SecureOutbound(ctx, insecure, p)
+func (mux *MuxAdapter) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, bool, error) {
+	sconn, err := mux.tpt.SecureOutbound(ctx, insecure, p, muxers)
 	return sconn, false, err
 }
 

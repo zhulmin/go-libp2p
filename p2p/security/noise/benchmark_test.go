@@ -81,10 +81,10 @@ func (b benchenv) connect(stopTimer bool) (*secureSession, *secureSession) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		initSession, initErr = b.initTpt.SecureOutbound(context.TODO(), initConn, b.respTpt.localID)
+		initSession, initErr = b.initTpt.SecureOutbound(context.TODO(), initConn, b.respTpt.localID, nil)
 	}()
 
-	respSession, respErr := b.respTpt.SecureInbound(context.TODO(), respConn, "")
+	respSession, respErr := b.respTpt.SecureInbound(context.TODO(), respConn, "", nil)
 	<-done
 
 	if initErr != nil {
@@ -97,6 +97,8 @@ func (b benchenv) connect(stopTimer bool) (*secureSession, *secureSession) {
 
 	return initSession.(*secureSession), respSession.(*secureSession)
 }
+
+// >>>>>> TODO <<<<<< add test cases for non-null muxers.
 
 func drain(r io.Reader, done chan<- error, writeTo io.Writer) {
 	_, err := io.Copy(writeTo, r)

@@ -28,13 +28,13 @@ type TransportAdapter struct {
 	mux *SSMuxer
 }
 
-func (sm *TransportAdapter) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	sconn, _, err := sm.mux.SecureInbound(ctx, insecure, p)
+func (sm *TransportAdapter) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
+	sconn, _, err := sm.mux.SecureInbound(ctx, insecure, p, muxers)
 	return sconn, err
 }
 
-func (sm *TransportAdapter) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	sconn, _, err := sm.mux.SecureOutbound(ctx, insecure, p)
+func (sm *TransportAdapter) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
+	sconn, _, err := sm.mux.SecureOutbound(ctx, insecure, p, muxers)
 	return sconn, err
 }
 
@@ -57,7 +57,7 @@ func TestCommonProto(t *testing.T) {
 	go func() {
 		conn, err := ln.Accept()
 		require.NoError(t, err)
-		c, err := muxB.SecureInbound(context.Background(), conn, idA)
+		c, err := muxB.SecureInbound(context.Background(), conn, idA, nil)
 		require.NoError(t, err)
 		connChan <- c
 	}()
@@ -67,7 +67,7 @@ func TestCommonProto(t *testing.T) {
 	cconn, err := net.Dial("tcp", ln.Addr().String())
 	require.NoError(t, err)
 
-	cc, err := muxA.SecureOutbound(context.Background(), cconn, idB)
+	cc, err := muxA.SecureOutbound(context.Background(), cconn, idB, nil)
 	require.NoError(t, err)
 	require.Equal(t, cc.LocalPeer(), idA)
 	require.Equal(t, cc.RemotePeer(), idB)
@@ -103,7 +103,7 @@ func TestNoCommonProto(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer a.Close()
-		_, _, err := at.SecureInbound(ctx, a, "")
+		_, _, err := at.SecureInbound(ctx, a, "", nil)
 		if err == nil {
 			t.Error("connection should have failed")
 		}
@@ -112,10 +112,12 @@ func TestNoCommonProto(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer b.Close()
-		_, _, err := bt.SecureOutbound(ctx, b, "peerA")
+		_, _, err := bt.SecureOutbound(ctx, b, "peerA", nil)
 		if err == nil {
 			t.Error("connection should have failed")
 		}
 	}()
 	wg.Wait()
 }
+
+// >>>>>> TODO <<<<<< Add test for non empty muxers cases

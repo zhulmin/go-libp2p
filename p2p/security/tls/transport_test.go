@@ -90,12 +90,12 @@ func TestHandshakeSucceeds(t *testing.T) {
 
 		serverConnChan := make(chan sec.SecureConn)
 		go func() {
-			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
 			require.NoError(t, err)
 			serverConnChan <- serverConn
 		}()
 
-		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
+		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
 		require.NoError(t, err)
 		defer clientConn.Close()
 
@@ -202,12 +202,12 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
 			errChan <- err
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID)
+		_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID, nil)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Error(t, <-errChan)
 	})
@@ -219,7 +219,7 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 		go func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "")
+			conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "", nil)
 			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
 			// and closes the underlying connection when that context is canceled.
 			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
@@ -228,7 +228,7 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 			}
 			errChan <- err
 		}()
-		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
+		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
 		require.Error(t, err)
 		require.ErrorIs(t, <-errChan, context.Canceled)
 	})
@@ -248,7 +248,7 @@ func TestPeerIDMismatch(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+			conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
 			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
 			// and closes the underlying connection when that context is canceled.
 			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
@@ -260,7 +260,7 @@ func TestPeerIDMismatch(t *testing.T) {
 
 		// dial, but expect the wrong peer ID
 		thirdPartyID, _ := createPeer(t)
-		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, thirdPartyID)
+		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, thirdPartyID, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "peer IDs don't match")
 
@@ -281,11 +281,11 @@ func TestPeerIDMismatch(t *testing.T) {
 		go func() {
 			thirdPartyID, _ := createPeer(t)
 			// expect the wrong peer ID
-			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, thirdPartyID)
+			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, thirdPartyID, nil)
 			errChan <- err
 		}()
 
-		conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
+		conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
 		require.NoError(t, err)
 		_, err = conn.Read([]byte{0})
 		require.Error(t, err)
@@ -525,11 +525,11 @@ func TestInvalidCerts(t *testing.T) {
 
 			serverErrChan := make(chan error)
 			go func() {
-				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
 				serverErrChan <- err
 			}()
 
-			conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
+			conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
 			require.NoError(t, err)
 			clientErrChan := make(chan error)
 			go func() {
@@ -568,11 +568,11 @@ func TestInvalidCerts(t *testing.T) {
 
 			errChan := make(chan error)
 			go func() {
-				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
+				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
 				errChan <- err
 			}()
 
-			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
+			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
 			require.Error(t, err)
 			tr.checkErr(t, err)
 
@@ -589,3 +589,7 @@ func TestInvalidCerts(t *testing.T) {
 		})
 	}
 }
+
+
+
+   // >>>>>> TODO <<<<<< Add more TLS test for early data case.
