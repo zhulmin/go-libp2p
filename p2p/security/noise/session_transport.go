@@ -23,7 +23,7 @@ func Prologue(prologue []byte) SessionOption {
 }
 
 // EarlyDataHandler defines what the application payload is for either the second
-// (if initiator) or third (if responder) handshake message, and defines the
+// (if responder) or third (if initiator) handshake message, and defines the
 // logic for handling the other side's early data. Note the early data in the
 // second handshake message is encrypted, but the peer is not authenticated at that point.
 type EarlyDataHandler interface {
