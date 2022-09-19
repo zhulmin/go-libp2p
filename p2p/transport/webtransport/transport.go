@@ -346,7 +346,7 @@ func (t *transport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multi
 			return c.Protocol().Code == ma.P_QUIC
 		})
 		quicComponent, afterQuicMA := ma.SplitFirst(afterIncludingQuicMA)
-		sniComponent, err := ma.NewComponent("sni", sni)
+		sniComponent, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_SNI).Name, sni)
 		if err != nil {
 			return nil, err
 		}
