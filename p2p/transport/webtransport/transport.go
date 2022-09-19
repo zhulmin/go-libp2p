@@ -82,6 +82,7 @@ type transport struct {
 }
 
 var _ tpt.Transport = &transport{}
+var _ tpt.Resolver = &transport{}
 var _ io.Closer = &transport{}
 
 func New(key ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
@@ -119,6 +120,8 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 		return nil, err
 	}
 
+	sni, _ := extractSNI(raddr)
+
 	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
 	if err != nil {
 		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
@@ -130,7 +133,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 		return nil, err
 	}
 
-	sess, err := t.dial(ctx, addr, certHashes)
+	sess, err := t.dial(ctx, addr, sni, certHashes)
 	if err != nil {
 		scope.Done()
 		return nil, err
@@ -151,13 +154,17 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 	return newConn(t, sess, sconn, scope), nil
 }
 
-func (t *transport) dial(ctx context.Context, addr string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, error) {
+func (t *transport) dial(ctx context.Context, addr string, sni string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, error) {
 	url := fmt.Sprintf("https://%s%s?type=noise", addr, webtransportHTTPEndpoint)
 	var tlsConf *tls.Config
 	if t.tlsClientConf != nil {
 		tlsConf = t.tlsClientConf.Clone()
 	} else {
 		tlsConf = &tls.Config{}
+	}
+
+	if sni != "" {
+		tlsConf.ServerName = sni
 	}
 
 	if len(certHashes) > 0 {
@@ -184,11 +191,11 @@ func (t *transport) dial(ctx context.Context, addr string, certHashes []multihas
 func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p peer.ID, certHashes []multihash.DecodedMultihash) (*connSecurityMultiaddrs, error) {
 	local, err := toWebtransportMultiaddr(sess.LocalAddr())
 	if err != nil {
-		return nil, fmt.Errorf("error determiniting local addr: %w", err)
+		return nil, fmt.Errorf("error determining local addr: %w", err)
 	}
 	remote, err := toWebtransportMultiaddr(sess.RemoteAddr())
 	if err != nil {
-		return nil, fmt.Errorf("error determiniting remote addr: %w", err)
+		return nil, fmt.Errorf("error determining remote addr: %w", err)
 	}
 
 	str, err := sess.OpenStreamSync(ctx)
@@ -299,4 +306,52 @@ func (t *transport) Close() error {
 		return t.certManager.Close()
 	}
 	return nil
+}
+
+// extractSNI returns what the SNI should be for the given maddr. If there is an
+// SNI component in the multiaddr, then it will be returned and
+// foundSniComponent will be true. If there's no SNI component, but there is a
+// DNS-like compoent, then that will be returned for the sni and
+// foundSniComponent will be false (since we didn't find an actual sni component).
+func extractSNI(maddr ma.Multiaddr) (sni string, foundSniComponent bool) {
+	ma.ForEach(maddr, func(c ma.Component) bool {
+		switch c.Protocol().Code {
+		case ma.P_SNI:
+			sni = c.Value()
+			foundSniComponent = true
+			return false
+		case ma.P_DNS, ma.P_DNS4, ma.P_DNS6, ma.P_DNSADDR:
+			sni = c.Value()
+			// Keep going in case we find an `sni` component
+			return true
+		}
+		return true
+	})
+	return sni, foundSniComponent
+}
+
+// Resolve implements transport.Resolver
+func (t *transport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
+	sni, foundSniComponent := extractSNI(maddr)
+
+	if foundSniComponent {
+		// The multiaddr already had an sni field, we can keep using it.
+		return []ma.Multiaddr{maddr}, nil
+	}
+
+	if sni != "" {
+		// newMaddr := make(ma.Component)
+		// maddr.
+		beforeQuicMA, afterIncludingQuicMA := ma.SplitFunc(maddr, func(c ma.Component) bool {
+			return c.Protocol().Code == ma.P_QUIC
+		})
+		quicComponent, afterQuicMA := ma.SplitFirst(afterIncludingQuicMA)
+		sniComponent, err := ma.NewComponent("sni", sni)
+		if err != nil {
+			return nil, err
+		}
+		return []ma.Multiaddr{beforeQuicMA.Encapsulate(quicComponent).Encapsulate(sniComponent).Encapsulate(afterQuicMA)}, nil
+	}
+
+	return []ma.Multiaddr{maddr}, nil
 }

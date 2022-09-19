@@ -1,6 +1,7 @@
 package libp2pwebtransport
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
@@ -73,4 +74,32 @@ func TestExtractCertHashes(t *testing.T) {
 			require.Equal(t, h, string(ch[i].Digest))
 		}
 	}
+}
+
+func TestWebtransportResolve(t *testing.T) {
+	testCases := []string{
+		"/dns4/example.com/udp/1337/quic/webtransport",
+		"/dnsaddr/example.com/udp/1337/quic/webtransport",
+		"/ip4/127.0.0.1/udp/1337/quic/sni/example.com/webtransport",
+	}
+
+	tpt := &transport{}
+	ctx := context.Background()
+
+	for _, tc := range testCases {
+		t.Run(tc, func(t *testing.T) {
+			outMa, err := tpt.Resolve(ctx, ma.StringCast(tc))
+			require.NoError(t, err)
+			sni, err := outMa[0].ValueForProtocol(ma.P_SNI)
+			require.NoError(t, err)
+			require.Equal(t, "example.com", sni)
+		})
+	}
+
+	t.Run("No sni", func(t *testing.T) {
+		outMa, err := tpt.Resolve(ctx, ma.StringCast("/ip4/127.0.0.1/udp/1337/quic/webtransport"))
+		require.NoError(t, err)
+		_, err = outMa[0].ValueForProtocol(ma.P_SNI)
+		require.Error(t, err)
+	})
 }
