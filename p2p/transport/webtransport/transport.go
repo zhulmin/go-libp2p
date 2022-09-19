@@ -311,7 +311,7 @@ func (t *transport) Close() error {
 // extractSNI returns what the SNI should be for the given maddr. If there is an
 // SNI component in the multiaddr, then it will be returned and
 // foundSniComponent will be true. If there's no SNI component, but there is a
-// DNS-like compoent, then that will be returned for the sni and
+// DNS-like component, then that will be returned for the sni and
 // foundSniComponent will be false (since we didn't find an actual sni component).
 func extractSNI(maddr ma.Multiaddr) (sni string, foundSniComponent bool) {
 	ma.ForEach(maddr, func(c ma.Component) bool {
@@ -334,24 +334,18 @@ func extractSNI(maddr ma.Multiaddr) (sni string, foundSniComponent bool) {
 func (t *transport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
 	sni, foundSniComponent := extractSNI(maddr)
 
-	if foundSniComponent {
-		// The multiaddr already had an sni field, we can keep using it.
+	if foundSniComponent || sni == "" {
+		// The multiaddr already had an sni field, we can keep using it. Or we don't have any sni like thing
 		return []ma.Multiaddr{maddr}, nil
 	}
 
-	if sni != "" {
-		// newMaddr := make(ma.Component)
-		// maddr.
-		beforeQuicMA, afterIncludingQuicMA := ma.SplitFunc(maddr, func(c ma.Component) bool {
-			return c.Protocol().Code == ma.P_QUIC
-		})
-		quicComponent, afterQuicMA := ma.SplitFirst(afterIncludingQuicMA)
-		sniComponent, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_SNI).Name, sni)
-		if err != nil {
-			return nil, err
-		}
-		return []ma.Multiaddr{beforeQuicMA.Encapsulate(quicComponent).Encapsulate(sniComponent).Encapsulate(afterQuicMA)}, nil
+	beforeQuicMA, afterIncludingQuicMA := ma.SplitFunc(maddr, func(c ma.Component) bool {
+		return c.Protocol().Code == ma.P_QUIC
+	})
+	quicComponent, afterQuicMA := ma.SplitFirst(afterIncludingQuicMA)
+	sniComponent, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_SNI).Name, sni)
+	if err != nil {
+		return nil, err
 	}
-
-	return []ma.Multiaddr{maddr}, nil
+	return []ma.Multiaddr{beforeQuicMA.Encapsulate(quicComponent).Encapsulate(sniComponent).Encapsulate(afterQuicMA)}, nil
 }
