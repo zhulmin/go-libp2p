@@ -545,11 +545,11 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 func TestSNIIsSent(t *testing.T) {
 	server, key := newIdentity(t)
 
-	sentServerName := ""
+	sentServerNameCh := make(chan string, 1)
 	var tlsConf *tls.Config
 	tlsConf = &tls.Config{
 		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-			sentServerName = chi.ServerName
+			sentServerNameCh <- chi.ServerName
 			return tlsConf, nil
 		},
 	}
@@ -576,5 +576,11 @@ func TestSNIIsSent(t *testing.T) {
 	// We don't care if this dial succeeds, we just want to check if the SNI is sent to the server.
 	_, _ = clientTr.Dial(context.Background(), toDialMa, server)
 
-	require.Equal(t, "example.com", sentServerName)
+	select {
+	case sentServerName := <-sentServerNameCh:
+		require.Equal(t, "example.com", sentServerName)
+	case <-time.After(time.Minute):
+		t.Fatalf("Expected to get server name")
+	}
+
 }
