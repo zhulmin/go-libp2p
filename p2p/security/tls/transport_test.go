@@ -28,6 +28,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var clientMuxerList = [][]string{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}}
+var serverMuxerList = [][]string{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}}
+var expectedMuxers = []string{"", "muxer2/1.0.1", "", ""}
+
+const numMuxers = 4
+
 func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 	var priv ic.PrivKey
 	var err error
@@ -84,18 +90,21 @@ func isWindowsTCPCloseError(err error) bool {
 func TestHandshakeSucceeds(t *testing.T) {
 	clientID, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
+	var expectedMuxer string
+	var clientMuxers []string
+	var serverMuxers []string
 
 	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport) {
 		clientInsecureConn, serverInsecureConn := connect(t)
 
 		serverConnChan := make(chan sec.SecureConn)
 		go func() {
-			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
+			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", serverMuxers)
 			require.NoError(t, err)
 			serverConnChan <- serverConn
 		}()
 
-		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
+		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, clientMuxers)
 		require.NoError(t, err)
 		defer clientConn.Close()
 
@@ -115,6 +124,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 		require.Equal(t, serverConn.RemotePeer(), clientID)
 		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")
 		require.True(t, serverConn.RemotePublicKey().Equals(clientKey.GetPublic()), "client public key mismatch")
+		require.Equal(t, clientConn.EarlyData(), expectedMuxer)
 		// exchange some data
 		_, err = serverConn.Write([]byte("foobar"))
 		require.NoError(t, err)
@@ -130,16 +140,21 @@ func TestHandshakeSucceeds(t *testing.T) {
 	serverTransport, err := New(serverKey)
 	require.NoError(t, err)
 
-	t.Run("standard TLS with extension not critical", func(t *testing.T) {
-		handshake(t, clientTransport, serverTransport)
-	})
+	for i := 0; i < numMuxers; i++ {
+		expectedMuxer = expectedMuxers[i]
+		clientMuxers = clientMuxerList[i]
+		serverMuxers = serverMuxerList[i]
+		t.Run("standard TLS with extension not critical", func(t *testing.T) {
+			handshake(t, clientTransport, serverTransport)
+		})
 
-	t.Run("standard TLS with extension critical", func(t *testing.T) {
-		extensionCritical = true
-		t.Cleanup(func() { extensionCritical = false })
+		t.Run("standard TLS with extension critical", func(t *testing.T) {
+			extensionCritical = true
+			t.Cleanup(func() { extensionCritical = false })
 
-		handshake(t, clientTransport, serverTransport)
-	})
+			handshake(t, clientTransport, serverTransport)
+		})
+	}
 
 	// Use transports with custom TLS certificates
 
@@ -163,16 +178,21 @@ func TestHandshakeSucceeds(t *testing.T) {
 	serverTransport.identity, err = NewIdentity(serverKey, WithCertTemplate(serverCertTmpl))
 	require.NoError(t, err)
 
-	t.Run("custom TLS with extension not critical", func(t *testing.T) {
-		handshake(t, clientTransport, serverTransport)
-	})
+	for i := 0; i < numMuxers; i++ {
+		expectedMuxer = expectedMuxers[i]
+		clientMuxers = clientMuxerList[i]
+		serverMuxers = serverMuxerList[i]
+		t.Run("custom TLS with extension not critical", func(t *testing.T) {
+			handshake(t, clientTransport, serverTransport)
+		})
 
-	t.Run("custom TLS with extension critical", func(t *testing.T) {
-		extensionCritical = true
-		t.Cleanup(func() { extensionCritical = false })
+		t.Run("custom TLS with extension critical", func(t *testing.T) {
+			extensionCritical = true
+			t.Cleanup(func() { extensionCritical = false })
 
-		handshake(t, clientTransport, serverTransport)
-	})
+			handshake(t, clientTransport, serverTransport)
+		})
+	}
 }
 
 // crypto/tls' cancellation logic works by spinning up a separate Go routine that watches the ctx.
@@ -197,41 +217,43 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 	serverTransport, err := New(serverKey)
 	require.NoError(t, err)
 
-	t.Run("cancel outgoing connection", func(t *testing.T) {
-		clientInsecureConn, serverInsecureConn := connect(t)
+	for i := 0; i < numMuxers; i++ {
+		t.Run("cancel outgoing connection", func(t *testing.T) {
+			clientInsecureConn, serverInsecureConn := connect(t)
 
-		errChan := make(chan error)
-		go func() {
-			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
-			errChan <- err
-		}()
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID, nil)
-		require.ErrorIs(t, err, context.Canceled)
-		require.Error(t, <-errChan)
-	})
-
-	t.Run("cancel incoming connection", func(t *testing.T) {
-		clientInsecureConn, serverInsecureConn := connect(t)
-
-		errChan := make(chan error)
-		go func() {
+			errChan := make(chan error)
+			go func() {
+				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", serverMuxerList[i])
+				errChan <- err
+			}()
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "", nil)
-			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
-			// and closes the underlying connection when that context is canceled.
-			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
-			if err == nil {
-				_, err = conn.Read([]byte{0})
-			}
-			errChan <- err
-		}()
-		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
-		require.Error(t, err)
-		require.ErrorIs(t, <-errChan, context.Canceled)
-	})
+			_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID, clientMuxerList[i])
+			require.ErrorIs(t, err, context.Canceled)
+			require.Error(t, <-errChan)
+		})
+
+		t.Run("cancel incoming connection", func(t *testing.T) {
+			clientInsecureConn, serverInsecureConn := connect(t)
+
+			errChan := make(chan error)
+			go func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "", serverMuxerList[i])
+				// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
+				// and closes the underlying connection when that context is canceled.
+				// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
+				if err == nil {
+					_, err = conn.Read([]byte{0})
+				}
+				errChan <- err
+			}()
+			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, clientMuxerList[i])
+			require.Error(t, err)
+			require.ErrorIs(t, <-errChan, context.Canceled)
+		})
+	}
 }
 
 func TestPeerIDMismatch(t *testing.T) {
@@ -589,7 +611,3 @@ func TestInvalidCerts(t *testing.T) {
 		})
 	}
 }
-
-
-
-   // >>>>>> TODO <<<<<< Add more TLS test for early data case.

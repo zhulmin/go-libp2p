@@ -53,9 +53,8 @@ var _ sec.SecureTransport = &Transport{}
 // If p is empty, connections from any peer are accepted.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
-	// >>>>>> the above returned config consists of the tls nextprotocol fields that can be amended here.
+	// Prepend the prefered muxers list to TLS config.
 	config.NextProtos = append(muxers, config.NextProtos...)
-	fmt.Println(">>>>>> this is where TLS server is created and handshake carried out <<<<<<")
 	cs, err := t.handshake(ctx, tls.Server(insecure, config), keyCh)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
@@ -76,7 +75,7 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 // notice this after 1 RTT when calling Read.
 func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
-	// >>>>>> the above returned config consists of the tls nextprotocol fields that can be amended here.
+	// Prepend the prefered muxers list to TLS config.
 	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {
@@ -95,13 +94,12 @@ func (t *Transport) handshake(ctx context.Context, tlsConn *tls.Conn, keyCh <-ch
 	}()
 
 	// handshaking...
-	fmt.Printf(">>> TLS handshaking <<< \n")
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
 	///
 	ac := tlsConn.ConnectionState().NegotiatedProtocol
-	fmt.Printf(">>>> TLS negotiated app protocol is %s", ac)
+	fmt.Println(">>>>>> TLS negotiated app protocol is: ", ac)
 
 	// Should be ready by this point, don't block.
 	var remotePubKey ci.PubKey

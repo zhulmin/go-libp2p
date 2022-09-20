@@ -228,7 +228,6 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 			return nil, fmt.Errorf("selected a muxer we don't have a transport for")
 		}
 
-		fmt.Println(">>>>>> upgrader: muxerSetup Returning earlydata muxedConn")
 		return tpt.NewConn(conn, server, scope)
 	}
 

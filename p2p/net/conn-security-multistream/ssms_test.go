@@ -38,7 +38,13 @@ func (sm *TransportAdapter) SecureOutbound(ctx context.Context, insecure net.Con
 	return sconn, err
 }
 
-func TestCommonProto(t *testing.T) {
+var clientMuxerList = [][]string{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}}
+var serverMuxerList = [][]string{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}}
+var insecureExpectedMuxers = []string{"", "", "", ""}
+
+const numMuxers = 4
+
+func commonProto(t *testing.T, serverMuxers, clientMuxers []string, expectedMuxer string) {
 	privA, idA := newPeer(t)
 	privB, idB := newPeer(t)
 
@@ -57,7 +63,7 @@ func TestCommonProto(t *testing.T) {
 	go func() {
 		conn, err := ln.Accept()
 		require.NoError(t, err)
-		c, err := muxB.SecureInbound(context.Background(), conn, idA, nil)
+		c, err := muxB.SecureInbound(context.Background(), conn, idA, serverMuxers)
 		require.NoError(t, err)
 		connChan <- c
 	}()
@@ -67,7 +73,7 @@ func TestCommonProto(t *testing.T) {
 	cconn, err := net.Dial("tcp", ln.Addr().String())
 	require.NoError(t, err)
 
-	cc, err := muxA.SecureOutbound(context.Background(), cconn, idB, nil)
+	cc, err := muxA.SecureOutbound(context.Background(), cconn, idB, clientMuxers)
 	require.NoError(t, err)
 	require.Equal(t, cc.LocalPeer(), idA)
 	require.Equal(t, cc.RemotePeer(), idB)
@@ -81,6 +87,13 @@ func TestCommonProto(t *testing.T) {
 	b, err := io.ReadAll(sc)
 	require.NoError(t, err)
 	require.Equal(t, "foobar", string(b))
+	require.Equal(t, expectedMuxer, cc.EarlyData())
+}
+
+func TestCommonProto(t *testing.T) {
+	for i := 0; i < numMuxers; i++ {
+		commonProto(t, serverMuxerList[i], clientMuxerList[i], insecureExpectedMuxers[i])
+	}
 }
 
 func TestNoCommonProto(t *testing.T) {
@@ -119,5 +132,3 @@ func TestNoCommonProto(t *testing.T) {
 	}()
 	wg.Wait()
 }
-
-// >>>>>> TODO <<<<<< Add test for non empty muxers cases
