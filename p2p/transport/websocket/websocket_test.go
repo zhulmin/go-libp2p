@@ -165,10 +165,7 @@ func testWSSServer(t *testing.T, listenAddr ma.Multiaddr) (ma.Multiaddr, peer.ID
 		t.Fatal(err)
 	}
 
-	// l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/wss"))
-	// l, err := tpt.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0/tls/ws"))
 	l, err := tpt.Listen(listenAddr)
-	fmt.Println("here", listenAddr)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		l.Close()
@@ -243,6 +240,24 @@ func TestDialWss(t *testing.T) {
 
 	err = <-errChan
 	require.NoError(t, err)
+}
+
+func TestDialWssNoClientCert(t *testing.T) {
+	serverMA, rid, _ := testWSSServer(t, ma.StringCast("/ip4/127.0.0.1/tcp/0/tls/sni/example.com/ws"))
+	require.Contains(t, serverMA.String(), "tls")
+
+	_, u := newSecureUpgrader(t)
+	tpt, err := New(u, network.NullResourceManager)
+	require.NoError(t, err)
+
+	masToDial, err := tpt.Resolve(context.Background(), serverMA)
+	require.NoError(t, err)
+
+	_, err = tpt.Dial(context.Background(), masToDial[0], rid)
+	require.Error(t, err)
+
+	// The server doesn't have a signed certificate
+	require.Contains(t, err.Error(), "x509")
 }
 
 func TestWebsocketTransport(t *testing.T) {
