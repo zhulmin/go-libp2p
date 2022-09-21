@@ -52,12 +52,14 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 			return nil, err
 		}
 		proto = selected
+		fmt.Println(">>>>>> Server selected muxer: ", proto)
 	} else {
 		selected, err := mss.SelectOneOf(t.OrderPreference, nc)
 		if err != nil {
 			return nil, err
 		}
 		proto = selected
+		fmt.Println(">>>>>> Client selected muxer: ",  proto)
 	}
 
 	if t.NegotiateTimeout != 0 {
@@ -66,10 +68,20 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 		}
 	}
 
+	fmt.Println(">>>>>> multistream muxer conn selected proto: %s", proto)
 	tpt, ok := t.tpts[proto]
 	if !ok {
 		return nil, fmt.Errorf("selected protocol we don't have a transport for")
 	}
 
 	return tpt.NewConn(nc, isServer, scope)
+}
+
+func (t *Transport) GetTranspotKeys() []string {
+	return t.OrderPreference
+}
+
+func (t *Transport) GetTranspotByKey(key string) (network.Multiplexer, bool) {
+	val, ok := t.tpts[key]
+	return val, ok
 }

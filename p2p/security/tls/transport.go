@@ -11,6 +11,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/canonicallog"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
 
@@ -51,8 +52,10 @@ var _ sec.SecureTransport = &Transport{}
 
 // SecureInbound runs the TLS handshake as a server.
 // If p is empty, connections from any peer are accepted.
-func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
+func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
+	// Prepend the prefered muxers list to TLS config.
+	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Server(insecure, config), keyCh)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
@@ -71,8 +74,10 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 // application data immediately afterwards.
 // If the handshake fails, the server will close the connection. The client will
 // notice this after 1 RTT when calling Read.
-func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
+func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
+	// Prepend the prefered muxers list to TLS config.
+	config.NextProtos = append(muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {
 		insecure.Close()
@@ -89,9 +94,13 @@ func (t *Transport) handshake(ctx context.Context, tlsConn *tls.Conn, keyCh <-ch
 		}
 	}()
 
+	// handshaking...
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
+	///
+	ac := tlsConn.ConnectionState().NegotiatedProtocol
+	fmt.Println(">>>>>> TLS negotiated app protocol is: ", ac)
 
 	// Should be ready by this point, don't block.
 	var remotePubKey ci.PubKey
@@ -111,11 +120,18 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 	if err != nil {
 		return nil, err
 	}
+
+	nextProto := tlsConn.ConnectionState().NegotiatedProtocol
+	if len(nextProto) > 0 && nextProto == "libp2p" {
+		nextProto = ""
+	}
+
 	return &conn{
-		Conn:         tlsConn,
-		localPeer:    t.localPeer,
-		privKey:      t.privKey,
-		remotePeer:   remotePeerID,
-		remotePubKey: remotePubKey,
+		Conn:            tlsConn,
+		localPeer:       t.localPeer,
+		privKey:         t.privKey,
+		remotePeer:      remotePeerID,
+		remotePubKey:    remotePubKey,
+		connectionState: network.ConnectionState{EarlyData: nextProto},
 	}, nil
 }

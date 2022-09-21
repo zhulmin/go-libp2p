@@ -20,10 +20,10 @@ type SecureConn interface {
 type SecureTransport interface {
 	// SecureInbound secures an inbound connection.
 	// If p is empty, connections from any peer are accepted.
-	SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (SecureConn, error)
+	SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (SecureConn, error)
 
 	// SecureOutbound secures an outbound connection.
-	SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (SecureConn, error)
+	SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (SecureConn, error)
 }
 
 // A SecureMuxer is a wrapper around SecureTransport which can select security protocols
@@ -33,10 +33,10 @@ type SecureMuxer interface {
 	// The returned boolean indicates whether the connection should be treated as a server
 	// connection; in the case of SecureInbound it should always be true.
 	// If p is empty, connections from any peer are accepted.
-	SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (SecureConn, bool, error)
+	SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (SecureConn, bool, error)
 
 	// SecureOutbound secures an outbound connection.
 	// The returned boolean indicates whether the connection should be treated as a server
 	// connection due to simultaneous open.
-	SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (SecureConn, bool, error)
+	SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (SecureConn, bool, error)
 }

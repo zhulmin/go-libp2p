@@ -79,10 +79,10 @@ func connect(t *testing.T, initTransport, respTransport *Transport) (*secureSess
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		initConn, initErr = initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
+		initConn, initErr = initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
 	}()
 
-	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, "")
+	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, "", nil)
 	<-done
 
 	if initErr != nil {
@@ -107,7 +107,7 @@ func TestDeadlines(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	_, err := initTransport.SecureOutbound(ctx, init, respTransport.localID)
+	_, err := initTransport.SecureOutbound(ctx, init, respTransport.localID, nil)
 	if err == nil {
 		t.Fatalf("expected i/o timeout err; got: %s", err)
 	}
@@ -172,7 +172,7 @@ func TestPeerIDMatch(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
+		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, conn.RemotePeer(), respTransport.localID)
 		b := make([]byte, 6)
@@ -181,7 +181,7 @@ func TestPeerIDMatch(t *testing.T) {
 		assert.Equal(t, b, []byte("foobar"))
 	}()
 
-	conn, err := respTransport.SecureInbound(context.Background(), resp, initTransport.localID)
+	conn, err := respTransport.SecureInbound(context.Background(), resp, initTransport.localID, nil)
 	require.NoError(t, err)
 	require.Equal(t, conn.RemotePeer(), initTransport.localID)
 	_, err = conn.Write([]byte("foobar"))
@@ -195,7 +195,7 @@ func TestPeerIDMismatchOutboundFailsHandshake(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := initTransport.SecureOutbound(context.Background(), init, "a-random-peer-id")
+		_, err := initTransport.SecureOutbound(context.Background(), init, "a-random-peer-id", nil)
 		errChan <- err
 	}()
 
@@ -508,6 +508,7 @@ func TestEarlyDataRejected(t *testing.T) {
 		tpt := newTestTransport(t, crypto.Ed25519, 2048)
 		respTransport, err := tpt.WithSessionOptions(EarlyData(nil, server))
 		require.NoError(t, err)
+<<<<<<< HEAD
 
 		initConn, respConn := newConnPair(t)
 
@@ -550,6 +551,50 @@ func TestEarlyDataRejected(t *testing.T) {
 
 	})
 
+=======
+
+		initConn, respConn := newConnPair(t)
+
+		errChan := make(chan error)
+		go func() {
+			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+			errChan <- err
+		}()
+
+		// As early data is sent with the last handshake message, the handshake will appear
+		// to succeed for the client.
+		var conn sec.SecureConn
+		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
+		if clientErr == nil {
+			_, clientErr = conn.Read([]byte{0})
+		}
+
+		select {
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("timeout")
+		case err := <-errChan:
+			serverErr = err
+		}
+		return
+	}
+
+	receivingEDH := &earlyDataHandler{
+		received: func(context.Context, net.Conn, *pb.NoiseExtensions) error { return errors.New("nope") },
+	}
+	sendingEDH := &earlyDataHandler{
+		send: func(context.Context, net.Conn, peer.ID) *pb.NoiseExtensions {
+			return &pb.NoiseExtensions{WebtransportCerthashes: [][]byte{[]byte("foobar")}}
+		},
+	}
+
+	t.Run("client sending", func(t *testing.T) {
+		clientErr, serverErr := handshake(t, sendingEDH, receivingEDH)
+		require.Error(t, clientErr)
+		require.EqualError(t, serverErr, "nope")
+
+	})
+
+>>>>>>> origin/muxer-selection-optimize
 	t.Run("server sending", func(t *testing.T) {
 		clientErr, serverErr := handshake(t, receivingEDH, sendingEDH)
 		require.Error(t, serverErr)

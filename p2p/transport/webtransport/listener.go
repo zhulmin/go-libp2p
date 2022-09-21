@@ -209,7 +209,7 @@ func (l *listener) handshake(ctx context.Context, sess *webtransport.Session) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Noise session: %w", err)
 	}
-	c, err := n.SecureInbound(ctx, &webtransportStream{Stream: str, wsess: sess}, "")
+	c, err := n.SecureInbound(ctx, &webtransportStream{Stream: str, wsess: sess}, "", nil)
 	if err != nil {
 		return nil, err
 	}

@@ -40,18 +40,18 @@ func (sm *SSMuxer) AddTransport(path string, transport sec.SecureTransport) {
 
 // SecureInbound secures an inbound connection using this multistream
 // multiplexed stream security transport.
-func (sm *SSMuxer) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, bool, error) {
+func (sm *SSMuxer) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, bool, error) {
 	tpt, _, err := sm.selectProto(ctx, insecure, true)
 	if err != nil {
 		return nil, false, err
 	}
-	sconn, err := tpt.SecureInbound(ctx, insecure, p)
+	sconn, err := tpt.SecureInbound(ctx, insecure, p, muxers)
 	return sconn, true, err
 }
 
 // SecureOutbound secures an outbound connection using this multistream
 // multiplexed stream security transport.
-func (sm *SSMuxer) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, bool, error) {
+func (sm *SSMuxer) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, bool, error) {
 	tpt, server, err := sm.selectProto(ctx, insecure, false)
 	if err != nil {
 		return nil, false, err
@@ -59,7 +59,7 @@ func (sm *SSMuxer) SecureOutbound(ctx context.Context, insecure net.Conn, p peer
 
 	var sconn sec.SecureConn
 	if server {
-		sconn, err = tpt.SecureInbound(ctx, insecure, p)
+		sconn, err = tpt.SecureInbound(ctx, insecure, p, muxers)
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to secure inbound connection: %s", err)
 		}
@@ -70,7 +70,7 @@ func (sm *SSMuxer) SecureOutbound(ctx context.Context, insecure net.Conn, p peer
 			return nil, false, fmt.Errorf("unexpected peer")
 		}
 	} else {
-		sconn, err = tpt.SecureOutbound(ctx, insecure, p)
+		sconn, err = tpt.SecureOutbound(ctx, insecure, p, muxers)
 	}
 
 	return sconn, server, err
