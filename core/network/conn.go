@@ -34,6 +34,13 @@ type Conn interface {
 	GetStreams() []Stream
 }
 
+// ConnectionState holds extra information releated to the ConnSecurity entity.
+type ConnectionState struct {
+	// Early data result derived from security protocol handshake.
+	// For example, Noise handshake payload or TLS/ALPN negotiation.
+	EarlyData string
+}
+
 // ConnSecurity is the interface that one can mix into a connection interface to
 // give it the security methods.
 type ConnSecurity interface {
@@ -50,7 +57,7 @@ type ConnSecurity interface {
 	RemotePublicKey() ic.PubKey
 
 	// Early data negotiated by the security protocol. Empty if not supported.
-	EarlyData() string
+	ConnState() ConnectionState
 }
 
 // ConnMultiaddrs is an interface mixin for connection types that provide multiaddr

@@ -11,6 +11,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/canonicallog"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
 
@@ -125,15 +126,12 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 		nextProto = ""
 	}
 
-	// here is where we can insert the NegotiatedProtocol data in te secureConn return value.
-	// fmt.Println(" >>>>>> Adopted next proto: ", nextProto)
-
 	return &conn{
-		Conn:         tlsConn,
-		localPeer:    t.localPeer,
-		privKey:      t.privKey,
-		remotePeer:   remotePeerID,
-		remotePubKey: remotePubKey,
-		earlyData:    nextProto,
+		Conn:            tlsConn,
+		localPeer:       t.localPeer,
+		privKey:         t.privKey,
+		remotePeer:      remotePeerID,
+		remotePubKey:    remotePubKey,
+		connectionState: network.ConnectionState{EarlyData: nextProto},
 	}, nil
 }

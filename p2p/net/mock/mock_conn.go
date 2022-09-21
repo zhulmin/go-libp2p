@@ -178,9 +178,9 @@ func (c *conn) RemotePublicKey() ic.PubKey {
 	return c.remotePubKey
 }
 
-// EarlyData from security protocol handshake. Empty if not supported.
-func (c *conn) EarlyData() string {
-	return ""
+// ConnState of security connection. Empty if not supported.
+func (c *conn) ConnState() network.ConnectionState {
+	return network.ConnectionState{}
 }
 
 // Stat returns metadata about the connection

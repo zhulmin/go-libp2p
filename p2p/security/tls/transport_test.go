@@ -124,7 +124,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 		require.Equal(t, serverConn.RemotePeer(), clientID)
 		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")
 		require.True(t, serverConn.RemotePublicKey().Equals(clientKey.GetPublic()), "client public key mismatch")
-		require.Equal(t, clientConn.EarlyData(), expectedMuxer)
+		require.Equal(t, clientConn.ConnState().EarlyData, expectedMuxer)
 		// exchange some data
 		_, err = serverConn.Write([]byte("foobar"))
 		require.NoError(t, err)

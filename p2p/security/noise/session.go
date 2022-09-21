@@ -10,6 +10,7 @@ import (
 	"github.com/flynn/noise"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -39,8 +40,8 @@ type secureSession struct {
 	prologue         []byte
 	earlyDataHandler EarlyDataHandler
 
-        // Early data derived from handshaking. It is empty if not supported.                              |  -----------------------------------------------------------------------------------------------------------
-        earlyData string
+	// Early data derived from handshaking. It is empty if not supported.                              |  -----------------------------------------------------------------------------------------------------------
+	earlyData string
 }
 
 // newSecureSession creates a Noise session over the given insecureConn Conn, using
@@ -109,8 +110,8 @@ func (s *secureSession) RemotePublicKey() crypto.PubKey {
 	return s.remoteKey
 }
 
-func (s *secureSession) EarlyData() string {
-	return s.earlyData
+func (s *secureSession) ConnState() network.ConnectionState {
+	return network.ConnectionState{EarlyData: s.earlyData}
 }
 
 func (s *secureSession) SetDeadline(t time.Time) error {

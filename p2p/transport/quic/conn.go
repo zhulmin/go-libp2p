@@ -90,10 +90,10 @@ func (c *conn) RemotePublicKey() ic.PubKey {
 	return c.remotePubKey
 }
 
-// EearlyData returns the early data negotiated from the security protocol
-// handshake, empty if not supported.
-func (c *conn) EarlyData() string {
-	return ""
+// ConnState is the state of security connection.
+// It is empty if not supported.
+func (c *conn) ConnState() network.ConnectionState {
+	return network.ConnectionState{}
 }
 
 // LocalMultiaddr returns the local Multiaddr associated

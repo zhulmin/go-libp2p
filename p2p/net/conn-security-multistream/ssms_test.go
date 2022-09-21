@@ -87,7 +87,7 @@ func commonProto(t *testing.T, serverMuxers, clientMuxers []string, expectedMuxe
 	b, err := io.ReadAll(sc)
 	require.NoError(t, err)
 	require.Equal(t, "foobar", string(b))
-	require.Equal(t, expectedMuxer, cc.EarlyData())
+	require.Equal(t, expectedMuxer, cc.ConnState().EarlyData)
 }
 
 func TestCommonProto(t *testing.T) {

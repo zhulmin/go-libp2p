@@ -216,7 +216,7 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 
 	////
 	msmuxer, ok := u.muxer.(*msmux.Transport)
-	muxerSelected := conn.EarlyData()
+	muxerSelected := conn.ConnState().EarlyData
 
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
 	fmt.Println(">>>>>> upgrader: muxer key from early data is: ", muxerSelected)

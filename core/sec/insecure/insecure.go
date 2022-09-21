@@ -10,6 +10,7 @@ import (
 	"net"
 
 	ci "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
 	pb "github.com/libp2p/go-libp2p/core/sec/insecure/pb"
@@ -230,10 +231,9 @@ func (ic *Conn) LocalPrivateKey() ci.PrivKey {
 	return ic.localPrivKey
 }
 
-// EarlyData returns the security protocol's early data negotiated by handshake.
-// Returns (empty string, false) if early data is not supported.
-func (ic *Conn) EarlyData() string {
-	return ""
+// ConnState returns the security connection's state information.
+func (ic *Conn) ConnState() network.ConnectionState {
+	return network.ConnectionState{}
 }
 
 var _ sec.SecureTransport = (*Transport)(nil)
