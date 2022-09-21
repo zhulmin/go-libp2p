@@ -61,5 +61,3 @@ func StartClient() error {
 	fmt.Printf("Received message from server: %s\n", string(data))
 	return nil
 }
-
-// >>>>>> TODO <<<<<< Add an early data test case here.

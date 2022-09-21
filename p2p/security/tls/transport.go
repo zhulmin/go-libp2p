@@ -98,9 +98,6 @@ func (t *Transport) handshake(ctx context.Context, tlsConn *tls.Conn, keyCh <-ch
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
-	///
-	ac := tlsConn.ConnectionState().NegotiatedProtocol
-	fmt.Println(">>>>>> TLS negotiated app protocol is: ", ac)
 
 	// Should be ready by this point, don't block.
 	var remotePubKey ci.PubKey

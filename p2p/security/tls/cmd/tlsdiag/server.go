@@ -66,5 +66,3 @@ func handleConn(tp *libp2ptls.Transport, conn net.Conn) error {
 	fmt.Printf("Closing connection to %s\n", conn.RemoteAddr())
 	return sconn.Close()
 }
-
-// >>>>>> TODO <<<<<< Add early data diagcase.

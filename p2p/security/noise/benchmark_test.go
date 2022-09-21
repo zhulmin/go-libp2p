@@ -98,8 +98,6 @@ func (b benchenv) connect(stopTimer bool) (*secureSession, *secureSession) {
 	return initSession.(*secureSession), respSession.(*secureSession)
 }
 
-// >>>>>> TODO <<<<<< add test cases for non-null muxers.
-
 func drain(r io.Reader, done chan<- error, writeTo io.Writer) {
 	_, err := io.Copy(writeTo, r)
 	done <- err

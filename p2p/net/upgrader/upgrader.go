@@ -80,8 +80,6 @@ var _ transport.Upgrader = &upgrader{}
 
 func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, opts ...Option) (transport.Upgrader, error) {
 
-	fmt.Printf(">>>>>> New upgrader with muxer type: %T\n", muxer)
-
 	u := &upgrader{
 		secure:        secureMuxer,
 		muxer:         muxer,
@@ -179,7 +177,6 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 		sconn.Close()
 		return nil, fmt.Errorf("failed to negotiate stream multiplexer: %s", err)
 	}
-	fmt.Printf(">>>>>> upgrader got muxed connection from setupMuxer: %T\n", smconn)
 
 	tc := &transportConn{
 		MuxedConn:      smconn,
@@ -202,9 +199,6 @@ func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, 
 		muxers = msmuxer.GetTranspotKeys()
 	}
 
-	// DEBUG
-	fmt.Println(">>>>>> Upgrader appending muxers to security proto: ", muxers)
-
 	if dir == network.DirInbound {
 		return u.secure.SecureInbound(ctx, conn, p, muxers)
 	}
@@ -219,8 +213,6 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 	muxerSelected := conn.ConnState().EarlyData
 
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
-	fmt.Println(">>>>>> upgrader: muxer key from early data is: ", muxerSelected)
-
 	if ok && len(muxerSelected) > 0 {
 		//if false && ok {
 		tpt, ok := msmuxer.GetTranspotByKey(muxerSelected)
