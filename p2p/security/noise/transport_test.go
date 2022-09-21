@@ -199,7 +199,7 @@ func TestPeerIDMismatchOutboundFailsHandshake(t *testing.T) {
 		errChan <- err
 	}()
 
-	_, err := respTransport.SecureInbound(context.Background(), resp, "")
+	_, err := respTransport.SecureInbound(context.Background(), resp, "", nil)
 	require.Error(t, err)
 
 	initErr := <-errChan
@@ -215,13 +215,13 @@ func TestPeerIDMismatchInboundFailsHandshake(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
+		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
 		assert.NoError(t, err)
 		_, err = conn.Read([]byte{0})
 		assert.Error(t, err)
 	}()
 
-	_, err := respTransport.SecureInbound(context.Background(), resp, "a-random-peer-id")
+	_, err := respTransport.SecureInbound(context.Background(), resp, "a-random-peer-id", nil)
 	require.Error(t, err, "expected responder to fail with peer ID mismatch error")
 	<-done
 }
@@ -388,7 +388,7 @@ func TestPrologueMatches(t *testing.T) {
 		tpt, err := initTransport.
 			WithSessionOptions(Prologue(commonPrologue))
 		require.NoError(t, err)
-		conn, err := tpt.SecureOutbound(context.Background(), initConn, respTransport.localID)
+		conn, err := tpt.SecureOutbound(context.Background(), initConn, respTransport.localID, nil)
 		require.NoError(t, err)
 		defer conn.Close()
 	}()
@@ -396,7 +396,7 @@ func TestPrologueMatches(t *testing.T) {
 	tpt, err := respTransport.
 		WithSessionOptions(Prologue(commonPrologue))
 	require.NoError(t, err)
-	conn, err := tpt.SecureInbound(context.Background(), respConn, "")
+	conn, err := tpt.SecureInbound(context.Background(), respConn, "", nil)
 	require.NoError(t, err)
 	defer conn.Close()
 	<-done
@@ -416,14 +416,14 @@ func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
 		tpt, err := initTransport.
 			WithSessionOptions(Prologue(initPrologue))
 		require.NoError(t, err)
-		_, err = tpt.SecureOutbound(context.Background(), initConn, respTransport.localID)
+		_, err = tpt.SecureOutbound(context.Background(), initConn, respTransport.localID, nil)
 		require.Error(t, err)
 	}()
 
 	tpt, err := respTransport.WithSessionOptions(Prologue(respPrologue))
 	require.NoError(t, err)
 
-	_, err = tpt.SecureInbound(context.Background(), respConn, "")
+	_, err = tpt.SecureInbound(context.Background(), respConn, "", nil)
 	require.Error(t, err)
 	<-done
 }
@@ -460,11 +460,11 @@ func TestEarlyDataAccepted(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+			_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
 			errChan <- err
 		}()
 
-		conn, err := initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
+		conn, err := initTransport.SecureOutbound(context.Background(), respConn, tpt.localID, nil)
 		require.NoError(t, err)
 		select {
 		case <-time.After(500 * time.Millisecond):
@@ -508,20 +508,19 @@ func TestEarlyDataRejected(t *testing.T) {
 		tpt := newTestTransport(t, crypto.Ed25519, 2048)
 		respTransport, err := tpt.WithSessionOptions(EarlyData(nil, server))
 		require.NoError(t, err)
-<<<<<<< HEAD
 
 		initConn, respConn := newConnPair(t)
 
 		errChan := make(chan error)
 		go func() {
-			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+			_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
 			errChan <- err
 		}()
 
 		// As early data is sent with the last handshake message, the handshake will appear
 		// to succeed for the client.
 		var conn sec.SecureConn
-		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
+		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID, nil)
 		if clientErr == nil {
 			_, clientErr = conn.Read([]byte{0})
 		}
@@ -551,50 +550,6 @@ func TestEarlyDataRejected(t *testing.T) {
 
 	})
 
-=======
-
-		initConn, respConn := newConnPair(t)
-
-		errChan := make(chan error)
-		go func() {
-			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
-			errChan <- err
-		}()
-
-		// As early data is sent with the last handshake message, the handshake will appear
-		// to succeed for the client.
-		var conn sec.SecureConn
-		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
-		if clientErr == nil {
-			_, clientErr = conn.Read([]byte{0})
-		}
-
-		select {
-		case <-time.After(500 * time.Millisecond):
-			t.Fatal("timeout")
-		case err := <-errChan:
-			serverErr = err
-		}
-		return
-	}
-
-	receivingEDH := &earlyDataHandler{
-		received: func(context.Context, net.Conn, *pb.NoiseExtensions) error { return errors.New("nope") },
-	}
-	sendingEDH := &earlyDataHandler{
-		send: func(context.Context, net.Conn, peer.ID) *pb.NoiseExtensions {
-			return &pb.NoiseExtensions{WebtransportCerthashes: [][]byte{[]byte("foobar")}}
-		},
-	}
-
-	t.Run("client sending", func(t *testing.T) {
-		clientErr, serverErr := handshake(t, sendingEDH, receivingEDH)
-		require.Error(t, clientErr)
-		require.EqualError(t, serverErr, "nope")
-
-	})
-
->>>>>>> origin/muxer-selection-optimize
 	t.Run("server sending", func(t *testing.T) {
 		clientErr, serverErr := handshake(t, receivingEDH, sendingEDH)
 		require.Error(t, serverErr)
@@ -616,11 +571,11 @@ func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+		_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
 		errChan <- err
 	}()
 
-	conn, err := initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID)
+	conn, err := initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID, nil)
 	require.NoError(t, err)
 	defer conn.Close()
 
