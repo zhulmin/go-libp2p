@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	. "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
@@ -407,7 +408,7 @@ func TestPreventDialListenAddr(t *testing.T) {
 			break
 		}
 	}
-	remote := peer.ID("foobar")
+	remote := test.RandPeerIDFatal(t)
 	s.Peerstore().AddAddr(remote, addr, time.Hour)
 	_, err = s.DialPeer(context.Background(), remote)
 	if !errors.Is(err, swarm.ErrNoGoodAddresses) {
@@ -461,11 +462,11 @@ func TestResourceManager(t *testing.T) {
 	defer ctrl.Finish()
 
 	rcmgr1 := mocknetwork.NewMockResourceManager(ctrl)
-	s1 := GenSwarm(t, OptResourceManager(rcmgr1))
+	s1 := GenSwarm(t, WithSwarmOpts(swarm.WithResourceManager(rcmgr1)))
 	defer s1.Close()
 
 	rcmgr2 := mocknetwork.NewMockResourceManager(ctrl)
-	s2 := GenSwarm(t, OptResourceManager(rcmgr2))
+	s2 := GenSwarm(t, WithSwarmOpts(swarm.WithResourceManager(rcmgr2)))
 	defer s2.Close()
 	connectSwarms(t, context.Background(), []*swarm.Swarm{s1, s2})
 
@@ -496,7 +497,7 @@ func TestResourceManagerNewStream(t *testing.T) {
 	defer ctrl.Finish()
 
 	rcmgr1 := mocknetwork.NewMockResourceManager(ctrl)
-	s1 := GenSwarm(t, OptResourceManager(rcmgr1))
+	s1 := GenSwarm(t, WithSwarmOpts(swarm.WithResourceManager(rcmgr1)))
 	defer s1.Close()
 
 	s2 := GenSwarm(t)
@@ -515,11 +516,11 @@ func TestResourceManagerAcceptStream(t *testing.T) {
 	defer ctrl.Finish()
 
 	rcmgr1 := mocknetwork.NewMockResourceManager(ctrl)
-	s1 := GenSwarm(t, OptResourceManager(rcmgr1))
+	s1 := GenSwarm(t, WithSwarmOpts(swarm.WithResourceManager(rcmgr1)))
 	defer s1.Close()
 
 	rcmgr2 := mocknetwork.NewMockResourceManager(ctrl)
-	s2 := GenSwarm(t, OptResourceManager(rcmgr2))
+	s2 := GenSwarm(t, WithSwarmOpts(swarm.WithResourceManager(rcmgr2)))
 	defer s2.Close()
 	s2.SetStreamHandler(func(str network.Stream) { t.Fatal("didn't expect to accept a stream") })
 

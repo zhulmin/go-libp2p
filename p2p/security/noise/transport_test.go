@@ -510,7 +510,7 @@ func TestEarlyDataRejected(t *testing.T) {
 	}
 }
 
-func TestEarlyDataRejectedWithNoHandler(t *testing.T) {
+func TestEarlyDataAcceptedWithNoHandler(t *testing.T) {
 	clientEDH := &earlyDataHandler{
 		send: func(ctx context.Context, conn net.Conn, id peer.ID) []byte { return []byte("foobar") },
 	}
@@ -527,13 +527,13 @@ func TestEarlyDataRejectedWithNoHandler(t *testing.T) {
 	}()
 
 	_, err = initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID, nil)
-	require.Error(t, err)
+	require.NoError(t, err)
+	defer conn.Close()
 
 	select {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timeout")
 	case err := <-errChan:
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "received unexpected early data")
+		require.NoError(t, err)
 	}
 }

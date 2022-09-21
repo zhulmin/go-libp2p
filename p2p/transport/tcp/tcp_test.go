@@ -44,6 +44,23 @@ func TestTcpTransport(t *testing.T) {
 	envReuseportVal = true
 }
 
+func TestTcpTransportWithMetrics(t *testing.T) {
+	peerA, ia := makeInsecureMuxer(t)
+	_, ib := makeInsecureMuxer(t)
+
+	ua, err := tptu.New(ia, yamux.DefaultTransport)
+	require.NoError(t, err)
+	ta, err := NewTCPTransport(ua, nil, WithMetrics())
+	require.NoError(t, err)
+	ub, err := tptu.New(ib, yamux.DefaultTransport)
+	require.NoError(t, err)
+	tb, err := NewTCPTransport(ub, nil, WithMetrics())
+	require.NoError(t, err)
+
+	zero := "/ip4/127.0.0.1/tcp/0"
+	ttransport.SubtestTransport(t, ta, tb, zero, peerA)
+}
+
 func TestResourceManager(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

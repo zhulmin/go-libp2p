@@ -71,8 +71,18 @@ func (p *peerScope) Check(t *testing.T) {
 	require.Zero(t, p.memory, "expected all reserved memory to have been released")
 }
 
+type peerScopeSpan struct {
+	peerScope
+}
+
+func (p *peerScopeSpan) Done() {
+	p.mx.Lock()
+	defer p.mx.Unlock()
+	p.memory = 0
+}
+
 func (p *peerScope) Stat() network.ScopeStat                       { return network.ScopeStat{} }
-func (p *peerScope) BeginSpan() (network.ResourceScopeSpan, error) { return nil, nil }
+func (p *peerScope) BeginSpan() (network.ResourceScopeSpan, error) { return &peerScopeSpan{}, nil }
 func (p *peerScope) Peer() peer.ID                                 { panic("implement me") }
 
 var _ network.PeerScope = &peerScope{}

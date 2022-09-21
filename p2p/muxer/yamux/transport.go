@@ -7,7 +7,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 
-	"github.com/libp2p/go-yamux/v3"
+	"github.com/libp2p/go-yamux/v4"
 )
 
 var DefaultTransport *Transport
@@ -38,12 +38,17 @@ type Transport yamux.Config
 var _ network.Multiplexer = &Transport{}
 
 func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+	var newSpan func() (yamux.MemoryManager, error)
+	if scope != nil {
+		newSpan = func() (yamux.MemoryManager, error) { return scope.BeginSpan() }
+	}
+
 	var s *yamux.Session
 	var err error
 	if isServer {
-		s, err = yamux.Server(nc, t.Config(), scope)
+		s, err = yamux.Server(nc, t.Config(), newSpan)
 	} else {
-		s, err = yamux.Client(nc, t.Config(), scope)
+		s, err = yamux.Client(nc, t.Config(), newSpan)
 	}
 	if err != nil {
 		return nil, err

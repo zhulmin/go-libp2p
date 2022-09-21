@@ -11,17 +11,18 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	testutil "github.com/libp2p/go-libp2p/core/test"
-	. "github.com/libp2p/go-libp2p/p2p/net/swarm"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
 	"github.com/libp2p/go-libp2p-testing/ci"
 
 	ma "github.com/multiformats/go-multiaddr"
+	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
-func closeSwarms(swarms []*Swarm) {
+func closeSwarms(swarms []*swarm.Swarm) {
 	for _, s := range swarms {
 		s.Close()
 	}
@@ -36,6 +37,44 @@ func TestBasicDialPeer(t *testing.T) {
 	s2 := swarms[1]
 
 	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2.ListenAddresses(), peerstore.PermanentAddrTTL)
+
+	c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
+	require.NoError(t, err)
+
+	s, err := c.NewStream(context.Background())
+	require.NoError(t, err)
+	s.Close()
+}
+
+func TestBasicDialPeerWithResolver(t *testing.T) {
+	t.Parallel()
+
+	mockResolver := madns.MockResolver{IP: make(map[string][]net.IPAddr)}
+	ipaddr, err := net.ResolveIPAddr("ip4", "127.0.0.1")
+	require.NoError(t, err)
+	mockResolver.IP["example.com"] = []net.IPAddr{*ipaddr}
+	resolver, err := madns.NewResolver(madns.WithDomainResolver("example.com", &mockResolver))
+	require.NoError(t, err)
+
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithMultiaddrResolver(resolver)))
+	defer closeSwarms(swarms)
+	s1 := swarms[0]
+	s2 := swarms[1]
+
+	// Change the multiaddr from /ip4/127.0.0.1/... to /dns4/example.com/... so
+	// that the resovler has to resolve this
+	var s2Addrs []ma.Multiaddr
+	for _, a := range s2.ListenAddresses() {
+		_, rest := ma.SplitFunc(a, func(c ma.Component) bool {
+			return c.Protocol().Code == ma.P_TCP || c.Protocol().Code == ma.P_UDP
+		},
+		)
+		if rest != nil {
+			s2Addrs = append(s2Addrs, ma.StringCast("/dns4/example.com").Encapsulate(rest))
+		}
+	}
+
+	s1.Peerstore().AddAddrs(s2.LocalPeer(), s2Addrs, peerstore.PermanentAddrTTL)
 
 	c, err := s1.DialPeer(context.Background(), s2.LocalPeer())
 	require.NoError(t, err)
@@ -90,7 +129,7 @@ func TestSimultDials(t *testing.T) {
 	{
 		var wg sync.WaitGroup
 		errs := make(chan error, 20) // 2 connect calls in each of the 10 for-loop iterations
-		connect := func(s *Swarm, dst peer.ID, addr ma.Multiaddr) {
+		connect := func(s *swarm.Swarm, dst peer.ID, addr ma.Multiaddr) {
 			// copy for other peer
 			log.Debugf("TestSimultOpen: connecting: %s --> %s (%s)", s.LocalPeer(), dst, addr)
 			s.Peerstore().AddAddr(dst, addr, peerstore.TempAddrTTL)
@@ -157,7 +196,7 @@ func newSilentPeer(t *testing.T) (peer.ID, ma.Multiaddr, net.Listener) {
 func TestDialWait(t *testing.T) {
 	const dialTimeout = 250 * time.Millisecond
 
-	swarms := makeSwarms(t, 1, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 1, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	s1 := swarms[0]
 	defer s1.Close()
 
@@ -176,11 +215,11 @@ func TestDialWait(t *testing.T) {
 	}
 	duration := time.Since(before)
 
-	if duration < dialTimeout*DialAttempts {
-		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*DialAttempts)
+	if duration < dialTimeout*swarm.DialAttempts {
+		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*swarm.DialAttempts)
 	}
-	if duration > 2*dialTimeout*DialAttempts {
-		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*DialAttempts)
+	if duration > 2*dialTimeout*swarm.DialAttempts {
+		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*swarm.DialAttempts)
 	}
 
 	if !s1.Backoff().Backoff(s2p, s2addr) {
@@ -197,7 +236,7 @@ func TestDialBackoff(t *testing.T) {
 	const dialTimeout = 100 * time.Millisecond
 
 	ctx := context.Background()
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
 	s2 := swarms[1]
@@ -400,7 +439,7 @@ func TestDialBackoffClears(t *testing.T) {
 	t.Parallel()
 
 	const dialTimeout = 250 * time.Millisecond
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
 	s2 := swarms[1]
@@ -418,11 +457,11 @@ func TestDialBackoffClears(t *testing.T) {
 	require.Error(t, err, "dialing to broken addr worked...")
 	duration := time.Since(before)
 
-	if duration < dialTimeout*DialAttempts {
-		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*DialAttempts)
+	if duration < dialTimeout*swarm.DialAttempts {
+		t.Error("< dialTimeout * DialAttempts not being respected", duration, dialTimeout*swarm.DialAttempts)
 	}
-	if duration > 2*dialTimeout*DialAttempts {
-		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*DialAttempts)
+	if duration > 2*dialTimeout*swarm.DialAttempts {
+		t.Error("> 2*dialTimeout * DialAttempts not being respected", duration, 2*dialTimeout*swarm.DialAttempts)
 	}
 	require.True(t, s1.Backoff().Backoff(s2.LocalPeer(), s2bad), "s2 should now be on backoff")
 
@@ -441,7 +480,7 @@ func TestDialBackoffClears(t *testing.T) {
 func TestDialPeerFailed(t *testing.T) {
 	t.Parallel()
 
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(100*time.Millisecond))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(100*time.Millisecond)))
 	defer closeSwarms(swarms)
 	testedSwarm, targetSwarm := swarms[0], swarms[1]
 
@@ -462,7 +501,7 @@ func TestDialPeerFailed(t *testing.T) {
 	//   * [/ip4/127.0.0.1/tcp/34881] failed to negotiate security protocol: context deadline exceeded
 	// ...
 
-	dialErr, ok := err.(*DialError)
+	dialErr, ok := err.(*swarm.DialError)
 	if !ok {
 		t.Fatalf("expected *DialError, got %T", err)
 	}
@@ -515,7 +554,7 @@ func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {
 func TestDialSimultaneousJoin(t *testing.T) {
 	const dialTimeout = 250 * time.Millisecond
 
-	swarms := makeSwarms(t, 2, swarmt.DialTimeout(dialTimeout))
+	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
 	s2 := swarms[1]
@@ -617,5 +656,5 @@ func TestDialSelf(t *testing.T) {
 	s1 := swarms[0]
 
 	_, err := s1.DialPeer(context.Background(), s1.LocalPeer())
-	require.ErrorIs(t, err, ErrDialToSelf, "expected error from self dial")
+	require.ErrorIs(t, err, swarm.ErrDialToSelf, "expected error from self dial")
 }
