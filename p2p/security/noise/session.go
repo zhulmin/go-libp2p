@@ -40,7 +40,7 @@ type secureSession struct {
 	prologue         []byte
 	earlyDataHandler EarlyDataHandler
 
-	// Early data derived from handshaking. It is empty if not supported.                              |  -----------------------------------------------------------------------------------------------------------
+	// Early data derived from handshaking. It is empty if not supported.
 	earlyData string
 }
 

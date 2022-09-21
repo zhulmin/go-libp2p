@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
+	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,10 +79,10 @@ func connect(t *testing.T, initTransport, respTransport *Transport) (*secureSess
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		initConn, initErr = initTransport.SecureOutbound(context.TODO(), init, respTransport.localID, nil)
+		initConn, initErr = initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
 	}()
 
-	respConn, respErr := respTransport.SecureInbound(context.TODO(), resp, "", nil)
+	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, "", nil)
 	<-done
 
 	if initErr != nil {
@@ -171,7 +172,7 @@ func TestPeerIDMatch(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		conn, err := initTransport.SecureOutbound(context.TODO(), init, respTransport.localID, nil)
+		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, conn.RemotePeer(), respTransport.localID)
 		b := make([]byte, 6)
@@ -180,7 +181,7 @@ func TestPeerIDMatch(t *testing.T) {
 		assert.Equal(t, b, []byte("foobar"))
 	}()
 
-	conn, err := respTransport.SecureInbound(context.TODO(), resp, initTransport.localID, nil)
+	conn, err := respTransport.SecureInbound(context.Background(), resp, initTransport.localID, nil)
 	require.NoError(t, err)
 	require.Equal(t, conn.RemotePeer(), initTransport.localID)
 	_, err = conn.Write([]byte("foobar"))
@@ -194,11 +195,11 @@ func TestPeerIDMismatchOutboundFailsHandshake(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := initTransport.SecureOutbound(context.TODO(), init, "a-random-peer-id", nil)
+		_, err := initTransport.SecureOutbound(context.Background(), init, "a-random-peer-id", nil)
 		errChan <- err
 	}()
 
-	_, err := respTransport.SecureInbound(context.TODO(), resp, "", nil)
+	_, err := respTransport.SecureInbound(context.Background(), resp, "")
 	require.Error(t, err)
 
 	initErr := <-errChan
@@ -214,13 +215,13 @@ func TestPeerIDMismatchInboundFailsHandshake(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		conn, err := initTransport.SecureOutbound(context.TODO(), init, respTransport.localID, nil)
+		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
 		assert.NoError(t, err)
 		_, err = conn.Read([]byte{0})
 		assert.Error(t, err)
 	}()
 
-	_, err := respTransport.SecureInbound(context.TODO(), resp, "a-random-peer-id", nil)
+	_, err := respTransport.SecureInbound(context.Background(), resp, "a-random-peer-id")
 	require.Error(t, err, "expected responder to fail with peer ID mismatch error")
 	<-done
 }
@@ -387,7 +388,7 @@ func TestPrologueMatches(t *testing.T) {
 		tpt, err := initTransport.
 			WithSessionOptions(Prologue(commonPrologue))
 		require.NoError(t, err)
-		conn, err := tpt.SecureOutbound(context.TODO(), initConn, respTransport.localID, nil)
+		conn, err := tpt.SecureOutbound(context.Background(), initConn, respTransport.localID)
 		require.NoError(t, err)
 		defer conn.Close()
 	}()
@@ -395,7 +396,7 @@ func TestPrologueMatches(t *testing.T) {
 	tpt, err := respTransport.
 		WithSessionOptions(Prologue(commonPrologue))
 	require.NoError(t, err)
-	conn, err := tpt.SecureInbound(context.TODO(), respConn, "", nil)
+	conn, err := tpt.SecureInbound(context.Background(), respConn, "")
 	require.NoError(t, err)
 	defer conn.Close()
 	<-done
@@ -415,106 +416,154 @@ func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
 		tpt, err := initTransport.
 			WithSessionOptions(Prologue(initPrologue))
 		require.NoError(t, err)
-		_, err = tpt.SecureOutbound(context.TODO(), initConn, respTransport.localID, nil)
+		_, err = tpt.SecureOutbound(context.Background(), initConn, respTransport.localID)
 		require.Error(t, err)
 	}()
 
 	tpt, err := respTransport.WithSessionOptions(Prologue(respPrologue))
 	require.NoError(t, err)
 
-	_, err = tpt.SecureInbound(context.TODO(), respConn, "", nil)
+	_, err = tpt.SecureInbound(context.Background(), respConn, "")
 	require.Error(t, err)
 	<-done
 }
 
 type earlyDataHandler struct {
-	send     func(context.Context, net.Conn, peer.ID) []byte
-	received func(context.Context, net.Conn, []byte) error
+	send     func(context.Context, net.Conn, peer.ID) *pb.NoiseExtensions
+	received func(context.Context, net.Conn, *pb.NoiseExtensions) error
 }
 
-func (e *earlyDataHandler) Send(ctx context.Context, conn net.Conn, id peer.ID) []byte {
+func (e *earlyDataHandler) Send(ctx context.Context, conn net.Conn, id peer.ID) *pb.NoiseExtensions {
 	if e.send == nil {
 		return nil
 	}
 	return e.send(ctx, conn, id)
 }
 
-func (e *earlyDataHandler) Received(ctx context.Context, conn net.Conn, data []byte) error {
+func (e *earlyDataHandler) Received(ctx context.Context, conn net.Conn, ext *pb.NoiseExtensions) error {
 	if e.received == nil {
 		return nil
 	}
-	return e.received(ctx, conn, data)
+	return e.received(ctx, conn, ext)
 }
 
 func TestEarlyDataAccepted(t *testing.T) {
-	var receivedEarlyData []byte
-	serverEDH := &earlyDataHandler{
-		received: func(_ context.Context, _ net.Conn, data []byte) error {
-			receivedEarlyData = data
+	handshake := func(t *testing.T, client, server EarlyDataHandler) {
+		t.Helper()
+		initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(client, nil))
+		require.NoError(t, err)
+		tpt := newTestTransport(t, crypto.Ed25519, 2048)
+		respTransport, err := tpt.WithSessionOptions(EarlyData(nil, server))
+		require.NoError(t, err)
+
+		initConn, respConn := newConnPair(t)
+
+		errChan := make(chan error)
+		go func() {
+			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+			errChan <- err
+		}()
+
+		conn, err := initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
+		require.NoError(t, err)
+		select {
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("timeout")
+		case err := <-errChan:
+			require.NoError(t, err)
+		}
+		defer conn.Close()
+	}
+
+	var receivedExtensions *pb.NoiseExtensions
+	receivingEDH := &earlyDataHandler{
+		received: func(_ context.Context, _ net.Conn, ext *pb.NoiseExtensions) error {
+			receivedExtensions = ext
 			return nil
 		},
 	}
-	clientEDH := &earlyDataHandler{
-		send: func(ctx context.Context, conn net.Conn, id peer.ID) []byte { return []byte("foobar") },
+	sendingEDH := &earlyDataHandler{
+		send: func(context.Context, net.Conn, peer.ID) *pb.NoiseExtensions {
+			return &pb.NoiseExtensions{WebtransportCerthashes: [][]byte{[]byte("foobar")}}
+		},
 	}
-	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(clientEDH))
-	require.NoError(t, err)
-	tpt := newTestTransport(t, crypto.Ed25519, 2048)
-	respTransport, err := tpt.WithSessionOptions(EarlyData(serverEDH))
-	require.NoError(t, err)
 
-	initConn, respConn := newConnPair(t)
+	t.Run("client sending", func(t *testing.T) {
+		handshake(t, sendingEDH, receivingEDH)
+		require.Equal(t, [][]byte{[]byte("foobar")}, receivedExtensions.WebtransportCerthashes)
+		receivedExtensions = nil
+	})
 
-	errChan := make(chan error)
-	go func() {
-		_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
-		errChan <- err
-	}()
-
-	conn, err := initTransport.SecureOutbound(context.Background(), respConn, tpt.localID, nil)
-	require.NoError(t, err)
-	defer conn.Close()
-
-	require.Equal(t, []byte("foobar"), receivedEarlyData)
+	t.Run("server sending", func(t *testing.T) {
+		handshake(t, receivingEDH, sendingEDH)
+		require.Equal(t, [][]byte{[]byte("foobar")}, receivedExtensions.WebtransportCerthashes)
+		receivedExtensions = nil
+	})
 }
 
 func TestEarlyDataRejected(t *testing.T) {
-	serverEDH := &earlyDataHandler{
-		received: func(_ context.Context, _ net.Conn, data []byte) error { return errors.New("nope") },
+	handshake := func(t *testing.T, client, server EarlyDataHandler) (clientErr, serverErr error) {
+		initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(client, nil))
+		require.NoError(t, err)
+		tpt := newTestTransport(t, crypto.Ed25519, 2048)
+		respTransport, err := tpt.WithSessionOptions(EarlyData(nil, server))
+		require.NoError(t, err)
+
+		initConn, respConn := newConnPair(t)
+
+		errChan := make(chan error)
+		go func() {
+			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+			errChan <- err
+		}()
+
+		// As early data is sent with the last handshake message, the handshake will appear
+		// to succeed for the client.
+		var conn sec.SecureConn
+		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
+		if clientErr == nil {
+			_, clientErr = conn.Read([]byte{0})
+		}
+
+		select {
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("timeout")
+		case err := <-errChan:
+			serverErr = err
+		}
+		return
 	}
-	clientEDH := &earlyDataHandler{
-		send: func(ctx context.Context, conn net.Conn, id peer.ID) []byte { return []byte("foobar") },
+
+	receivingEDH := &earlyDataHandler{
+		received: func(context.Context, net.Conn, *pb.NoiseExtensions) error { return errors.New("nope") },
 	}
-	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(clientEDH))
-	require.NoError(t, err)
-	tpt := newTestTransport(t, crypto.Ed25519, 2048)
-	respTransport, err := tpt.WithSessionOptions(EarlyData(serverEDH))
-	require.NoError(t, err)
-
-	initConn, respConn := newConnPair(t)
-
-	errChan := make(chan error)
-	go func() {
-		_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
-		errChan <- err
-	}()
-
-	_, err = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID, nil)
-	require.Error(t, err)
-
-	select {
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("timeout")
-	case err := <-errChan:
-		require.EqualError(t, err, "nope")
+	sendingEDH := &earlyDataHandler{
+		send: func(context.Context, net.Conn, peer.ID) *pb.NoiseExtensions {
+			return &pb.NoiseExtensions{WebtransportCerthashes: [][]byte{[]byte("foobar")}}
+		},
 	}
+
+	t.Run("client sending", func(t *testing.T) {
+		clientErr, serverErr := handshake(t, sendingEDH, receivingEDH)
+		require.Error(t, clientErr)
+		require.EqualError(t, serverErr, "nope")
+
+	})
+
+	t.Run("server sending", func(t *testing.T) {
+		clientErr, serverErr := handshake(t, receivingEDH, sendingEDH)
+		require.Error(t, serverErr)
+		require.EqualError(t, clientErr, "nope")
+	})
 }
 
-func TestEarlyDataAcceptedWithNoHandler(t *testing.T) {
+func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 	clientEDH := &earlyDataHandler{
-		send: func(ctx context.Context, conn net.Conn, id peer.ID) []byte { return []byte("foobar") },
+		send: func(ctx context.Context, conn net.Conn, id peer.ID) *pb.NoiseExtensions {
+			return &pb.NoiseExtensions{WebtransportCerthashes: [][]byte{[]byte("foobar")}}
+		},
 	}
-	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(clientEDH))
+	initTransport, err := newTestTransport(t, crypto.Ed25519, 2048).WithSessionOptions(EarlyData(clientEDH, nil))
 	require.NoError(t, err)
 	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
 
@@ -522,11 +571,11 @@ func TestEarlyDataAcceptedWithNoHandler(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
+		_, err := respTransport.SecureInbound(context.Background(), initConn, "")
 		errChan <- err
 	}()
 
-	_, err = initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID, nil)
+	conn, err := initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID)
 	require.NoError(t, err)
 	defer conn.Close()
 
