@@ -24,6 +24,7 @@ import (
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 
+	"github.com/benbjohnson/clock"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/lucas-clemente/quic-go"
 	quiclogging "github.com/lucas-clemente/quic-go/logging"
@@ -67,9 +68,9 @@ type connManager struct {
 	reuseportEnable bool
 }
 
-func newConnManager(reuseport bool) (*connManager, error) {
-	reuseUDP4 := newReuse()
-	reuseUDP6 := newReuse()
+func newConnManager(cl clock.Clock, reuseport bool) (*connManager, error) {
+	reuseUDP4 := newReuse(cl)
+	reuseUDP6 := newReuse(cl)
 	return &connManager{
 		reuseUDP4:       reuseUDP4,
 		reuseUDP6:       reuseUDP6,
@@ -183,7 +184,7 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	if err != nil {
 		return nil, err
 	}
-	connManager, err := newConnManager(!cfg.disableReuseport)
+	connManager, err := newConnManager(cfg.clock, !cfg.disableReuseport)
 	if err != nil {
 		return nil, err
 	}

@@ -5,12 +5,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/google/gopacket/routing"
 	"github.com/libp2p/go-netroute"
 )
 
-// Constant. Defined as variables to simplify testing.
-var (
+const (
 	garbageCollectInterval = 30 * time.Second
 	maxUnusedDuration      = 10 * time.Second
 )
@@ -18,13 +18,18 @@ var (
 type reuseConn struct {
 	*net.UDPConn
 
+	clock clock.Clock
+
 	mutex       sync.Mutex
 	refCount    int
 	unusedSince time.Time
 }
 
-func newReuseConn(conn *net.UDPConn) *reuseConn {
-	return &reuseConn{UDPConn: conn}
+func newReuseConn(conn *net.UDPConn, cl clock.Clock) *reuseConn {
+	return &reuseConn{
+		UDPConn: conn,
+		clock:   cl,
+	}
 }
 
 func (c *reuseConn) IncreaseCount() {
@@ -38,7 +43,7 @@ func (c *reuseConn) DecreaseCount() {
 	c.mutex.Lock()
 	c.refCount--
 	if c.refCount == 0 {
-		c.unusedSince = time.Now()
+		c.unusedSince = c.clock.Now()
 	}
 	c.mutex.Unlock()
 }
@@ -50,6 +55,8 @@ func (c *reuseConn) ShouldGarbageCollect(now time.Time) bool {
 }
 
 type reuse struct {
+	clock clock.Clock
+
 	mutex sync.Mutex
 
 	closeChan  chan struct{}
@@ -61,8 +68,9 @@ type reuse struct {
 	global map[int]*reuseConn
 }
 
-func newReuse() *reuse {
+func newReuse(cl clock.Clock) *reuse {
 	r := &reuse{
+		clock:      cl,
 		unicast:    make(map[string]map[int]*reuseConn),
 		global:     make(map[int]*reuseConn),
 		closeChan:  make(chan struct{}),
@@ -86,7 +94,7 @@ func (r *reuse) gc() {
 		r.mutex.Unlock()
 		close(r.gcStopChan)
 	}()
-	ticker := time.NewTicker(garbageCollectInterval)
+	ticker := r.clock.Ticker(garbageCollectInterval)
 	defer ticker.Stop()
 
 	for {
@@ -115,8 +123,7 @@ func (r *reuse) gc() {
 					if len(r.unicast) == 0 {
 						r.routes = nil
 					} else {
-						// Ignore the error, there's nothing we can do about
-						// it.
+						// Ignore the error, there's nothing we can do about it.
 						r.routes, _ = netroute.New()
 					}
 				}
@@ -184,7 +191,7 @@ func (r *reuse) dialLocked(network string, source *net.IP) (*reuseConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	rconn := newReuseConn(conn)
+	rconn := newReuseConn(conn, r.clock)
 	r.global[conn.LocalAddr().(*net.UDPAddr).Port] = rconn
 	return rconn, nil
 }
@@ -196,7 +203,7 @@ func (r *reuse) Listen(network string, laddr *net.UDPAddr) (*reuseConn, error) {
 	}
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 
-	rconn := newReuseConn(conn)
+	rconn := newReuseConn(conn, r.clock)
 	rconn.IncreaseCount()
 
 	r.mutex.Lock()

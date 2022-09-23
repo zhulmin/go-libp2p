@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
@@ -516,16 +518,8 @@ func TestStatelessReset(t *testing.T) {
 }
 
 func testStatelessReset(t *testing.T, tc *connTestCase) {
-	origGarbageCollectInterval := garbageCollectInterval
-	origMaxUnusedDuration := maxUnusedDuration
-
-	garbageCollectInterval = 50 * time.Millisecond
-	maxUnusedDuration = 0
-
-	t.Cleanup(func() {
-		garbageCollectInterval = origGarbageCollectInterval
-		maxUnusedDuration = origMaxUnusedDuration
-	})
+	cl := clock.NewMock()
+	tc.Options = append(tc.Options, WithClock(cl))
 
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
@@ -574,7 +568,8 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	atomic.StoreUint32(&drop, 1)
 	ln.Close()
 	(<-connChan).Close()
-	// require.NoError(t, ln.Close())
+	cl.Add(2 * garbageCollectInterval)
+
 	time.Sleep(2000 * time.Millisecond) // give the kernel some time to free the UDP port
 	ln = runServer(t, serverTransport, fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", serverPort))
 	defer ln.Close()

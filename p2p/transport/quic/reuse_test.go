@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
+
 	"github.com/libp2p/go-netroute"
 	"github.com/stretchr/testify/require"
 )
@@ -55,7 +57,7 @@ func cleanup(t *testing.T, reuse *reuse) {
 }
 
 func TestReuseListenOnAllIPv4(t *testing.T) {
-	reuse := newReuse()
+	reuse := newReuse(clock.New())
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -67,7 +69,7 @@ func TestReuseListenOnAllIPv4(t *testing.T) {
 }
 
 func TestReuseListenOnAllIPv6(t *testing.T) {
-	reuse := newReuse()
+	reuse := newReuse(clock.New())
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -79,7 +81,7 @@ func TestReuseListenOnAllIPv6(t *testing.T) {
 }
 
 func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
-	reuse := newReuse()
+	reuse := newReuse(clock.New())
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
@@ -93,7 +95,7 @@ func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
 }
 
 func TestReuseConnectionWhenDialing(t *testing.T) {
-	reuse := newReuse()
+	reuse := newReuse(clock.New())
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:0")
@@ -113,7 +115,7 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 	if platformHasRoutingTables() {
 		t.Skip("this test only works on platforms that support routing tables")
 	}
-	reuse := newReuse()
+	reuse := newReuse(clock.New())
 	cleanup(t, reuse)
 
 	router, err := netroute.New()
@@ -136,16 +138,8 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 }
 
 func TestReuseGarbageCollect(t *testing.T) {
-	maxUnusedDurationOrig := maxUnusedDuration
-	garbageCollectIntervalOrig := garbageCollectInterval
-	t.Cleanup(func() {
-		maxUnusedDuration = maxUnusedDurationOrig
-		garbageCollectInterval = garbageCollectIntervalOrig
-	})
-	garbageCollectInterval = 50 * time.Millisecond
-	maxUnusedDuration = 100 * time.Millisecond
-
-	reuse := newReuse()
+	cl := clock.NewMock()
+	reuse := newReuse(cl)
 	cleanup(t, reuse)
 
 	numGlobals := func() int {
@@ -160,16 +154,9 @@ func TestReuseGarbageCollect(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, lconn.GetCount(), 1)
 
-	closeTime := time.Now()
 	lconn.DecreaseCount()
 
-	for {
-		num := numGlobals()
-		if closeTime.Add(maxUnusedDuration).Before(time.Now()) {
-			break
-		}
-		require.Equal(t, num, 1)
-		time.Sleep(2 * time.Millisecond)
-	}
-	require.Eventually(t, func() bool { return numGlobals() == 0 }, 4*garbageCollectInterval, 10*time.Millisecond)
+	require.Equal(t, numGlobals(), 1)
+	cl.Add(garbageCollectInterval)
+	require.Eventually(t, func() bool { return numGlobals() == 0 }, 200*time.Millisecond, 10*time.Millisecond)
 }
