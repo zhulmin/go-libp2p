@@ -95,8 +95,9 @@ func New(u transport.Upgrader, rcmgr network.ResourceManager, opts ...Option) (*
 		rcmgr = network.NullResourceManager
 	}
 	t := &WebsocketTransport{
-		upgrader: u,
-		rcmgr:    rcmgr,
+		upgrader:      u,
+		rcmgr:         rcmgr,
+		tlsClientConf: &tls.Config{},
 	}
 	for _, opt := range opts {
 		if err := opt(t); err != nil {

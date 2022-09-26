@@ -574,9 +574,14 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	atomic.StoreUint32(&drop, 1)
 	ln.Close()
 	(<-connChan).Close()
-	// require.NoError(t, ln.Close())
-	time.Sleep(2000 * time.Millisecond) // give the kernel some time to free the UDP port
-	ln = runServer(t, serverTransport, fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", serverPort))
+
+	// The kernel might take a while to free up the UPD port.
+	// Retry starting the listener until we're successful (with a 3s timeout).
+	require.Eventually(t, func() bool {
+		var err error
+		ln, err = serverTransport.Listen(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", serverPort)))
+		return err == nil
+	}, 3*time.Second, 50*time.Millisecond)
 	defer ln.Close()
 	// Now that the new server is up, re-enable packet forwarding.
 	atomic.StoreUint32(&drop, 0)
