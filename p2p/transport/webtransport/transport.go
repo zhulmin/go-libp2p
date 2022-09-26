@@ -229,7 +229,7 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Noise transport: %w", err)
 	}
-	c, err := n.SecureOutbound(ctx, &webtransportStream{Stream: str, wsess: sess}, p, nil)
+	c, err := n.SecureOutbound(ctx, &webtransportStream{Stream: str, wsess: sess}, p)
 	if err != nil {
 		return nil, err
 	}

@@ -27,7 +27,7 @@ func StartServer() error {
 		return err
 	}
 	fmt.Printf(" Peer ID: %s\n", id.Pretty())
-	tp, err := libp2ptls.New(priv)
+	tp, err := libp2ptls.New(priv, nil)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func StartServer() error {
 func handleConn(tp *libp2ptls.Transport, conn net.Conn) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	sconn, err := tp.SecureInbound(ctx, conn, "", nil)
+	sconn, err := tp.SecureInbound(ctx, conn, "")
 	if err != nil {
 		return err
 	}

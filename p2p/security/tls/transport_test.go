@@ -28,11 +28,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var clientMuxerList = [][]string{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}}
-var serverMuxerList = [][]string{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}}
-var expectedMuxers = []string{"", "muxer2/1.0.1", "", ""}
+var clientMuxerList = [][]string{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}, {"muxer1"}}
+var serverMuxerList = [][]string{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}, {"muxer2"}}
+var expectedMuxers = []string{"", "muxer2/1.0.1", "", "", ""}
 
-const numMuxers = 4
+const numMuxers = 5
 
 func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 	var priv ic.PrivKey
@@ -91,20 +91,18 @@ func TestHandshakeSucceeds(t *testing.T) {
 	clientID, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 	var expectedMuxer string
-	var clientMuxers []string
-	var serverMuxers []string
 
 	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport) {
 		clientInsecureConn, serverInsecureConn := connect(t)
 
 		serverConnChan := make(chan sec.SecureConn)
 		go func() {
-			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", serverMuxers)
+			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
 			require.NoError(t, err)
 			serverConnChan <- serverConn
 		}()
 
-		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, clientMuxers)
+		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
 		require.NoError(t, err)
 		defer clientConn.Close()
 
@@ -135,15 +133,16 @@ func TestHandshakeSucceeds(t *testing.T) {
 	}
 
 	// Use standard transports with default TLS configuration
-	clientTransport, err := New(clientKey)
-	require.NoError(t, err)
-	serverTransport, err := New(serverKey)
-	require.NoError(t, err)
+	var clientTransport *Transport
+	var err error
+	var serverTransport *Transport
 
 	for i := 0; i < numMuxers; i++ {
 		expectedMuxer = expectedMuxers[i]
-		clientMuxers = clientMuxerList[i]
-		serverMuxers = serverMuxerList[i]
+		clientTransport, err = New(clientKey, clientMuxerList[i])
+		require.NoError(t, err)
+		serverTransport, err = New(serverKey, serverMuxerList[i])
+		require.NoError(t, err)
 		t.Run("standard TLS with extension not critical", func(t *testing.T) {
 			handshake(t, clientTransport, serverTransport)
 		})
@@ -180,8 +179,11 @@ func TestHandshakeSucceeds(t *testing.T) {
 
 	for i := 0; i < numMuxers; i++ {
 		expectedMuxer = expectedMuxers[i]
-		clientMuxers = clientMuxerList[i]
-		serverMuxers = serverMuxerList[i]
+		clientTransport, err = New(clientKey, clientMuxerList[i])
+		require.NoError(t, err)
+		serverTransport, err = New(serverKey, serverMuxerList[i])
+		require.NoError(t, err)
+
 		t.Run("custom TLS with extension not critical", func(t *testing.T) {
 			handshake(t, clientTransport, serverTransport)
 		})
@@ -212,23 +214,22 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 	_, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 
-	clientTransport, err := New(clientKey)
-	require.NoError(t, err)
-	serverTransport, err := New(serverKey)
-	require.NoError(t, err)
-
 	for i := 0; i < numMuxers; i++ {
+		clientTransport, err := New(clientKey, clientMuxerList[i])
+		require.NoError(t, err)
+		serverTransport, err := New(serverKey, serverMuxerList[i])
+		require.NoError(t, err)
 		t.Run("cancel outgoing connection", func(t *testing.T) {
 			clientInsecureConn, serverInsecureConn := connect(t)
 
 			errChan := make(chan error)
 			go func() {
-				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", serverMuxerList[i])
+				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
 				errChan <- err
 			}()
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID, clientMuxerList[i])
+			_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID)
 			require.ErrorIs(t, err, context.Canceled)
 			require.Error(t, <-errChan)
 		})
@@ -240,7 +241,7 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 			go func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
-				conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "", serverMuxerList[i])
+				conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "")
 				// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
 				// and closes the underlying connection when that context is canceled.
 				// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
@@ -249,7 +250,7 @@ func TestHandshakeConnectionCancelations(t *testing.T) {
 				}
 				errChan <- err
 			}()
-			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, clientMuxerList[i])
+			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
 			require.Error(t, err)
 			require.ErrorIs(t, <-errChan, context.Canceled)
 		})
@@ -260,9 +261,9 @@ func TestPeerIDMismatch(t *testing.T) {
 	_, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 
-	serverTransport, err := New(serverKey)
+	serverTransport, err := New(serverKey, nil)
 	require.NoError(t, err)
-	clientTransport, err := New(clientKey)
+	clientTransport, err := New(clientKey, nil)
 	require.NoError(t, err)
 
 	t.Run("for outgoing connections", func(t *testing.T) {
@@ -270,7 +271,7 @@ func TestPeerIDMismatch(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
+			conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
 			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
 			// and closes the underlying connection when that context is canceled.
 			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
@@ -282,7 +283,7 @@ func TestPeerIDMismatch(t *testing.T) {
 
 		// dial, but expect the wrong peer ID
 		thirdPartyID, _ := createPeer(t)
-		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, thirdPartyID, nil)
+		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, thirdPartyID)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "peer IDs don't match")
 
@@ -303,11 +304,11 @@ func TestPeerIDMismatch(t *testing.T) {
 		go func() {
 			thirdPartyID, _ := createPeer(t)
 			// expect the wrong peer ID
-			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, thirdPartyID, nil)
+			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, thirdPartyID)
 			errChan <- err
 		}()
 
-		conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
+		conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
 		require.NoError(t, err)
 		_, err = conn.Read([]byte{0})
 		require.Error(t, err)
@@ -537,9 +538,9 @@ func TestInvalidCerts(t *testing.T) {
 		tr := transforms[i]
 
 		t.Run(fmt.Sprintf("client offending: %s", tr.name), func(t *testing.T) {
-			serverTransport, err := New(serverKey)
+			serverTransport, err := New(serverKey, nil)
 			require.NoError(t, err)
-			clientTransport, err := New(clientKey)
+			clientTransport, err := New(clientKey, nil)
 			require.NoError(t, err)
 			tr.apply(clientTransport.identity)
 
@@ -547,11 +548,11 @@ func TestInvalidCerts(t *testing.T) {
 
 			serverErrChan := make(chan error)
 			go func() {
-				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
+				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
 				serverErrChan <- err
 			}()
 
-			conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
+			conn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
 			require.NoError(t, err)
 			clientErrChan := make(chan error)
 			go func() {
@@ -580,21 +581,21 @@ func TestInvalidCerts(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("server offending: %s", tr.name), func(t *testing.T) {
-			serverTransport, err := New(serverKey)
+			serverTransport, err := New(serverKey, nil)
 			require.NoError(t, err)
 			tr.apply(serverTransport.identity)
-			clientTransport, err := New(clientKey)
+			clientTransport, err := New(clientKey, nil)
 			require.NoError(t, err)
 
 			clientInsecureConn, serverInsecureConn := connect(t)
 
 			errChan := make(chan error)
 			go func() {
-				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "", nil)
+				_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
 				errChan <- err
 			}()
 
-			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID, nil)
+			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
 			require.Error(t, err)
 			tr.checkErr(t, err)
 

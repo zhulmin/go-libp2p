@@ -74,10 +74,6 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 	return tpt.NewConn(nc, isServer, scope)
 }
 
-func (t *Transport) GetTranspotKeys() []string {
-	return t.OrderPreference
-}
-
 func (t *Transport) GetTranspotByKey(key string) (network.Multiplexer, bool) {
 	val, ok := t.tpts[key]
 	return val, ok

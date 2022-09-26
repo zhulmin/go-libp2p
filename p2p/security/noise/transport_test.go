@@ -79,10 +79,10 @@ func connect(t *testing.T, initTransport, respTransport *Transport) (*secureSess
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		initConn, initErr = initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
+		initConn, initErr = initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
 	}()
 
-	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, "", nil)
+	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, "")
 	<-done
 
 	if initErr != nil {
@@ -107,7 +107,7 @@ func TestDeadlines(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	_, err := initTransport.SecureOutbound(ctx, init, respTransport.localID, nil)
+	_, err := initTransport.SecureOutbound(ctx, init, respTransport.localID)
 	if err == nil {
 		t.Fatalf("expected i/o timeout err; got: %s", err)
 	}
@@ -172,7 +172,7 @@ func TestPeerIDMatch(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
+		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
 		assert.NoError(t, err)
 		assert.Equal(t, conn.RemotePeer(), respTransport.localID)
 		b := make([]byte, 6)
@@ -181,7 +181,7 @@ func TestPeerIDMatch(t *testing.T) {
 		assert.Equal(t, b, []byte("foobar"))
 	}()
 
-	conn, err := respTransport.SecureInbound(context.Background(), resp, initTransport.localID, nil)
+	conn, err := respTransport.SecureInbound(context.Background(), resp, initTransport.localID)
 	require.NoError(t, err)
 	require.Equal(t, conn.RemotePeer(), initTransport.localID)
 	_, err = conn.Write([]byte("foobar"))
@@ -195,11 +195,11 @@ func TestPeerIDMismatchOutboundFailsHandshake(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := initTransport.SecureOutbound(context.Background(), init, "a-random-peer-id", nil)
+		_, err := initTransport.SecureOutbound(context.Background(), init, "a-random-peer-id")
 		errChan <- err
 	}()
 
-	_, err := respTransport.SecureInbound(context.Background(), resp, "", nil)
+	_, err := respTransport.SecureInbound(context.Background(), resp, "")
 	require.Error(t, err)
 
 	initErr := <-errChan
@@ -215,13 +215,13 @@ func TestPeerIDMismatchInboundFailsHandshake(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID, nil)
+		conn, err := initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
 		assert.NoError(t, err)
 		_, err = conn.Read([]byte{0})
 		assert.Error(t, err)
 	}()
 
-	_, err := respTransport.SecureInbound(context.Background(), resp, "a-random-peer-id", nil)
+	_, err := respTransport.SecureInbound(context.Background(), resp, "a-random-peer-id")
 	require.Error(t, err, "expected responder to fail with peer ID mismatch error")
 	<-done
 }
@@ -388,7 +388,7 @@ func TestPrologueMatches(t *testing.T) {
 		tpt, err := initTransport.
 			WithSessionOptions(Prologue(commonPrologue))
 		require.NoError(t, err)
-		conn, err := tpt.SecureOutbound(context.Background(), initConn, respTransport.localID, nil)
+		conn, err := tpt.SecureOutbound(context.Background(), initConn, respTransport.localID)
 		require.NoError(t, err)
 		defer conn.Close()
 	}()
@@ -396,7 +396,7 @@ func TestPrologueMatches(t *testing.T) {
 	tpt, err := respTransport.
 		WithSessionOptions(Prologue(commonPrologue))
 	require.NoError(t, err)
-	conn, err := tpt.SecureInbound(context.Background(), respConn, "", nil)
+	conn, err := tpt.SecureInbound(context.Background(), respConn, "")
 	require.NoError(t, err)
 	defer conn.Close()
 	<-done
@@ -416,14 +416,14 @@ func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
 		tpt, err := initTransport.
 			WithSessionOptions(Prologue(initPrologue))
 		require.NoError(t, err)
-		_, err = tpt.SecureOutbound(context.Background(), initConn, respTransport.localID, nil)
+		_, err = tpt.SecureOutbound(context.Background(), initConn, respTransport.localID)
 		require.Error(t, err)
 	}()
 
 	tpt, err := respTransport.WithSessionOptions(Prologue(respPrologue))
 	require.NoError(t, err)
 
-	_, err = tpt.SecureInbound(context.Background(), respConn, "", nil)
+	_, err = tpt.SecureInbound(context.Background(), respConn, "")
 	require.Error(t, err)
 	<-done
 }
@@ -460,11 +460,11 @@ func TestEarlyDataAccepted(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
+			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
 			errChan <- err
 		}()
 
-		conn, err := initTransport.SecureOutbound(context.Background(), respConn, tpt.localID, nil)
+		conn, err := initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
 		require.NoError(t, err)
 		select {
 		case <-time.After(500 * time.Millisecond):
@@ -513,14 +513,14 @@ func TestEarlyDataRejected(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
+			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
 			errChan <- err
 		}()
 
 		// As early data is sent with the last handshake message, the handshake will appear
 		// to succeed for the client.
 		var conn sec.SecureConn
-		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID, nil)
+		conn, clientErr = initTransport.SecureOutbound(context.Background(), respConn, tpt.localID)
 		if clientErr == nil {
 			_, clientErr = conn.Read([]byte{0})
 		}
@@ -571,11 +571,11 @@ func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := respTransport.SecureInbound(context.Background(), initConn, "", nil)
+		_, err := respTransport.SecureInbound(context.Background(), initConn, "")
 		errChan <- err
 	}()
 
-	conn, err := initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID, nil)
+	conn, err := initTransport.SecureOutbound(context.Background(), respConn, respTransport.localID)
 	require.NoError(t, err)
 	defer conn.Close()
 

@@ -94,9 +94,9 @@ func connect(t *testing.T, clientTpt, serverTpt *Transport, clientExpectsID, ser
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		clientConn, clientErr = clientTpt.SecureOutbound(context.TODO(), client, clientExpectsID, nil)
+		clientConn, clientErr = clientTpt.SecureOutbound(context.TODO(), client, clientExpectsID)
 	}()
-	serverConn, serverErr = serverTpt.SecureInbound(context.TODO(), server, serverExpectsID, nil)
+	serverConn, serverErr = serverTpt.SecureInbound(context.TODO(), server, serverExpectsID)
 	<-done
 	return
 }

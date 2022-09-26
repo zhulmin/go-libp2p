@@ -190,31 +190,18 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 }
 
 func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, dir network.Direction) (sec.SecureConn, bool, error) {
-	// Add candidate muxers to the security layer handshake process to save
-	// muxer negotiation round trip if possible.
-	// TODO: explore if there is a way of extracting muxers other than type assertion.
-	muxers := []string{}
-	msmuxer, ok := u.muxer.(*msmux.Transport)
-	if ok {
-		muxers = msmuxer.GetTranspotKeys()
-	}
-
 	if dir == network.DirInbound {
-		return u.secure.SecureInbound(ctx, conn, p, muxers)
+		return u.secure.SecureInbound(ctx, conn, p)
 	}
-	return u.secure.SecureOutbound(ctx, conn, p, muxers)
+	return u.secure.SecureOutbound(ctx, conn, p)
 }
 
 func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
 	// TODO: The muxer should take a context.
-
-	////
 	msmuxer, ok := u.muxer.(*msmux.Transport)
 	muxerSelected := conn.ConnState().EarlyData
-
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
 	if ok && len(muxerSelected) > 0 {
-		//if false && ok {
 		tpt, ok := msmuxer.GetTranspotByKey(muxerSelected)
 		if !ok {
 			return nil, fmt.Errorf("selected a muxer we don't have a transport for")
@@ -223,7 +210,6 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 		return tpt.NewConn(conn, server, scope)
 	}
 
-	////
 	done := make(chan struct{})
 
 	var smconn network.MuxedConn

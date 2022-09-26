@@ -56,7 +56,7 @@ type ConnSecurity interface {
 	// RemotePublicKey returns the public key of the remote peer.
 	RemotePublicKey() ic.PubKey
 
-	// Early data negotiated by the security protocol. Empty if not supported.
+	// Connection state info of the secured connection.
 	ConnState() ConnectionState
 }
 

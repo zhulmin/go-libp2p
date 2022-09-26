@@ -27,10 +27,11 @@ type Transport struct {
 
 	localPeer peer.ID
 	privKey   ci.PrivKey
+	muxers    []string
 }
 
 // New creates a TLS encrypted transport
-func New(key ci.PrivKey) (*Transport, error) {
+func New(key ci.PrivKey, stream_muxers []string) (*Transport, error) {
 	id, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
@@ -38,6 +39,7 @@ func New(key ci.PrivKey) (*Transport, error) {
 	t := &Transport{
 		localPeer: id,
 		privKey:   key,
+		muxers:    stream_muxers,
 	}
 
 	identity, err := NewIdentity(key)
@@ -52,10 +54,10 @@ var _ sec.SecureTransport = &Transport{}
 
 // SecureInbound runs the TLS handshake as a server.
 // If p is empty, connections from any peer are accepted.
-func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
+func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
 	// Prepend the prefered muxers list to TLS config.
-	config.NextProtos = append(muxers, config.NextProtos...)
+	config.NextProtos = append(t.muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Server(insecure, config), keyCh)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
@@ -74,10 +76,10 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 // application data immediately afterwards.
 // If the handshake fails, the server will close the connection. The client will
 // notice this after 1 RTT when calling Read.
-func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID, muxers []string) (sec.SecureConn, error) {
+func (t *Transport) SecureOutbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	config, keyCh := t.identity.ConfigForPeer(p)
 	// Prepend the prefered muxers list to TLS config.
-	config.NextProtos = append(muxers, config.NextProtos...)
+	config.NextProtos = append(t.muxers, config.NextProtos...)
 	cs, err := t.handshake(ctx, tls.Client(insecure, config), keyCh)
 	if err != nil {
 		insecure.Close()

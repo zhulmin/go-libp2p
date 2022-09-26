@@ -81,10 +81,10 @@ func (b benchenv) connect(stopTimer bool) (*secureSession, *secureSession) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		initSession, initErr = b.initTpt.SecureOutbound(context.TODO(), initConn, b.respTpt.localID, nil)
+		initSession, initErr = b.initTpt.SecureOutbound(context.TODO(), initConn, b.respTpt.localID)
 	}()
 
-	respSession, respErr := b.respTpt.SecureInbound(context.TODO(), respConn, "", nil)
+	respSession, respErr := b.respTpt.SecureInbound(context.TODO(), respConn, "")
 	<-done
 
 	if initErr != nil {

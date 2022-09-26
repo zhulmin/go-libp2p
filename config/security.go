@@ -12,7 +12,7 @@ import (
 )
 
 // SecC is a security transport constructor.
-type SecC func(h host.Host) (sec.SecureTransport, error)
+type SecC func(h host.Host, muxers []string) (sec.SecureTransport, error)
 
 // MsSecC is a tuple containing a security transport constructor and a protocol
 // ID.
@@ -24,6 +24,7 @@ type MsSecC struct {
 var securityArgTypes = newArgTypeSet(
 	hostType, networkType, peerIDType,
 	privKeyType, pubKeyType, pstoreType,
+	muxersType,
 )
 
 // SecurityConstructor creates a security constructor from the passed parameter
@@ -31,7 +32,7 @@ var securityArgTypes = newArgTypeSet(
 func SecurityConstructor(security interface{}) (SecC, error) {
 	// Already constructed?
 	if t, ok := security.(sec.SecureTransport); ok {
-		return func(_ host.Host) (sec.SecureTransport, error) {
+		return func(_ host.Host, _ []string) (sec.SecureTransport, error) {
 			return t, nil
 		}, nil
 	}
@@ -40,8 +41,8 @@ func SecurityConstructor(security interface{}) (SecC, error) {
 	if err != nil {
 		return nil, err
 	}
-	return func(h host.Host) (sec.SecureTransport, error) {
-		t, err := ctor(h, nil, nil, nil, nil, nil)
+	return func(h host.Host, muxers []string) (sec.SecureTransport, error) {
+		t, err := ctor(h, nil, nil, nil, nil, nil, muxers)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +56,7 @@ func makeInsecureTransport(id peer.ID, privKey crypto.PrivKey) sec.SecureMuxer {
 	return secMuxer
 }
 
-func makeSecurityMuxer(h host.Host, tpts []MsSecC) (sec.SecureMuxer, error) {
+func makeSecurityMuxer(h host.Host, tpts []MsSecC, muxers []MsMuxC) (sec.SecureMuxer, error) {
 	secMuxer := new(csms.SSMuxer)
 	transportSet := make(map[string]struct{}, len(tpts))
 	for _, tptC := range tpts {
@@ -64,8 +65,12 @@ func makeSecurityMuxer(h host.Host, tpts []MsSecC) (sec.SecureMuxer, error) {
 		}
 		transportSet[tptC.ID] = struct{}{}
 	}
+	muxIds := make([]string, 0, len(muxers))
+	for _, muxc := range muxers {
+		muxIds = append(muxIds, muxc.ID)
+	}
 	for _, tptC := range tpts {
-		tpt, err := tptC.SecC(h)
+		tpt, err := tptC.SecC(h, muxIds)
 		if err != nil {
 			return nil, err
 		}
