@@ -79,7 +79,6 @@ type upgrader struct {
 var _ transport.Upgrader = &upgrader{}
 
 func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, opts ...Option) (transport.Upgrader, error) {
-
 	u := &upgrader{
 		secure:        secureMuxer,
 		muxer:         muxer,
