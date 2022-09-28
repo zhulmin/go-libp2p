@@ -197,12 +197,11 @@ func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, 
 }
 
 func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
-	// TODO: The muxer should take a context.
 	msmuxer, ok := u.muxer.(*msmux.Transport)
-	muxerSelected := conn.ConnState().EarlyData
+	muxerSelected := conn.ConnState().NextProto
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
 	if ok && len(muxerSelected) > 0 {
-		tpt, ok := msmuxer.GetTranspotByKey(muxerSelected)
+		tpt, ok := msmuxer.GetTransportByKey(muxerSelected)
 		if !ok {
 			return nil, fmt.Errorf("selected a muxer we don't have a transport for")
 		}
@@ -214,6 +213,7 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 
 	var smconn network.MuxedConn
 	var err error
+	// TODO: The muxer should take a context.
 	go func() {
 		defer close(done)
 		smconn, err = u.muxer.NewConn(conn, server, scope)

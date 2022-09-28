@@ -22,12 +22,17 @@ import (
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var clientMuxerList = [][]string{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}, {"muxer1"}}
+var serverMuxerList = [][]string{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}, {"muxer2"}}
+var expectedMuxers = []string{"", "muxer2/1.0.1", "", "", ""}
+
+const numMuxers = 5
 
 func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
 	var priv ic.PrivKey
@@ -85,6 +90,7 @@ func isWindowsTCPCloseError(err error) bool {
 func TestHandshakeSucceeds(t *testing.T) {
 	clientID, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
+	var expectedMuxer string
 
 	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport) {
 		clientInsecureConn, serverInsecureConn := connect(t)
@@ -116,6 +122,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 		require.Equal(t, serverConn.RemotePeer(), clientID)
 		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")
 		require.True(t, serverConn.RemotePublicKey().Equals(clientKey.GetPublic()), "client public key mismatch")
+		require.Equal(t, clientConn.ConnState().EarlyData, expectedMuxer)
 		// exchange some data
 		_, err = serverConn.Write([]byte("foobar"))
 		require.NoError(t, err)
@@ -126,21 +133,27 @@ func TestHandshakeSucceeds(t *testing.T) {
 	}
 
 	// Use standard transports with default TLS configuration
-	clientTransport, err := New(clientKey, nil)
-	require.NoError(t, err)
-	serverTransport, err := New(serverKey, nil)
-	require.NoError(t, err)
+	var clientTransport *Transport
+	var err error
+	var serverTransport *Transport
 
-	t.Run("standard TLS with extension not critical", func(t *testing.T) {
-		handshake(t, clientTransport, serverTransport)
-	})
+	for i := 0; i < numMuxers; i++ {
+		expectedMuxer = expectedMuxers[i]
+		clientTransport, err = New(clientKey, clientMuxerList[i])
+		require.NoError(t, err)
+		serverTransport, err = New(serverKey, serverMuxerList[i])
+		require.NoError(t, err)
+		t.Run("standard TLS with extension not critical", func(t *testing.T) {
+			handshake(t, clientTransport, serverTransport)
+		})
 
-	t.Run("standard TLS with extension critical", func(t *testing.T) {
-		extensionCritical = true
-		t.Cleanup(func() { extensionCritical = false })
+		t.Run("standard TLS with extension critical", func(t *testing.T) {
+			extensionCritical = true
+			t.Cleanup(func() { extensionCritical = false })
 
-		handshake(t, clientTransport, serverTransport)
-	})
+			handshake(t, clientTransport, serverTransport)
+		})
+	}
 
 	// Use transports with custom TLS certificates
 
@@ -164,108 +177,11 @@ func TestHandshakeSucceeds(t *testing.T) {
 	serverTransport.identity, err = NewIdentity(serverKey, WithCertTemplate(serverCertTmpl))
 	require.NoError(t, err)
 
-	t.Run("custom TLS with extension not critical", func(t *testing.T) {
-		handshake(t, clientTransport, serverTransport)
-	})
-
-	t.Run("custom TLS with extension critical", func(t *testing.T) {
-		extensionCritical = true
-		t.Cleanup(func() { extensionCritical = false })
-
-		handshake(t, clientTransport, serverTransport)
-	})
-}
-
-func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
-	var clientMuxerList = [][]protocol.ID{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}, {"muxer1"}}
-	var serverMuxerList = [][]protocol.ID{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}, {"muxer2"}}
-	var expectedMuxers = []string{"", "muxer2/1.0.1", "", "", ""}
-	numMuxers := len(clientMuxerList)
-	var expectedMuxer string
-
-	clientID, clientKey := createPeer(t)
-	serverID, serverKey := createPeer(t)
-
-	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport) {
-		clientInsecureConn, serverInsecureConn := connect(t)
-
-		serverConnChan := make(chan sec.SecureConn)
-		go func() {
-			serverConn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
-			require.NoError(t, err)
-			serverConnChan <- serverConn
-		}()
-
-		clientConn, err := clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
-		require.NoError(t, err)
-		defer clientConn.Close()
-
-		var serverConn sec.SecureConn
-		select {
-		case serverConn = <-serverConnChan:
-		case <-time.After(250 * time.Millisecond):
-			t.Fatal("expected the server to accept a connection")
-		}
-		defer serverConn.Close()
-
-		require.Equal(t, clientConn.LocalPeer(), clientID)
-		require.Equal(t, serverConn.LocalPeer(), serverID)
-		require.True(t, clientConn.LocalPrivateKey().Equals(clientKey), "client private key mismatch")
-		require.True(t, serverConn.LocalPrivateKey().Equals(serverKey), "server private key mismatch")
-		require.Equal(t, clientConn.RemotePeer(), serverID)
-		require.Equal(t, serverConn.RemotePeer(), clientID)
-		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")
-		require.True(t, serverConn.RemotePublicKey().Equals(clientKey.GetPublic()), "client public key mismatch")
-		require.Equal(t, clientConn.ConnState().NextProto, expectedMuxer)
-		// exchange some data
-		_, err = serverConn.Write([]byte("foobar"))
-		require.NoError(t, err)
-		b := make([]byte, 6)
-		_, err = clientConn.Read(b)
-		require.NoError(t, err)
-		require.Equal(t, string(b), "foobar")
-	}
-
-	// Iterate through the NextProto combinations.
 	for i := 0; i < numMuxers; i++ {
 		expectedMuxer = expectedMuxers[i]
-		clientTransport, err := New(clientKey, clientMuxerList[i])
+		clientTransport, err = New(clientKey, clientMuxerList[i])
 		require.NoError(t, err)
-		serverTransport, err := New(serverKey, serverMuxerList[i])
-		require.NoError(t, err)
-
-		// Use standard transports with default TLS configuration
-		t.Run("standard TLS with extension not critical", func(t *testing.T) {
-			handshake(t, clientTransport, serverTransport)
-		})
-
-		t.Run("standard TLS with extension critical", func(t *testing.T) {
-			extensionCritical = true
-			t.Cleanup(func() { extensionCritical = false })
-
-			handshake(t, clientTransport, serverTransport)
-		})
-
-		// Use transports with custom TLS certificates
-
-		// override client identity to use a custom certificate
-		clientCertTmlp, err := certTemplate()
-		require.NoError(t, err)
-
-		clientCertTmlp.Subject.CommonName = "client.test.name"
-		clientCertTmlp.EmailAddresses = []string{"client-unittest@example.com"}
-
-		clientTransport.identity, err = NewIdentity(clientKey, WithCertTemplate(clientCertTmlp))
-		require.NoError(t, err)
-
-		// override server identity to use a custom certificate
-		serverCertTmpl, err := certTemplate()
-		require.NoError(t, err)
-
-		serverCertTmpl.Subject.CommonName = "server.test.name"
-		serverCertTmpl.EmailAddresses = []string{"server-unittest@example.com"}
-
-		serverTransport.identity, err = NewIdentity(serverKey, WithCertTemplate(serverCertTmpl))
+		serverTransport, err = New(serverKey, serverMuxerList[i])
 		require.NoError(t, err)
 
 		t.Run("custom TLS with extension not critical", func(t *testing.T) {
@@ -298,72 +214,13 @@ func TestHandshakeConnectionCancellations(t *testing.T) {
 	_, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 
-	clientTransport, err := New(clientKey, nil)
-	require.NoError(t, err)
-	serverTransport, err := New(serverKey, nil)
-	require.NoError(t, err)
-
-	t.Run("cancel outgoing connection", func(t *testing.T) {
-		clientInsecureConn, serverInsecureConn := connect(t)
-
-		errChan := make(chan error)
-		go func() {
-			conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
-			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
-			// and closes the underlying connection when that context is canceled.
-			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
-			if err == nil {
-				_, err = conn.Read([]byte{0})
-			}
-			errChan <- err
-		}()
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID)
-		require.ErrorIs(t, err, context.Canceled)
-		require.Error(t, <-errChan)
-	})
-
-	t.Run("cancel incoming connection", func(t *testing.T) {
-		clientInsecureConn, serverInsecureConn := connect(t)
-
-		errChan := make(chan error)
-		go func() {
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "")
-			// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
-			// and closes the underlying connection when that context is canceled.
-			// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
-			if err == nil {
-				_, err = conn.Read([]byte{0})
-			}
-			errChan <- err
-		}()
-		_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
-		require.Error(t, err)
-		require.ErrorIs(t, <-errChan, context.Canceled)
-	})
-}
-
-func TestHandshakeConnectionWithNextProtoCancellations(t *testing.T) {
-	var clientMuxerList = [][]protocol.ID{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}, {"muxer1"}}
-	var serverMuxerList = [][]protocol.ID{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}, {"muxer2"}}
-	numMuxers := len(clientMuxerList)
-
-	_, clientKey := createPeer(t)
-	serverID, serverKey := createPeer(t)
-
-	// Test each combination of NextProto extension.
 	for i := 0; i < numMuxers; i++ {
 		clientTransport, err := New(clientKey, clientMuxerList[i])
 		require.NoError(t, err)
 		serverTransport, err := New(serverKey, serverMuxerList[i])
 		require.NoError(t, err)
-
 		t.Run("cancel outgoing connection", func(t *testing.T) {
 			clientInsecureConn, serverInsecureConn := connect(t)
-
 			errChan := make(chan error)
 			go func() {
 				conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")

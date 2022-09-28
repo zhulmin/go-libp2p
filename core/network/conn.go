@@ -38,7 +38,7 @@ type Conn interface {
 type ConnectionState struct {
 	// Early data result derived from security protocol handshake.
 	// For example, Noise handshake payload or TLS/ALPN negotiation.
-	EarlyData string
+	NextProto string
 }
 
 // ConnSecurity is the interface that one can mix into a connection interface to

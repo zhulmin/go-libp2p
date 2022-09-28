@@ -6,13 +6,14 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	csms "github.com/libp2p/go-libp2p/p2p/net/conn-security-multistream"
 )
 
 // SecC is a security transport constructor.
-type SecC func(h host.Host, muxers []string) (sec.SecureTransport, error)
+type SecC func(h host.Host, muxers []protocol.ID) (sec.SecureTransport, error)
 
 // MsSecC is a tuple containing a security transport constructor and a protocol
 // ID.
@@ -32,7 +33,7 @@ var securityArgTypes = newArgTypeSet(
 func SecurityConstructor(security interface{}) (SecC, error) {
 	// Already constructed?
 	if t, ok := security.(sec.SecureTransport); ok {
-		return func(_ host.Host, _ []string) (sec.SecureTransport, error) {
+		return func(_ host.Host, _ []protocol.ID) (sec.SecureTransport, error) {
 			return t, nil
 		}, nil
 	}
@@ -41,7 +42,7 @@ func SecurityConstructor(security interface{}) (SecC, error) {
 	if err != nil {
 		return nil, err
 	}
-	return func(h host.Host, muxers []string) (sec.SecureTransport, error) {
+	return func(h host.Host, muxers []protocol.ID) (sec.SecureTransport, error) {
 		t, err := ctor(h, nil, nil, nil, nil, nil, muxers)
 		if err != nil {
 			return nil, err
@@ -65,9 +66,9 @@ func makeSecurityMuxer(h host.Host, tpts []MsSecC, muxers []MsMuxC) (sec.SecureM
 		}
 		transportSet[tptC.ID] = struct{}{}
 	}
-	muxIds := make([]string, 0, len(muxers))
+	muxIds := make([]protocol.ID, 0, len(muxers))
 	for _, muxc := range muxers {
-		muxIds = append(muxIds, muxc.ID)
+		muxIds = append(muxIds, (protocol.ID)(muxc.ID))
 	}
 	for _, tptC := range tpts {
 		tpt, err := tptC.SecC(h, muxIds)
