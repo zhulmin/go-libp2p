@@ -13,9 +13,9 @@ import (
 	ipnet "github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/transport"
+	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
 
-	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -202,7 +202,7 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 	if ok && len(muxerSelected) > 0 {
 		tpt, ok := msmuxer.GetTransportByKey(muxerSelected)
 		if !ok {
-			return nil, fmt.Errorf("selected a muxer we don't have a transport for")
+			return nil, fmt.Errorf("selected a muxer we don't know: %s", muxerSelected)
 		}
 
 		return tpt.NewConn(conn, server, scope)

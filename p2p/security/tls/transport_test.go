@@ -176,11 +176,25 @@ func TestHandshakeSucceeds(t *testing.T) {
 	})
 }
 
+type testcase struct {
+	clientProtos   []protocol.ID
+	serverProtos   []protocol.ID
+	expectedResult string
+}
+
 func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
-	var clientMuxerList = [][]protocol.ID{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}, {"muxer1"}}
-	var serverMuxerList = [][]protocol.ID{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}, {"muxer2"}}
-	var expectedMuxers = []string{"", "muxer2/1.0.1", "", "", ""}
-	numMuxers := len(clientMuxerList)
+
+	tests := []testcase{
+		{clientProtos: nil, serverProtos: nil, expectedResult: ""},
+		{[]protocol.ID{"muxer1/1.0.0", "muxer2/1.0.1"}, []protocol.ID{"muxer2/1.0.1", "muxer1/1.0.0"}, "muxer2/1.0.1"},
+		{[]protocol.ID{"muxer1/1.0.0", "muxer2/1.0.1", "libp2p"}, []protocol.ID{"muxer2/1.0.1", "muxer1/1.0.0", "libp2p"}, "muxer2/1.0.1"},
+		{[]protocol.ID{"muxer1/1.0.0", "libp2p"}, []protocol.ID{"libp2p"}, ""},
+		{[]protocol.ID{"libp2p"}, []protocol.ID{"libp2p"}, ""},
+		{[]protocol.ID{"muxer1"}, []protocol.ID{}, ""},
+		{[]protocol.ID{}, []protocol.ID{"muxer1"}, ""},
+		{[]protocol.ID{"muxer2"}, []protocol.ID{"muxer1"}, ""},
+	}
+	numMuxers := len(tests)
 	var expectedMuxer string
 
 	clientID, clientKey := createPeer(t)
@@ -228,54 +242,13 @@ func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
 
 	// Iterate through the NextProto combinations.
 	for i := 0; i < numMuxers; i++ {
-		expectedMuxer = expectedMuxers[i]
-		clientTransport, err := New(clientKey, clientMuxerList[i])
+		expectedMuxer = tests[i].expectedResult
+		clientTransport, err := New(clientKey, tests[i].clientProtos)
 		require.NoError(t, err)
-		serverTransport, err := New(serverKey, serverMuxerList[i])
-		require.NoError(t, err)
-
-		// Use standard transports with default TLS configuration
-		t.Run("standard TLS with extension not critical", func(t *testing.T) {
-			handshake(t, clientTransport, serverTransport)
-		})
-
-		t.Run("standard TLS with extension critical", func(t *testing.T) {
-			extensionCritical = true
-			t.Cleanup(func() { extensionCritical = false })
-
-			handshake(t, clientTransport, serverTransport)
-		})
-
-		// Use transports with custom TLS certificates
-
-		// override client identity to use a custom certificate
-		clientCertTmlp, err := certTemplate()
+		serverTransport, err := New(serverKey, tests[i].serverProtos)
 		require.NoError(t, err)
 
-		clientCertTmlp.Subject.CommonName = "client.test.name"
-		clientCertTmlp.EmailAddresses = []string{"client-unittest@example.com"}
-
-		clientTransport.identity, err = NewIdentity(clientKey, WithCertTemplate(clientCertTmlp))
-		require.NoError(t, err)
-
-		// override server identity to use a custom certificate
-		serverCertTmpl, err := certTemplate()
-		require.NoError(t, err)
-
-		serverCertTmpl.Subject.CommonName = "server.test.name"
-		serverCertTmpl.EmailAddresses = []string{"server-unittest@example.com"}
-
-		serverTransport.identity, err = NewIdentity(serverKey, WithCertTemplate(serverCertTmpl))
-		require.NoError(t, err)
-
-		t.Run("custom TLS with extension not critical", func(t *testing.T) {
-			handshake(t, clientTransport, serverTransport)
-		})
-
-		t.Run("custom TLS with extension critical", func(t *testing.T) {
-			extensionCritical = true
-			t.Cleanup(func() { extensionCritical = false })
-
+		t.Run("TLS handshake with ALPN extension", func(t *testing.T) {
 			handshake(t, clientTransport, serverTransport)
 		})
 	}
@@ -344,65 +317,6 @@ func TestHandshakeConnectionCancellations(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorIs(t, <-errChan, context.Canceled)
 	})
-}
-
-func TestHandshakeConnectionWithNextProtoCancellations(t *testing.T) {
-	var clientMuxerList = [][]protocol.ID{{}, {"muxer1/1.0.0", "muxer2/1.0.1"}, {"muxer1"}, {}, {"muxer1"}}
-	var serverMuxerList = [][]protocol.ID{{}, {"muxer2/1.0.1", "muxer1/1.0.0"}, {}, {"muxer1"}, {"muxer2"}}
-	numMuxers := len(clientMuxerList)
-
-	_, clientKey := createPeer(t)
-	serverID, serverKey := createPeer(t)
-
-	// Test each combination of NextProto extension.
-	for i := 0; i < numMuxers; i++ {
-		clientTransport, err := New(clientKey, clientMuxerList[i])
-		require.NoError(t, err)
-		serverTransport, err := New(serverKey, serverMuxerList[i])
-		require.NoError(t, err)
-
-		t.Run("cancel outgoing connection", func(t *testing.T) {
-			clientInsecureConn, serverInsecureConn := connect(t)
-
-			errChan := make(chan error)
-			go func() {
-				conn, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, "")
-				// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
-				// and closes the underlying connection when that context is canceled.
-				// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
-				if err == nil {
-					_, err = conn.Read([]byte{0})
-				}
-				errChan <- err
-			}()
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID)
-			require.ErrorIs(t, err, context.Canceled)
-			require.Error(t, <-errChan)
-		})
-
-		t.Run("cancel incoming connection", func(t *testing.T) {
-			clientInsecureConn, serverInsecureConn := connect(t)
-
-			errChan := make(chan error)
-			go func() {
-				ctx, cancel := context.WithCancel(context.Background())
-				cancel()
-				conn, err := serverTransport.SecureInbound(ctx, &delayedConn{Conn: serverInsecureConn, delay: 5 * time.Millisecond}, "")
-				// crypto/tls' context handling works by spinning up a separate Go routine that watches the context,
-				// and closes the underlying connection when that context is canceled.
-				// It is therefore not guaranteed (but very likely) that this happens _during_ the TLS handshake.
-				if err == nil {
-					_, err = conn.Read([]byte{0})
-				}
-				errChan <- err
-			}()
-			_, err = clientTransport.SecureOutbound(context.Background(), clientInsecureConn, serverID)
-			require.Error(t, err)
-			require.ErrorIs(t, <-errChan, context.Canceled)
-		})
-	}
 }
 
 func TestPeerIDMismatch(t *testing.T) {

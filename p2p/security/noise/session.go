@@ -40,9 +40,6 @@ type secureSession struct {
 	prologue []byte
 
 	initiatorEarlyDataHandler, responderEarlyDataHandler EarlyDataHandler
-
-	// Next protocol derived from handshaking. It is empty if not supported.
-	nextProto string
 }
 
 // newSecureSession creates a Noise session over the given insecureConn Conn, using
@@ -113,7 +110,7 @@ func (s *secureSession) RemotePublicKey() crypto.PubKey {
 }
 
 func (s *secureSession) ConnState() network.ConnectionState {
-	return network.ConnectionState{NextProto: s.nextProto}
+	return network.ConnectionState{}
 }
 
 func (s *secureSession) SetDeadline(t time.Time) error {

@@ -59,7 +59,7 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 	config, keyCh := t.identity.ConfigForPeer(p)
 	muxers := make([]string, 0, len(t.muxers))
 	for _, muxer := range t.muxers {
-		muxers = append(muxers, (string)(muxer))
+		muxers = append(muxers, string(muxer))
 	}
 	// Prepend the prefered muxers list to TLS config.
 	config.NextProtos = append(muxers, config.NextProtos...)
@@ -130,6 +130,10 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 	}
 
 	nextProto := tlsConn.ConnectionState().NegotiatedProtocol
+	// The special nextProto ID "libp2p" was used in previous versions upto
+	// v0.23.2 as the TLS ALPN extension field. If we see this special ID
+	// selected, that means we are handshaking with an old version of libp2p.
+	// In this case return empty nextProto to indicate no ALPN is selected.
 	if nextProto == "libp2p" {
 		nextProto = ""
 	}

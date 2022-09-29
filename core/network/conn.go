@@ -36,8 +36,9 @@ type Conn interface {
 
 // ConnectionState holds extra information releated to the ConnSecurity entity.
 type ConnectionState struct {
-	// Early data result derived from security protocol handshake.
-	// For example, Noise handshake payload or TLS/ALPN negotiation.
+	// The next protocol used for stream muxer selection. This is derived from
+	// security protocol handshake, for example, Noise handshake payload or
+	// TLS/ALPN negotiation.
 	NextProto string
 }
 

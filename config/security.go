@@ -68,7 +68,7 @@ func makeSecurityMuxer(h host.Host, tpts []MsSecC, muxers []MsMuxC) (sec.SecureM
 	}
 	muxIds := make([]protocol.ID, 0, len(muxers))
 	for _, muxc := range muxers {
-		muxIds = append(muxIds, (protocol.ID)(muxc.ID))
+		muxIds = append(muxIds, protocol.ID(muxc.ID))
 	}
 	for _, tptC := range tpts {
 		tpt, err := tptC.SecC(h, muxIds)
