@@ -194,7 +194,6 @@ func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
 		{[]protocol.ID{}, []protocol.ID{"muxer1"}, ""},
 		{[]protocol.ID{"muxer2"}, []protocol.ID{"muxer1"}, ""},
 	}
-	numMuxers := len(tests)
 	var expectedMuxer string
 
 	clientID, clientKey := createPeer(t)
@@ -241,11 +240,11 @@ func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
 	}
 
 	// Iterate through the NextProto combinations.
-	for i := 0; i < numMuxers; i++ {
-		expectedMuxer = tests[i].expectedResult
-		clientTransport, err := New(clientKey, tests[i].clientProtos)
+	for _, test := range tests {
+		expectedMuxer = test.expectedResult
+		clientTransport, err := New(clientKey, test.clientProtos)
 		require.NoError(t, err)
-		serverTransport, err := New(serverKey, tests[i].serverProtos)
+		serverTransport, err := New(serverKey, test.serverProtos)
 		require.NoError(t, err)
 
 		t.Run("TLS handshake with ALPN extension", func(t *testing.T) {

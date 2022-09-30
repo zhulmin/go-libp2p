@@ -130,10 +130,11 @@ func (t *Transport) setupConn(tlsConn *tls.Conn, remotePubKey ci.PubKey) (sec.Se
 	}
 
 	nextProto := tlsConn.ConnectionState().NegotiatedProtocol
-	// The special nextProto ID "libp2p" was used in previous versions upto
-	// v0.23.2 as the TLS ALPN extension field. If we see this special ID
-	// selected, that means we are handshaking with an old version of libp2p.
-	// In this case return empty nextProto to indicate no ALPN is selected.
+	// The special ALPN extension value "libp2p" is used by libp2p versions
+	// that don't support early muxer negotiation. If we see this sepcial
+	// value selected, that means we are handshaking with a version that does
+	// not support early muxer negotiation. In this case return empty nextProto
+	// to indicate no muxer is selected.
 	if nextProto == "libp2p" {
 		nextProto = ""
 	}
