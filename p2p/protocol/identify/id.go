@@ -330,13 +330,13 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan error {
 		// already, but that doesn't really matter. We'll fail to open a
 		// stream then forget the connection.
 		go func() {
-			defer close(wait)
 			if err := ids.identifyConn(c); err != nil {
 				log.Warnf("failed to identify %s: %s", c.RemotePeer(), err)
 				ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
 				wait <- err
 				return
 			}
+			wait <- nil
 			ids.emitters.evtPeerIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: c.RemotePeer()})
 		}()
 	}
