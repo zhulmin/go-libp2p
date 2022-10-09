@@ -56,94 +56,12 @@ var quicConfig = &quic.Config{
 const statelessResetKeyInfo = "libp2p quic stateless reset key"
 const errorCodeConnectionGating = 0x47415445 // GATE in ASCII
 
-type noreuseConn struct {
-	*net.UDPConn
-}
-
-func (c *noreuseConn) IncreaseCount() {}
-func (c *noreuseConn) DecreaseCount() {
-	c.UDPConn.Close()
-}
-
-type connManager struct {
-	reuseUDP4       *udpreuse.Reuse
-	reuseUDP6       *udpreuse.Reuse
-	reuseportEnable bool
-}
-
-func newConnManager(reuseport bool) (*connManager, error) {
-	reuseUDP4 := udpreuse.New()
-	reuseUDP6 := udpreuse.New()
-	return &connManager{
-		reuseUDP4:       reuseUDP4,
-		reuseUDP6:       reuseUDP6,
-		reuseportEnable: reuseport,
-	}, nil
-}
-
-func (c *connManager) getReuse(network string) (*udpreuse.Reuse, error) {
-	switch network {
-	case "udp4":
-		return c.reuseUDP4, nil
-	case "udp6":
-		return c.reuseUDP6, nil
-	default:
-		return nil, errors.New("invalid network: must be either udp4 or udp6")
-	}
-}
-
-func (c *connManager) Listen(network string, laddr *net.UDPAddr) (pConn, error) {
-	if c.reuseportEnable {
-		reuse, err := c.getReuse(network)
-		if err != nil {
-			return nil, err
-		}
-		return reuse.Listen(network, laddr)
-	}
-
-	conn, err := net.ListenUDP(network, laddr)
-	if err != nil {
-		return nil, err
-	}
-	return &noreuseConn{conn}, nil
-}
-
-func (c *connManager) Dial(network string, raddr *net.UDPAddr) (pConn, error) {
-	if c.reuseportEnable {
-		reuse, err := c.getReuse(network)
-		if err != nil {
-			return nil, err
-		}
-		return reuse.Dial(network, raddr)
-	}
-
-	var laddr *net.UDPAddr
-	switch network {
-	case "udp4":
-		laddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-	case "udp6":
-		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
-	}
-	conn, err := net.ListenUDP(network, laddr)
-	if err != nil {
-		return nil, err
-	}
-	return &noreuseConn{conn}, nil
-}
-
-func (c *connManager) Close() error {
-	if err := c.reuseUDP6.Close(); err != nil {
-		return err
-	}
-	return c.reuseUDP4.Close()
-}
-
 // The Transport implements the tpt.Transport interface for QUIC connections.
 type transport struct {
 	privKey      ic.PrivKey
 	localPeer    peer.ID
 	identity     *p2ptls.Identity
-	connManager  *connManager
+	connManager  udpreuse.ConnManager
 	serverConfig *quic.Config
 	clientConfig *quic.Config
 	gater        connmgr.ConnectionGater
@@ -187,7 +105,7 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	if err != nil {
 		return nil, err
 	}
-	connManager, err := newConnManager(!cfg.disableReuseport)
+	connManager, err := udpreuse.NewConnManager(!cfg.disableReuseport)
 	if err != nil {
 		return nil, err
 	}

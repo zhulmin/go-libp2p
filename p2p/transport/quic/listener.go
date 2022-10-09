@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"net"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/udpreuse"
+
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -20,7 +22,7 @@ var quicListen = quic.Listen // so we can mock it in tests
 // A listener listens for QUIC connections.
 type listener struct {
 	quicListener   quic.Listener
-	conn           pConn
+	conn           udpreuse.Conn
 	transport      *transport
 	rcmgr          network.ResourceManager
 	privKey        ic.PrivKey
@@ -30,7 +32,7 @@ type listener struct {
 
 var _ tpt.Listener = &listener{}
 
-func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (tpt.Listener, error) {
+func newListener(pconn udpreuse.Conn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (tpt.Listener, error) {
 	var tlsConf tls.Config
 	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 		// return a tls.Config that verifies the peer's certificate chain.
