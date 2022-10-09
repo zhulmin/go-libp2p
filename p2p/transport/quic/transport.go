@@ -20,6 +20,7 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/internal/quicutils"
+	"github.com/libp2p/go-libp2p/p2p/transport/udpreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
@@ -63,14 +64,14 @@ func (c *noreuseConn) IncreaseCount() {}
 func (c *noreuseConn) DecreaseCount() {}
 
 type connManager struct {
-	reuseUDP4       *reuse
-	reuseUDP6       *reuse
+	reuseUDP4       *udpreuse.Reuse
+	reuseUDP6       *udpreuse.Reuse
 	reuseportEnable bool
 }
 
 func newConnManager(reuseport bool) (*connManager, error) {
-	reuseUDP4 := newReuse()
-	reuseUDP6 := newReuse()
+	reuseUDP4 := udpreuse.New()
+	reuseUDP6 := udpreuse.New()
 	return &connManager{
 		reuseUDP4:       reuseUDP4,
 		reuseUDP6:       reuseUDP6,
@@ -78,7 +79,7 @@ func newConnManager(reuseport bool) (*connManager, error) {
 	}, nil
 }
 
-func (c *connManager) getReuse(network string) (*reuse, error) {
+func (c *connManager) getReuse(network string) (*udpreuse.Reuse, error) {
 	switch network {
 	case "udp4":
 		return c.reuseUDP4, nil

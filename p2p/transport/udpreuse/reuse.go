@@ -1,4 +1,4 @@
-package libp2pquic
+package udpreuse
 
 import (
 	"net"
@@ -49,7 +49,7 @@ func (c *reuseConn) ShouldGarbageCollect(now time.Time) bool {
 	return !c.unusedSince.IsZero() && c.unusedSince.Add(maxUnusedDuration).Before(now)
 }
 
-type reuse struct {
+type Reuse struct {
 	mutex sync.Mutex
 
 	closeChan  chan struct{}
@@ -61,8 +61,8 @@ type reuse struct {
 	global map[int]*reuseConn
 }
 
-func newReuse() *reuse {
-	r := &reuse{
+func New() *Reuse {
+	r := &Reuse{
 		unicast:    make(map[string]map[int]*reuseConn),
 		global:     make(map[int]*reuseConn),
 		closeChan:  make(chan struct{}),
@@ -72,7 +72,7 @@ func newReuse() *reuse {
 	return r
 }
 
-func (r *reuse) gc() {
+func (r *Reuse) gc() {
 	defer func() {
 		r.mutex.Lock()
 		for _, conn := range r.global {
@@ -126,7 +126,7 @@ func (r *reuse) gc() {
 	}
 }
 
-func (r *reuse) Dial(network string, raddr *net.UDPAddr) (*reuseConn, error) {
+func (r *Reuse) Dial(network string, raddr *net.UDPAddr) (*reuseConn, error) {
 	var ip *net.IP
 
 	// Only bother looking up the source address if we actually _have_ non 0.0.0.0 listeners.
@@ -154,7 +154,7 @@ func (r *reuse) Dial(network string, raddr *net.UDPAddr) (*reuseConn, error) {
 	return conn, nil
 }
 
-func (r *reuse) dialLocked(network string, source *net.IP) (*reuseConn, error) {
+func (r *Reuse) dialLocked(network string, source *net.IP) (*reuseConn, error) {
 	if source != nil {
 		// We already have at least one suitable connection...
 		if conns, ok := r.unicast[source.String()]; ok {
@@ -189,7 +189,7 @@ func (r *reuse) dialLocked(network string, source *net.IP) (*reuseConn, error) {
 	return rconn, nil
 }
 
-func (r *reuse) Listen(network string, laddr *net.UDPAddr) (*reuseConn, error) {
+func (r *Reuse) Listen(network string, laddr *net.UDPAddr) (*reuseConn, error) {
 	conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
@@ -224,7 +224,7 @@ func (r *reuse) Listen(network string, laddr *net.UDPAddr) (*reuseConn, error) {
 	return rconn, err
 }
 
-func (r *reuse) Close() error {
+func (r *Reuse) Close() error {
 	close(r.closeChan)
 	<-r.gcStopChan
 	return nil

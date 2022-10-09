@@ -1,4 +1,4 @@
-package libp2pquic
+package udpreuse
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ func (c *reuseConn) GetCount() int {
 	return c.refCount
 }
 
-func closeAllConns(reuse *reuse) {
+func closeAllConns(reuse *Reuse) {
 	reuse.mutex.Lock()
 	for _, conn := range reuse.global {
 		for conn.GetCount() > 0 {
@@ -44,19 +44,19 @@ func platformHasRoutingTables() bool {
 func isGarbageCollectorRunning() bool {
 	var b bytes.Buffer
 	pprof.Lookup("goroutine").WriteTo(&b, 1)
-	return strings.Contains(b.String(), "quic.(*reuse).gc")
+	return strings.Contains(b.String(), "udpreuse.(*Reuse).gc")
 }
 
-func cleanup(t *testing.T, reuse *reuse) {
+func cleanup(t *testing.T, reuse *Reuse) {
 	t.Cleanup(func() {
 		closeAllConns(reuse)
 		reuse.Close()
-		require.False(t, isGarbageCollectorRunning(), "reuse gc still running")
+		require.False(t, isGarbageCollectorRunning(), "Reuse gc still running")
 	})
 }
 
 func TestReuseListenOnAllIPv4(t *testing.T) {
-	reuse := newReuse()
+	reuse := New()
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -68,7 +68,7 @@ func TestReuseListenOnAllIPv4(t *testing.T) {
 }
 
 func TestReuseListenOnAllIPv6(t *testing.T) {
-	reuse := newReuse()
+	reuse := New()
 	require.Eventually(t, isGarbageCollectorRunning, 500*time.Millisecond, 50*time.Millisecond, "expected garbage collector to be running")
 	cleanup(t, reuse)
 
@@ -80,7 +80,7 @@ func TestReuseListenOnAllIPv6(t *testing.T) {
 }
 
 func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
-	reuse := newReuse()
+	reuse := New()
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
@@ -94,7 +94,7 @@ func TestReuseCreateNewGlobalConnOnDial(t *testing.T) {
 }
 
 func TestReuseConnectionWhenDialing(t *testing.T) {
-	reuse := newReuse()
+	reuse := New()
 	cleanup(t, reuse)
 
 	addr, err := net.ResolveUDPAddr("udp4", "0.0.0.0:0")
@@ -114,7 +114,7 @@ func TestReuseListenOnSpecificInterface(t *testing.T) {
 	if platformHasRoutingTables() {
 		t.Skip("this test only works on platforms that support routing tables")
 	}
-	reuse := newReuse()
+	reuse := New()
 	cleanup(t, reuse)
 
 	router, err := netroute.New()
@@ -151,7 +151,7 @@ func TestReuseGarbageCollect(t *testing.T) {
 		maxUnusedDuration = 10 * maxUnusedDuration
 	}
 
-	reuse := newReuse()
+	reuse := New()
 	cleanup(t, reuse)
 
 	numGlobals := func() int {
