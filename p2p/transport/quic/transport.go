@@ -61,7 +61,9 @@ type noreuseConn struct {
 }
 
 func (c *noreuseConn) IncreaseCount() {}
-func (c *noreuseConn) DecreaseCount() {}
+func (c *noreuseConn) DecreaseCount() {
+	c.UDPConn.Close()
+}
 
 type connManager struct {
 	reuseUDP4       *udpreuse.Reuse
@@ -417,9 +419,6 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	}
 	ln, err := newListener(conn, t, t.localPeer, t.privKey, t.identity, t.rcmgr)
 	if err != nil {
-		if !t.connManager.reuseportEnable {
-			conn.Close()
-		}
 		conn.DecreaseCount()
 		return nil, err
 	}
