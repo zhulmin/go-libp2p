@@ -37,7 +37,7 @@ Others supporting projects (like testing or benchmarking) will have different cr
 -   A.1⚡Handshakes at the Speed of Light - **[Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426)**
 - E.1 🧪 Future-proof testing - **RTT test for Early Muxer Negotiation**
 
-### Mid Q4 (November)
+#### Mid Q4 (November)
 -   F.1 ⏱ Future-proof Benchmarking - **[Using nix-builders](https://github.com/testground/testground/pull/1425)**
 
 #### End of Q4 (December)
