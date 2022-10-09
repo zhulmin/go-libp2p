@@ -517,17 +517,6 @@ func TestStatelessReset(t *testing.T) {
 }
 
 func testStatelessReset(t *testing.T, tc *connTestCase) {
-	origGarbageCollectInterval := garbageCollectInterval
-	origMaxUnusedDuration := maxUnusedDuration
-
-	garbageCollectInterval = 50 * time.Millisecond
-	maxUnusedDuration = 0
-
-	t.Cleanup(func() {
-		garbageCollectInterval = origGarbageCollectInterval
-		maxUnusedDuration = origMaxUnusedDuration
-	})
-
 	serverID, serverKey := createPeer(t)
 	_, clientKey := createPeer(t)
 
@@ -537,15 +526,13 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 
 	var drop uint32
-	serverPort := ln.Addr().(*net.UDPAddr).Port
+	dropCallback := func(quicproxy.Direction, []byte) bool { return atomic.LoadUint32(&drop) > 0 }
 	proxy, err := quicproxy.NewQuicProxy("localhost:0", &quicproxy.Opts{
-		RemoteAddr: fmt.Sprintf("localhost:%d", serverPort),
-		DropPacket: func(quicproxy.Direction, []byte) bool {
-			return atomic.LoadUint32(&drop) > 0
-		},
+		RemoteAddr: fmt.Sprintf("localhost:%d", ln.Addr().(*net.UDPAddr).Port),
+		DropPacket: dropCallback,
 	})
 	require.NoError(t, err)
-	defer proxy.Close()
+	proxyLocalAddr := proxy.LocalAddr()
 
 	// establish a connection
 	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
@@ -577,17 +564,22 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	atomic.StoreUint32(&drop, 1)
 	ln.Close()
 	(<-connChan).Close()
+	proxy.Close()
 
-	// The kernel might take a while to free up the UPD port.
-	// Retry starting the listener until we're successful (with a 3s timeout).
-	require.Eventually(t, func() bool {
-		var err error
-		ln, err = serverTransport.Listen(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", serverPort)))
-		return err == nil
-	}, 3*time.Second, 50*time.Millisecond)
+	// Start another listener (on a different port).
+	ln, err = serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"))
+	require.NoError(t, err)
 	defer ln.Close()
 	// Now that the new server is up, re-enable packet forwarding.
 	atomic.StoreUint32(&drop, 0)
+
+	// Recreate the proxy, such that its client-facing port stays constant.
+	proxy, err = quicproxy.NewQuicProxy(proxyLocalAddr.String(), &quicproxy.Opts{
+		RemoteAddr: fmt.Sprintf("localhost:%d", ln.Addr().(*net.UDPAddr).Port),
+		DropPacket: dropCallback,
+	})
+	require.NoError(t, err)
+	defer proxy.Close()
 
 	// Trigger something (not too small) to be sent, so that we receive the stateless reset.
 	// The new server doesn't have any state for the previously established connection.
@@ -597,7 +589,8 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 		_, rerr = str.Read([]byte{0, 0})
 	}
 	require.Error(t, rerr)
-	require.Contains(t, rerr.Error(), "received a stateless reset")
+	var statelessResetErr *quic.StatelessResetError
+	require.ErrorAs(t, rerr, &statelessResetErr)
 }
 
 // Hole punching is only expected to work with reuseport enabled.
