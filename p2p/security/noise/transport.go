@@ -16,9 +16,9 @@ import (
 
 // ID is the protocol ID for noise
 const (
-	ID                 = "/noise"
-	MAX_EXTENSION_SIZE = 2048
-	MAX_PROTO_NUM      = 100
+	ID               = "/noise"
+	MaxExtensionSize = 2048
+	MaxProtoNum      = 100
 )
 
 var _ sec.SecureTransport = &Transport{}
@@ -119,7 +119,7 @@ func (i *transportEarlyDataHandler) Send(context.Context, net.Conn, peer.ID) *pb
 
 func (i *transportEarlyDataHandler) Received(_ context.Context, _ net.Conn, extension *pb.NoiseExtensions) error {
 	// Discard messages with size or the number of protocols exceeding extension limit for security.
-	if extension != nil && extension.XXX_Size() <= MAX_EXTENSION_SIZE && len(extension.StreamMuxers) <= MAX_PROTO_NUM {
+	if extension != nil && extension.XXX_Size() <= MaxExtensionSize && len(extension.StreamMuxers) <= MaxProtoNum {
 		i.receivedMuxers = extension.GetStreamMuxers()
 	}
 	return nil
