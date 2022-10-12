@@ -37,13 +37,17 @@ jobs:
       - name: Run repo-specific setup
         uses: ./.github/actions/go-test-setup
         if: hashFiles('./.github/actions/go-test-setup') != ''
+      - name: Set up gotestsum
+        run: go install gotest.tools/gotestsum@v1.8.2
+      - name: Create BuildPulse output directory
+        run: mkdir -p tmp/buildpulse
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
           # Use -coverpkg=./..., so that we include cross-package coverage.
           # If package ./A imports ./B, and ./A's tests also cover ./B,
           # this means ./B's coverage will be significantly higher than 0%.
-          run: go test -v -shuffle=on -coverprofile=module-coverage.txt -coverpkg=./... ./...
+          run: gotestsum -f standard-verbose --junitfile tmp/buildpulse/gotestsum-report.xml -- -shuffle=on -coverprofile=module-coverage.txt -coverpkg=./... ./...
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
         uses: protocol/multiple-go-modules@v1.2
@@ -52,12 +56,12 @@ jobs:
         with:
           run: |
             export "PATH=${{ env.PATH_386 }}:$PATH"
-            go test -v -shuffle=on ./...
+            gotestsum -f standard-verbose --junitfile tmp/buildpulse/gotestsum-report-32bit.xml -- -shuffle=on ./...
       - name: Run tests with race detector
         if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
         uses: protocol/multiple-go-modules@v1.2
         with:
-          run: go test -v -race ./...
+          run: gotestsum -f standard-verbose --junitfile tmp/buildpulse/gotestsum-report-race.xml -- -race ./...
       - name: Collect coverage files
         shell: bash
         run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
@@ -66,3 +70,12 @@ jobs:
         with:
           files: '${{ env.COVERAGES }}'
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: '!cancelled()' # Run this step even when the tests fail. Skip if the workflow is cancelled.
+        uses: Workshop64/buildpulse-action@main
+        with:
+          account: 14838238
+          repository: 43465675
+          path: tmp/buildpulse
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
