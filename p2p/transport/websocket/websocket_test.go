@@ -73,7 +73,7 @@ func newInsecureMuxer(t *testing.T) (peer.ID, sec.SecureMuxer) {
 
 func newSecureMuxer(t *testing.T) (peer.ID, sec.SecureMuxer) {
 	t.Helper()
-	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
 	if err != nil {
 		t.Fatal(err)
 	}

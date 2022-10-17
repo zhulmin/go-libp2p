@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	ic "github.com/libp2p/go-libp2p/core/crypto"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 )
@@ -26,8 +27,8 @@ type certConfig struct {
 func (c *certConfig) Start() time.Time { return c.tlsConf.Certificates[0].Leaf.NotBefore }
 func (c *certConfig) End() time.Time   { return c.tlsConf.Certificates[0].Leaf.NotAfter }
 
-func newCertConfig(start, end time.Time) (*certConfig, error) {
-	conf, err := getTLSConf(start, end)
+func newCertConfig(key ic.PrivKey, start, end time.Time) (*certConfig, error) {
+	conf, err := getTLSConf(key, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -57,32 +58,50 @@ type certManager struct {
 	serializedCertHashes [][]byte
 }
 
-func newCertManager(clock clock.Clock) (*certManager, error) {
+func newCertManager(hostKey ic.PrivKey, clock clock.Clock) (*certManager, error) {
 	m := &certManager{clock: clock}
 	m.ctx, m.ctxCancel = context.WithCancel(context.Background())
-	if err := m.init(); err != nil {
+	if err := m.init(hostKey); err != nil {
 		return nil, err
 	}
 
-	m.background()
+	m.background(hostKey)
 	return m, nil
 }
 
-func (m *certManager) init() error {
+type timeBuckets struct {
+	current time.Time
+	next    time.Time
+}
+
+// getTimeBuckets returns a canonical set of times that are bucketed in ranges
+// of certValidity since unix epoch.  This lets you get the same time ranges
+// across reboots without having to persist state.
+func getTimeBuckets(now time.Time) timeBuckets {
+	currentBucket := now.UnixMilli() / certValidity.Milliseconds()
+	return timeBuckets{
+		current: time.UnixMilli((currentBucket) * certValidity.Milliseconds()),
+		next:    time.UnixMilli((currentBucket + 1) * certValidity.Milliseconds()),
+	}
+
+}
+
+func (m *certManager) init(hostKey ic.PrivKey) error {
 	start := m.clock.Now().Add(-clockSkewAllowance)
+	timeBuckets := getTimeBuckets(start)
 	var err error
-	m.nextConfig, err = newCertConfig(start, start.Add(certValidity))
+	m.nextConfig, err = newCertConfig(hostKey, timeBuckets.current, timeBuckets.next)
 	if err != nil {
 		return err
 	}
-	return m.rollConfig()
+	return m.rollConfig(hostKey)
 }
 
-func (m *certManager) rollConfig() error {
+func (m *certManager) rollConfig(hostKey ic.PrivKey) error {
 	// We stop using the current certificate clockSkewAllowance before its expiry time.
 	// At this point, the next certificate needs to be valid for one clockSkewAllowance.
 	nextStart := m.nextConfig.End().Add(-2 * clockSkewAllowance)
-	c, err := newCertConfig(nextStart, nextStart.Add(certValidity))
+	c, err := newCertConfig(hostKey, nextStart, nextStart.Add(certValidity))
 	if err != nil {
 		return err
 	}
@@ -95,7 +114,7 @@ func (m *certManager) rollConfig() error {
 	return m.cacheAddrComponent()
 }
 
-func (m *certManager) background() {
+func (m *certManager) background(hostKey ic.PrivKey) {
 	d := m.currentConfig.End().Add(-clockSkewAllowance).Sub(m.clock.Now())
 	log.Debugw("setting timer", "duration", d.String())
 	t := m.clock.Timer(d)
@@ -111,7 +130,7 @@ func (m *certManager) background() {
 				return
 			case now := <-t.C:
 				m.mx.Lock()
-				if err := m.rollConfig(); err != nil {
+				if err := m.rollConfig(hostKey); err != nil {
 					log.Errorw("rolling config failed", "error", err)
 				}
 				d := m.currentConfig.End().Add(-clockSkewAllowance).Sub(now)

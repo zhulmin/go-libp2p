@@ -293,7 +293,7 @@ func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 	}
 	if t.staticTLSConf == nil {
 		t.listenOnce.Do(func() {
-			t.certManager, t.listenOnceErr = newCertManager(t.clock)
+			t.certManager, t.listenOnceErr = newCertManager(t.privKey, t.clock)
 		})
 		if t.listenOnceErr != nil {
 			return nil, t.listenOnceErr

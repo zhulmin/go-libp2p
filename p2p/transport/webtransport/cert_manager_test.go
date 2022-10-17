@@ -3,10 +3,13 @@ package libp2pwebtransport
 import (
 	"crypto/sha256"
 	"crypto/tls"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/benbjohnson/clock"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/test"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
@@ -39,7 +42,9 @@ func certHashFromComponent(t *testing.T, comp ma.Component) []byte {
 func TestInitialCert(t *testing.T) {
 	cl := clock.NewMock()
 	cl.Add(1234567 * time.Hour)
-	m, err := newCertManager(cl)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
+	require.NoError(t, err)
+	m, err := newCertManager(priv, cl)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -59,7 +64,9 @@ func TestInitialCert(t *testing.T) {
 
 func TestCertRenewal(t *testing.T) {
 	cl := clock.NewMock()
-	m, err := newCertManager(cl)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
+	require.NoError(t, err)
+	m, err := newCertManager(priv, cl)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -99,4 +106,48 @@ func TestCertRenewal(t *testing.T) {
 	}
 	// check that the 2nd certificate from the beginning was rolled over to be the 1st certificate
 	require.Equal(t, second[1].Value(), third[0].Value())
+}
+
+func TestDeterministicCertsAcrossReboots(t *testing.T) {
+	// Run this test 100 times to make sure it's deterministic
+	runs := 100
+	for i := 0; i < runs; i++ {
+		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
+			cl := clock.NewMock()
+			priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
+			require.NoError(t, err)
+			m, err := newCertManager(priv, cl)
+			require.NoError(t, err)
+			defer m.Close()
+
+			conf := m.GetConfig()
+			require.Len(t, conf.Certificates, 1)
+			oldCerts := m.serializedCertHashes
+
+			m.Close()
+
+			cl.Add(time.Hour)
+			// reboot
+			m, err = newCertManager(priv, cl)
+			require.NoError(t, err)
+			defer m.Close()
+
+			newCerts := m.serializedCertHashes
+
+			require.Equal(t, oldCerts, newCerts)
+		})
+	}
+}
+
+func TestDeterministicTimeBuckets(t *testing.T) {
+	bucketsA := getTimeBuckets((time.Time{}))
+	bucketsB := getTimeBuckets((time.Time{}.Add(time.Hour * 24)))
+	require.Equal(t, bucketsA.current, bucketsB.current)
+	require.Equal(t, bucketsA.next, bucketsB.next)
+
+	// 15 Days later
+	bucketsC := getTimeBuckets((time.Time{}.Add(time.Hour * 24 * 15)))
+	require.Equal(t, bucketsC.current, bucketsB.next)
+	require.NotEqual(t, bucketsC.next, bucketsB.next)
+	require.NotEqual(t, bucketsC.current, bucketsB.current)
 }

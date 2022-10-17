@@ -1,6 +1,7 @@
 package libp2pwebtransport
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -10,11 +11,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"io"
 	"math/big"
 	mrand "math/rand"
 	"testing"
 	"time"
 
+	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
@@ -127,6 +130,71 @@ func TestCertificateVerification(t *testing.T) {
 			err := verifyRawCerts(tc.certs, tc.hashes)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.errStr)
+		})
+	}
+}
+
+func TestDeterministicCertHashes(t *testing.T) {
+	// Run this test 1000 times since we want to make sure the signatures are deterministic
+	runs := 1000
+	for i := 0; i < runs; i++ {
+		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
+			zeroSeed := [32]byte{}
+			priv, _, err := ic.GenerateEd25519Key(bytes.NewReader(zeroSeed[:]))
+			require.NoError(t, err)
+			cert, certPriv, err := generateCert(priv, time.Time{}, time.Time{}.Add(time.Hour*24*14))
+			require.NoError(t, err)
+
+			keyBytes, err := x509.MarshalECPrivateKey(certPriv)
+			require.NoError(t, err)
+
+			cert2, certPriv2, err := generateCert(priv, time.Time{}, time.Time{}.Add(time.Hour*24*14))
+			require.NoError(t, err)
+
+			require.Equal(t, cert2.Signature, cert.Signature)
+			require.Equal(t, cert2.Raw, cert.Raw)
+			keyBytes2, err := x509.MarshalECPrivateKey(certPriv2)
+			require.NoError(t, err)
+			require.Equal(t, keyBytes, keyBytes2)
+		})
+	}
+}
+
+// TestDeterministicSig tests that our hack around making ECDSA signatures
+// deterministic works. If this fails, this means we need to try another
+// strategy to make deterministic signatures or try something else entirely.
+// See deterministicReader for more context.
+func TestDeterministicSig(t *testing.T) {
+	// Run this test 1000 times since we want to make sure the signatures are deterministic
+	runs := 1000
+	for i := 0; i < runs; i++ {
+		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
+			zeroSeed := [32]byte{}
+			deterministicHKDFReader := newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
+			b := [1024]byte{}
+			io.ReadFull(deterministicHKDFReader, b[:])
+			caPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
+			require.NoError(t, err)
+
+			sig, err := caPrivateKey.Sign(deterministicHKDFReader, b[:], crypto.SHA256)
+			require.NoError(t, err)
+
+			deterministicHKDFReader = newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
+			b2 := [1024]byte{}
+			io.ReadFull(deterministicHKDFReader, b2[:])
+			caPrivateKey2, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
+			require.NoError(t, err)
+
+			sig2, err := caPrivateKey2.Sign(deterministicHKDFReader, b2[:], crypto.SHA256)
+			require.NoError(t, err)
+
+			keyBytes, err := x509.MarshalECPrivateKey(caPrivateKey)
+			require.NoError(t, err)
+			keyBytes2, err := x509.MarshalECPrivateKey(caPrivateKey2)
+			require.NoError(t, err)
+
+			require.Equal(t, sig, sig2)
+			require.Equal(t, keyBytes, keyBytes2)
 		})
 	}
 }
