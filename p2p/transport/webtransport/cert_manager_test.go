@@ -51,7 +51,8 @@ func TestInitialCert(t *testing.T) {
 	conf := m.GetConfig()
 	require.Len(t, conf.Certificates, 1)
 	cert := conf.Certificates[0]
-	require.Equal(t, cl.Now().Add(-clockSkewAllowance).UTC(), cert.Leaf.NotBefore)
+	timeBuckets := getTimeBuckets(cl.Now())
+	require.Equal(t, timeBuckets.current.UTC(), cert.Leaf.NotBefore)
 	require.Equal(t, cert.Leaf.NotBefore.Add(certValidity), cert.Leaf.NotAfter)
 	addr := m.AddrComponent()
 	components := splitMultiaddr(addr)
@@ -64,6 +65,7 @@ func TestInitialCert(t *testing.T) {
 
 func TestCertRenewal(t *testing.T) {
 	cl := clock.NewMock()
+	cl.Set(time.UnixMilli(0))
 	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
 	require.NoError(t, err)
 	m, err := newCertManager(priv, cl)
@@ -84,7 +86,7 @@ func TestCertRenewal(t *testing.T) {
 		}
 		return false
 	}, 100*time.Millisecond, 10*time.Millisecond)
-	cl.Add(2 * time.Second)
+	cl.Add(clockSkewAllowance + 2*time.Second)
 	require.Eventually(t, func() bool { return m.GetConfig() != firstConf }, 200*time.Millisecond, 10*time.Millisecond)
 	secondConf := m.GetConfig()
 
