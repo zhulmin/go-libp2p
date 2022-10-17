@@ -36,7 +36,7 @@ var _ tpt.CapableConn = &conn{}
 func (c *conn) Close() error {
 	c.transport.removeConn(c.quicConn)
 	err := c.quicConn.CloseWithError(0, "")
-	c.pconn.DecreaseCount()
+	// c.pconn.DecreaseCount()
 	c.scope.Done()
 	return err
 }

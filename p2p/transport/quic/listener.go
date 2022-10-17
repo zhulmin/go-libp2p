@@ -2,7 +2,6 @@ package libp2pquic
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 
 	"github.com/libp2p/go-libp2p/p2p/transport/udpreuse"
@@ -22,7 +21,6 @@ var quicListen = quic.Listen // so we can mock it in tests
 // A listener listens for QUIC connections.
 type listener struct {
 	quicListener   quic.Listener
-	conn           udpreuse.Conn
 	transport      *transport
 	rcmgr          network.ResourceManager
 	privKey        ic.PrivKey
@@ -32,26 +30,12 @@ type listener struct {
 
 var _ tpt.Listener = &listener{}
 
-func newListener(pconn udpreuse.Conn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (tpt.Listener, error) {
-	var tlsConf tls.Config
-	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
-		// return a tls.Config that verifies the peer's certificate chain.
-		// Note that since we have no way of associating an incoming QUIC connection with
-		// the peer ID calculated here, we don't actually receive the peer's public key
-		// from the key chan.
-		conf, _ := identity.ConfigForPeer("")
-		return conf, nil
-	}
-	ln, err := quicListen(pconn, &tlsConf, t.serverConfig)
-	if err != nil {
-		return nil, err
-	}
+func newListener(ln udpreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (tpt.Listener, error) {
 	localMultiaddr, err := toQuicMultiaddr(ln.Addr())
 	if err != nil {
 		return nil, err
 	}
 	return &listener{
-		conn:           pconn,
 		quicListener:   ln,
 		transport:      t,
 		rcmgr:          rcmgr,
@@ -129,10 +113,8 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 		return nil, err
 	}
 
-	l.conn.IncreaseCount()
 	return &conn{
 		quicConn:        qconn,
-		pconn:           l.conn,
 		transport:       l.transport,
 		scope:           connScope,
 		localPeer:       l.localPeer,
@@ -146,8 +128,6 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 
 // Close closes the listener.
 func (l *listener) Close() error {
-	defer l.conn.DecreaseCount()
-
 	return l.quicListener.Close()
 }
 

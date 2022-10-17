@@ -2,6 +2,7 @@ package libp2pquic
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -331,16 +332,21 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn, err := t.connManager.Listen(lnet, laddr)
+	tlsConf := &tls.Config{
+		GetConfigForClient: func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
+			// return a tls.Config that verifies the peer's certificate chain.
+			// Note that since we have no way of associating an incoming QUIC connection with
+			// the peer ID calculated here, we don't actually receive the peer's public key
+			// from the key chan.
+			conf, _ := t.identity.ConfigForPeer("")
+			return conf, nil
+		},
+	}
+	conn, err := t.connManager.ListenQUIC(lnet, laddr, "libp2p", tlsConf, t.allowWindowIncrease)
 	if err != nil {
 		return nil, err
 	}
-	ln, err := newListener(conn, t, t.localPeer, t.privKey, t.identity, t.rcmgr)
-	if err != nil {
-		conn.DecreaseCount()
-		return nil, err
-	}
-	return ln, nil
+	return newListener(conn, t, t.localPeer, t.privKey, t.identity, t.rcmgr)
 }
 
 func (t *transport) allowWindowIncrease(conn quic.Connection, size uint64) bool {

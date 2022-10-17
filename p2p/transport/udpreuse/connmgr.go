@@ -1,9 +1,13 @@
 package udpreuse
 
 import (
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
+	"sync"
+
+	"github.com/lucas-clemente/quic-go"
 )
 
 type Conn interface {
@@ -23,7 +27,7 @@ func (c *noreuseConn) DecreaseCount() {
 }
 
 type ConnManager interface {
-	Listen(network string, addr *net.UDPAddr) (Conn, error)
+	ListenQUIC(network string, laddr *net.UDPAddr, proto string, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error)
 	Dial(network string, addr *net.UDPAddr) (Conn, error)
 	io.Closer
 }
@@ -32,7 +36,12 @@ type connManager struct {
 	reuseUDP4       *reuse
 	reuseUDP6       *reuse
 	reuseportEnable bool
+
+	mx    sync.Mutex
+	conns map[string]*connListener
 }
+
+var _ ConnManager = &connManager{}
 
 // NewConnManager creates a new reuse connection manager.
 func NewConnManager(reuseport bool) (ConnManager, error) {
@@ -42,6 +51,7 @@ func NewConnManager(reuseport bool) (ConnManager, error) {
 		reuseUDP4:       reuseUDP4,
 		reuseUDP6:       reuseUDP6,
 		reuseportEnable: reuseport,
+		conns:           map[string]*connListener{},
 	}, nil
 }
 
@@ -70,6 +80,32 @@ func (c *connManager) Listen(network string, laddr *net.UDPAddr) (Conn, error) {
 		return nil, err
 	}
 	return &noreuseConn{conn}, nil
+}
+
+func (c *connManager) ListenQUIC(network string, laddr *net.UDPAddr, proto string, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
+	c.mx.Lock()
+	defer c.mx.Unlock()
+
+	index := network + " " + laddr.String()
+	ln, ok := c.conns[index]
+	if !ok {
+		conn, err := c.Listen(network, laddr)
+		if err != nil {
+			return nil, err
+		}
+		conn.IncreaseCount()
+		ln, err = newConnListener(conn)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: think about shutdown
+		go func() {
+			ln.Run()
+			conn.DecreaseCount()
+		}()
+		c.conns[index] = ln
+	}
+	return ln.Add(proto, tlsConf, allowWindowIncrease)
 }
 
 func (c *connManager) Dial(network string, raddr *net.UDPAddr) (Conn, error) {
