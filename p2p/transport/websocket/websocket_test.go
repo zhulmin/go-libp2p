@@ -230,10 +230,9 @@ func TestHostHeaderWss(t *testing.T) {
 	errChan := make(chan error, 1)
 	go func() {
 		server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer close(errChan)
 			if !strings.Contains(r.Host, "example.com") {
 				errChan <- errors.New("Didn't see host header")
-			} else {
-				close(errChan)
 			}
 			w.WriteHeader(http.StatusNotFound)
 		})
