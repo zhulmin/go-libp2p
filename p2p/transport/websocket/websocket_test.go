@@ -241,8 +241,8 @@ func TestHostHeaderWss(t *testing.T) {
 		server.ServeTLS(l, "", "")
 	}()
 
-	parts := strings.Split(l.Addr().String(), ":")
-	port := parts[len(parts)-1]
+	_, port, err := net.SplitHostPort(l.Addr().String())
+	require.NoError(t, err)
 	serverMA := ma.StringCast("/ip4/127.0.0.1/tcp/" + port + "/tls/sni/example.com/ws")
 
 	tlsConfig := &tls.Config{InsecureSkipVerify: true} // Our test server doesn't have a cert signed by a CA
