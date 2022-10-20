@@ -51,8 +51,7 @@ func TestInitialCert(t *testing.T) {
 	conf := m.GetConfig()
 	require.Len(t, conf.Certificates, 1)
 	cert := conf.Certificates[0]
-	timeBuckets := getTimeBuckets(cl.Now())
-	require.Equal(t, timeBuckets.current.UTC(), cert.Leaf.NotBefore)
+	require.GreaterOrEqual(t, cl.Now(), cert.Leaf.NotBefore)
 	require.Equal(t, cert.Leaf.NotBefore.Add(certValidity), cert.Leaf.NotAfter)
 	addr := m.AddrComponent()
 	components := splitMultiaddr(addr)
@@ -77,7 +76,7 @@ func TestCertRenewal(t *testing.T) {
 	require.Len(t, first, 2)
 	require.NotEqual(t, first[0].Value(), first[1].Value(), "the hashes should differ")
 	// wait for a new certificate to be generated
-	cl.Add(certValidity - 2*clockSkewAllowance - time.Second)
+	cl.Set(m.currentConfig.End().Add(-(2*clockSkewAllowance + time.Second)))
 	require.Never(t, func() bool {
 		for i, c := range splitMultiaddr(m.AddrComponent()) {
 			if c.Value() != first[i].Value() {
@@ -86,6 +85,7 @@ func TestCertRenewal(t *testing.T) {
 		}
 		return false
 	}, 100*time.Millisecond, 10*time.Millisecond)
+	m.currentConfig.End()
 	cl.Add(clockSkewAllowance + 2*time.Second)
 	require.Eventually(t, func() bool { return m.GetConfig() != firstConf }, 200*time.Millisecond, 10*time.Millisecond)
 	secondConf := m.GetConfig()
@@ -142,14 +142,12 @@ func TestDeterministicCertsAcrossReboots(t *testing.T) {
 }
 
 func TestDeterministicTimeBuckets(t *testing.T) {
-	bucketsA := getTimeBuckets((time.Time{}))
-	bucketsB := getTimeBuckets((time.Time{}.Add(time.Hour * 24)))
-	require.Equal(t, bucketsA.current, bucketsB.current)
-	require.Equal(t, bucketsA.next, bucketsB.next)
+	cl := clock.NewMock()
+	startA := getCurrentBucketStartTime(cl.Now(), 0)
+	startB := getCurrentBucketStartTime(cl.Now().Add(time.Hour*24), 0)
+	require.Equal(t, startA, startB)
 
 	// 15 Days later
-	bucketsC := getTimeBuckets((time.Time{}.Add(time.Hour * 24 * 15)))
-	require.Equal(t, bucketsC.current, bucketsB.next)
-	require.NotEqual(t, bucketsC.next, bucketsB.next)
-	require.NotEqual(t, bucketsC.current, bucketsB.current)
+	startC := getCurrentBucketStartTime(cl.Now().Add(time.Hour*24*15), 0)
+	require.NotEqual(t, startC, startB)
 }

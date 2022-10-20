@@ -21,7 +21,6 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
-const certSerialInfo = "certificate serial number"
 const deterministicCertInfo = "determinisitic cert"
 
 func getTLSConf(key ic.PrivKey, start, end time.Time) (*tls.Config, error) {
@@ -46,14 +45,12 @@ func generateCert(key ic.PrivKey, start, end time.Time) (*x509.Certificate, *ecd
 		return nil, nil, err
 	}
 
-	serialReader := hkdf.New(sha256.New, keyBytes, nil, []byte(certSerialInfo))
-
 	startTimeSalt := make([]byte, 8)
 	binary.LittleEndian.PutUint64(startTimeSalt, uint64(start.UnixNano()))
 	deterministicHKDFReader := newDeterministicReader(keyBytes, startTimeSalt, deterministicCertInfo)
 
 	b := make([]byte, 8)
-	if _, err := serialReader.Read(b); err != nil {
+	if _, err := deterministicHKDFReader.Read(b); err != nil {
 		return nil, nil, err
 	}
 	serial := int64(binary.BigEndian.Uint64(b))

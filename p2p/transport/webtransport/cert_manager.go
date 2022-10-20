@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 // When we generate a certificate, the NotBefore time is set to clockSkewAllowance before the current time.
 // Similarly, we stop using a certificate one clockSkewAllowance before its expiry time.
 const clockSkewAllowance = time.Hour
+const validityMinusTwoSkew = certValidity - (2 * clockSkewAllowance)
 
 type certConfig struct {
 	tlsConf *tls.Config
@@ -69,28 +71,32 @@ func newCertManager(hostKey ic.PrivKey, clock clock.Clock) (*certManager, error)
 	return m, nil
 }
 
-type timeBuckets struct {
-	current time.Time
-	next    time.Time
-}
-
-// getTimeBuckets returns a canonical set of times that are bucketed in ranges
-// of certValidity since unix epoch.  This lets you get the same time ranges
-// across reboots without having to persist state.
-func getTimeBuckets(now time.Time) timeBuckets {
-	currentBucket := now.UnixMilli() / certValidity.Milliseconds()
-	return timeBuckets{
-		current: time.UnixMilli((currentBucket) * certValidity.Milliseconds()),
-		next:    time.UnixMilli((currentBucket + 1) * certValidity.Milliseconds()),
-	}
-
+// getCurrentTimeBucket returns the canonical start time of the given time are bucketed by
+// ranges of certValidity since unix epoch. This lets you get the same time
+// ranges across reboots without having to persist state.  timeBuckets represent
+// our current time bbucket and our next time bucket.
+// These overlap by 2*clock skew.
+// ```
+// ... |--------|    |--------|        ...
+// ...        |--------|    |--------| ...
+// ```
+func getCurrentBucketStartTime(now time.Time, offset time.Duration) time.Time {
+	currentBucket := (now.UnixMilli() - offset.Milliseconds()) / validityMinusTwoSkew.Milliseconds()
+	return time.UnixMilli(offset.Milliseconds() + currentBucket*validityMinusTwoSkew.Milliseconds())
 }
 
 func (m *certManager) init(hostKey ic.PrivKey) error {
 	start := m.clock.Now().Add(-clockSkewAllowance)
-	timeBuckets := getTimeBuckets(start)
-	var err error
-	m.nextConfig, err = newCertConfig(hostKey, timeBuckets.current, timeBuckets.next)
+	pubkeyBytes, err := hostKey.GetPublic().Raw()
+	if err != nil {
+		return err
+	}
+	offset := (time.Duration(binary.LittleEndian.Uint16(pubkeyBytes)) * time.Minute) % certValidity
+	// Subtract clock skew since the currentBucket start time can be at most our
+	// current time and we want to make sure that our cert is valid from 1 clock
+	// skew before now.
+	startTime := getCurrentBucketStartTime(start, offset).Add(-clockSkewAllowance)
+	m.nextConfig, err = newCertConfig(hostKey, startTime, startTime.Add(certValidity))
 	if err != nil {
 		return err
 	}
