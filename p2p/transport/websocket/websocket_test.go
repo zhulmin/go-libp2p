@@ -9,10 +9,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"net"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,6 +219,44 @@ func getTLSConf(t *testing.T, ip net.IP, start, end time.Time) *tls.Config {
 			Leaf:        cert,
 		}},
 	}
+}
+
+func TestHostHeaderWss(t *testing.T) {
+	server := &http.Server{}
+	l, err := net.Listen("tcp", ":0")
+	require.NoError(t, err)
+	defer server.Close()
+
+	errChan := make(chan error, 1)
+	go func() {
+		server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer close(errChan)
+			if !strings.Contains(r.Host, "example.com") {
+				errChan <- errors.New("Didn't see host header")
+			}
+			w.WriteHeader(http.StatusNotFound)
+		})
+		server.TLSConfig = getTLSConf(t, net.ParseIP("127.0.0.1"), time.Now(), time.Now().Add(time.Hour))
+		server.ServeTLS(l, "", "")
+	}()
+
+	_, port, err := net.SplitHostPort(l.Addr().String())
+	require.NoError(t, err)
+	serverMA := ma.StringCast("/ip4/127.0.0.1/tcp/" + port + "/tls/sni/example.com/ws")
+
+	tlsConfig := &tls.Config{InsecureSkipVerify: true} // Our test server doesn't have a cert signed by a CA
+	_, u := newSecureUpgrader(t)
+	tpt, err := New(u, network.NullResourceManager, WithTLSClientConfig(tlsConfig))
+	require.NoError(t, err)
+
+	masToDial, err := tpt.Resolve(context.Background(), serverMA)
+	require.NoError(t, err)
+
+	_, err = tpt.Dial(context.Background(), masToDial[0], test.RandPeerIDFatal(t))
+	require.Error(t, err)
+
+	err = <-errChan
+	require.NoError(t, err)
 }
 
 func TestDialWss(t *testing.T) {
