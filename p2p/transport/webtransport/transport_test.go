@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
@@ -741,7 +740,7 @@ func TestServerSendsBackValidCert(t *testing.T) {
 		cl := clock.NewMock()
 		cl.Set(start)
 
-		priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, keySeed)
+		priv, _, err := test.SeededTestKeyPair(ic.Ed25519, 256, keySeed)
 		if err != nil {
 			return false
 		}
