@@ -20,14 +20,20 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/quick"
 	"time"
 
+	"github.com/benbjohnson/clock"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
+	"github.com/lucas-clemente/quic-go"
+	"github.com/lucas-clemente/quic-go/interop/utils"
 
 	"github.com/golang/mock/gomock"
 	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
@@ -713,4 +719,88 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	case <-time.After(timeout):
 		t.Fatal("timeout")
 	}
+}
+
+func TestServerSendsBackValidCert(t *testing.T) {
+	const clockSkewAllowance = time.Hour
+	var maxTimeoutErrors = 10
+
+	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, keySeed int64, randomClientSkew time.Duration) bool {
+		if timeSinceUnixEpoch < 0 {
+			timeSinceUnixEpoch = -timeSinceUnixEpoch
+		}
+
+		// Bound this to 100 years
+		timeSinceUnixEpoch = time.Duration(timeSinceUnixEpoch % (time.Hour * 24 * 365 * 100))
+		// Start a bit further in the future to avoid edge cases around epoch
+		timeSinceUnixEpoch += time.Hour * 24 * 365
+		start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())
+
+		randomClientSkew = randomClientSkew % clockSkewAllowance
+
+		cl := clock.NewMock()
+		cl.Set(start)
+
+		priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, keySeed)
+		if err != nil {
+			return false
+		}
+		tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+		if err != nil {
+			return false
+		}
+		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		if err != nil {
+			return false
+		}
+		defer l.Close()
+
+		getLogWriter, err := utils.GetQLOGWriter()
+		if err != nil {
+			panic(err)
+		}
+
+		conn, err := quic.DialAddr(l.Addr().String(), &tls.Config{
+			NextProtos:         []string{"h3"},
+			InsecureSkipVerify: true,
+			VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+				for _, c := range rawCerts {
+					cert, err := x509.ParseCertificate(c)
+					if err != nil {
+						return err
+					}
+
+					for _, clientSkew := range []time.Duration{randomClientSkew, -clockSkewAllowance, clockSkewAllowance} {
+						clientTime := cl.Now().Add(clientSkew)
+						if clientTime.After(cert.NotAfter) || clientTime.Before(cert.NotBefore) {
+							return fmt.Errorf("Times are not valid: server_now=%v client_now=%v certstart=%v certend=%v", cl.Now().UTC(), clientTime.UTC(), cert.NotBefore.UTC(), cert.NotAfter.UTC())
+						}
+					}
+
+				}
+				return nil
+			},
+		}, &quic.Config{MaxIdleTimeout: time.Second})
+		_ = getLogWriter
+
+		if err != nil {
+			if _, ok := err.(*quic.IdleTimeoutError); ok {
+				maxTimeoutErrors -= 1
+				fmt.Println("Timeout")
+				if maxTimeoutErrors <= 0 {
+					fmt.Println("Too many timeout errors")
+				}
+				// Sporadic timeout errors on macOS
+				return true
+			}
+			// Print the error so we see what happened, since we only return
+			// true/false to quickcheck
+			fmt.Println("Error:", err)
+			return false
+		}
+		defer conn.CloseWithError(0, "")
+
+		return true
+
+	}, nil))
 }

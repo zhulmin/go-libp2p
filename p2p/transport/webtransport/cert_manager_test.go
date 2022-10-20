@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"testing"
+	"testing/quick"
 	"time"
 
 	"github.com/benbjohnson/clock"
@@ -42,7 +43,7 @@ func certHashFromComponent(t *testing.T, comp ma.Component) []byte {
 func TestInitialCert(t *testing.T) {
 	cl := clock.NewMock()
 	cl.Add(1234567 * time.Hour)
-	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 	require.NoError(t, err)
 	m, err := newCertManager(priv, cl)
 	require.NoError(t, err)
@@ -65,7 +66,7 @@ func TestInitialCert(t *testing.T) {
 func TestCertRenewal(t *testing.T) {
 	cl := clock.NewMock()
 	cl.Set(time.UnixMilli(0))
-	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
+	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 	require.NoError(t, err)
 	m, err := newCertManager(priv, cl)
 	require.NoError(t, err)
@@ -116,7 +117,7 @@ func TestDeterministicCertsAcrossReboots(t *testing.T) {
 	for i := 0; i < runs; i++ {
 		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
 			cl := clock.NewMock()
-			priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 32)
+			priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 			require.NoError(t, err)
 			m, err := newCertManager(priv, cl)
 			require.NoError(t, err)
@@ -150,4 +151,25 @@ func TestDeterministicTimeBuckets(t *testing.T) {
 	// 15 Days later
 	startC := getCurrentBucketStartTime(cl.Now().Add(time.Hour*24*15), 0)
 	require.NotEqual(t, startC, startB)
+}
+
+func TestGetCurrentBucketStartTimeIsWithinBounds(t *testing.T) {
+	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, offset time.Duration) bool {
+		if offset < 0 {
+			offset = -offset
+		}
+		if timeSinceUnixEpoch < 0 {
+			timeSinceUnixEpoch = -timeSinceUnixEpoch
+		}
+
+		offset = offset % certValidity
+		// Bound this to 100 years
+		timeSinceUnixEpoch = time.Duration(timeSinceUnixEpoch % (time.Hour * 24 * 365 * 100))
+		// Start a bit further in the future to avoid edge cases around epoch
+		timeSinceUnixEpoch += time.Hour * 24 * 365
+		start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())
+
+		bucketStart := getCurrentBucketStartTime(start, offset)
+		return !bucketStart.After(start) || bucketStart.Equal(start)
+	}, nil))
 }

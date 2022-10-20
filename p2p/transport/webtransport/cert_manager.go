@@ -86,7 +86,7 @@ func getCurrentBucketStartTime(now time.Time, offset time.Duration) time.Time {
 }
 
 func (m *certManager) init(hostKey ic.PrivKey) error {
-	start := m.clock.Now().Add(-clockSkewAllowance)
+	start := m.clock.Now()
 	pubkeyBytes, err := hostKey.GetPublic().Raw()
 	if err != nil {
 		return err
