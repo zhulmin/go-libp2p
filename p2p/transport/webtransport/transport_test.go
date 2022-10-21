@@ -750,7 +750,7 @@ func TestServerSendsBackValidCert(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 		if err != nil {
 			return false
 		}
@@ -830,7 +830,7 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 			return false
 		}
 
-		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 		if err != nil {
 			return false
 		}
@@ -844,7 +844,7 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 			return false
 		}
 
-		l, err = tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		l, err = tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 		if err != nil {
 			return false
 		}
@@ -878,7 +878,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 	tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
 	require.NoError(t, err)
 
-	l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+	l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 	require.NoError(t, err)
 
 	certhashes := extractCertHashes(l.Multiaddr())
@@ -890,7 +890,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 		cl.Add(24 * time.Hour)
 		tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
 		require.NoError(t, err)
-		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 		require.NoError(t, err)
 
 		var found bool
