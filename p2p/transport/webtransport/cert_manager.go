@@ -91,11 +91,17 @@ func (m *certManager) init(hostKey ic.PrivKey) error {
 	if err != nil {
 		return err
 	}
+
+	// We want to add a random offset to each start time so that not all certs
+	// rotate at the same time across the network. The offset represents moving
+	// the bucket start time some `offset` earlier.
 	offset := (time.Duration(binary.LittleEndian.Uint16(pubkeyBytes)) * time.Minute) % certValidity
-	// Subtract clock skew since the currentBucket start time can be at most our
-	// current time and we want to make sure that our cert is valid from 1 clock
-	// skew before now.
-	startTime := getCurrentBucketStartTime(start, offset).Add(-clockSkewAllowance)
+
+	// We want our offset to be at least clockSkewAllowance so that the
+	// certificate has at least been valid for one hour.
+	offset = (offset + clockSkewAllowance) % certValidity
+
+	startTime := getCurrentBucketStartTime(start, offset)
 	m.nextConfig, err = newCertConfig(hostKey, startTime, startTime.Add(certValidity))
 	if err != nil {
 		return err

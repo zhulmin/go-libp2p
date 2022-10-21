@@ -43,6 +43,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const clockSkewAllowance = time.Hour
+const certValidity = 14 * 24 * time.Hour
+
 func newIdentity(t *testing.T) (peer.ID, ic.PrivKey) {
 	key, _, err := ic.GenerateEd25519Key(rand.Reader)
 	require.NoError(t, err)
@@ -721,7 +724,6 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 }
 
 func TestServerSendsBackValidCert(t *testing.T) {
-	const clockSkewAllowance = time.Hour
 	var maxTimeoutErrors = 10
 
 	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, keySeed int64, randomClientSkew time.Duration) bool {
@@ -802,4 +804,110 @@ func TestServerSendsBackValidCert(t *testing.T) {
 		return true
 
 	}, nil))
+}
+
+func TestServerRotatesCertCorrectly(t *testing.T) {
+	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, keySeed int64) bool {
+		if timeSinceUnixEpoch < 0 {
+			timeSinceUnixEpoch = -timeSinceUnixEpoch
+		}
+
+		// Bound this to 100 years
+		timeSinceUnixEpoch = time.Duration(timeSinceUnixEpoch % (time.Hour * 24 * 365 * 100))
+		// Start a bit further in the future to avoid edge cases around epoch
+		timeSinceUnixEpoch += time.Hour * 24 * 365
+		start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())
+
+		cl := clock.NewMock()
+		cl.Set(start)
+
+		priv, _, err := test.SeededTestKeyPair(ic.Ed25519, 256, keySeed)
+		if err != nil {
+			return false
+		}
+		tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+		if err != nil {
+			return false
+		}
+
+		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		if err != nil {
+			return false
+		}
+		certhashes := extractCertHashes(l.Multiaddr())
+		l.Close()
+
+		// These two certificates together are valid for at most certValidity - (4*clockSkewAllowance)
+		cl.Add(certValidity - (4 * clockSkewAllowance) - time.Second)
+		tr, err = libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+		if err != nil {
+			return false
+		}
+
+		l, err = tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		if err != nil {
+			return false
+		}
+		defer l.Close()
+
+		var found bool
+		ma.ForEach(l.Multiaddr(), func(c ma.Component) bool {
+			if c.Protocol().Code == ma.P_CERTHASH {
+				for _, prevCerthash := range certhashes {
+					if c.Value() == prevCerthash {
+						found = true
+						return false
+					}
+				}
+			}
+			return true
+		})
+
+		return found
+
+	}, nil))
+}
+
+func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
+	cl := clock.NewMock()
+	// Move one year ahead to avoid edge cases around epoch
+	cl.Add(time.Hour * 24 * 365)
+
+	priv, _, err := test.RandTestKeyPair(ic.Ed25519, 256)
+	require.NoError(t, err)
+	tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+	require.NoError(t, err)
+
+	l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+	require.NoError(t, err)
+
+	certhashes := extractCertHashes(l.Multiaddr())
+	l.Close()
+
+	// Traverse various time boundaries and make sure we always keep a common certhash.
+	// e.g. certhash/A/certhash/B ... -> ... certhash/B/certhash/C ... -> ... certhash/C/certhash/D
+	for i := 0; i < 200; i++ {
+		cl.Add(24 * time.Hour)
+		tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+		require.NoError(t, err)
+		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/9193/quic/webtransport"))
+		require.NoError(t, err)
+
+		var found bool
+		ma.ForEach(l.Multiaddr(), func(c ma.Component) bool {
+			if c.Protocol().Code == ma.P_CERTHASH {
+				for _, prevCerthash := range certhashes {
+					if prevCerthash == c.Value() {
+						found = true
+						return false
+					}
+				}
+			}
+			return true
+		})
+		certhashes = extractCertHashes(l.Multiaddr())
+		l.Close()
+
+		require.True(t, found, "Failed after hour: %v", i)
+	}
 }
