@@ -52,7 +52,7 @@ func TestInitialCert(t *testing.T) {
 	conf := m.GetConfig()
 	require.Len(t, conf.Certificates, 1)
 	cert := conf.Certificates[0]
-	require.GreaterOrEqual(t, cl.Now(), cert.Leaf.NotBefore)
+	require.GreaterOrEqual(t, cl.Now().Add(-clockSkewAllowance), cert.Leaf.NotBefore)
 	require.Equal(t, cert.Leaf.NotBefore.Add(certValidity), cert.Leaf.NotAfter)
 	addr := m.AddrComponent()
 	components := splitMultiaddr(addr)
@@ -65,8 +65,9 @@ func TestInitialCert(t *testing.T) {
 
 func TestCertRenewal(t *testing.T) {
 	cl := clock.NewMock()
-	cl.Set(time.UnixMilli(0))
-	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
+	// Add a year to avoid edge cases around the epoch
+	cl.Add(time.Hour * 24 * 365)
+	priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
 	require.NoError(t, err)
 	m, err := newCertManager(priv, cl)
 	require.NoError(t, err)
@@ -77,7 +78,7 @@ func TestCertRenewal(t *testing.T) {
 	require.Len(t, first, 2)
 	require.NotEqual(t, first[0].Value(), first[1].Value(), "the hashes should differ")
 	// wait for a new certificate to be generated
-	cl.Set(m.currentConfig.End().Add(-(2*clockSkewAllowance + time.Second)))
+	cl.Set(m.currentConfig.End().Add(-(clockSkewAllowance + time.Second)))
 	require.Never(t, func() bool {
 		for i, c := range splitMultiaddr(m.AddrComponent()) {
 			if c.Value() != first[i].Value() {
@@ -86,8 +87,7 @@ func TestCertRenewal(t *testing.T) {
 		}
 		return false
 	}, 100*time.Millisecond, 10*time.Millisecond)
-	m.currentConfig.End()
-	cl.Add(clockSkewAllowance + 2*time.Second)
+	cl.Add(2 * time.Second)
 	require.Eventually(t, func() bool { return m.GetConfig() != firstConf }, 200*time.Millisecond, 10*time.Millisecond)
 	secondConf := m.GetConfig()
 
