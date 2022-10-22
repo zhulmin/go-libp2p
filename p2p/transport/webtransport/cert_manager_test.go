@@ -117,7 +117,7 @@ func TestDeterministicCertsAcrossReboots(t *testing.T) {
 	for i := 0; i < runs; i++ {
 		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
 			cl := clock.NewMock()
-			priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
+			priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
 			require.NoError(t, err)
 			m, err := newCertManager(priv, cl)
 			require.NoError(t, err)
@@ -144,6 +144,7 @@ func TestDeterministicCertsAcrossReboots(t *testing.T) {
 
 func TestDeterministicTimeBuckets(t *testing.T) {
 	cl := clock.NewMock()
+	cl.Add(time.Hour * 24 * 365)
 	startA := getCurrentBucketStartTime(cl.Now(), 0)
 	startB := getCurrentBucketStartTime(cl.Now().Add(time.Hour*24), 0)
 	require.Equal(t, startA, startB)
@@ -170,6 +171,6 @@ func TestGetCurrentBucketStartTimeIsWithinBounds(t *testing.T) {
 		start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())
 
 		bucketStart := getCurrentBucketStartTime(start, offset)
-		return !bucketStart.After(start) || bucketStart.Equal(start)
+		return !bucketStart.After(start.Add(-clockSkewAllowance)) || bucketStart.Equal(start.Add(-clockSkewAllowance))
 	}, nil))
 }
