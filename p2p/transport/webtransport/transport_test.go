@@ -32,7 +32,6 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/interop/utils"
 
 	"github.com/golang/mock/gomock"
 	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
@@ -756,11 +755,6 @@ func TestServerSendsBackValidCert(t *testing.T) {
 		}
 		defer l.Close()
 
-		getLogWriter, err := utils.GetQLOGWriter()
-		if err != nil {
-			panic(err)
-		}
-
 		conn, err := quic.DialAddr(l.Addr().String(), &tls.Config{
 			NextProtos:         []string{"h3"},
 			InsecureSkipVerify: true,
@@ -782,12 +776,10 @@ func TestServerSendsBackValidCert(t *testing.T) {
 				return nil
 			},
 		}, &quic.Config{MaxIdleTimeout: time.Second})
-		_ = getLogWriter
 
 		if err != nil {
 			if _, ok := err.(*quic.IdleTimeoutError); ok {
 				maxTimeoutErrors -= 1
-				fmt.Println("Timeout")
 				if maxTimeoutErrors <= 0 {
 					fmt.Println("Too many timeout errors")
 				}
