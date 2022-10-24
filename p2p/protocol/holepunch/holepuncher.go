@@ -206,10 +206,14 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	str.SetDeadline(time.Now().Add(StreamTimeout))
 
 	// send a CONNECT and start RTT measurement.
+	obsAddrs := hp.filter.FilterLocal(str.Conn().RemotePeer(), hp.ids.OwnObservedAddrs())
+	if len(obsAddrs) == 0 {
+		return nil, 0, errors.New("aborting hole punch initiation, as we have no public address after filtering")
+	}
 	start := time.Now()
 	if err := w.WriteMsg(&pb.HolePunch{
 		Type:     pb.HolePunch_CONNECT.Enum(),
-		ObsAddrs: addrsToBytes(hp.filter.FilterLocal(str.Conn().RemotePeer(), hp.ids.OwnObservedAddrs())),
+		ObsAddrs: addrsToBytes(obsAddrs),
 	}); err != nil {
 		str.Reset()
 		return nil, 0, err

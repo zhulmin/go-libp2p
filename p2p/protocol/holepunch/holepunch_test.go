@@ -45,6 +45,21 @@ func (m *mockEventTracer) getEvents() []*holepunch.Event {
 
 var _ holepunch.EventTracer = &mockEventTracer{}
 
+type mockMaddrFilter struct {
+	filterLocal  func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
+	filterRemote func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
+}
+
+func (m mockMaddrFilter) FilterLocal(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
+	return m.filterLocal(remoteID, maddrs)
+}
+
+func (m mockMaddrFilter) FilterRemote(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
+	return m.filterRemote(remoteID, maddrs)
+}
+
+var _ holepunch.AddrFilter = &mockMaddrFilter{}
+
 type mockIDService struct {
 	identify.IDService
 }
@@ -110,7 +125,7 @@ func TestDirectDialWorks(t *testing.T) {
 func TestEndToEndSimConnect(t *testing.T) {
 	h1tr := &mockEventTracer{}
 	h2tr := &mockEventTracer{}
-	h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(h1tr), holepunch.WithTracer(h2tr), true)
+	h1, h2, relay, _ := makeRelayedHosts(t, []holepunch.Option{holepunch.WithTracer(h1tr)}, []holepunch.Option{holepunch.WithTracer(h2tr)}, true)
 	defer h1.Close()
 	defer h2.Close()
 	defer relay.Close()
@@ -151,6 +166,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 		rhandler         func(s network.Stream)
 		errMsg           string
 		holePunchTimeout time.Duration
+		filter           func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
 	}{
 		"responder does NOT send a CONNECT message": {
 			rhandler: func(s network.Stream) {
@@ -175,6 +191,12 @@ func TestFailuresOnInitiator(t *testing.T) {
 			},
 			errMsg: "i/o deadline reached",
 		},
+		"no addrs after filtering": {
+			errMsg: "aborting hole punch initiation, as we have no public address after filtering",
+			filter: func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
+				return []ma.Multiaddr{}
+			},
+		},
 	}
 
 	for name, tc := range tcs {
@@ -190,7 +212,17 @@ func TestFailuresOnInitiator(t *testing.T) {
 			defer h1.Close()
 			defer h2.Close()
 			defer relay.Close()
-			hps := addHolePunchService(t, h2, holepunch.WithTracer(tr))
+
+			opts := []holepunch.Option{holepunch.WithTracer(tr)}
+			if tc.filter != nil {
+				f := mockMaddrFilter{
+					filterLocal:  tc.filter,
+					filterRemote: tc.filter,
+				}
+				opts = append(opts, holepunch.WithAddrFilter(f))
+			}
+
+			hps := addHolePunchService(t, h2, opts...)
 
 			if tc.rhandler != nil {
 				h1.SetStreamHandler(holepunch.Protocol, tc.rhandler)
@@ -221,6 +253,7 @@ func TestFailuresOnResponder(t *testing.T) {
 		initiator        func(s network.Stream)
 		errMsg           string
 		holePunchTimeout time.Duration
+		filter           func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
 	}{
 		"initiator does NOT send a CONNECT message": {
 			initiator: func(s network.Stream) {
@@ -258,6 +291,19 @@ func TestFailuresOnResponder(t *testing.T) {
 			},
 			errMsg: "expected CONNECT message to contain at least one address",
 		},
+		"no addrs after filtering": {
+			errMsg: "rejecting hole punch request, as we don't have any public addresses",
+			initiator: func(s network.Stream) {
+				protoio.NewDelimitedWriter(s).WriteMsg(&holepunch_pb.HolePunch{
+					Type:     holepunch_pb.HolePunch_CONNECT.Enum(),
+					ObsAddrs: addrsToBytes([]ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/1234")}),
+				})
+				time.Sleep(10 * time.Second)
+			},
+			filter: func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
+				return []ma.Multiaddr{}
+			},
+		},
 	}
 
 	for name, tc := range tcs {
@@ -267,9 +313,18 @@ func TestFailuresOnResponder(t *testing.T) {
 				holepunch.StreamTimeout = tc.holePunchTimeout
 				defer func() { holepunch.StreamTimeout = cpy }()
 			}
-
 			tr := &mockEventTracer{}
-			h1, h2, relay, _ := makeRelayedHosts(t, holepunch.WithTracer(tr), nil, false)
+
+			opts := []holepunch.Option{holepunch.WithTracer(tr)}
+			if tc.filter != nil {
+				f := mockMaddrFilter{
+					filterLocal:  tc.filter,
+					filterRemote: tc.filter,
+				}
+				opts = append(opts, holepunch.WithAddrFilter(f))
+			}
+
+			h1, h2, relay, _ := makeRelayedHosts(t, opts, nil, false)
 			defer h1.Close()
 			defer h2.Close()
 			defer relay.Close()
@@ -377,13 +432,9 @@ func mkHostWithStaticAutoRelay(t *testing.T, relay host.Host) host.Host {
 	return h
 }
 
-func makeRelayedHosts(t *testing.T, h1opt, h2opt holepunch.Option, addHolePuncher bool) (h1, h2, relay host.Host, hps *holepunch.Service) {
+func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePuncher bool) (h1, h2, relay host.Host, hps *holepunch.Service) {
 	t.Helper()
-	var h1opts []holepunch.Option
-	if h1opt != nil {
-		h1opts = append(h1opts, h1opt)
-	}
-	h1, _ = mkHostWithHolePunchSvc(t, h1opts...)
+	h1, _ = mkHostWithHolePunchSvc(t, h1opt...)
 	var err error
 	relay, err = libp2p.New(libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/tcp/0")), libp2p.DisableRelay())
 	require.NoError(t, err)
@@ -393,7 +444,7 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt holepunch.Option, addHolePunche
 
 	h2 = mkHostWithStaticAutoRelay(t, relay)
 	if addHolePuncher {
-		hps = addHolePunchService(t, h2, h2opt)
+		hps = addHolePunchService(t, h2, h2opt...)
 	}
 
 	// h1 has a relay addr
@@ -413,12 +464,8 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt holepunch.Option, addHolePunche
 	return
 }
 
-func addHolePunchService(t *testing.T, h host.Host, opt holepunch.Option) *holepunch.Service {
+func addHolePunchService(t *testing.T, h host.Host, opts ...holepunch.Option) *holepunch.Service {
 	t.Helper()
-	var opts []holepunch.Option
-	if opt != nil {
-		opts = append(opts, opt)
-	}
 	hps, err := holepunch.NewService(h, newMockIDService(t, h), opts...)
 	require.NoError(t, err)
 	return hps
