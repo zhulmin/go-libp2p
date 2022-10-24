@@ -49,14 +49,16 @@ type holePuncher struct {
 	closed  bool
 
 	tracer *tracer
+	filter AddrFilter
 }
 
-func newHolePuncher(h host.Host, ids identify.IDService, tracer *tracer) *holePuncher {
+func newHolePuncher(h host.Host, ids identify.IDService, tracer *tracer, filter AddrFilter) *holePuncher {
 	hp := &holePuncher{
 		host:   h,
 		ids:    ids,
 		active: make(map[peer.ID]struct{}),
 		tracer: tracer,
+		filter: filter,
 	}
 	hp.ctx, hp.ctxCancel = context.WithCancel(context.Background())
 	h.Network().Notify((*netNotifiee)(hp))
@@ -207,7 +209,7 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	start := time.Now()
 	if err := w.WriteMsg(&pb.HolePunch{
 		Type:     pb.HolePunch_CONNECT.Enum(),
-		ObsAddrs: addrsToBytes(removeRelayAddrs(hp.ids.OwnObservedAddrs())),
+		ObsAddrs: addrsToBytes(hp.filter.FilterLocal(str.Conn().RemotePeer(), hp.ids.OwnObservedAddrs())),
 	}); err != nil {
 		str.Reset()
 		return nil, 0, err
@@ -222,7 +224,7 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	if t := msg.GetType(); t != pb.HolePunch_CONNECT {
 		return nil, 0, fmt.Errorf("expect CONNECT message, got %s", t)
 	}
-	addrs := removeRelayAddrs(addrsFromBytes(msg.ObsAddrs))
+	addrs := hp.filter.FilterRemote(str.Conn().RemotePeer(), addrsFromBytes(msg.ObsAddrs))
 	if len(addrs) == 0 {
 		return nil, 0, errors.New("didn't receive any public addresses in CONNECT")
 	}
