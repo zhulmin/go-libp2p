@@ -97,8 +97,9 @@ func TestMuxerNegotiatin(t *testing.T) {
 	golog.SetAllLoggers(golog.LevelInfo)
 
 	for _, secType := range secTypes {
-		for _, testCase := range testCases {
-			t.Run("Test muxer negotiation", func(t *testing.T) {
+		for i, testCase := range testCases {
+			testName := "Test muxer negotiation for " + secType + ", case " + fmt.Sprint(i)
+			t.Run(testName, func(t *testing.T) {
 				doMuxerNegotiation(t, secType, testCase.svrMuxers, testCase.cliMuxers, testCase.svrTrans, testCase.cliTrans, testCase.expectedMuxer)
 			})
 		}
@@ -151,6 +152,7 @@ func runClientAndCheckMuxer(ctx context.Context, ha host.Host, targetPeer string
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	require.NoError(t, err)
 
+	log.Println("Connecting to server at ", info.ID)
 	ha.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
 
 	s, err := ha.NewStream(context.Background(), info.ID, "/echo/1.0.0")

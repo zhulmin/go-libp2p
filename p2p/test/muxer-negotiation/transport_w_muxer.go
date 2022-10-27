@@ -19,7 +19,6 @@ const (
 
 type TransportWithMuxer struct {
 	transport     sec.SecureTransport
-	secConn       sec.SecureConn
 	selectedMuxer string
 }
 
@@ -51,7 +50,6 @@ func (t *TransportWithMuxer) SecureOutbound(ctx context.Context, insecure net.Co
 	if err != nil {
 		return nil, err
 	}
-	t.secConn = secConn
 	t.selectedMuxer = secConn.ConnState().NextProto
 	return secConn, nil
 }
@@ -61,7 +59,6 @@ func (t *TransportWithMuxer) SecureInbound(ctx context.Context, insecure net.Con
 	if err != nil {
 		return nil, err
 	}
-	t.secConn = secConn
 	t.selectedMuxer = secConn.ConnState().NextProto
 	return secConn, nil
 }
