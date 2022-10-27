@@ -90,6 +90,8 @@ func TestMuxerNegotiatin(t *testing.T) {
 
 		<-ready
 		runClientAndCheckMuxer(cctx, clih, getHostAddress(svrh), cSec, sSec, expected, t)
+		clih.Close()
+		svrh.Close()
 		cCancel()
 		sCancel()
 	}
