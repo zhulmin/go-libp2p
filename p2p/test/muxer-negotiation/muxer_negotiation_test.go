@@ -22,7 +22,11 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-const testData = "Muxer Test Data\n"
+const (
+	testData   = "Muxer Test Data\n"
+	serverPort = 58568
+	clientPort = 58569
+)
 
 type muxerTest struct {
 	svrMuxers     []MuxerEntity
@@ -58,15 +62,8 @@ func TestMuxerNegotiatin(t *testing.T) {
 		sctx, sCancel := context.WithCancel(context.Background())
 		cctx, cCancel := context.WithCancel(context.Background())
 
-		sSec, svrh, err := makeHost(t, secType, svrMuxers, 58568)
-		require.NoError(t, err)
-		require.NotNil(t, sSec)
-		require.NotNil(t, svrh)
-
-		cSec, clih, err := makeHost(t, secType, cliMuxers, 59569)
-		require.NoError(t, err)
-		require.NotNil(t, cSec)
-		require.NotNil(t, clih)
+		sSec, svrh := makeHost(t, secType, svrMuxers, serverPort)
+		cSec, clih := makeHost(t, secType, cliMuxers, clientPort)
 
 		ready := make(chan struct{})
 		// Run server.
@@ -86,7 +83,7 @@ func TestMuxerNegotiatin(t *testing.T) {
 
 	for _, secType := range secTypes {
 		for i, testCase := range testCases {
-			testName := "Test muxer negotiation for " + secType + ", case " + fmt.Sprint(i)
+			testName := "Test muxer negotiation for " + secType + " case " + fmt.Sprint(i)
 			t.Run(testName, func(t *testing.T) {
 				doMuxerNegotiation(t, secType, testCase.svrMuxers, testCase.cliMuxers, testCase.expectedMuxer)
 			})
@@ -94,7 +91,7 @@ func TestMuxerNegotiatin(t *testing.T) {
 	}
 }
 
-func makeHost(t *testing.T, transportType string, muxers []MuxerEntity, port int) (*TransportWithMuxer, host.Host, error) {
+func makeHost(t *testing.T, transportType string, muxers []MuxerEntity, port int) (*TransportWithMuxer, host.Host) {
 	r := rand.Reader
 
 	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, r)
@@ -112,7 +109,9 @@ func makeHost(t *testing.T, transportType string, muxers []MuxerEntity, port int
 		opts = append(opts, libp2p.Muxer(muxer.id, muxer.trans))
 	}
 	h, err := libp2p.New(opts...)
-	return secTrans, h, err
+	require.NoError(t, err)
+
+	return secTrans, h
 }
 
 func getHostAddress(t *testing.T, ha host.Host) *peer.AddrInfo {
