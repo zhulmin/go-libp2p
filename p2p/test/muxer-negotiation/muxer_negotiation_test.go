@@ -19,107 +19,89 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/stretchr/testify/require"
 
-	/*
-		"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
-	*/
-
-	golog "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 const testData = "Muxer Test Data\n"
 
 type muxerTest struct {
-	svrMuxers     []string
-	svrTrans      []network.Multiplexer
-	cliMuxers     []string
-	cliTrans      []network.Multiplexer
+	svrMuxers     []MuxerEntity
+	cliMuxers     []MuxerEntity
 	expectedMuxer string
 }
 
 func TestMuxerNegotiatin(t *testing.T) {
 	secTypes := []string{Tls, Noise}
 	testCases := []muxerTest{
-		{svrMuxers: []string{"/mplex/6.7.0"},
-			svrTrans:      []network.Multiplexer{mplex.DefaultTransport},
-			cliMuxers:     []string{"/yamux/1.0.0"},
-			cliTrans:      []network.Multiplexer{yamux.DefaultTransport},
+		{svrMuxers: []MuxerEntity{{"/mplex/6.7.0", mplex.DefaultTransport}},
+			cliMuxers:     []MuxerEntity{{"/yamux/1.0.0", yamux.DefaultTransport}},
 			expectedMuxer: ""},
-		{svrMuxers: []string{"/mplex/6.7.0"},
-			svrTrans:      []network.Multiplexer{mplex.DefaultTransport},
-			cliMuxers:     []string{"/mplex/6.7.0"},
-			cliTrans:      []network.Multiplexer{mplex.DefaultTransport},
+		{svrMuxers: []MuxerEntity{{"/mplex/6.7.0", mplex.DefaultTransport}},
+			cliMuxers:     []MuxerEntity{{"/mplex/6.7.0", mplex.DefaultTransport}},
 			expectedMuxer: "/mplex/6.7.0"},
-		{svrMuxers: []string{"/yamux/1.0.0"},
-			svrTrans:      []network.Multiplexer{yamux.DefaultTransport},
-			cliMuxers:     []string{"/yamux/1.0.0"},
-			cliTrans:      []network.Multiplexer{yamux.DefaultTransport},
+		{svrMuxers: []MuxerEntity{{"/yamux/1.0.0", yamux.DefaultTransport}},
+			cliMuxers:     []MuxerEntity{{"/yamux/1.0.0", yamux.DefaultTransport}},
 			expectedMuxer: "/yamux/1.0.0"},
-		{svrMuxers: []string{"/yamux/1.0.0", "/mplex/6.7.0"},
-			svrTrans:      []network.Multiplexer{yamux.DefaultTransport, mplex.DefaultTransport},
-			cliMuxers:     []string{"/mplex/6.7.0", "/yamux/1.0.0"},
-			cliTrans:      []network.Multiplexer{mplex.DefaultTransport, yamux.DefaultTransport},
+		{svrMuxers: []MuxerEntity{{"/yamux/1.0.0", yamux.DefaultTransport},
+			{"/mplex/6.7.0", mplex.DefaultTransport}},
+			cliMuxers: []MuxerEntity{{"/mplex/6.7.0", mplex.DefaultTransport},
+				{"/yamux/1.0.0", yamux.DefaultTransport}},
 			expectedMuxer: "/yamux/1.0.0"},
-		{svrMuxers: []string{"/mplex/6.7.0", "/yamux/1.0.0"},
-			svrTrans:      []network.Multiplexer{mplex.DefaultTransport, yamux.DefaultTransport},
-			cliMuxers:     []string{"/yamux/1.0.0", "/mplex/6.7.0"},
-			cliTrans:      []network.Multiplexer{yamux.DefaultTransport, mplex.DefaultTransport},
+		{svrMuxers: []MuxerEntity{{"/mplex/6.7.0", mplex.DefaultTransport},
+			{"/yamux/1.0.0", yamux.DefaultTransport}},
+			cliMuxers: []MuxerEntity{{"/yamux/1.0.0", yamux.DefaultTransport},
+				{"/mplex/6.7.0", mplex.DefaultTransport}},
 			expectedMuxer: "/mplex/6.7.0"},
 	}
 
-	doMuxerNegotiation := func(t *testing.T, secType string, svrMuxers, cliMuxers []string, svrTrans, cliTrans []network.Multiplexer, expected string) {
+	doMuxerNegotiation := func(t *testing.T, secType string, svrMuxers, cliMuxers []MuxerEntity, expected string) {
 		sctx, sCancel := context.WithCancel(context.Background())
 		cctx, cCancel := context.WithCancel(context.Background())
 
-		sSec, svrh, err := makeHost(secType, svrMuxers, svrTrans, 58568)
+		sSec, svrh, err := makeHost(t, secType, svrMuxers, 58568)
 		require.NoError(t, err)
 		require.NotNil(t, sSec)
 		require.NotNil(t, svrh)
 
-		cSec, clih, err := makeHost(secType, cliMuxers, cliTrans, 59569)
+		cSec, clih, err := makeHost(t, secType, cliMuxers, 59569)
 		require.NoError(t, err)
 		require.NotNil(t, cSec)
 		require.NotNil(t, clih)
 
 		ready := make(chan struct{})
+		// Run server.
 		go func() {
-			runServer(sctx, svrh)
+			svrh.SetStreamHandler("/echo/1.0.0", streamHandler)
 			close(ready)
 			<-sctx.Done()
 		}()
 
 		<-ready
-		runClientAndCheckMuxer(cctx, clih, getHostAddress(svrh), cSec, sSec, expected, t)
+		runClientAndCheckMuxer(t, cctx, clih, getHostAddress(svrh), cSec, sSec, expected)
 		clih.Close()
 		svrh.Close()
 		cCancel()
 		sCancel()
 	}
 
-	golog.SetAllLoggers(golog.LevelInfo)
-
 	for _, secType := range secTypes {
 		for i, testCase := range testCases {
 			testName := "Test muxer negotiation for " + secType + ", case " + fmt.Sprint(i)
 			t.Run(testName, func(t *testing.T) {
-				doMuxerNegotiation(t, secType, testCase.svrMuxers, testCase.cliMuxers, testCase.svrTrans, testCase.cliTrans, testCase.expectedMuxer)
+				doMuxerNegotiation(t, secType, testCase.svrMuxers, testCase.cliMuxers, testCase.expectedMuxer)
 			})
 		}
 	}
 }
 
-func makeHost(transportType string, muxers []string, muxTrans []network.Multiplexer, port int) (*TransportWithMuxer, host.Host, error) {
+func makeHost(t *testing.T, transportType string, muxers []MuxerEntity, port int) (*TransportWithMuxer, host.Host, error) {
 	r := rand.Reader
 
 	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, r)
-	if err != nil {
-		return nil, nil, err
-	}
+	require.NoError(t, err)
 
 	secTrans, err := New(priv, muxers, transportType)
-	if err != nil {
-		return nil, nil, err
-	}
+	require.NoError(t, err)
 
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port)),
@@ -127,32 +109,27 @@ func makeHost(transportType string, muxers []string, muxTrans []network.Multiple
 		libp2p.Identity(priv),
 		libp2p.Security(transportType, secTrans),
 	}
-	for i := 0; i < len(muxers); i++ {
-		opts = append(opts, libp2p.Muxer(muxers[i], muxTrans[i]))
+	for _, muxer := range muxers {
+		opts = append(opts, libp2p.Muxer(muxer.id, muxer.trans))
 	}
 	h, err := libp2p.New(opts...)
 	return secTrans, h, err
 }
 
-func getHostAddress(ha host.Host) string {
+func getHostAddress(ha host.Host) *peer.AddrInfo {
 	// Build host multiaddress
 	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
-
 	addr := ha.Addrs()[0]
-	return addr.Encapsulate(hostAddr).String()
+	addrInfo, err := peer.AddrInfoFromString(addr.Encapsulate(hostAddr).String())
+	if err != nil {
+		log.Fatal("Failed to get address info ", err)
+		return nil
+	}
+	return addrInfo
 }
 
-func runServer(ctx context.Context, ha host.Host) {
+func runClientAndCheckMuxer(t *testing.T, ctx context.Context, ha host.Host, info *peer.AddrInfo, cSec, sSec *TransportWithMuxer, expected string) {
 	ha.SetStreamHandler("/echo/1.0.0", streamHandler)
-}
-
-func runClientAndCheckMuxer(ctx context.Context, ha host.Host, targetPeer string, cSec, sSec *TransportWithMuxer, expected string, t *testing.T) {
-	ha.SetStreamHandler("/echo/1.0.0", streamHandler)
-	maddr, err := ma.NewMultiaddr(targetPeer)
-	require.NoError(t, err)
-
-	info, err := peer.AddrInfoFromP2pAddr(maddr)
-	require.NoError(t, err)
 
 	log.Println("Connecting to server at ", info.ID)
 	ha.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)

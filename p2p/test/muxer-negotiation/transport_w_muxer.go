@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
@@ -17,6 +18,11 @@ const (
 	Noise = noise.ID
 )
 
+type MuxerEntity struct {
+	id    string
+	trans network.Multiplexer
+}
+
 type TransportWithMuxer struct {
 	transport     sec.SecureTransport
 	selectedMuxer string
@@ -24,10 +30,10 @@ type TransportWithMuxer struct {
 
 var _ sec.SecureTransport = &TransportWithMuxer{}
 
-func New(key crypto.PrivKey, muxers []string, secType string) (*TransportWithMuxer, error) {
+func New(key crypto.PrivKey, muxers []MuxerEntity, secType string) (*TransportWithMuxer, error) {
 	protos := make([]protocol.ID, 0, len(muxers))
-	for _, proto := range muxers {
-		protos = append(protos, protocol.ID(proto))
+	for _, entity := range muxers {
+		protos = append(protos, protocol.ID(entity.id))
 	}
 	var err error
 	var tr sec.SecureTransport
