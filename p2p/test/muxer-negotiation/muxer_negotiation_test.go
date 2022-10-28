@@ -77,7 +77,7 @@ func TestMuxerNegotiatin(t *testing.T) {
 		}()
 
 		<-ready
-		runClientAndCheckMuxer(t, cctx, clih, getHostAddress(svrh), cSec, sSec, expected)
+		runClientAndCheckMuxer(t, cctx, clih, getHostAddress(t, svrh), cSec, sSec, expected)
 		clih.Close()
 		svrh.Close()
 		cCancel()
@@ -116,15 +116,12 @@ func makeHost(t *testing.T, transportType string, muxers []MuxerEntity, port int
 	return secTrans, h, err
 }
 
-func getHostAddress(ha host.Host) *peer.AddrInfo {
+func getHostAddress(t *testing.T, ha host.Host) *peer.AddrInfo {
 	// Build host multiaddress
 	hostAddr := ma.StringCast(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
 	addr := ha.Addrs()[0]
 	addrInfo, err := peer.AddrInfoFromString(addr.Encapsulate(hostAddr).String())
-	if err != nil {
-		log.Fatal("Failed to get address info ", err)
-		return nil
-	}
+	require.NoError(t, err)
 	return addrInfo
 }
 
