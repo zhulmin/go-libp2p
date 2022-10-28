@@ -105,7 +105,6 @@ func makeHost(t *testing.T, transportType string, muxers []MuxerEntity, port int
 
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port)),
-		//libp2p.DefaultListenAddrs,
 		libp2p.Identity(priv),
 		libp2p.Security(transportType, secTrans),
 	}
