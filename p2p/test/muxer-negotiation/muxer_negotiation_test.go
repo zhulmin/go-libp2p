@@ -118,7 +118,7 @@ func makeHost(t *testing.T, transportType string, muxers []MuxerEntity, port int
 
 func getHostAddress(ha host.Host) *peer.AddrInfo {
 	// Build host multiaddress
-	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
+	hostAddr := ma.StringCast(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
 	addr := ha.Addrs()[0]
 	addrInfo, err := peer.AddrInfoFromString(addr.Encapsulate(hostAddr).String())
 	if err != nil {
