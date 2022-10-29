@@ -5,8 +5,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-// WithAddrFilter is a Service option that enables multi address filtering.
-// It allows to only allow a subset of observed addresses to the remote
+// WithAddrFilter is a Service option that enables multiaddress filtering.
+// It allows to only send a subset of observed addresses to the remote
 // peer. E.g., only announce TCP or QUIC multi addresses instead of both.
 // It also allows to only consider a subset of received multi addresses
 // that remote peers announced to us.
@@ -19,12 +19,10 @@ func WithAddrFilter(maf AddrFilter) Option {
 }
 
 // AddrFilter defines the interface for the multi address filtering.
-//   - FilterLocal is a function that filters the multi addresses that
-//     we send to the remote peer.
-//   - FilterRemote is a function that filters the multi addresses which
-//     we received from the remote peer.
 type AddrFilter interface {
+	// FilterLocal is a function that filters the multi addresses that we send to the remote peer.
 	FilterLocal(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
+	// FilterRemote is a function that filters the multi addresses which we received from the remote peer.
 	FilterRemote(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
 }
 
