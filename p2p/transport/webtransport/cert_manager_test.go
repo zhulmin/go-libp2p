@@ -170,7 +170,7 @@ func TestGetCurrentBucketStartTimeIsWithinBounds(t *testing.T) {
 		timeSinceUnixEpoch += time.Hour * 24 * 365
 		start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())
 
-		bucketStart := getCurrentBucketStartTime(start, offset)
+		bucketStart := getCurrentBucketStartTime(start.Add(-clockSkewAllowance), offset)
 		return !bucketStart.After(start.Add(-clockSkewAllowance)) || bucketStart.Equal(start.Add(-clockSkewAllowance))
 	}, nil))
 }
