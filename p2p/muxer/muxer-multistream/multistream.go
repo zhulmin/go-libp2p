@@ -22,6 +22,7 @@ type Transport struct {
 	NegotiateTimeout time.Duration
 
 	OrderPreference []string
+	selectedProto   string
 }
 
 func NewBlankTransport() *Transport {
@@ -71,10 +72,15 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 		return nil, fmt.Errorf("selected protocol we don't have a transport for")
 	}
 
+	t.selectedProto = proto
 	return tpt.NewConn(nc, isServer, scope)
 }
 
 func (t *Transport) GetTransportByKey(key string) (network.Multiplexer, bool) {
 	val, ok := t.tpts[key]
 	return val, ok
+}
+
+func (t *Transport) GetSelectedProto() string {
+	return t.selectedProto
 }

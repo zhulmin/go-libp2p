@@ -3,6 +3,7 @@ package upgrader_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/core/transport"
+	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/upgrader"
 
@@ -122,6 +124,7 @@ func TestOutboundConnectionGating(t *testing.T) {
 	testGater := &testGater{}
 	_, dialUpgrader := createUpgrader(t, upgrader.WithConnectionGater(testGater))
 	conn, err := dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
+	fmt.Println(">>>> next proto: ", conn.ConnState().NextProto)
 	require.NoError(err)
 	require.NotNil(conn)
 	_ = conn.Close()
@@ -139,6 +142,25 @@ func TestOutboundConnectionGating(t *testing.T) {
 	require.Error(err)
 	require.Contains(err.Error(), "gater rejected connection")
 	require.Nil(conn)
+}
+
+func TestInsecureConnStateUpdate(t *testing.T) {
+	require := require.New(t)
+
+	stMuxer1 := msmux.NewBlankTransport()
+	stMuxer1.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
+	id, u := createUpgraderWithMuxer(t, stMuxer1)
+	ln := createListener(t, u)
+	defer ln.Close()
+
+	stMuxer2 := msmux.NewBlankTransport()
+	stMuxer2.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
+	_, dialUpgrader := createUpgraderWithMuxer(t, stMuxer2)
+	conn, err := dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
+	require.NoError(err)
+	require.NotNil(conn)
+	require.Equal("/yamux/1.0.0", conn.ConnState().NextProto)
+	_ = conn.Close()
 }
 
 func TestOutboundResourceManagement(t *testing.T) {

@@ -117,6 +117,7 @@ type Conn struct {
 
 	localPrivKey ci.PrivKey
 	remotePubKey ci.PubKey
+	connState    network.ConnectionState
 }
 
 func makeExchangeMessage(pubkey ci.PubKey) (*pb.Exchange, error) {
@@ -233,7 +234,12 @@ func (ic *Conn) LocalPrivateKey() ci.PrivKey {
 
 // ConnState returns the security connection's state information.
 func (ic *Conn) ConnState() network.ConnectionState {
-	return network.ConnectionState{}
+	return ic.connState
+}
+
+// ConnState returns the security connection's state information.
+func (ic *Conn) SetConnState(connState network.ConnectionState) {
+	ic.connState = connState
 }
 
 var _ sec.SecureTransport = (*Transport)(nil)
