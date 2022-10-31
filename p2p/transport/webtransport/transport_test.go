@@ -744,7 +744,7 @@ func serverSendsBackValidCert(timeSinceUnixEpoch time.Duration, keySeed int64, r
 	if err != nil {
 		return err
 	}
-	tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+	tr, err := libp2pwebtransport.New(priv, nil, &network.NullResourceManager{}, libp2pwebtransport.WithClock(cl))
 	if err != nil {
 		return err
 	}
@@ -808,26 +808,6 @@ func TestServerSendsBackValidCert(t *testing.T) {
 	}, nil))
 }
 
-func TestServerSendsBackValidCertEveryHour(t *testing.T) {
-	var maxTimeoutErrors = 10
-	// A more exhaustive kind of test
-	days := 30
-	hours := days * 24
-	for h := 0; h < hours; h++ {
-		err := serverSendsBackValidCert(time.Hour*time.Duration(h), 0, 0)
-		if err == errTimeout {
-			maxTimeoutErrors -= 1
-			if maxTimeoutErrors <= 0 {
-				t.Fatalf("Too many timeout errors")
-			}
-			// Sporadic timeout errors on macOS
-			continue
-		}
-
-		require.NoError(t, err)
-	}
-}
-
 func TestServerRotatesCertCorrectly(t *testing.T) {
 	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, keySeed int64) bool {
 		if timeSinceUnixEpoch < 0 {
@@ -847,7 +827,7 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+		tr, err := libp2pwebtransport.New(priv, nil, &network.NullResourceManager{}, libp2pwebtransport.WithClock(cl))
 		if err != nil {
 			return false
 		}
@@ -861,7 +841,7 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 
 		// These two certificates together are valid for at most certValidity - (4*clockSkewAllowance)
 		cl.Add(certValidity - (4 * clockSkewAllowance) - time.Second)
-		tr, err = libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+		tr, err = libp2pwebtransport.New(priv, nil, &network.NullResourceManager{}, libp2pwebtransport.WithClock(cl))
 		if err != nil {
 			return false
 		}
@@ -897,7 +877,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 
 	priv, _, err := test.RandTestKeyPair(ic.Ed25519, 256)
 	require.NoError(t, err)
-	tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+	tr, err := libp2pwebtransport.New(priv, nil, &network.NullResourceManager{}, libp2pwebtransport.WithClock(cl))
 	require.NoError(t, err)
 
 	l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
@@ -910,7 +890,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 	// e.g. certhash/A/certhash/B ... -> ... certhash/B/certhash/C ... -> ... certhash/C/certhash/D
 	for i := 0; i < 200; i++ {
 		cl.Add(24 * time.Hour)
-		tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+		tr, err := libp2pwebtransport.New(priv, nil, &network.NullResourceManager{}, libp2pwebtransport.WithClock(cl))
 		require.NoError(t, err)
 		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 		require.NoError(t, err)
