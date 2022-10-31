@@ -71,12 +71,12 @@ func newCertManager(hostKey ic.PrivKey, clock clock.Clock) (*certManager, error)
 	return m, nil
 }
 
-// getCurrentTimeBucket returns the canonical start time of the given time are bucketed by
-// ranges of certValidity since unix epoch. This lets you get the same time
-// ranges across reboots without having to persist state.  timeBuckets represent
-// our current time bbucket and our next time bucket.
-// These overlap by 2*clock skew.
+// getCurrentTimeBucket returns the canonical start time of the given time as
+// bucketed by ranges of certValidity since unix epoch (plus an offset). This
+// lets you get the same time ranges across reboots without having to persist
+// state.
 // ```
+// ... v--- epoch + offset
 // ... |--------|    |--------|        ...
 // ...        |--------|    |--------| ...
 // ```
