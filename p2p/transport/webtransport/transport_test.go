@@ -722,7 +722,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	}
 }
 
-var timeoutErr = errors.New("timeout")
+var errTimeout = errors.New("timeout")
 
 func serverSendsBackValidCert(timeSinceUnixEpoch time.Duration, keySeed int64, randomClientSkew time.Duration) error {
 	if timeSinceUnixEpoch < 0 {
@@ -778,7 +778,7 @@ func serverSendsBackValidCert(timeSinceUnixEpoch time.Duration, keySeed int64, r
 
 	if err != nil {
 		if _, ok := err.(*quic.IdleTimeoutError); ok {
-			return timeoutErr
+			return errTimeout
 		}
 		return err
 	}
@@ -791,7 +791,7 @@ func TestServerSendsBackValidCert(t *testing.T) {
 	var maxTimeoutErrors = 10
 	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, keySeed int64, randomClientSkew time.Duration) bool {
 		err := serverSendsBackValidCert(timeSinceUnixEpoch, keySeed, randomClientSkew)
-		if err == timeoutErr {
+		if err == errTimeout {
 			maxTimeoutErrors -= 1
 			if maxTimeoutErrors <= 0 {
 				fmt.Println("Too many timeout errors")
@@ -815,7 +815,7 @@ func TestServerSendsBackValidCertEveryHour(t *testing.T) {
 	hours := days * 24
 	for h := 0; h < hours; h++ {
 		err := serverSendsBackValidCert(time.Hour*time.Duration(h), 0, 0)
-		if err == timeoutErr {
+		if err == errTimeout {
 			maxTimeoutErrors -= 1
 			if maxTimeoutErrors <= 0 {
 				t.Fatalf("Too many timeout errors")
