@@ -722,80 +722,110 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	}
 }
 
+var timeoutErr = errors.New("timeout")
+
+func serverSendsBackValidCert(timeSinceUnixEpoch time.Duration, keySeed int64, randomClientSkew time.Duration) error {
+	if timeSinceUnixEpoch < 0 {
+		timeSinceUnixEpoch = -timeSinceUnixEpoch
+	}
+
+	// Bound this to 100 years
+	timeSinceUnixEpoch = time.Duration(timeSinceUnixEpoch % (time.Hour * 24 * 365 * 100))
+	// Start a bit further in the future to avoid edge cases around epoch
+	timeSinceUnixEpoch += time.Hour * 24 * 365
+	start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())
+
+	randomClientSkew = randomClientSkew % clockSkewAllowance
+
+	cl := clock.NewMock()
+	cl.Set(start)
+
+	priv, _, err := test.SeededTestKeyPair(ic.Ed25519, 256, keySeed)
+	if err != nil {
+		return err
+	}
+	tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
+	if err != nil {
+		return err
+	}
+	l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+
+	conn, err := quic.DialAddr(l.Addr().String(), &tls.Config{
+		NextProtos:         []string{"h3"},
+		InsecureSkipVerify: true,
+		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			for _, c := range rawCerts {
+				cert, err := x509.ParseCertificate(c)
+				if err != nil {
+					return err
+				}
+
+				for _, clientSkew := range []time.Duration{randomClientSkew, -clockSkewAllowance, clockSkewAllowance} {
+					clientTime := cl.Now().Add(clientSkew)
+					if clientTime.After(cert.NotAfter) || clientTime.Before(cert.NotBefore) {
+						return fmt.Errorf("Times are not valid: server_now=%v client_now=%v certstart=%v certend=%v", cl.Now().UTC(), clientTime.UTC(), cert.NotBefore.UTC(), cert.NotAfter.UTC())
+					}
+				}
+
+			}
+			return nil
+		},
+	}, &quic.Config{MaxIdleTimeout: time.Second})
+
+	if err != nil {
+		if _, ok := err.(*quic.IdleTimeoutError); ok {
+			return timeoutErr
+		}
+		return err
+	}
+	defer conn.CloseWithError(0, "")
+
+	return nil
+}
+
 func TestServerSendsBackValidCert(t *testing.T) {
 	var maxTimeoutErrors = 10
-
 	require.NoError(t, quick.Check(func(timeSinceUnixEpoch time.Duration, keySeed int64, randomClientSkew time.Duration) bool {
-		if timeSinceUnixEpoch < 0 {
-			timeSinceUnixEpoch = -timeSinceUnixEpoch
-		}
-
-		// Bound this to 100 years
-		timeSinceUnixEpoch = time.Duration(timeSinceUnixEpoch % (time.Hour * 24 * 365 * 100))
-		// Start a bit further in the future to avoid edge cases around epoch
-		timeSinceUnixEpoch += time.Hour * 24 * 365
-		start := time.UnixMilli(timeSinceUnixEpoch.Milliseconds())
-
-		randomClientSkew = randomClientSkew % clockSkewAllowance
-
-		cl := clock.NewMock()
-		cl.Set(start)
-
-		priv, _, err := test.SeededTestKeyPair(ic.Ed25519, 256, keySeed)
-		if err != nil {
-			return false
-		}
-		tr, err := libp2pwebtransport.New(priv, nil, network.NullResourceManager, libp2pwebtransport.WithClock(cl))
-		if err != nil {
-			return false
-		}
-		l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
-		if err != nil {
-			return false
-		}
-		defer l.Close()
-
-		conn, err := quic.DialAddr(l.Addr().String(), &tls.Config{
-			NextProtos:         []string{"h3"},
-			InsecureSkipVerify: true,
-			VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-				for _, c := range rawCerts {
-					cert, err := x509.ParseCertificate(c)
-					if err != nil {
-						return err
-					}
-
-					for _, clientSkew := range []time.Duration{randomClientSkew, -clockSkewAllowance, clockSkewAllowance} {
-						clientTime := cl.Now().Add(clientSkew)
-						if clientTime.After(cert.NotAfter) || clientTime.Before(cert.NotBefore) {
-							return fmt.Errorf("Times are not valid: server_now=%v client_now=%v certstart=%v certend=%v", cl.Now().UTC(), clientTime.UTC(), cert.NotBefore.UTC(), cert.NotAfter.UTC())
-						}
-					}
-
-				}
-				return nil
-			},
-		}, &quic.Config{MaxIdleTimeout: time.Second})
-
-		if err != nil {
-			if _, ok := err.(*quic.IdleTimeoutError); ok {
-				maxTimeoutErrors -= 1
-				if maxTimeoutErrors <= 0 {
-					fmt.Println("Too many timeout errors")
-				}
-				// Sporadic timeout errors on macOS
-				return true
+		err := serverSendsBackValidCert(timeSinceUnixEpoch, keySeed, randomClientSkew)
+		if err == timeoutErr {
+			maxTimeoutErrors -= 1
+			if maxTimeoutErrors <= 0 {
+				fmt.Println("Too many timeout errors")
+				return false
 			}
-			// Print the error so we see what happened, since we only return
-			// true/false to quickcheck
-			fmt.Println("Error:", err)
+			// Sporadic timeout errors on macOS
+			return true
+		} else if err != nil {
+			fmt.Println("Err:", err)
 			return false
 		}
-		defer conn.CloseWithError(0, "")
 
 		return true
-
 	}, nil))
+}
+
+func TestServerSendsBackValidCertEveryHour(t *testing.T) {
+	var maxTimeoutErrors = 10
+	// A more exhaustive kind of test
+	days := 30
+	hours := days * 24
+	for h := 0; h < hours; h++ {
+		err := serverSendsBackValidCert(time.Hour*time.Duration(h), 0, 0)
+		if err == timeoutErr {
+			maxTimeoutErrors -= 1
+			if maxTimeoutErrors <= 0 {
+				t.Fatalf("Too many timeout errors")
+			}
+			// Sporadic timeout errors on macOS
+			continue
+		}
+
+		require.NoError(t, err)
+	}
 }
 
 func TestServerRotatesCertCorrectly(t *testing.T) {
