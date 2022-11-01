@@ -144,25 +144,6 @@ func TestOutboundConnectionGating(t *testing.T) {
 	require.Nil(conn)
 }
 
-func TestInsecureConnStateUpdate(t *testing.T) {
-	require := require.New(t)
-
-	stMuxer1 := msmux.NewBlankTransport()
-	stMuxer1.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
-	id, u := createUpgraderWithMuxer(t, stMuxer1)
-	ln := createListener(t, u)
-	defer ln.Close()
-
-	stMuxer2 := msmux.NewBlankTransport()
-	stMuxer2.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
-	_, dialUpgrader := createUpgraderWithMuxer(t, stMuxer2)
-	conn, err := dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
-	require.NoError(err)
-	require.NotNil(conn)
-	require.Equal("/yamux/1.0.0", conn.ConnState().NextProto)
-	_ = conn.Close()
-}
-
 func TestOutboundResourceManagement(t *testing.T) {
 	t.Run("successful handshake", func(t *testing.T) {
 		id, upgrader := createUpgrader(t)
@@ -207,4 +188,24 @@ func TestOutboundResourceManagement(t *testing.T) {
 	t.Run("blocked by the resource manager", func(t *testing.T) {
 
 	})
+}
+
+func TestInsecureConnStateUpdate(t *testing.T) {
+	const muxer = "/yamux/1.0.0"
+
+	require := require.New(t)
+	stMuxer1 := msmux.NewBlankTransport()
+	stMuxer1.AddTransport(muxer, yamux.DefaultTransport)
+	id, u := createUpgraderWithMuxer(t, stMuxer1)
+	ln := createListener(t, u)
+	defer ln.Close()
+
+	stMuxer2 := msmux.NewBlankTransport()
+	stMuxer2.AddTransport(muxer, yamux.DefaultTransport)
+	_, dialUpgrader := createUpgraderWithMuxer(t, stMuxer2)
+	conn, err := dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
+	require.NoError(err)
+	require.NotNil(conn)
+	require.Equal(muxer, conn.ConnState().NextProto)
+	_ = conn.Close()
 }
