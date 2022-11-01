@@ -3,7 +3,6 @@ package upgrader_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"testing"
 
@@ -124,7 +123,6 @@ func TestOutboundConnectionGating(t *testing.T) {
 	testGater := &testGater{}
 	_, dialUpgrader := createUpgrader(t, upgrader.WithConnectionGater(testGater))
 	conn, err := dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
-	fmt.Println(">>>> next proto: ", conn.ConnState().NextProto)
 	require.NoError(err)
 	require.NotNil(conn)
 	_ = conn.Close()
