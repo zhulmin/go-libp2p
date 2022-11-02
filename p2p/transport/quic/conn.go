@@ -96,6 +96,9 @@ func (c *conn) ConnState() network.ConnectionState {
 	return network.ConnectionState{}
 }
 
+// SetConnState sets the ConnState of security connection.
+func (c *conn) SetConnState(_ network.ConnectionState) {}
+
 // LocalMultiaddr returns the local Multiaddr associated
 func (c *conn) LocalMultiaddr() ma.Multiaddr {
 	return c.localMultiaddr

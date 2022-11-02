@@ -12,7 +12,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	ipnet "github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/sec"
-	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
 	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
@@ -221,12 +220,6 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 
 	select {
 	case <-done:
-		// Update connectionState for insecure connections.
-		insecConn, isInsec := conn.(*insecure.Conn)
-		if isInsec && ok {
-			selected := msmuxer.GetSelectedProto()
-			insecConn.SetConnState(network.ConnectionState{NextProto: selected})
-		}
 		return smconn, err
 	case <-ctx.Done():
 		// interrupt this process

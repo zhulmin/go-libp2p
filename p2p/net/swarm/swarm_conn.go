@@ -184,6 +184,11 @@ func (c *Conn) ConnState() network.ConnectionState {
 	return c.conn.ConnState()
 }
 
+// SetConnState assigns the security connection state.
+func (c *Conn) SetConnState(state network.ConnectionState) {
+	c.conn.SetConnState(state)
+}
+
 // Stat returns metadata pertaining to this connection
 func (c *Conn) Stat() network.ConnStats {
 	c.streams.Lock()

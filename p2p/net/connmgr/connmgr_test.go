@@ -807,6 +807,7 @@ func (m mockConn) NewStream(ctx context.Context) (network.Stream, error) { panic
 func (m mockConn) GetStreams() []network.Stream                          { panic("implement me") }
 func (m mockConn) Scope() network.ConnScope                              { panic("implement me") }
 func (m mockConn) ConnState() network.ConnectionState                    { return network.ConnectionState{} }
+func (m mockConn) SetConnState(_ network.ConnectionState)                {}
 
 func TestPeerInfoSorting(t *testing.T) {
 	t.Run("starts with temporary connections", func(t *testing.T) {

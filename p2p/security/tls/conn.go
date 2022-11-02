@@ -41,3 +41,7 @@ func (c *conn) RemotePublicKey() ci.PubKey {
 func (c *conn) ConnState() network.ConnectionState {
 	return c.connectionState
 }
+
+func (c *conn) SetConnState(state network.ConnectionState) {
+	c.connectionState = state
+}

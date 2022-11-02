@@ -59,6 +59,9 @@ type ConnSecurity interface {
 
 	// Connection state info of the secured connection.
 	ConnState() ConnectionState
+
+	// Set connection state of securied connection.
+	SetConnState(ConnectionState)
 }
 
 // ConnMultiaddrs is an interface mixin for connection types that provide multiaddr

@@ -183,6 +183,9 @@ func (c *conn) ConnState() network.ConnectionState {
 	return network.ConnectionState{}
 }
 
+// SetConnState of security connection.
+func (c *conn) SetConnState(_ network.ConnectionState) {}
+
 // Stat returns metadata about the connection
 func (c *conn) Stat() network.ConnStats {
 	return c.stat

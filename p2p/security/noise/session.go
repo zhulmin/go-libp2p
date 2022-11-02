@@ -116,6 +116,10 @@ func (s *secureSession) ConnState() network.ConnectionState {
 	return s.connectionState
 }
 
+func (s *secureSession) SetConnState(state network.ConnectionState) {
+	s.connectionState = state
+}
+
 func (s *secureSession) SetDeadline(t time.Time) error {
 	return s.insecureConn.SetDeadline(t)
 }

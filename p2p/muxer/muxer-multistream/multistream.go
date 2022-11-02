@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/sec"
 
 	mss "github.com/multiformats/go-multistream"
 )
@@ -72,6 +73,10 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 		return nil, fmt.Errorf("selected protocol we don't have a transport for")
 	}
 
+	secConn, ok := nc.(sec.SecureConn)
+	if ok {
+		secConn.SetConnState(network.ConnectionState{NextProto: proto})
+	}
 	t.selectedProto = proto
 	return tpt.NewConn(nc, isServer, scope)
 }
