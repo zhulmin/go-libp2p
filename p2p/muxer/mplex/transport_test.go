@@ -38,7 +38,7 @@ type memoryLimitedTransport struct {
 	Transport
 }
 
-func (t *memoryLimitedTransport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (t *memoryLimitedTransport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, string, error) {
 	return t.Transport.NewConn(nc, isServer, &memoryScope{
 		limit:     3 * 1 << 20,
 		PeerScope: scope,

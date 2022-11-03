@@ -171,7 +171,7 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 		}
 	}
 
-	smconn, err := u.setupMuxer(ctx, sconn, server, connScope.PeerScope())
+	smconn, selected, err := u.setupMuxer(ctx, sconn, server, connScope.PeerScope())
 	if err != nil {
 		sconn.Close()
 		return nil, fmt.Errorf("failed to negotiate stream multiplexer: %s", err)
@@ -185,6 +185,7 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 		stat:           stat,
 		scope:          connScope,
 	}
+	tc.ConnSecurity.SetConnState(network.ConnectionState{NextProto: selected})
 	return tc, nil
 }
 
@@ -195,37 +196,37 @@ func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, 
 	return u.secure.SecureOutbound(ctx, conn, p)
 }
 
-func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, string, error) {
 	msmuxer, ok := u.muxer.(*msmux.Transport)
 	muxerSelected := conn.ConnState().NextProto
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
 	if ok && len(muxerSelected) > 0 {
 		tpt, ok := msmuxer.GetTransportByKey(muxerSelected)
 		if !ok {
-			return nil, fmt.Errorf("selected a muxer we don't know: %s", muxerSelected)
+			return nil, "", fmt.Errorf("selected a muxer we don't know: %s", muxerSelected)
 		}
 
 		return tpt.NewConn(conn, server, scope)
 	}
 
 	done := make(chan struct{})
-
+	var selectedProto string
 	var smconn network.MuxedConn
 	var err error
 	// TODO: The muxer should take a context.
 	go func() {
 		defer close(done)
-		smconn, err = u.muxer.NewConn(conn, server, scope)
+		smconn, selectedProto, err = u.muxer.NewConn(conn, server, scope)
 	}()
 
 	select {
 	case <-done:
-		return smconn, err
+		return smconn, selectedProto, err
 	case <-ctx.Done():
 		// interrupt this process
 		conn.Close()
 		// wait to finish
 		<-done
-		return nil, ctx.Err()
+		return nil, "", ctx.Err()
 	}
 }

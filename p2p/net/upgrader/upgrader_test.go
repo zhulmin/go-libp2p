@@ -41,7 +41,7 @@ func createUpgraderWithMuxer(t *testing.T, muxer network.Multiplexer, opts ...up
 // It makes sure that this happens at the same time for client and server.
 type negotiatingMuxer struct{}
 
-func (m *negotiatingMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (m *negotiatingMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, string, error) {
 	var err error
 	// run a fake muxer negotiation
 	if isServer {
@@ -50,7 +50,7 @@ func (m *negotiatingMuxer) NewConn(c net.Conn, isServer bool, scope network.Peer
 		_, err = c.Read(make([]byte, 5))
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	return yamux.DefaultTransport.NewConn(c, isServer, scope)
 }
@@ -66,7 +66,7 @@ func newBlockingMuxer() *blockingMuxer {
 	return &blockingMuxer{unblock: make(chan struct{})}
 }
 
-func (m *blockingMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (m *blockingMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, string, error) {
 	<-m.unblock
 	return (&negotiatingMuxer{}).NewConn(c, isServer, scope)
 }
@@ -80,8 +80,8 @@ type errorMuxer struct{}
 
 var _ network.Multiplexer = &errorMuxer{}
 
-func (m *errorMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
-	return nil, errors.New("mux error")
+func (m *errorMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, string, error) {
+	return nil, "", errors.New("mux error")
 }
 
 func testConn(t *testing.T, clientConn, serverConn transport.CapableConn) {

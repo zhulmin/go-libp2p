@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/sec"
 
 	mss "github.com/multiformats/go-multistream"
 )
@@ -23,7 +22,6 @@ type Transport struct {
 	NegotiateTimeout time.Duration
 
 	OrderPreference []string
-	selectedProto   string
 }
 
 func NewBlankTransport() *Transport {
@@ -40,10 +38,10 @@ func (t *Transport) AddTransport(path string, tpt network.Multiplexer) {
 	t.OrderPreference = append(t.OrderPreference, path)
 }
 
-func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, string, error) {
 	if t.NegotiateTimeout != 0 {
 		if err := nc.SetDeadline(time.Now().Add(t.NegotiateTimeout)); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
 
@@ -51,41 +49,33 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 	if isServer {
 		selected, _, err := t.mux.Negotiate(nc)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		proto = selected
 	} else {
 		selected, err := mss.SelectOneOf(t.OrderPreference, nc)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		proto = selected
 	}
 
 	if t.NegotiateTimeout != 0 {
 		if err := nc.SetDeadline(time.Time{}); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
 
 	tpt, ok := t.tpts[proto]
 	if !ok {
-		return nil, fmt.Errorf("selected protocol we don't have a transport for")
+		return nil, "", fmt.Errorf("selected protocol we don't have a transport for")
 	}
 
-	secConn, ok := nc.(sec.SecureConn)
-	if ok {
-		secConn.SetConnState(network.ConnectionState{NextProto: proto})
-	}
-	t.selectedProto = proto
-	return tpt.NewConn(nc, isServer, scope)
+	mconn, _, err := tpt.NewConn(nc, isServer, scope)
+	return mconn, proto, err
 }
 
 func (t *Transport) GetTransportByKey(key string) (network.Multiplexer, bool) {
 	val, ok := t.tpts[key]
 	return val, ok
-}
-
-func (t *Transport) GetSelectedProto() string {
-	return t.selectedProto
 }

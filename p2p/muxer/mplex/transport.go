@@ -17,10 +17,10 @@ var _ network.Multiplexer = &Transport{}
 // mplex-backed muxed connections.
 type Transport struct{}
 
-func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, string, error) {
 	m, err := mp.NewMultiplex(nc, isServer, scope)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return NewMuxedConn(m), nil
+	return NewMuxedConn(m), "", nil
 }

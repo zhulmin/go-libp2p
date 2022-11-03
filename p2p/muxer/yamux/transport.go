@@ -37,7 +37,7 @@ type Transport yamux.Config
 
 var _ network.Multiplexer = &Transport{}
 
-func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, string, error) {
 	var newSpan func() (yamux.MemoryManager, error)
 	if scope != nil {
 		newSpan = func() (yamux.MemoryManager, error) { return scope.BeginSpan() }
@@ -51,9 +51,9 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 		s, err = yamux.Client(nc, t.Config(), newSpan)
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return NewMuxedConn(s), nil
+	return NewMuxedConn(s), "", nil
 }
 
 func (t *Transport) Config() *yamux.Config {

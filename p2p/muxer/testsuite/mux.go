@@ -133,7 +133,7 @@ func GoServe(t *testing.T, tr network.Multiplexer, l net.Listener) (done func())
 				}
 			}
 
-			sc1, err := tr.NewConn(c1, true, nil)
+			sc1, _, err := tr.NewConn(c1, true, nil)
 			checkErr(t, err)
 			go func() {
 				for {
@@ -163,7 +163,7 @@ func SubtestSimpleWrite(t *testing.T, tr network.Multiplexer) {
 	defer nc1.Close()
 
 	scope := &peerScope{}
-	c1, err := tr.NewConn(nc1, false, scope)
+	c1, _, err := tr.NewConn(nc1, false, scope)
 	checkErr(t, err)
 	defer func() {
 		c1.Close()
@@ -261,7 +261,7 @@ func SubtestStress(t *testing.T, opt Options) {
 		}
 
 		scope := &peerScope{}
-		c, err := opt.tr.NewConn(nc, false, scope)
+		c, _, err := opt.tr.NewConn(nc, false, scope)
 		if err != nil {
 			t.Fatal(fmt.Errorf("a.AddConn(%s <--> %s): %s", nc.LocalAddr(), nc.RemoteAddr(), err))
 			return
@@ -348,7 +348,7 @@ func SubtestStreamOpenStress(t *testing.T, tr network.Multiplexer) {
 	workers := 5
 	go func() {
 		defer wg.Done()
-		muxa, err := tr.NewConn(a, true, nil)
+		muxa, _, err := tr.NewConn(a, true, nil)
 		if err != nil {
 			t.Error(err)
 			return
@@ -382,7 +382,7 @@ func SubtestStreamOpenStress(t *testing.T, tr network.Multiplexer) {
 	}()
 
 	scope := &peerScope{}
-	muxb, err := tr.NewConn(b, false, scope)
+	muxb, _, err := tr.NewConn(b, false, scope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func SubtestStreamReset(t *testing.T, tr network.Multiplexer) {
 
 	wg.Add(1)
 	scopea := &peerScope{}
-	muxa, err := tr.NewConn(a, true, scopea)
+	muxa, _, err := tr.NewConn(a, true, scopea)
 	if err != nil {
 		t.Error(err)
 		return
@@ -469,7 +469,7 @@ func SubtestStreamReset(t *testing.T, tr network.Multiplexer) {
 	}()
 
 	scopeb := &peerScope{}
-	muxb, err := tr.NewConn(b, false, scopeb)
+	muxb, _, err := tr.NewConn(b, false, scopeb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,11 +490,11 @@ func SubtestWriteAfterClose(t *testing.T, tr network.Multiplexer) {
 	a, b := tcpPipe(t)
 
 	scopea := &peerScope{}
-	muxa, err := tr.NewConn(a, true, scopea)
+	muxa, _, err := tr.NewConn(a, true, scopea)
 	checkErr(t, err)
 
 	scopeb := &peerScope{}
-	muxb, err := tr.NewConn(b, false, scopeb)
+	muxb, _, err := tr.NewConn(b, false, scopeb)
 	checkErr(t, err)
 
 	checkErr(t, muxa.Close())
@@ -518,11 +518,11 @@ func SubtestStreamLeftOpen(t *testing.T, tr network.Multiplexer) {
 	const dataLen = 50 * 1024
 
 	scopea := &peerScope{}
-	muxa, err := tr.NewConn(a, true, scopea)
+	muxa, _, err := tr.NewConn(a, true, scopea)
 	checkErr(t, err)
 
 	scopeb := &peerScope{}
-	muxb, err := tr.NewConn(b, false, scopeb)
+	muxb, _, err := tr.NewConn(b, false, scopeb)
 	checkErr(t, err)
 
 	var wg sync.WaitGroup
