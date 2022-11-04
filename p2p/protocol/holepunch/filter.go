@@ -11,9 +11,9 @@ import (
 // It also allows to only consider a subset of received multi addresses
 // that remote peers announced to us.
 // Theoretically, this API also allows to add multi addresses in both cases.
-func WithAddrFilter(maf AddrFilter) Option {
+func WithAddrFilter(f AddrFilter) Option {
 	return func(hps *Service) error {
-		hps.filter = maf
+		hps.filter = f
 		return nil
 	}
 }
@@ -24,17 +24,4 @@ type AddrFilter interface {
 	FilterLocal(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
 	// FilterRemote is a function that filters the multi addresses which we received from the remote peer.
 	FilterRemote(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr
-}
-
-// DefaultAddrFilter is the default address filtering logic. It strips
-// all relayed multi addresses from both the locally observed addresses
-// and received remote addresses.
-type DefaultAddrFilter struct{}
-
-func (d DefaultAddrFilter) FilterLocal(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
-	return removeRelayAddrs(maddrs)
-}
-
-func (d DefaultAddrFilter) FilterRemote(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
-	return removeRelayAddrs(maddrs)
 }

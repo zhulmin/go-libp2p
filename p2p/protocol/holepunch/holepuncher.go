@@ -206,10 +206,14 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	str.SetDeadline(time.Now().Add(StreamTimeout))
 
 	// send a CONNECT and start RTT measurement.
-	obsAddrs := hp.filter.FilterLocal(str.Conn().RemotePeer(), hp.ids.OwnObservedAddrs())
-	if len(obsAddrs) == 0 {
-		return nil, 0, errors.New("aborting hole punch initiation, as we have no public address after filtering")
+	obsAddrs := removeRelayAddrs(hp.ids.OwnObservedAddrs())
+	if hp.filter != nil {
+		obsAddrs = hp.filter.FilterLocal(str.Conn().RemotePeer(), obsAddrs)
 	}
+	if len(obsAddrs) == 0 {
+		return nil, 0, errors.New("aborting hole punch initiation as we have no public address")
+	}
+
 	start := time.Now()
 	if err := w.WriteMsg(&pb.HolePunch{
 		Type:     pb.HolePunch_CONNECT.Enum(),
@@ -228,7 +232,12 @@ func (hp *holePuncher) initiateHolePunchImpl(str network.Stream) ([]ma.Multiaddr
 	if t := msg.GetType(); t != pb.HolePunch_CONNECT {
 		return nil, 0, fmt.Errorf("expect CONNECT message, got %s", t)
 	}
-	addrs := hp.filter.FilterRemote(str.Conn().RemotePeer(), addrsFromBytes(msg.ObsAddrs))
+
+	addrs := removeRelayAddrs(addrsFromBytes(msg.ObsAddrs))
+	if hp.filter != nil {
+		addrs = hp.filter.FilterRemote(str.Conn().RemotePeer(), addrs)
+	}
+
 	if len(addrs) == 0 {
 		return nil, 0, errors.New("didn't receive any public addresses in CONNECT")
 	}
