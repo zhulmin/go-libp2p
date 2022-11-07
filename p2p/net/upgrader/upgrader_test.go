@@ -14,7 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
-	"github.com/libp2p/go-libp2p/p2p/net/upgrader"
+	upgrader "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 
 	"github.com/golang/mock/gomock"
 	ma "github.com/multiformats/go-multiaddr"
@@ -26,7 +26,7 @@ func createUpgrader(t *testing.T, opts ...upgrader.Option) (peer.ID, transport.U
 	return createUpgraderWithMuxer(t, &negotiatingMuxer{}, opts...)
 }
 
-func createUpgraderWithMuxer(t *testing.T, muxer network.Multiplexer, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
+func createUpgraderWithMuxer(t *testing.T, muxer upgrader.MsTransport, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
 	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 	require.NoError(t, err)
 	id, err := peer.IDFromPrivateKey(priv)
@@ -40,7 +40,9 @@ func createUpgraderWithMuxer(t *testing.T, muxer network.Multiplexer, opts ...up
 // It makes sure that this happens at the same time for client and server.
 type negotiatingMuxer struct{}
 
-func (m *negotiatingMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+var _ upgrader.MsTransport = &negotiatingMuxer{}
+
+func (m *negotiatingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.StmMuxer, error) {
 	var err error
 	// run a fake muxer negotiation
 	if isServer {
@@ -51,7 +53,19 @@ func (m *negotiatingMuxer) NewConn(c net.Conn, isServer bool, scope network.Peer
 	if err != nil {
 		return nil, err
 	}
-	return yamux.DefaultTransport.NewConn(c, isServer, scope)
+
+	return &upgrader.StmMuxer{
+		ID:          "/yamux/1.0.0",
+		StreamMuxer: yamux.DefaultTransport,
+	}, nil
+
+	//return yamux.DefaultTransport.NewConn(c, isServer, scope)
+}
+
+func (m *negotiatingMuxer) AddTransport(path string, tpt network.Multiplexer) {}
+
+func (m *negotiatingMuxer) GetTransportByKey(key string) (network.Multiplexer, bool) {
+	return nil, false
 }
 
 // blockingMuxer blocks the muxer negotiation until the contain chan is closed
@@ -59,15 +73,21 @@ type blockingMuxer struct {
 	unblock chan struct{}
 }
 
-var _ network.Multiplexer = &blockingMuxer{}
+var _ upgrader.MsTransport = &blockingMuxer{}
 
 func newBlockingMuxer() *blockingMuxer {
 	return &blockingMuxer{unblock: make(chan struct{})}
 }
 
-func (m *blockingMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (m *blockingMuxer) AddTransport(path string, tpt network.Multiplexer) {}
+
+func (m *blockingMuxer) GetTransportByKey(key string) (network.Multiplexer, bool) {
+	return nil, false
+}
+
+func (m *blockingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.StmMuxer, error) {
 	<-m.unblock
-	return (&negotiatingMuxer{}).NewConn(c, isServer, scope)
+	return (&negotiatingMuxer{}).NegotiateMuxer(c, isServer)
 }
 
 func (m *blockingMuxer) Unblock() {
@@ -77,10 +97,16 @@ func (m *blockingMuxer) Unblock() {
 // errorMuxer is a muxer that errors while setting up
 type errorMuxer struct{}
 
-var _ network.Multiplexer = &errorMuxer{}
+var _ upgrader.MsTransport = &errorMuxer{}
 
-func (m *errorMuxer) NewConn(c net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (m *errorMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.StmMuxer, error) {
 	return nil, errors.New("mux error")
+}
+
+func (m *errorMuxer) AddTransport(path string, tpt network.Multiplexer) {}
+
+func (m *errorMuxer) GetTransportByKey(string) (network.Multiplexer, bool) {
+	return nil, false
 }
 
 func testConn(t *testing.T, clientConn, serverConn transport.CapableConn) {

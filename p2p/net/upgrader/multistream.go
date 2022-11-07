@@ -1,6 +1,4 @@
-// Package muxer_multistream implements a peerstream transport using
-// go-multistream to select the underlying stream muxer
-package muxer_multistream
+package upgrader
 
 import (
 	"fmt"
@@ -14,6 +12,17 @@ import (
 
 var DefaultNegotiateTimeout = time.Second * 60
 
+type StmMuxer struct {
+	ID          string
+	StreamMuxer network.Multiplexer
+}
+
+type MsTransport interface {
+	AddTransport(path string, tpt network.Multiplexer)
+	NegotiateMuxer(nc net.Conn, isServer bool) (*StmMuxer, error)
+	GetTransportByKey(key string) (network.Multiplexer, bool)
+}
+
 type Transport struct {
 	mux *mss.MultistreamMuxer
 
@@ -24,7 +33,7 @@ type Transport struct {
 	OrderPreference []string
 }
 
-func NewBlankTransport() *Transport {
+func NewBlankTransport() MsTransport {
 	return &Transport{
 		mux:              mss.NewMultistreamMuxer(),
 		tpts:             make(map[string]network.Multiplexer),
@@ -38,7 +47,7 @@ func (t *Transport) AddTransport(path string, tpt network.Multiplexer) {
 	t.OrderPreference = append(t.OrderPreference, path)
 }
 
-func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope) (network.MuxedConn, error) {
+func (t *Transport) NegotiateMuxer(nc net.Conn, isServer bool) (*StmMuxer, error) {
 	if t.NegotiateTimeout != 0 {
 		if err := nc.SetDeadline(time.Now().Add(t.NegotiateTimeout)); err != nil {
 			return nil, err
@@ -70,8 +79,10 @@ func (t *Transport) NewConn(nc net.Conn, isServer bool, scope network.PeerScope)
 	if !ok {
 		return nil, fmt.Errorf("selected protocol we don't have a transport for")
 	}
-
-	return tpt.NewConn(nc, isServer, scope)
+	return &StmMuxer{
+		ID:          proto,
+		StreamMuxer: tpt,
+	}, nil
 }
 
 func (t *Transport) GetTransportByKey(key string) (network.Multiplexer, bool) {

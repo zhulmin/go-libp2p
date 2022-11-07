@@ -178,7 +178,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 			return err
 		}
 	}
-	muxer, err := makeMuxer(h, cfg.Muxers)
+	muxer, err := makeMsMuxer(h, cfg.Muxers)
 	if err != nil {
 		return err
 	}

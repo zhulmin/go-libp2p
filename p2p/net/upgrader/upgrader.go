@@ -13,7 +13,6 @@ import (
 	ipnet "github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/transport"
-	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
 
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -61,8 +60,8 @@ func WithResourceManager(m network.ResourceManager) Option {
 // Upgrader is a multistream upgrader that can upgrade an underlying connection
 // to a full transport connection (secure and multiplexed).
 type upgrader struct {
-	secure sec.SecureMuxer
-	muxer  network.Multiplexer
+	secure  sec.SecureMuxer
+	mstream MsTransport
 
 	psk       ipnet.PSK
 	connGater connmgr.ConnectionGater
@@ -78,10 +77,10 @@ type upgrader struct {
 
 var _ transport.Upgrader = &upgrader{}
 
-func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, opts ...Option) (transport.Upgrader, error) {
+func New(secureMuxer sec.SecureMuxer, mstream MsTransport, opts ...Option) (transport.Upgrader, error) {
 	u := &upgrader{
 		secure:        secureMuxer,
-		muxer:         muxer,
+		mstream:       mstream,
 		acceptTimeout: defaultAcceptTimeout,
 	}
 	for _, opt := range opts {
@@ -196,11 +195,10 @@ func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, 
 }
 
 func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
-	msmuxer, ok := u.muxer.(*msmux.Transport)
 	muxerSelected := conn.ConnState().NextProto
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
-	if ok && len(muxerSelected) > 0 {
-		tpt, ok := msmuxer.GetTransportByKey(muxerSelected)
+	if len(muxerSelected) > 0 {
+		tpt, ok := u.mstream.GetTransportByKey(muxerSelected)
 		if !ok {
 			return nil, fmt.Errorf("selected a muxer we don't know: %s", muxerSelected)
 		}
@@ -212,10 +210,14 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 
 	var smconn network.MuxedConn
 	var err error
-	// TODO: The muxer should take a context.
+	var streamMuxer *StmMuxer
+
 	go func() {
 		defer close(done)
-		smconn, err = u.muxer.NewConn(conn, server, scope)
+		streamMuxer, err = u.mstream.NegotiateMuxer(conn, server)
+		if err == nil {
+			smconn, err = streamMuxer.StreamMuxer.NewConn(conn, server, scope)
+		}
 	}()
 
 	select {

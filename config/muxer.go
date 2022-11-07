@@ -5,7 +5,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
+	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 )
 
 // MuxC is a stream multiplex transport constructor.
@@ -43,8 +43,8 @@ func MuxerConstructor(m interface{}) (MuxC, error) {
 	}, nil
 }
 
-func makeMuxer(h host.Host, tpts []MsMuxC) (network.Multiplexer, error) {
-	muxMuxer := msmux.NewBlankTransport()
+func makeMsMuxer(h host.Host, tpts []MsMuxC) (tptu.MsTransport, error) {
+	muxMuxer := tptu.NewBlankTransport()
 	transportSet := make(map[string]struct{}, len(tpts))
 	for _, tptC := range tpts {
 		if _, ok := transportSet[tptC.ID]; ok {

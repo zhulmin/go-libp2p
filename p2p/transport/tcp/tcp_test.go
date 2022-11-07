@@ -22,16 +22,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func makeMsTransport() tptu.MsTransport {
+	muxer := tptu.NewBlankTransport()
+	muxer.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
+	return muxer
+}
+
 func TestTcpTransport(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		peerA, ia := makeInsecureMuxer(t)
 		_, ib := makeInsecureMuxer(t)
 
-		ua, err := tptu.New(ia, yamux.DefaultTransport)
+		ua, err := tptu.New(ia, makeMsTransport())
 		require.NoError(t, err)
 		ta, err := NewTCPTransport(ua, nil)
 		require.NoError(t, err)
-		ub, err := tptu.New(ib, yamux.DefaultTransport)
+		ub, err := tptu.New(ib, makeMsTransport())
 		require.NoError(t, err)
 		tb, err := NewTCPTransport(ub, nil)
 		require.NoError(t, err)
@@ -48,11 +54,11 @@ func TestTcpTransportWithMetrics(t *testing.T) {
 	peerA, ia := makeInsecureMuxer(t)
 	_, ib := makeInsecureMuxer(t)
 
-	ua, err := tptu.New(ia, yamux.DefaultTransport)
+	ua, err := tptu.New(ia, makeMsTransport())
 	require.NoError(t, err)
 	ta, err := NewTCPTransport(ua, nil, WithMetrics())
 	require.NoError(t, err)
-	ub, err := tptu.New(ib, yamux.DefaultTransport)
+	ub, err := tptu.New(ib, makeMsTransport())
 	require.NoError(t, err)
 	tb, err := NewTCPTransport(ub, nil, WithMetrics())
 	require.NoError(t, err)
@@ -68,7 +74,7 @@ func TestResourceManager(t *testing.T) {
 	peerA, ia := makeInsecureMuxer(t)
 	_, ib := makeInsecureMuxer(t)
 
-	ua, err := tptu.New(ia, yamux.DefaultTransport)
+	ua, err := tptu.New(ia, makeMsTransport())
 	require.NoError(t, err)
 	ta, err := NewTCPTransport(ua, nil)
 	require.NoError(t, err)
@@ -76,7 +82,7 @@ func TestResourceManager(t *testing.T) {
 	require.NoError(t, err)
 	defer ln.Close()
 
-	ub, err := tptu.New(ib, yamux.DefaultTransport)
+	ub, err := tptu.New(ib, makeMsTransport())
 	require.NoError(t, err)
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	tb, err := NewTCPTransport(ub, rcmgr)

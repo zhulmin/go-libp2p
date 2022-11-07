@@ -36,10 +36,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func makeMsTransport() tptu.MsTransport {
+	muxer := tptu.NewBlankTransport()
+	muxer.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
+	return muxer
+}
+
 func newUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 	t.Helper()
 	id, m := newInsecureMuxer(t)
-	u, err := tptu.New(m, yamux.DefaultTransport)
+	u, err := tptu.New(m, makeMsTransport())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +55,7 @@ func newUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 func newSecureUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
 	t.Helper()
 	id, m := newSecureMuxer(t)
-	u, err := tptu.New(m, yamux.DefaultTransport)
+	u, err := tptu.New(m, makeMsTransport())
 	if err != nil {
 		t.Fatal(err)
 	}
