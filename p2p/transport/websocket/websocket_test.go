@@ -37,8 +37,8 @@ import (
 )
 
 func makeMsTransport() tptu.MsTransport {
-	muxer := tptu.NewBlankTransport()
-	muxer.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
+	muxer := tptu.NewMsTransport()
+	muxer.AddMuxer("/yamux/1.0.0", yamux.DefaultTransport)
 	return muxer
 }
 

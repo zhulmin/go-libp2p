@@ -44,7 +44,7 @@ func MuxerConstructor(m interface{}) (MuxC, error) {
 }
 
 func makeMsMuxer(h host.Host, tpts []MsMuxC) (tptu.MsTransport, error) {
-	muxMuxer := tptu.NewBlankTransport()
+	muxMuxer := tptu.NewMsTransport()
 	transportSet := make(map[string]struct{}, len(tpts))
 	for _, tptC := range tpts {
 		if _, ok := transportSet[tptC.ID]; ok {
@@ -57,7 +57,7 @@ func makeMsMuxer(h host.Host, tpts []MsMuxC) (tptu.MsTransport, error) {
 		if err != nil {
 			return nil, err
 		}
-		muxMuxer.AddTransport(tptC.ID, tpt)
+		muxMuxer.AddMuxer(tptC.ID, tpt)
 	}
 	return muxMuxer, nil
 }

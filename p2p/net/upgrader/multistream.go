@@ -18,7 +18,7 @@ type StmMuxer struct {
 }
 
 type MsTransport interface {
-	AddTransport(path string, tpt network.Multiplexer)
+	AddMuxer(path string, tpt network.Multiplexer)
 	NegotiateMuxer(nc net.Conn, isServer bool) (*StmMuxer, error)
 	GetTransportByKey(key string) (network.Multiplexer, bool)
 }
@@ -33,7 +33,7 @@ type Transport struct {
 	OrderPreference []string
 }
 
-func NewBlankTransport() MsTransport {
+func NewMsTransport() MsTransport {
 	return &Transport{
 		mux:              mss.NewMultistreamMuxer(),
 		tpts:             make(map[string]network.Multiplexer),
@@ -41,7 +41,7 @@ func NewBlankTransport() MsTransport {
 	}
 }
 
-func (t *Transport) AddTransport(path string, tpt network.Multiplexer) {
+func (t *Transport) AddMuxer(path string, tpt network.Multiplexer) {
 	t.mux.AddHandler(path, nil)
 	t.tpts[path] = tpt
 	t.OrderPreference = append(t.OrderPreference, path)

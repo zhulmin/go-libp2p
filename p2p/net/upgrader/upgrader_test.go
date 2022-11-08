@@ -62,7 +62,7 @@ func (m *negotiatingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.
 	//return yamux.DefaultTransport.NewConn(c, isServer, scope)
 }
 
-func (m *negotiatingMuxer) AddTransport(path string, tpt network.Multiplexer) {}
+func (m *negotiatingMuxer) AddMuxer(path string, tpt network.Multiplexer) {}
 
 func (m *negotiatingMuxer) GetTransportByKey(key string) (network.Multiplexer, bool) {
 	return nil, false
@@ -79,7 +79,7 @@ func newBlockingMuxer() *blockingMuxer {
 	return &blockingMuxer{unblock: make(chan struct{})}
 }
 
-func (m *blockingMuxer) AddTransport(path string, tpt network.Multiplexer) {}
+func (m *blockingMuxer) AddMuxer(path string, tpt network.Multiplexer) {}
 
 func (m *blockingMuxer) GetTransportByKey(key string) (network.Multiplexer, bool) {
 	return nil, false
@@ -103,7 +103,7 @@ func (m *errorMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.StmMux
 	return nil, errors.New("mux error")
 }
 
-func (m *errorMuxer) AddTransport(path string, tpt network.Multiplexer) {}
+func (m *errorMuxer) AddMuxer(path string, tpt network.Multiplexer) {}
 
 func (m *errorMuxer) GetTransportByKey(string) (network.Multiplexer, bool) {
 	return nil, false
