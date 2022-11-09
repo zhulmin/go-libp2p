@@ -19,7 +19,7 @@ type Multiplexer struct {
 
 type MsTransport interface {
 	AddMuxer(path string, tpt network.Multiplexer)
-	NegotiateMuxer(nc net.Conn, isServer bool) (*StmMuxer, error)
+	NegotiateMuxer(nc net.Conn, isServer bool) (*Multiplexer, error)
 	GetTransportByKey(key string) (network.Multiplexer, bool)
 }
 
@@ -47,7 +47,7 @@ func (t *Transport) AddMuxer(path string, tpt network.Multiplexer) {
 	t.OrderPreference = append(t.OrderPreference, path)
 }
 
-func (t *Transport) NegotiateMuxer(nc net.Conn, isServer bool) (*StmMuxer, error) {
+func (t *Transport) NegotiateMuxer(nc net.Conn, isServer bool) (*Multiplexer, error) {
 	if t.NegotiateTimeout != 0 {
 		if err := nc.SetDeadline(time.Now().Add(t.NegotiateTimeout)); err != nil {
 			return nil, err
@@ -79,7 +79,7 @@ func (t *Transport) NegotiateMuxer(nc net.Conn, isServer bool) (*StmMuxer, error
 	if !ok {
 		return nil, fmt.Errorf("selected protocol we don't have a transport for")
 	}
-	return &StmMuxer{
+	return &Multiplexer{
 		ID:          proto,
 		StreamMuxer: tpt,
 	}, nil

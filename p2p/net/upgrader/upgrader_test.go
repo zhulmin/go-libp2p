@@ -42,7 +42,7 @@ type negotiatingMuxer struct{}
 
 var _ upgrader.MsTransport = &negotiatingMuxer{}
 
-func (m *negotiatingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.StmMuxer, error) {
+func (m *negotiatingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.Multiplexer, error) {
 	var err error
 	// run a fake muxer negotiation
 	if isServer {
@@ -54,12 +54,10 @@ func (m *negotiatingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.
 		return nil, err
 	}
 
-	return &upgrader.StmMuxer{
+	return &upgrader.Multiplexer{
 		ID:          "/yamux/1.0.0",
 		StreamMuxer: yamux.DefaultTransport,
 	}, nil
-
-	//return yamux.DefaultTransport.NewConn(c, isServer, scope)
 }
 
 func (m *negotiatingMuxer) AddMuxer(path string, tpt network.Multiplexer) {}
@@ -85,7 +83,7 @@ func (m *blockingMuxer) GetTransportByKey(key string) (network.Multiplexer, bool
 	return nil, false
 }
 
-func (m *blockingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.StmMuxer, error) {
+func (m *blockingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.Multiplexer, error) {
 	<-m.unblock
 	return (&negotiatingMuxer{}).NegotiateMuxer(c, isServer)
 }
@@ -99,7 +97,7 @@ type errorMuxer struct{}
 
 var _ upgrader.MsTransport = &errorMuxer{}
 
-func (m *errorMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.StmMuxer, error) {
+func (m *errorMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.Multiplexer, error) {
 	return nil, errors.New("mux error")
 }
 

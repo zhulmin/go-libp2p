@@ -210,7 +210,7 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 
 	var smconn network.MuxedConn
 	var err error
-	var streamMuxer *StmMuxer
+	var streamMuxer *Multiplexer
 
 	go func() {
 		defer close(done)
