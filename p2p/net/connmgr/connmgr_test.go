@@ -807,36 +807,57 @@ func (m mockConn) NewStream(ctx context.Context) (network.Stream, error) { panic
 func (m mockConn) GetStreams() []network.Stream                          { panic("implement me") }
 func (m mockConn) Scope() network.ConnScope                              { panic("implement me") }
 
+func makeSegmentsWithPeerInfos(peerInfos peerInfos) *segments {
+	var s = func() *segments {
+		ret := segments{}
+		for i := range ret.buckets {
+			ret.buckets[i] = &segment{
+				peers: make(map[peer.ID]*peerInfo),
+			}
+		}
+		return &ret
+	}()
+
+	for _, pi := range peerInfos {
+		segment := s.get(pi.id)
+		segment.Lock()
+		segment.peers[pi.id] = pi
+		segment.Unlock()
+	}
+
+	return s
+}
+
 func TestPeerInfoSorting(t *testing.T) {
 	t.Run("starts with temporary connections", func(t *testing.T) {
-		p1 := peerInfo{id: peer.ID("peer1")}
-		p2 := peerInfo{id: peer.ID("peer2"), temp: true}
+		p1 := &peerInfo{id: peer.ID("peer1")}
+		p2 := &peerInfo{id: peer.ID("peer2"), temp: true}
 		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams(false)
+		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
 	t.Run("starts with low-value connections", func(t *testing.T) {
-		p1 := peerInfo{id: peer.ID("peer1"), value: 40}
-		p2 := peerInfo{id: peer.ID("peer2"), value: 20}
+		p1 := &peerInfo{id: peer.ID("peer1"), value: 40}
+		p2 := &peerInfo{id: peer.ID("peer2"), value: 20}
 		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams(false)
+		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
 	t.Run("prefer peers with no streams", func(t *testing.T) {
-		p1 := peerInfo{id: peer.ID("peer1"),
+		p1 := &peerInfo{id: peer.ID("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 0}}: time.Now(),
 			},
 		}
-		p2 := peerInfo{id: peer.ID("peer2"),
+		p2 := &peerInfo{id: peer.ID("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 1}}: time.Now(),
 			},
 		}
 		pis := peerInfos{p2, p1}
-		pis.SortByValueAndStreams(false)
+		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
 		require.Equal(t, pis, peerInfos{p1, p2})
 	})
 
@@ -848,27 +869,27 @@ func TestPeerInfoSorting(t *testing.T) {
 
 		outgoingSomeStreams := network.ConnStats{Stats: network.Stats{Direction: network.DirOutbound}, NumStreams: 1}
 		outgoingMoreStreams := network.ConnStats{Stats: network.Stats{Direction: network.DirOutbound}, NumStreams: 2}
-		p1 := peerInfo{
+		p1 := &peerInfo{
 			id: peer.ID("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoingSomeStreams}: time.Now(),
 			},
 		}
-		p2 := peerInfo{
+		p2 := &peerInfo{
 			id: peer.ID("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoingSomeStreams}: time.Now(),
 				&mockConn{stats: incoming}:            time.Now(),
 			},
 		}
-		p3 := peerInfo{
+		p3 := &peerInfo{
 			id: peer.ID("peer3"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoing}: time.Now(),
 				&mockConn{stats: incoming}: time.Now(),
 			},
 		}
-		p4 := peerInfo{
+		p4 := &peerInfo{
 			id: peer.ID("peer4"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoingMoreStreams}: time.Now(),
@@ -876,7 +897,7 @@ func TestPeerInfoSorting(t *testing.T) {
 			},
 		}
 		pis := peerInfos{p1, p2, p3, p4}
-		pis.SortByValueAndStreams(true)
+		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), true)
 		// p3 is first because it is inactive (no streams).
 		// p4 is second because it has the most streams and we priortize killing
 		// connections with the higher number of streams.
@@ -884,13 +905,13 @@ func TestPeerInfoSorting(t *testing.T) {
 	})
 
 	t.Run("in a memory emergency, starts with connections that have many streams", func(t *testing.T) {
-		p1 := peerInfo{
+		p1 := &peerInfo{
 			id: peer.ID("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 100}}: time.Now(),
 			},
 		}
-		p2 := peerInfo{
+		p2 := &peerInfo{
 			id: peer.ID("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 80}}: time.Now(),
@@ -898,7 +919,49 @@ func TestPeerInfoSorting(t *testing.T) {
 			},
 		}
 		pis := peerInfos{p1, p2}
-		pis.SortByValueAndStreams(true)
+		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), true)
 		require.Equal(t, pis, peerInfos{p2, p1})
+	})
+}
+
+func TestSafeConcurrency(t *testing.T) {
+	t.Run("Safe Concurrency", func(t *testing.T) {
+		cl := clock.NewMock()
+
+		p1 := &peerInfo{id: peer.ID("peer1"), conns: map[network.Conn]time.Time{}}
+		p2 := &peerInfo{id: peer.ID("peer2"), conns: map[network.Conn]time.Time{}}
+		pis := peerInfos{p1, p2}
+
+		ss := makeSegmentsWithPeerInfos(pis)
+
+		const runs = 10
+		const concurrency = 10
+		var wg sync.WaitGroup
+		for i := 0; i < concurrency; i++ {
+			wg.Add(1)
+			go func() {
+				// add conns. This mimics new connection events
+				pis := peerInfos{p1, p2}
+				for i := 0; i < runs; i++ {
+					pi := pis[i%len(pis)]
+					s := ss.get(pi.id)
+					s.Lock()
+					s.peers[pi.id].conns[randConn(t, nil)] = cl.Now()
+					s.Unlock()
+				}
+				wg.Done()
+			}()
+
+			wg.Add(1)
+			go func() {
+				pis := peerInfos{p1, p2}
+				for i := 0; i < runs; i++ {
+					pis.SortByValueAndStreams(ss, false)
+				}
+				wg.Done()
+			}()
+		}
+
+		wg.Wait()
 	})
 }
