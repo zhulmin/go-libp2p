@@ -12,7 +12,7 @@ import (
 
 var DefaultNegotiateTimeout = time.Second * 60
 
-type StmMuxer struct {
+type Multiplexer struct {
 	ID          string
 	StreamMuxer network.Multiplexer
 }
