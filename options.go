@@ -489,3 +489,10 @@ func WithDialTimeout(t time.Duration) Option {
 		return nil
 	}
 }
+
+func WithHTTP(hcfg bhost.HTTPConfig) Option {
+	return func(cfg *Config) error {
+		cfg.HTTPConfig = hcfg
+		return nil
+	}
+}

@@ -108,6 +108,8 @@ type Config struct {
 
 	EnableHolePunching  bool
 	HolePunchingOptions []holepunch.Option
+
+	HTTPConfig bhost.HTTPConfig
 }
 
 func (cfg *Config) makeSwarm() (*swarm.Swarm, error) {
@@ -236,6 +238,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		HolePunchingOptions: cfg.HolePunchingOptions,
 		EnableRelayService:  cfg.EnableRelayService,
 		RelayServiceOpts:    cfg.RelayServiceOpts,
+		HTTPConfig:          cfg.HTTPConfig,
 	})
 	if err != nil {
 		swrm.Close()

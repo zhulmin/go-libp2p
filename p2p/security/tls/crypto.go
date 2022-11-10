@@ -9,8 +9,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"runtime/debug"
@@ -135,6 +137,41 @@ func (i *Identity) ConfigForPeer(remote peer.ID) (*tls.Config, <-chan ic.PubKey)
 		return nil
 	}
 	return conf, keyCh
+}
+
+// ConfigWithVerify Makes sure the peer has a valid libp2p extension in their cert
+func (i *Identity) ConfigWithVerify() *tls.Config {
+	// We need to check the peer ID in the VerifyPeerCertificate callback.
+	// The tls.Config it is also used for listening, and we might also have concurrent dials.
+	// Clone it so we can check for the specific peer ID we're dialing here.
+	conf := i.config.Clone()
+	// We're using InsecureSkipVerify, so the verifiedChains parameter will always be empty.
+	// We need to parse the certificates ourselves from the raw certs.
+	conf.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) (err error) {
+		defer func() {
+			if rerr := recover(); rerr != nil {
+				fmt.Fprintf(os.Stderr, "panic when processing peer certificate in TLS handshake: %s\n%s\n", rerr, debug.Stack())
+				err = fmt.Errorf("panic when processing peer certificate in TLS handshake: %s", rerr)
+
+			}
+		}()
+
+		chain := make([]*x509.Certificate, len(rawCerts))
+		for i := 0; i < len(rawCerts); i++ {
+			cert, err := x509.ParseCertificate(rawCerts[i])
+			if err != nil {
+				return err
+			}
+			chain[i] = cert
+		}
+
+		_, err = PubKeyFromCertChain(chain)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return conf
 }
 
 // PubKeyFromCertChain verifies the certificate chain and extract the remote's public key.
@@ -267,4 +304,24 @@ func certTemplate() (*x509.Certificate, error) {
 		// see https://datatracker.ietf.org/doc/html/rfc3280#section-4.1.2.4.
 		Subject: pkix.Name{SerialNumber: subjectSN.String()},
 	}, nil
+}
+
+// ExportCert will write the certificate and *private key* to the writer
+// specified. Use this if you need to export this certificate (e.g. using it as
+// your TLS cert for static content server to handle requests from libp2p nodes)
+func (i *Identity) ExportCert(certDst io.Writer, keyDst io.Writer) error {
+	cert := i.config.Certificates[0]
+	pem.Encode(certDst, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.Certificate[0],
+	})
+	privKey, err := x509.MarshalECPrivateKey(cert.PrivateKey.(*ecdsa.PrivateKey))
+	if err != nil {
+		return err
+	}
+	pem.Encode(keyDst, &pem.Block{
+		Type:  "EC PRIVATE KEY",
+		Bytes: privKey,
+	})
+	return nil
 }

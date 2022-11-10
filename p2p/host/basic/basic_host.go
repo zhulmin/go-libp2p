@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -61,6 +62,8 @@ type AddrsFactory func([]ma.Multiaddr) []ma.Multiaddr
 //   - uses an identity service to send + receive node information
 //   - uses a nat service to establish NAT port mappings
 type BasicHost struct {
+	httpHost
+
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	// ensures we shutdown ONLY once
@@ -151,6 +154,8 @@ type HostOpts struct {
 	EnableHolePunching bool
 	// HolePunchingOptions are options for the hole punching service
 	HolePunchingOptions []holepunch.Option
+
+	HTTPConfig HTTPConfig
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -177,7 +182,18 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
+		httpHost: httpHost{
+			privKey: n.Peerstore().PrivKey(n.LocalPeer()),
+			ps:      n.Peerstore(),
+			c:       n,
+			clients: map[peer.ID]*http.Client{},
+			certToPeer: memoizedCertToPeer{
+				m: map[uint64]peer.ID{},
+			},
+		},
 	}
+
+	h.httpHost.s = h
 
 	h.updateLocalIpAddr()
 
@@ -291,6 +307,15 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ListenF:      listenHandler,
 		ListenCloseF: listenHandler,
 	})
+
+	if opts.HTTPConfig.EnableHTTP {
+		// TODO, allow these to be cancelled
+		go h.httpHost.ListenHTTPOverLibp2p()
+
+		if opts.HTTPConfig.HTTPServerAddr != nil {
+			go h.httpHost.ListenHTTP(opts.HTTPConfig.HTTPServerAddr)
+		}
+	}
 
 	return h, nil
 }
@@ -763,7 +788,8 @@ func dedupAddrs(addrs []ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
 // It's ok to not include addresses if they're not available to be used now.
 func (h *BasicHost) AllAddrs() []ma.Multiaddr {
-	listenAddrs := h.Network().ListenAddresses()
+	httpListenAddrs := h.httpHost.ListenAddrs()
+	listenAddrs := append(httpListenAddrs, h.Network().ListenAddresses()...)
 	if len(listenAddrs) == 0 {
 		return nil
 	}
