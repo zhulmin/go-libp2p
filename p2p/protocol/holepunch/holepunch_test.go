@@ -192,7 +192,7 @@ func TestFailuresOnInitiator(t *testing.T) {
 			errMsg: "i/o deadline reached",
 		},
 		"no addrs after filtering": {
-			errMsg: "aborting hole punch initiation, as we have no public address after filtering",
+			errMsg: "aborting hole punch initiation as we have no public address",
 			filter: func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
 				return []ma.Multiaddr{}
 			},
