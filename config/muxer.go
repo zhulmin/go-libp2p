@@ -5,7 +5,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 )
 
 // MuxC is a stream multiplex transport constructor.
@@ -43,21 +42,23 @@ func MuxerConstructor(m interface{}) (MuxC, error) {
 	}, nil
 }
 
-func makeMsMuxer(h host.Host, tpts []MsMuxC) (tptu.MsTransport, error) {
-	muxMuxer := tptu.NewMsTransport()
+func makeMuxers(h host.Host, tpts []MsMuxC) (map[string]network.Multiplexer, []string, error) {
 	transportSet := make(map[string]struct{}, len(tpts))
+	muxers := make(map[string]network.Multiplexer)
+	preference := make([]string, 0)
 	for _, tptC := range tpts {
 		if _, ok := transportSet[tptC.ID]; ok {
-			return nil, fmt.Errorf("duplicate muxer transport: %s", tptC.ID)
+			return nil, nil, fmt.Errorf("duplicate muxer transport: %s", tptC.ID)
 		}
 		transportSet[tptC.ID] = struct{}{}
 	}
 	for _, tptC := range tpts {
 		tpt, err := tptC.MuxC(h)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		muxMuxer.AddMuxer(tptC.ID, tpt)
+		preference = append(preference, tptC.ID)
+		muxers[tptC.ID] = tpt
 	}
-	return muxMuxer, nil
+	return muxers, preference, nil
 }

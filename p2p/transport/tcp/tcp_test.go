@@ -22,10 +22,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeMsTransport() tptu.MsTransport {
-	muxer := tptu.NewMsTransport()
-	muxer.AddMuxer("/yamux/1.0.0", yamux.DefaultTransport)
-	return muxer
+func makeMuxers() (map[string]network.Multiplexer, []string) {
+	muxerId := "/yamux/1.0.0"
+	muxers := make(map[string]network.Multiplexer)
+	muxers[muxerId] = yamux.DefaultTransport
+	return muxers, []string{muxerId}
 }
 
 func TestTcpTransport(t *testing.T) {
@@ -33,11 +34,12 @@ func TestTcpTransport(t *testing.T) {
 		peerA, ia := makeInsecureMuxer(t)
 		_, ib := makeInsecureMuxer(t)
 
-		ua, err := tptu.New(ia, makeMsTransport())
+		muxers, pref := makeMuxers()
+		ua, err := tptu.New(ia, muxers, pref)
 		require.NoError(t, err)
 		ta, err := NewTCPTransport(ua, nil)
 		require.NoError(t, err)
-		ub, err := tptu.New(ib, makeMsTransport())
+		ub, err := tptu.New(ib, muxers, pref)
 		require.NoError(t, err)
 		tb, err := NewTCPTransport(ub, nil)
 		require.NoError(t, err)
@@ -54,11 +56,12 @@ func TestTcpTransportWithMetrics(t *testing.T) {
 	peerA, ia := makeInsecureMuxer(t)
 	_, ib := makeInsecureMuxer(t)
 
-	ua, err := tptu.New(ia, makeMsTransport())
+	muxers, pref := makeMuxers()
+	ua, err := tptu.New(ia, muxers, pref)
 	require.NoError(t, err)
 	ta, err := NewTCPTransport(ua, nil, WithMetrics())
 	require.NoError(t, err)
-	ub, err := tptu.New(ib, makeMsTransport())
+	ub, err := tptu.New(ib, muxers, pref)
 	require.NoError(t, err)
 	tb, err := NewTCPTransport(ub, nil, WithMetrics())
 	require.NoError(t, err)
@@ -74,7 +77,8 @@ func TestResourceManager(t *testing.T) {
 	peerA, ia := makeInsecureMuxer(t)
 	_, ib := makeInsecureMuxer(t)
 
-	ua, err := tptu.New(ia, makeMsTransport())
+	muxers, pref := makeMuxers()
+	ua, err := tptu.New(ia, muxers, pref)
 	require.NoError(t, err)
 	ta, err := NewTCPTransport(ua, nil)
 	require.NoError(t, err)
@@ -82,7 +86,7 @@ func TestResourceManager(t *testing.T) {
 	require.NoError(t, err)
 	defer ln.Close()
 
-	ub, err := tptu.New(ib, makeMsTransport())
+	ub, err := tptu.New(ib, muxers, pref)
 	require.NoError(t, err)
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 	tb, err := NewTCPTransport(ub, rcmgr)

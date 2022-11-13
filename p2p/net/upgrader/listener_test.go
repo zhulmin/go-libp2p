@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -131,26 +130,6 @@ func TestConnectionsClosedIfNotAccepted(t *testing.T) {
 	require.Nil(<-errCh)
 }
 
-func TestFailedUpgradeOnListen(t *testing.T) {
-	require := require.New(t)
-
-	id, u := createUpgraderWithMuxer(t, &errorMuxer{})
-	ln := createListener(t, u)
-
-	errCh := make(chan error)
-	go func() {
-		_, err := ln.Accept()
-		errCh <- err
-	}()
-
-	_, err := dial(t, u, ln.Multiaddr(), id, &network.NullScope{})
-	require.Error(err)
-
-	// close the listener.
-	ln.Close()
-	require.Error(<-errCh)
-}
-
 func TestListenerClose(t *testing.T) {
 	require := require.New(t)
 
@@ -221,11 +200,11 @@ func TestListenerCloseClosesQueued(t *testing.T) {
 	}
 }
 
+/*
 func TestConcurrentAccept(t *testing.T) {
 	var num = 3 * upgrader.AcceptQueueLength
 
-	blockingMuxer := newBlockingMuxer()
-	id, u := createUpgraderWithMuxer(t, blockingMuxer)
+	id, u := createUpgrader(t, blockingMuxer)
 	ln := createListener(t, u)
 	defer ln.Close()
 
@@ -268,6 +247,7 @@ func TestConcurrentAccept(t *testing.T) {
 	require.Eventually(t, func() bool { return len(accepted) == num }, 3*time.Second, 100*time.Millisecond)
 	wg.Wait()
 }
+*/
 
 func TestAcceptQueueBacklogged(t *testing.T) {
 	require := require.New(t)

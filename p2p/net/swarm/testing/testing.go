@@ -104,9 +104,11 @@ func GenUpgrader(t *testing.T, n *swarm.Swarm, opts ...tptu.Option) transport.Up
 	secMuxer := new(csms.SSMuxer)
 	secMuxer.AddTransport(insecure.ID, insecure.NewWithIdentity(id, pk))
 
-	stMuxer := tptu.NewMsTransport()
-	stMuxer.AddMuxer("/yamux/1.0.0", yamux.DefaultTransport)
-	u, err := tptu.New(secMuxer, stMuxer, opts...)
+	muxerId := "/yamux/1.0.0"
+	muxers := make(map[string]network.Multiplexer)
+	muxers[muxerId] = yamux.DefaultTransport
+
+	u, err := tptu.New(secMuxer, muxers, []string{muxerId}, opts...)
 	require.NoError(t, err)
 	return u
 }

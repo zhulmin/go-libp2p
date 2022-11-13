@@ -178,7 +178,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 			return err
 		}
 	}
-	muxer, err := makeMsMuxer(h, cfg.Muxers)
+	muxers, preference, err := makeMuxers(h, cfg.Muxers)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 	if cfg.ResourceManager != nil {
 		opts = append(opts, tptu.WithResourceManager(cfg.ResourceManager))
 	}
-	upgrader, err := tptu.New(secure, muxer, opts...)
+	upgrader, err := tptu.New(secure, muxers, preference, opts...)
 	if err != nil {
 		return err
 	}

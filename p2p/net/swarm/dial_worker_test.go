@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
@@ -78,9 +79,10 @@ func makeUpgrader(t *testing.T, n *Swarm) transport.Upgrader {
 	secMuxer := new(csms.SSMuxer)
 	secMuxer.AddTransport(insecure.ID, insecure.NewWithIdentity(id, pk))
 
-	stMuxer := tptu.NewMsTransport()
-	stMuxer.AddMuxer("/yamux/1.0.0", yamux.DefaultTransport)
-	u, err := tptu.New(secMuxer, stMuxer)
+	muxerId := "/yamux/1.0.0"
+	muxers := make(map[string]network.Multiplexer)
+	muxers[muxerId] = yamux.DefaultTransport
+	u, err := tptu.New(secMuxer, muxers, []string{muxerId})
 	require.NoError(t, err)
 	return u
 }

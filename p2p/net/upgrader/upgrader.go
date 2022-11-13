@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
 
 	manet "github.com/multiformats/go-multiaddr/net"
+	mss "github.com/multiformats/go-multistream"
 )
 
 // ErrNilPeer is returned when attempting to upgrade an outbound connection
@@ -24,6 +25,8 @@ var ErrNilPeer = errors.New("nil peer")
 
 // AcceptQueueLength is the number of connections to fully setup before not accepting any new connections
 var AcceptQueueLength = 16
+
+var defaultNegotiateTimeout = time.Second * 60
 
 const defaultAcceptTimeout = 15 * time.Second
 
@@ -60,8 +63,7 @@ func WithResourceManager(m network.ResourceManager) Option {
 // Upgrader is a multistream upgrader that can upgrade an underlying connection
 // to a full transport connection (secure and multiplexed).
 type upgrader struct {
-	secure  sec.SecureMuxer
-	mstream MsTransport
+	secure sec.SecureMuxer
 
 	psk       ipnet.PSK
 	connGater connmgr.ConnectionGater
@@ -73,15 +75,21 @@ type upgrader struct {
 	//
 	// If unset, the default value (15s) is used.
 	acceptTimeout time.Duration
+
+	msmuxer    *mss.MultistreamMuxer //
+	muxers     map[string]network.Multiplexer
+	preference []string
 }
 
 var _ transport.Upgrader = &upgrader{}
 
-func New(secureMuxer sec.SecureMuxer, mstream MsTransport, opts ...Option) (transport.Upgrader, error) {
+func New(secureMuxer sec.SecureMuxer, muxers map[string]network.Multiplexer, preference []string, opts ...Option) (transport.Upgrader, error) {
 	u := &upgrader{
 		secure:        secureMuxer,
-		mstream:       mstream,
 		acceptTimeout: defaultAcceptTimeout,
+		msmuxer:       mss.NewMultistreamMuxer(),
+		muxers:        muxers,
+		preference:    preference,
 	}
 	for _, opt := range opts {
 		if err := opt(u); err != nil {
@@ -91,7 +99,15 @@ func New(secureMuxer sec.SecureMuxer, mstream MsTransport, opts ...Option) (tran
 	if u.rcmgr == nil {
 		u.rcmgr = &network.NullResourceManager{}
 	}
+	for _, handler := range preference {
+		u.msmuxer.AddHandler(handler, nil)
+	}
 	return u, nil
+}
+
+type multiplexer struct {
+	id          string
+	streamMuxer network.Multiplexer
 }
 
 // UpgradeListener upgrades the passed multiaddr-net listener into a full libp2p-transport listener.
@@ -194,11 +210,46 @@ func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, 
 	return u.secure.SecureOutbound(ctx, conn, p)
 }
 
+func (u *upgrader) negotiateMuxer(nc net.Conn, isServer bool) (*multiplexer, error) {
+	err := nc.SetDeadline(time.Now().Add(defaultNegotiateTimeout))
+	if err != nil {
+		return nil, err
+	}
+
+	var proto string
+	if isServer {
+		selected, _, err := u.msmuxer.Negotiate(nc)
+		if err != nil {
+			return nil, err
+		}
+		proto = selected
+	} else {
+		selected, err := mss.SelectOneOf(u.preference, nc)
+		if err != nil {
+			return nil, err
+		}
+		proto = selected
+	}
+
+	if err := nc.SetDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
+
+	tpt, ok := u.muxers[proto]
+	if !ok {
+		return nil, fmt.Errorf("selected protocol we don't have a transport for")
+	}
+	return &multiplexer{
+		id:          proto,
+		streamMuxer: tpt,
+	}, nil
+}
+
 func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
 	muxerSelected := conn.ConnState().NextProto
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
 	if len(muxerSelected) > 0 {
-		tpt, ok := u.mstream.GetTransportByKey(muxerSelected)
+		tpt, ok := u.muxers[muxerSelected]
 		if !ok {
 			return nil, fmt.Errorf("selected a muxer we don't know: %s", muxerSelected)
 		}
@@ -210,13 +261,14 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 
 	var smconn network.MuxedConn
 	var err error
-	var streamMuxer *Multiplexer
+	var muxer *multiplexer
 
 	go func() {
 		defer close(done)
-		streamMuxer, err = u.mstream.NegotiateMuxer(conn, server)
+		muxer, err = u.negotiateMuxer(conn, server)
+
 		if err == nil {
-			smconn, err = streamMuxer.StreamMuxer.NewConn(conn, server, scope)
+			smconn, err = muxer.streamMuxer.NewConn(conn, server, scope)
 		}
 	}()
 

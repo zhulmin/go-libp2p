@@ -2,8 +2,6 @@ package upgrader_test
 
 import (
 	"context"
-	"errors"
-	"net"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -23,88 +21,17 @@ import (
 )
 
 func createUpgrader(t *testing.T, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxer(t, &negotiatingMuxer{}, opts...)
-}
-
-func createUpgraderWithMuxer(t *testing.T, muxer upgrader.MsTransport, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
 	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 	require.NoError(t, err)
 	id, err := peer.IDFromPrivateKey(priv)
 	require.NoError(t, err)
-	u, err := upgrader.New(&MuxAdapter{tpt: insecure.NewWithIdentity(id, priv)}, muxer, opts...)
+	muxerId := "/yamux/1.0.0"
+	muxers := make(map[string]network.Multiplexer)
+	muxers[muxerId] = yamux.DefaultTransport
+
+	u, err := upgrader.New(&MuxAdapter{tpt: insecure.NewWithIdentity(id, priv)}, muxers, []string{muxerId}, opts...)
 	require.NoError(t, err)
 	return id, u
-}
-
-// negotiatingMuxer sets up a new yamux connection
-// It makes sure that this happens at the same time for client and server.
-type negotiatingMuxer struct{}
-
-var _ upgrader.MsTransport = &negotiatingMuxer{}
-
-func (m *negotiatingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.Multiplexer, error) {
-	var err error
-	// run a fake muxer negotiation
-	if isServer {
-		_, err = c.Write([]byte("setup"))
-	} else {
-		_, err = c.Read(make([]byte, 5))
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &upgrader.Multiplexer{
-		ID:          "/yamux/1.0.0",
-		StreamMuxer: yamux.DefaultTransport,
-	}, nil
-}
-
-func (m *negotiatingMuxer) AddMuxer(path string, tpt network.Multiplexer) {}
-
-func (m *negotiatingMuxer) GetTransportByKey(key string) (network.Multiplexer, bool) {
-	return nil, false
-}
-
-// blockingMuxer blocks the muxer negotiation until the contain chan is closed
-type blockingMuxer struct {
-	unblock chan struct{}
-}
-
-var _ upgrader.MsTransport = &blockingMuxer{}
-
-func newBlockingMuxer() *blockingMuxer {
-	return &blockingMuxer{unblock: make(chan struct{})}
-}
-
-func (m *blockingMuxer) AddMuxer(path string, tpt network.Multiplexer) {}
-
-func (m *blockingMuxer) GetTransportByKey(key string) (network.Multiplexer, bool) {
-	return nil, false
-}
-
-func (m *blockingMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.Multiplexer, error) {
-	<-m.unblock
-	return (&negotiatingMuxer{}).NegotiateMuxer(c, isServer)
-}
-
-func (m *blockingMuxer) Unblock() {
-	close(m.unblock)
-}
-
-// errorMuxer is a muxer that errors while setting up
-type errorMuxer struct{}
-
-var _ upgrader.MsTransport = &errorMuxer{}
-
-func (m *errorMuxer) NegotiateMuxer(c net.Conn, isServer bool) (*upgrader.Multiplexer, error) {
-	return nil, errors.New("mux error")
-}
-
-func (m *errorMuxer) AddMuxer(path string, tpt network.Multiplexer) {}
-
-func (m *errorMuxer) GetTransportByKey(string) (network.Multiplexer, bool) {
-	return nil, false
 }
 
 func testConn(t *testing.T, clientConn, serverConn transport.CapableConn) {
@@ -185,25 +112,6 @@ func TestOutboundResourceManagement(t *testing.T) {
 		require.NotNil(t, conn)
 		connScope.EXPECT().Done()
 		require.NoError(t, conn.Close())
-	})
-
-	t.Run("failed negotiation", func(t *testing.T) {
-		id, upgrader := createUpgraderWithMuxer(t, &errorMuxer{})
-		ln := createListener(t, upgrader)
-		defer ln.Close()
-
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		connScope := mocknetwork.NewMockConnManagementScope(ctrl)
-		gomock.InOrder(
-			connScope.EXPECT().PeerScope(),
-			connScope.EXPECT().SetPeer(id),
-			connScope.EXPECT().PeerScope().Return(&network.NullScope{}),
-			connScope.EXPECT().Done(),
-		)
-		_, dialUpgrader := createUpgrader(t)
-		_, err := dial(t, dialUpgrader, ln.Multiaddr(), id, connScope)
-		require.Error(t, err)
 	})
 
 	t.Run("blocked by the resource manager", func(t *testing.T) {

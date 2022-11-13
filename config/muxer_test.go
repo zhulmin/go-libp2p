@@ -87,7 +87,7 @@ func TestCatchDuplicateTransportsMuxer(t *testing.T) {
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
-			_, err = makeMsMuxer(test.h, test.transports)
+			_, _, err = makeMuxers(test.h, test.transports)
 			if err != nil {
 				if err.Error() != test.expectedError {
 					t.Errorf(
