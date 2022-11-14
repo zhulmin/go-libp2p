@@ -66,7 +66,7 @@ func TestListenAddr(t *testing.T) {
 		defer ln.Close()
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
-		require.Equal(t, ln.Multiaddr().String(), fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", port))
+		require.Equal(t, ln.Multiaddrs()[0].String(), fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", port))
 	})
 
 	t.Run("for IPv6", func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestListenAddr(t *testing.T) {
 		defer ln.Close()
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
-		require.Equal(t, ln.Multiaddr().String(), fmt.Sprintf("/ip6/::/udp/%d/quic", port))
+		require.Equal(t, ln.Multiaddrs()[0].String(), fmt.Sprintf("/ip6/::/udp/%d/quic", port))
 	})
 }
 

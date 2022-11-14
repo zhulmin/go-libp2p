@@ -47,9 +47,9 @@ func (l *mockL) Accept() (transport.CapableConn, error) {
 	<-l.ctx.Done()
 	return nil, errors.New("expected in mocked test")
 }
-func (l *mockL) Close() error                   { return nil }
-func (l *mockL) Addr() net.Addr                 { return nil }
-func (l *mockL) Multiaddr() multiaddr.Multiaddr { return l.addr }
+func (l *mockL) Close() error                      { return nil }
+func (l *mockL) Addr() net.Addr                    { return nil }
+func (l *mockL) Multiaddrs() []multiaddr.Multiaddr { return []multiaddr.Multiaddr{l.addr} }
 
 func TestSkipDial(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

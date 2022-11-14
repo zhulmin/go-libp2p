@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 	tec "github.com/jbenet/go-temp-err-catcher"
+	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -173,6 +174,10 @@ func (l *listener) String() string {
 		return fmt.Sprintf("<stream.Listener[%s] %s>", s, l.Multiaddr())
 	}
 	return fmt.Sprintf("<stream.Listener %s>", l.Multiaddr())
+}
+
+func (l *listener) Multiaddrs() []multiaddr.Multiaddr {
+	return []multiaddr.Multiaddr{l.Multiaddr()}
 }
 
 var _ transport.Listener = (*listener)(nil)

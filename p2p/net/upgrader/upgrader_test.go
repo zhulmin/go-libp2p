@@ -134,21 +134,21 @@ func TestOutboundConnectionGating(t *testing.T) {
 
 	testGater := &testGater{}
 	_, dialUpgrader := createUpgraderWithConnGater(t, testGater)
-	conn, err := dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
+	conn, err := dial(t, dialUpgrader, ln.Multiaddrs()[0], id, &network.NullScope{})
 	require.NoError(err)
 	require.NotNil(conn)
 	_ = conn.Close()
 
 	// blocking accepts doesn't affect the dialling side, only the listener.
 	testGater.BlockAccept(true)
-	conn, err = dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
+	conn, err = dial(t, dialUpgrader, ln.Multiaddrs()[0], id, &network.NullScope{})
 	require.NoError(err)
 	require.NotNil(conn)
 	_ = conn.Close()
 
 	// now let's block all connections after being secured.
 	testGater.BlockSecured(true)
-	conn, err = dial(t, dialUpgrader, ln.Multiaddr(), id, &network.NullScope{})
+	conn, err = dial(t, dialUpgrader, ln.Multiaddrs()[0], id, &network.NullScope{})
 	require.Error(err)
 	require.Contains(err.Error(), "gater rejected connection")
 	require.Nil(conn)
@@ -169,7 +169,7 @@ func TestOutboundResourceManagement(t *testing.T) {
 			connScope.EXPECT().PeerScope().Return(&network.NullScope{}),
 		)
 		_, dialUpgrader := createUpgrader(t)
-		conn, err := dial(t, dialUpgrader, ln.Multiaddr(), id, connScope)
+		conn, err := dial(t, dialUpgrader, ln.Multiaddrs()[0], id, connScope)
 		require.NoError(t, err)
 		require.NotNil(t, conn)
 		connScope.EXPECT().Done()
@@ -191,7 +191,7 @@ func TestOutboundResourceManagement(t *testing.T) {
 			connScope.EXPECT().Done(),
 		)
 		_, dialUpgrader := createUpgrader(t)
-		_, err := dial(t, dialUpgrader, ln.Multiaddr(), id, connScope)
+		_, err := dial(t, dialUpgrader, ln.Multiaddrs()[0], id, connScope)
 		require.Error(t, err)
 	})
 

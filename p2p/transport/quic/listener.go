@@ -164,6 +164,6 @@ func (l *listener) Addr() net.Addr {
 }
 
 // Multiaddr returns the multiaddress of this listener.
-func (l *listener) Multiaddr() ma.Multiaddr {
-	return l.localMultiaddr
+func (l *listener) Multiaddrs() []ma.Multiaddr {
+	return []ma.Multiaddr{l.localMultiaddr}
 }

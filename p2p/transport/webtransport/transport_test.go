@@ -114,7 +114,7 @@ func TestTransport(t *testing.T) {
 		require.NoError(t, err)
 		defer tr2.(io.Closer).Close()
 
-		conn, err := tr2.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err := tr2.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 		str, err := conn.OpenStream(context.Background())
 		require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestTransport(t *testing.T) {
 		require.NoError(t, str.Close())
 
 		// check RemoteMultiaddr
-		_, addr, err := manet.DialArgs(ln.Multiaddr())
+		_, addr, err := manet.DialArgs(ln.Multiaddrs()[0])
 		require.NoError(t, err)
 		_, port, err := net.SplitHostPort(addr)
 		require.NoError(t, err)
@@ -167,14 +167,14 @@ func TestHashVerification(t *testing.T) {
 
 	t.Run("fails using only a wrong hash", func(t *testing.T) {
 		// replace the certificate hash in the multiaddr with a fake hash
-		addr := stripCertHashes(ln.Multiaddr()).Encapsulate(foobarHash)
+		addr := stripCertHashes(ln.Multiaddrs()[0]).Encapsulate(foobarHash)
 		_, err := tr2.Dial(context.Background(), addr, serverID)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "CRYPTO_ERROR (0x12a): cert hash not found")
 	})
 
 	t.Run("fails when adding a wrong hash", func(t *testing.T) {
-		_, err := tr2.Dial(context.Background(), ln.Multiaddr().Encapsulate(foobarHash), serverID)
+		_, err := tr2.Dial(context.Background(), ln.Multiaddrs()[0].Encapsulate(foobarHash), serverID)
 		require.Error(t, err)
 	})
 
@@ -248,9 +248,9 @@ func TestListenerAddrs(t *testing.T) {
 	require.NoError(t, err)
 	ln2, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 	require.NoError(t, err)
-	hashes1 := extractCertHashes(ln1.Multiaddr())
+	hashes1 := extractCertHashes(ln1.Multiaddrs()[0])
 	require.Len(t, hashes1, 2)
-	hashes2 := extractCertHashes(ln2.Multiaddr())
+	hashes2 := extractCertHashes(ln2.Multiaddrs()[0])
 	require.Equal(t, hashes1, hashes2)
 }
 
@@ -304,7 +304,7 @@ func TestResourceManagerListening(t *testing.T) {
 			return nil, errors.New("denied")
 		})
 
-		_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		_, err = cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 		require.EqualError(t, err, "received status 503")
 	})
 
@@ -326,7 +326,7 @@ func TestResourceManagerListening(t *testing.T) {
 		scope.EXPECT().Done().Do(func() { close(serverDone) })
 
 		// The handshake will complete, but the server will immediately close the connection.
-		conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err := cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 		defer conn.Close()
 		clientDone := make(chan struct{})
@@ -365,13 +365,13 @@ func TestConnectionGaterDialing(t *testing.T) {
 	defer ln.Close()
 
 	connGater.EXPECT().InterceptSecured(network.DirOutbound, serverID, gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, stripCertHashes(ln.Multiaddrs()[0]), addrs.RemoteMultiaddr())
 	})
 	_, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, connGater, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer cl.(io.Closer).Close()
-	_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+	_, err = cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 	require.EqualError(t, err, "secured connection gated")
 }
 
@@ -389,15 +389,15 @@ func TestConnectionGaterInterceptAccept(t *testing.T) {
 	defer ln.Close()
 
 	connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.LocalMultiaddr())
-		require.NotEqual(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, stripCertHashes(ln.Multiaddrs()[0]), addrs.LocalMultiaddr())
+		require.NotEqual(t, stripCertHashes(ln.Multiaddrs()[0]), addrs.RemoteMultiaddr())
 	})
 
 	_, key := newIdentity(t)
 	cl, err := libp2pwebtransport.New(key, nil, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer cl.(io.Closer).Close()
-	_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+	_, err = cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 	require.EqualError(t, err, "received status 403")
 }
 
@@ -421,11 +421,11 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 
 	connGater.EXPECT().InterceptAccept(gomock.Any()).Return(true)
 	connGater.EXPECT().InterceptSecured(network.DirInbound, clientID, gomock.Any()).Do(func(_ network.Direction, _ peer.ID, addrs network.ConnMultiaddrs) {
-		require.Equal(t, stripCertHashes(ln.Multiaddr()), addrs.LocalMultiaddr())
-		require.NotEqual(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
+		require.Equal(t, stripCertHashes(ln.Multiaddrs()[0]), addrs.LocalMultiaddr())
+		require.NotEqual(t, stripCertHashes(ln.Multiaddrs()[0]), addrs.RemoteMultiaddr())
 	})
 	// The handshake will complete, but the server will immediately close the connection.
-	conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+	conn, err := cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 	require.NoError(t, err)
 	defer conn.Close()
 	done := make(chan struct{})
@@ -479,7 +479,7 @@ func TestStaticTLSConf(t *testing.T) {
 	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
-	require.Empty(t, extractCertHashes(ln.Multiaddr()), "listener address shouldn't contain any certhash")
+	require.Empty(t, extractCertHashes(ln.Multiaddrs()[0]), "listener address shouldn't contain any certhash")
 
 	t.Run("fails when the certificate is invalid", func(t *testing.T) {
 		_, key := newIdentity(t)
@@ -487,7 +487,7 @@ func TestStaticTLSConf(t *testing.T) {
 		require.NoError(t, err)
 		defer cl.(io.Closer).Close()
 
-		_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		_, err = cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 		require.Error(t, err)
 		if !strings.Contains(err.Error(), "certificate is not trusted") &&
 			!strings.Contains(err.Error(), "certificate signed by unknown authority") {
@@ -501,7 +501,7 @@ func TestStaticTLSConf(t *testing.T) {
 		require.NoError(t, err)
 		defer cl.(io.Closer).Close()
 
-		addr := ln.Multiaddr().Encapsulate(getCerthashComponent(t, []byte("foo")))
+		addr := ln.Multiaddrs()[0].Encapsulate(getCerthashComponent(t, []byte("foo")))
 		_, err = cl.Dial(context.Background(), addr, serverID)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cert hash not found")
@@ -516,8 +516,8 @@ func TestStaticTLSConf(t *testing.T) {
 		require.NoError(t, err)
 		defer cl.(io.Closer).Close()
 
-		require.True(t, cl.CanDial(ln.Multiaddr()))
-		conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		require.True(t, cl.CanDial(ln.Multiaddrs()[0]))
+		conn, err := cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 		defer conn.Close()
 	})
@@ -538,7 +538,7 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 		cl, err := libp2pwebtransport.New(key, nil, &network.NullResourceManager{})
 		require.NoError(t, err)
 		defer cl.(io.Closer).Close()
-		return cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		return cl.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 	}
 
 	for i := 0; i < 16; i++ {
@@ -577,7 +577,7 @@ func TestSNIIsSent(t *testing.T) {
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
 
-	beforeQuicMa, withQuicMa := ma.SplitFunc(ln1.Multiaddr(), func(c ma.Component) bool {
+	beforeQuicMa, withQuicMa := ma.SplitFunc(ln1.Multiaddrs()[0], func(c ma.Component) bool {
 		return c.Protocol().Code == ma.P_QUIC
 	})
 
@@ -663,7 +663,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	defer tr2.(io.Closer).Close()
 
 	var addr ma.Multiaddr
-	for _, comp := range ma.Split(ln.Multiaddr()) {
+	for _, comp := range ma.Split(ln.Multiaddrs()[0]) {
 		if _, err := comp.ValueForProtocol(ma.P_UDP); err == nil {
 			addr = addr.Encapsulate(ma.StringCast(fmt.Sprintf("/udp/%d", proxy.LocalPort())))
 			continue

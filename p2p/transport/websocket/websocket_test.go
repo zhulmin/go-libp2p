@@ -190,7 +190,7 @@ func testWSSServer(t *testing.T, listenAddr ma.Multiaddr) (ma.Multiaddr, peer.ID
 		close(errChan)
 	}()
 
-	return l.Multiaddr(), id, errChan
+	return l.Multiaddrs()[0], id, errChan
 }
 
 func getTLSConf(t *testing.T, ip net.IP, start, end time.Time) *tls.Config {
@@ -330,9 +330,9 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 	l, err := tpt.Listen(laddr)
 	require.NoError(t, err)
 	if secure {
-		require.Contains(t, l.Multiaddr().String(), "tls")
+		require.Contains(t, l.Multiaddrs()[0].String(), "tls")
 	} else {
-		require.Equal(t, lastComponent(t, l.Multiaddr()), wsComponent)
+		require.Equal(t, lastComponent(t, l.Multiaddrs()[0]), wsComponent)
 	}
 	defer l.Close()
 
@@ -346,7 +346,7 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 		_, u := newUpgrader(t)
 		tpt, err := New(u, &network.NullResourceManager{}, opts...)
 		require.NoError(t, err)
-		c, err := tpt.Dial(context.Background(), l.Multiaddr(), server)
+		c, err := tpt.Dial(context.Background(), l.Multiaddrs()[0], server)
 		require.NoError(t, err)
 		str, err := c.OpenStream(context.Background())
 		require.NoError(t, err)
@@ -401,14 +401,14 @@ func TestWebsocketListenSecureAndInsecure(t *testing.T) {
 		require.NoError(t, err)
 
 		// dialing the insecure address should succeed
-		conn, err := client.Dial(context.Background(), lnInsecure.Multiaddr(), serverID)
+		conn, err := client.Dial(context.Background(), lnInsecure.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 		defer conn.Close()
 		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()).String(), wsComponent.String())
 		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()).String(), wsComponent.String())
 
 		// dialing the secure address should fail
-		_, err = client.Dial(context.Background(), lnSecure.Multiaddr(), serverID)
+		_, err = client.Dial(context.Background(), lnSecure.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 	})
 
@@ -418,14 +418,14 @@ func TestWebsocketListenSecureAndInsecure(t *testing.T) {
 		require.NoError(t, err)
 
 		// dialing the insecure address should succeed
-		conn, err := client.Dial(context.Background(), lnSecure.Multiaddr(), serverID)
+		conn, err := client.Dial(context.Background(), lnSecure.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 		defer conn.Close()
 		require.Equal(t, lastComponent(t, conn.RemoteMultiaddr()), wssComponent)
 		require.Equal(t, lastComponent(t, conn.LocalMultiaddr()), wssComponent)
 
 		// dialing the insecure address should fail
-		_, err = client.Dial(context.Background(), lnInsecure.Multiaddr(), serverID)
+		_, err = client.Dial(context.Background(), lnInsecure.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 	})
 }

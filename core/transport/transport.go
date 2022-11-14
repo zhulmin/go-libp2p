@@ -91,7 +91,7 @@ type Listener interface {
 	Accept() (CapableConn, error)
 	Close() error
 	Addr() net.Addr
-	Multiaddr() ma.Multiaddr
+	Multiaddrs() []ma.Multiaddr
 }
 
 // TransportNetwork is an inet.Network with methods for managing transports.
