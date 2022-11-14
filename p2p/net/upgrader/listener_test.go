@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -200,11 +201,10 @@ func TestListenerCloseClosesQueued(t *testing.T) {
 	}
 }
 
-/*
 func TestConcurrentAccept(t *testing.T) {
 	var num = 3 * upgrader.AcceptQueueLength
 
-	id, u := createUpgrader(t, blockingMuxer)
+	id, u := createUpgrader(t)
 	ln := createListener(t, u)
 	defer ln.Close()
 
@@ -242,12 +242,9 @@ func TestConcurrentAccept(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 	// the dials are still blocked, so we shouldn't have any connection available yet
-	require.Empty(t, accepted)
-	blockingMuxer.Unblock() // make all dials succeed
 	require.Eventually(t, func() bool { return len(accepted) == num }, 3*time.Second, 100*time.Millisecond)
 	wg.Wait()
 }
-*/
 
 func TestAcceptQueueBacklogged(t *testing.T) {
 	require := require.New(t)
