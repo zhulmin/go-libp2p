@@ -3,6 +3,7 @@ package libp2pquic
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -19,18 +20,18 @@ var quicListen = quic.Listen // so we can mock it in tests
 
 // A listener listens for QUIC connections.
 type listener struct {
-	quicListener   quic.Listener
-	conn           pConn
-	transport      *transport
-	rcmgr          network.ResourceManager
-	privKey        ic.PrivKey
-	localPeer      peer.ID
-	localMultiaddr ma.Multiaddr
+	quicListener    quic.Listener
+	conn            pConn
+	transport       *transport
+	rcmgr           network.ResourceManager
+	privKey         ic.PrivKey
+	localPeer       peer.ID
+	localMultiaddrs map[quic.VersionNumber]ma.Multiaddr
 }
 
 var _ tpt.Listener = &listener{}
 
-func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager) (tpt.Listener, error) {
+func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, identity *p2ptls.Identity, rcmgr network.ResourceManager, enableDraft29 bool) (tpt.Listener, error) {
 	var tlsConf tls.Config
 	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 		// return a tls.Config that verifies the peer's certificate chain.
@@ -44,18 +45,30 @@ func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, i
 	if err != nil {
 		return nil, err
 	}
-	localMultiaddr, err := toQuicMultiaddr(ln.Addr())
+	localMultiaddr, err := toQuicMultiaddr(ln.Addr(), quic.Version1)
 	if err != nil {
 		return nil, err
 	}
+
+	localMultiaddrs := map[quic.VersionNumber]ma.Multiaddr{}
+	localMultiaddrs[quic.Version1] = localMultiaddr
+
+	if enableDraft29 {
+		localMultiaddr, err := toQuicMultiaddr(ln.Addr(), quic.VersionDraft29)
+		if err != nil {
+			return nil, err
+		}
+		localMultiaddrs[quic.VersionDraft29] = localMultiaddr
+	}
+
 	return &listener{
-		conn:           pconn,
-		quicListener:   ln,
-		transport:      t,
-		rcmgr:          rcmgr,
-		privKey:        key,
-		localPeer:      localPeer,
-		localMultiaddr: localMultiaddr,
+		conn:            pconn,
+		quicListener:    ln,
+		transport:       t,
+		rcmgr:           rcmgr,
+		privKey:         key,
+		localPeer:       localPeer,
+		localMultiaddrs: localMultiaddrs,
 	}, nil
 }
 
@@ -97,7 +110,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 }
 
 func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
-	remoteMultiaddr, err := toQuicMultiaddr(qconn.RemoteAddr())
+	remoteMultiaddr, err := toQuicMultiaddr(qconn.RemoteAddr(), qconn.ConnectionState().Version)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +140,11 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 		return nil, err
 	}
 
+	localMultiaddr, found := l.localMultiaddrs[qconn.ConnectionState().Version]
+	if !found {
+		return nil, errors.New("unknown quic version:" + qconn.ConnectionState().Version.String())
+	}
+
 	l.conn.IncreaseCount()
 	return &conn{
 		quicConn:        qconn,
@@ -134,7 +152,7 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 		transport:       l.transport,
 		scope:           connScope,
 		localPeer:       l.localPeer,
-		localMultiaddr:  l.localMultiaddr,
+		localMultiaddr:  localMultiaddr,
 		privKey:         l.privKey,
 		remoteMultiaddr: remoteMultiaddr,
 		remotePeerID:    remotePeerID,
@@ -165,5 +183,9 @@ func (l *listener) Addr() net.Addr {
 
 // Multiaddr returns the multiaddress of this listener.
 func (l *listener) Multiaddrs() []ma.Multiaddr {
-	return []ma.Multiaddr{l.localMultiaddr}
+	mas := make([]ma.Multiaddr, 0, len(l.localMultiaddrs))
+	for _, a := range l.localMultiaddrs {
+		mas = append(mas, a)
+	}
+	return mas
 }

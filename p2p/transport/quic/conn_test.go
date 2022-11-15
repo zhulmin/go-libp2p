@@ -20,6 +20,7 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 
 	"github.com/golang/mock/gomock"
+	"github.com/lucas-clemente/quic-go"
 	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -33,8 +34,8 @@ type connTestCase struct {
 }
 
 var connTestCases = []*connTestCase{
-	{"reuseport_on", []Option{}},
-	{"reuseport_off", []Option{DisableReuseport()}},
+	{"reuseport_on", []Option{DisableDraft29()}},
+	{"reuseport_off", []Option{DisableReuseport(), DisableDraft29()}},
 }
 
 func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
@@ -103,13 +104,13 @@ func testHandshake(t *testing.T, tc *connTestCase) {
 	}
 
 	t.Run("on IPv4", func(t *testing.T) {
-		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
+		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 		defer ln.Close()
 		handshake(t, ln)
 	})
 
 	t.Run("on IPv6", func(t *testing.T) {
-		ln := runServer(t, serverTransport, "/ip6/::1/udp/0/quic")
+		ln := runServer(t, serverTransport, "/ip6/::1/udp/0/quic-v1")
 		defer ln.Close()
 		handshake(t, ln)
 	})
@@ -134,7 +135,7 @@ func testResourceManagerSuccess(t *testing.T, tc *connTestCase) {
 	serverTransport, err := NewTransport(serverKey, nil, nil, serverRcmgr, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
-	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic"))
+	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"))
 	require.NoError(t, err)
 	defer ln.Close()
 
@@ -185,7 +186,7 @@ func testResourceManagerDialDenied(t *testing.T, tc *connTestCase) {
 	defer clientTransport.(io.Closer).Close()
 
 	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
-	target := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic")
+	target := ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1")
 
 	rcmgr.EXPECT().OpenConnection(network.DirOutbound, false, target).Return(connScope, nil)
 	rerr := errors.New("nope")
@@ -228,7 +229,7 @@ func testResourceManagerAcceptDenied(t *testing.T, tc *connTestCase) {
 	serverTransport, err := NewTransport(serverKey, nil, nil, serverRcmgr, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
-	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic"))
+	ln, err := serverTransport.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"))
 	require.NoError(t, err)
 	defer ln.Close()
 	connChan := make(chan tpt.CapableConn)
@@ -271,7 +272,7 @@ func testStreams(t *testing.T, tc *connTestCase) {
 	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
-	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
+	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 	defer ln.Close()
 
 	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
@@ -312,7 +313,7 @@ func testHandshakeFailPeerIDMismatch(t *testing.T, tc *connTestCase) {
 	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
-	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
+	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 
 	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
@@ -358,7 +359,7 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 		serverTransport, err := NewTransport(serverKey, nil, cg, nil, tc.Options...)
 		defer serverTransport.(io.Closer).Close()
 		require.NoError(t, err)
-		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
+		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 		defer ln.Close()
 
 		cg.EXPECT().InterceptAccept(gomock.Any())
@@ -403,7 +404,7 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 		serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 		require.NoError(t, err)
 		defer serverTransport.(io.Closer).Close()
-		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
+		ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 		defer ln.Close()
 
 		cg := NewMockConnectionGater(mockCtrl)
@@ -443,12 +444,12 @@ func testDialTwo(t *testing.T, tc *connTestCase) {
 	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
-	ln1 := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
+	ln1 := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 	defer ln1.Close()
 	serverTransport2, err := NewTransport(serverKey2, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport2.(io.Closer).Close()
-	ln2 := runServer(t, serverTransport2, "/ip4/127.0.0.1/udp/0/quic")
+	ln2 := runServer(t, serverTransport2, "/ip4/127.0.0.1/udp/0/quic-v1")
 	defer ln2.Close()
 
 	data := bytes.Repeat([]byte{'a'}, 5*1<<20) // 5 MB
@@ -533,7 +534,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	serverTransport, err := NewTransport(serverKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer serverTransport.(io.Closer).Close()
-	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic")
+	ln := runServer(t, serverTransport, "/ip4/127.0.0.1/udp/0/quic-v1")
 
 	var drop uint32
 	serverPort := ln.Addr().(*net.UDPAddr).Port
@@ -550,7 +551,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
-	proxyAddr, err := toQuicMultiaddr(proxy.LocalAddr())
+	proxyAddr, err := toQuicMultiaddr(proxy.LocalAddr(), quic.Version1)
 	require.NoError(t, err)
 	conn, err := clientTransport.Dial(context.Background(), proxyAddr, serverID)
 	require.NoError(t, err)
@@ -559,6 +560,8 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 		conn, err := ln.Accept()
 		require.NoError(t, err)
 		str, err := conn.OpenStream(context.Background())
+		require.NoError(t, err)
+		_, err = conn.LocalMultiaddr().ValueForProtocol(ma.P_QUIC_V1)
 		require.NoError(t, err)
 		str.Write([]byte("foobar"))
 		connChan <- conn
@@ -579,7 +582,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	// Retry starting the listener until we're successful (with a 3s timeout).
 	require.Eventually(t, func() bool {
 		var err error
-		ln, err = serverTransport.Listen(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", serverPort)))
+		ln, err = serverTransport.Listen(ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", serverPort)))
 		return err == nil
 	}, 3*time.Second, 50*time.Millisecond)
 	defer ln.Close()
@@ -606,7 +609,7 @@ func TestHolePunching(t *testing.T) {
 	t1, err := NewTransport(serverKey, nil, nil, nil)
 	require.NoError(t, err)
 	defer t1.(io.Closer).Close()
-	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
+	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1")
 	require.NoError(t, err)
 	ln1, err := t1.Listen(laddr)
 	require.NoError(t, err)
@@ -671,4 +674,94 @@ func TestHolePunching(t *testing.T) {
 	ln2.Close()
 	<-done1
 	<-done2
+}
+
+func TestGetErrorWhenListeningWithDraft29WhenDisabled(t *testing.T) {
+	_, serverKey := createPeer(t)
+
+	t1, err := NewTransport(serverKey, nil, nil, nil, DisableDraft29())
+	require.NoError(t, err)
+	defer t1.(io.Closer).Close()
+	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
+	require.NoError(t, err)
+	_, err = t1.Listen(laddr)
+	require.Error(t, err)
+}
+
+func TestClientCanDialDifferentQUICVersions(t *testing.T) {
+	type testCase struct {
+		name                  string
+		serverDisablesDraft29 bool
+	}
+
+	testCases := []testCase{
+		{
+			name:                  "Client dials quic-v1 on a quic-v1 only server",
+			serverDisablesDraft29: true,
+		},
+		{
+			name:                  "Client dials both draft 29 and v1 on server that supports both",
+			serverDisablesDraft29: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			serverID, serverKey := createPeer(t)
+			_, clientKey := createPeer(t)
+
+			var serverOpts []Option
+			if tc.serverDisablesDraft29 {
+				serverOpts = append(serverOpts, DisableDraft29())
+			}
+
+			t1, err := NewTransport(serverKey, nil, nil, nil, serverOpts...)
+			require.NoError(t, err)
+			defer t1.(io.Closer).Close()
+			laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1")
+			require.NoError(t, err)
+			ln1, err := t1.Listen(laddr)
+			require.NoError(t, err)
+
+			t2, err := NewTransport(clientKey, nil, nil, nil)
+			require.NoError(t, err)
+			defer t2.(io.Closer).Close()
+
+			ctx := context.Background()
+
+			for _, a := range ln1.Multiaddrs() {
+				_, v, err := fromQuicMultiaddr(a)
+				require.NoError(t, err)
+
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					conn, err := ln1.Accept()
+					require.NoError(t, err)
+					defer conn.Close()
+
+					_, versionConnLocal, err := fromQuicMultiaddr(conn.LocalMultiaddr())
+					require.NoError(t, err)
+					_, versionConnRemote, err := fromQuicMultiaddr(conn.RemoteMultiaddr())
+					require.NoError(t, err)
+
+					require.Equal(t, v, versionConnLocal)
+					require.Equal(t, v, versionConnRemote)
+				}()
+
+				conn, err := t2.Dial(ctx, a, serverID)
+				require.NoError(t, err)
+				_, versionConnLocal, err := fromQuicMultiaddr(conn.LocalMultiaddr())
+				require.NoError(t, err)
+				_, versionConnRemote, err := fromQuicMultiaddr(conn.RemoteMultiaddr())
+				require.NoError(t, err)
+
+				require.Equal(t, v, versionConnLocal)
+				require.Equal(t, v, versionConnRemote)
+
+				<-done
+				conn.Close()
+			}
+		})
+	}
 }
