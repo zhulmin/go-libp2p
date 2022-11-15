@@ -413,7 +413,7 @@ loop:
 }
 
 // Don't use mafmt.QUIC as we don't want to dial DNS addresses. Just /ip{4,6}/udp/quic
-var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_QUIC))
+var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Or(mafmt.Base(ma.P_QUIC), mafmt.Base(ma.P_QUIC_V1)))
 
 // CanDial determines if we can dial to an address
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
@@ -474,7 +474,10 @@ func (t *transport) Proxy() bool {
 
 // Protocols returns the set of protocols handled by this transport.
 func (t *transport) Protocols() []int {
-	return []int{ma.P_QUIC}
+	if t.enableDraft29 {
+		return []int{ma.P_QUIC, ma.P_QUIC_V1}
+	}
+	return []int{ma.P_QUIC_V1}
 }
 
 func (t *transport) String() string {
