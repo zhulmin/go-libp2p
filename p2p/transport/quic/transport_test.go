@@ -35,11 +35,14 @@ func TestQUICProtocol(t *testing.T) {
 	defer tr.(io.Closer).Close()
 
 	protocols := tr.Protocols()
-	if len(protocols) != 1 {
-		t.Fatalf("expected to only support a single protocol, got %v", protocols)
+	if len(protocols) > 2 {
+		t.Fatalf("expected at most two protocols, got %v", protocols)
 	}
 	if protocols[0] != ma.P_QUIC {
-		t.Fatalf("expected the supported protocol to be QUIC, got %d", protocols[0])
+		t.Fatalf("expected the supported protocol to be draft 29 QUIC, got %d", protocols[0])
+	}
+	if protocols[1] != ma.P_QUIC_V1 {
+		t.Fatalf("expected the supported protocol to be QUIC v1, got %d", protocols[0])
 	}
 }
 

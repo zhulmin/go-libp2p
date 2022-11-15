@@ -153,6 +153,8 @@ type transport struct {
 
 	connMx sync.Mutex
 	conns  map[quic.Connection]*conn
+
+	closeOnce sync.Once
 }
 
 var _ tpt.Transport = &transport{}
@@ -485,5 +487,9 @@ func (t *transport) String() string {
 }
 
 func (t *transport) Close() error {
-	return t.connManager.Close()
+	// We may register multiple protocols, but they are all the same transport, so only support getting closed once.
+	t.closeOnce.Do(func() {
+		_ = t.connManager.Close()
+	})
+	return nil
 }

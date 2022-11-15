@@ -196,7 +196,7 @@ func TestAddrResolutionRecursive(t *testing.T) {
 func TestRemoveWebTransportAddrs(t *testing.T) {
 	tcpAddr := ma.StringCast("/ip4/9.5.6.4/tcp/1234")
 	quicAddr := ma.StringCast("/ip4/1.2.3.4/udp/443/quic")
-	webtransportAddr := ma.StringCast("/ip4/1.2.3.4/udp/443/quic/webtransport")
+	webtransportAddr := ma.StringCast("/ip4/1.2.3.4/udp/443/quic-v1/webtransport")
 
 	require.Equal(t, []ma.Multiaddr{tcpAddr, quicAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{tcpAddr, quicAddr}))
 	require.Equal(t, []ma.Multiaddr{tcpAddr, webtransportAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{tcpAddr, webtransportAddr}))
