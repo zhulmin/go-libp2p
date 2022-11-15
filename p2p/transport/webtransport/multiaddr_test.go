@@ -16,7 +16,7 @@ func TestWebtransportMultiaddr(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		addr, err := toWebtransportMultiaddr(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1337})
 		require.NoError(t, err)
-		require.Equal(t, "/ip4/127.0.0.1/udp/1337/quic/webtransport", addr.String())
+		require.Equal(t, "/ip4/127.0.0.1/udp/1337/quic-v1/webtransport", addr.String())
 	})
 
 	t.Run("invalid", func(t *testing.T) {
@@ -29,7 +29,7 @@ func TestWebtransportMultiaddrFromString(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		addr, err := stringToWebtransportMultiaddr("1.2.3.4:60042")
 		require.NoError(t, err)
-		require.Equal(t, "/ip4/1.2.3.4/udp/60042/quic/webtransport", addr.String())
+		require.Equal(t, "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport", addr.String())
 	})
 
 	t.Run("invalid", func(t *testing.T) {
@@ -63,9 +63,9 @@ func TestExtractCertHashes(t *testing.T) {
 		addr   string
 		hashes []string
 	}{
-		{addr: "/ip4/127.0.0.1/udp/1234/quic/webtransport"},
-		{addr: fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic/webtransport/certhash/%s", fooHash), hashes: []string{"foo"}},
-		{addr: fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic/webtransport/certhash/%s/certhash/%s", fooHash, barHash), hashes: []string{"foo", "bar"}},
+		{addr: "/ip4/127.0.0.1/udp/1234/quic-v1/webtransport"},
+		{addr: fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/%s", fooHash), hashes: []string{"foo"}},
+		{addr: fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/%s/certhash/%s", fooHash, barHash), hashes: []string{"foo", "bar"}},
 	} {
 		ch, err := extractCertHashes(ma.StringCast(tc.addr))
 		require.NoError(t, err)
@@ -78,9 +78,9 @@ func TestExtractCertHashes(t *testing.T) {
 
 func TestWebtransportResolve(t *testing.T) {
 	testCases := []string{
-		"/dns4/example.com/udp/1337/quic/webtransport",
-		"/dnsaddr/example.com/udp/1337/quic/webtransport",
-		"/ip4/127.0.0.1/udp/1337/quic/sni/example.com/webtransport",
+		"/dns4/example.com/udp/1337/quic-v1/webtransport",
+		"/dnsaddr/example.com/udp/1337/quic-v1/webtransport",
+		"/ip4/127.0.0.1/udp/1337/quic-v1/sni/example.com/webtransport",
 	}
 
 	tpt := &transport{}
@@ -97,7 +97,7 @@ func TestWebtransportResolve(t *testing.T) {
 	}
 
 	t.Run("No sni", func(t *testing.T) {
-		outMa, err := tpt.Resolve(ctx, ma.StringCast("/ip4/127.0.0.1/udp/1337/quic/webtransport"))
+		outMa, err := tpt.Resolve(ctx, ma.StringCast("/ip4/127.0.0.1/udp/1337/quic-v1/webtransport"))
 		require.NoError(t, err)
 		_, err = outMa[0].ValueForProtocol(ma.P_SNI)
 		require.Error(t, err)

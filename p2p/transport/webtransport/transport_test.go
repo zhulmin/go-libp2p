@@ -103,7 +103,7 @@ func TestTransport(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, nil, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
 
@@ -127,7 +127,7 @@ func TestTransport(t *testing.T) {
 		require.NoError(t, err)
 		_, port, err := net.SplitHostPort(addr)
 		require.NoError(t, err)
-		require.Equal(t, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic/webtransport", port)), conn.RemoteMultiaddr())
+		require.Equal(t, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%s/quic-v1/webtransport", port)), conn.RemoteMultiaddr())
 		addrChan <- conn.RemoteMultiaddr()
 	}()
 
@@ -149,7 +149,7 @@ func TestHashVerification(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, nil, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	done := make(chan struct{})
 	go func() {
@@ -184,10 +184,10 @@ func TestHashVerification(t *testing.T) {
 
 func TestCanDial(t *testing.T) {
 	valid := []ma.Multiaddr{
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic/webtransport/certhash/" + randomMultihash(t)),
-		ma.StringCast("/ip6/b16b:8255:efc6:9cd5:1a54:ee86:2d7a:c2e6/udp/1234/quic/webtransport/certhash/" + randomMultihash(t)),
-		ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic/webtransport/certhash/%s/certhash/%s/certhash/%s", randomMultihash(t), randomMultihash(t), randomMultihash(t))),
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic/webtransport"), // no certificate hash
+		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/" + randomMultihash(t)),
+		ma.StringCast("/ip6/b16b:8255:efc6:9cd5:1a54:ee86:2d7a:c2e6/udp/1234/quic-v1/webtransport/certhash/" + randomMultihash(t)),
+		ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/%s/certhash/%s/certhash/%s", randomMultihash(t), randomMultihash(t), randomMultihash(t))),
+		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport"), // no certificate hash
 	}
 
 	invalid := []ma.Multiaddr{
@@ -211,15 +211,15 @@ func TestCanDial(t *testing.T) {
 
 func TestListenAddrValidity(t *testing.T) {
 	valid := []ma.Multiaddr{
-		ma.StringCast("/ip6/::/udp/0/quic/webtransport/"),
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic/webtransport/"),
+		ma.StringCast("/ip6/::/udp/0/quic-v1/webtransport/"),
+		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/"),
 	}
 
 	invalid := []ma.Multiaddr{
 		ma.StringCast("/ip4/127.0.0.1/udp/1234"),              // missing webtransport
 		ma.StringCast("/ip4/127.0.0.1/udp/1234/webtransport"), // missing quic
 		ma.StringCast("/ip4/127.0.0.1/tcp/1234/webtransport"), // WebTransport over TCP? Is this a joke?
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic/webtransport/certhash/" + randomMultihash(t)),
+		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/" + randomMultihash(t)),
 	}
 
 	_, key := newIdentity(t)
@@ -244,9 +244,9 @@ func TestListenerAddrs(t *testing.T) {
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
 
-	ln1, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln1, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
-	ln2, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln2, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	hashes1 := extractCertHashes(ln1.Multiaddrs()[0])
 	require.Len(t, hashes1, 2)
@@ -259,7 +259,7 @@ func TestResourceManagerDialing(t *testing.T) {
 	defer ctrl.Finish()
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 
-	addr := ma.StringCast("/ip4/9.8.7.6/udp/1234/quic/webtransport")
+	addr := ma.StringCast("/ip4/9.8.7.6/udp/1234/quic-v1/webtransport")
 	p := peer.ID("foobar")
 
 	_, key := newIdentity(t)
@@ -289,7 +289,7 @@ func TestResourceManagerListening(t *testing.T) {
 		rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 		tr, err := libp2pwebtransport.New(key, nil, rcmgr)
 		require.NoError(t, err)
-		ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+		ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 		require.NoError(t, err)
 		defer ln.Close()
 
@@ -315,7 +315,7 @@ func TestResourceManagerListening(t *testing.T) {
 		rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 		tr, err := libp2pwebtransport.New(key, nil, rcmgr)
 		require.NoError(t, err)
-		ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+		ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 		require.NoError(t, err)
 		defer ln.Close()
 
@@ -360,7 +360,7 @@ func TestConnectionGaterDialing(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, nil, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
 
@@ -384,7 +384,7 @@ func TestConnectionGaterInterceptAccept(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, connGater, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
 
@@ -410,7 +410,7 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, connGater, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
 
@@ -476,7 +476,7 @@ func TestStaticTLSConf(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, nil, &network.NullResourceManager{}, libp2pwebtransport.WithTLSConfig(tlsConf))
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
 	require.Empty(t, extractCertHashes(ln.Multiaddrs()[0]), "listener address shouldn't contain any certhash")
@@ -528,7 +528,7 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, nil, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
 
@@ -569,7 +569,7 @@ func TestSNIIsSent(t *testing.T) {
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
 
-	ln1, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln1, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 
 	_, key2 := newIdentity(t)
@@ -578,7 +578,7 @@ func TestSNIIsSent(t *testing.T) {
 	defer tr.(io.Closer).Close()
 
 	beforeQuicMa, withQuicMa := ma.SplitFunc(ln1.Multiaddrs()[0], func(c ma.Component) bool {
-		return c.Protocol().Code == ma.P_QUIC
+		return c.Protocol().Code == ma.P_QUIC_V1
 	})
 
 	quicComponent, restMa := ma.SplitLast(withQuicMa)
@@ -634,7 +634,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 	tr, err := libp2pwebtransport.New(serverKey, nil, serverRcmgr)
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 	defer ln.Close()
 

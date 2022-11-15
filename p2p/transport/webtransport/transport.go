@@ -104,7 +104,9 @@ func New(key ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceMa
 		clock:   clock.New(),
 		conns:   map[uint64]*conn{},
 	}
-	t.quicConfig = &quic.Config{AllowConnectionWindowIncrease: t.allowWindowIncrease}
+	t.quicConfig = &quic.Config{
+		AllowConnectionWindowIncrease: t.allowWindowIncrease,
+		Versions:                      []quic.VersionNumber{quic.Version1}}
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
 			return nil, err
@@ -373,7 +375,7 @@ func (t *transport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multi
 	}
 
 	beforeQuicMA, afterIncludingQuicMA := ma.SplitFunc(maddr, func(c ma.Component) bool {
-		return c.Protocol().Code == ma.P_QUIC
+		return c.Protocol().Code == ma.P_QUIC_V1
 	})
 	quicComponent, afterQuicMA := ma.SplitFirst(afterIncludingQuicMA)
 	sniComponent, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_SNI).Name, sni)

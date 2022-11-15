@@ -13,9 +13,9 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-var webtransportMA = ma.StringCast("/quic/webtransport")
+var webtransportMA = ma.StringCast("/quic-v1/webtransport")
 
-var webtransportMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_QUIC), mafmt.Base(ma.P_WEBTRANSPORT))
+var webtransportMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_QUIC_V1), mafmt.Base(ma.P_WEBTRANSPORT))
 
 func toWebtransportMultiaddr(na net.Addr) (ma.Multiaddr, error) {
 	addr, err := manet.FromNetAddr(na)
