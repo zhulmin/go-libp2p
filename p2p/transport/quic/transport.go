@@ -197,10 +197,11 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 		return nil, err
 	}
 	keyReader := hkdf.New(sha256.New, keyBytes, nil, []byte(statelessResetKeyInfo))
-	qconfig.StatelessResetKey = make([]byte, 32)
-	if _, err := io.ReadFull(keyReader, qconfig.StatelessResetKey); err != nil {
+	var statelessResetKey quic.StatelessResetKey
+	if _, err := io.ReadFull(keyReader, statelessResetKey[:]); err != nil {
 		return nil, err
 	}
+	qconfig.StatelessResetKey = &statelessResetKey
 	var tracers []quiclogging.Tracer
 	if qlogTracer := quicutils.QLOGTracer; qlogTracer != nil {
 		tracers = append(tracers, qlogTracer)
