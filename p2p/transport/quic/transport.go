@@ -276,13 +276,11 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 		return nil, err
 	}
 
-	clientConfig := t.clientConfig
+	clientConfig := t.clientConfig.Clone()
 	if v == quic.Version1 {
 		// The endpoint has explicit support for version 1, so we'll only use that version.
-		clientConfig = t.clientConfig.Clone()
 		clientConfig.Versions = []quic.VersionNumber{quic.Version1}
 	} else if v == quic.VersionDraft29 {
-		clientConfig = t.clientConfig.Clone()
 		clientConfig.Versions = []quic.VersionNumber{quic.VersionDraft29}
 	} else {
 		return nil, errors.New("unknown QUIC version")
