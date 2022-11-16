@@ -142,7 +142,7 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 
 	localMultiaddr, found := l.localMultiaddrs[qconn.ConnectionState().Version]
 	if !found {
-		return nil, errors.New("unknown quic version:" + qconn.ConnectionState().Version.String())
+		return nil, errors.New("unknown QUIC version:" + qconn.ConnectionState().Version.String())
 	}
 
 	l.conn.IncreaseCount()
