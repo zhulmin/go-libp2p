@@ -3,7 +3,6 @@ package libp2pwebtransport
 import (
 	"crypto/sha256"
 	"crypto/tls"
-	"fmt"
 	"testing"
 	"testing/quick"
 	"time"
@@ -115,30 +114,28 @@ func TestDeterministicCertsAcrossReboots(t *testing.T) {
 	// Run this test 100 times to make sure it's deterministic
 	runs := 100
 	for i := 0; i < runs; i++ {
-		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
-			cl := clock.NewMock()
-			priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
-			require.NoError(t, err)
-			m, err := newCertManager(priv, cl)
-			require.NoError(t, err)
-			defer m.Close()
+		cl := clock.NewMock()
+		priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
+		require.NoError(t, err)
+		m, err := newCertManager(priv, cl)
+		require.NoError(t, err)
+		defer m.Close()
 
-			conf := m.GetConfig()
-			require.Len(t, conf.Certificates, 1)
-			oldCerts := m.serializedCertHashes
+		conf := m.GetConfig()
+		require.Len(t, conf.Certificates, 1)
+		oldCerts := m.serializedCertHashes
 
-			m.Close()
+		m.Close()
 
-			cl.Add(time.Hour)
-			// reboot
-			m, err = newCertManager(priv, cl)
-			require.NoError(t, err)
-			defer m.Close()
+		cl.Add(time.Hour)
+		// reboot
+		m, err = newCertManager(priv, cl)
+		require.NoError(t, err)
+		defer m.Close()
 
-			newCerts := m.serializedCertHashes
+		newCerts := m.serializedCertHashes
 
-			require.Equal(t, oldCerts, newCerts)
-		})
+		require.Equal(t, oldCerts, newCerts)
 	}
 }
 
