@@ -33,7 +33,7 @@ func TestDeterministicCertsAfterReboot(t *testing.T) {
 	cl.Add(time.Hour * 24 * 365)
 	h, err := libp2p.New(libp2p.NoTransports, libp2p.Transport(libp2pwebtransport.New, libp2pwebtransport.WithClock(cl)), libp2p.Identity(priv))
 	require.NoError(t, err)
-	err = h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	err = h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 
 	prevCerthashes := extractCertHashes(h.Addrs()[0])
@@ -42,7 +42,7 @@ func TestDeterministicCertsAfterReboot(t *testing.T) {
 	h, err = libp2p.New(libp2p.NoTransports, libp2p.Transport(libp2pwebtransport.New, libp2pwebtransport.WithClock(cl)), libp2p.Identity(priv))
 	require.NoError(t, err)
 	defer h.Close()
-	err = h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic/webtransport"))
+	err = h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 
 	nextCertHashes := extractCertHashes(h.Addrs()[0])
