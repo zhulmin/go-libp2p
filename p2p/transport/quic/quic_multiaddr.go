@@ -23,7 +23,7 @@ func toQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, err
 	case quic.Version1:
 		return udpMA.Encapsulate(quicV1MA), nil
 	default:
-		return nil, errors.New("unknown quic version")
+		return nil, errors.New("unknown QUIC version")
 	}
 }
 
