@@ -1,6 +1,7 @@
 package libp2pwebtransport
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
@@ -113,11 +114,11 @@ func TestCertRenewal(t *testing.T) {
 
 func TestDeterministicCertsAcrossReboots(t *testing.T) {
 	// Run this test 100 times to make sure it's deterministic
-	runs := 100
+	const runs = 100
 	for i := 0; i < runs; i++ {
 		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
 			cl := clock.NewMock()
-			priv, _, err := test.SeededTestKeyPair(crypto.Ed25519, 256, 0)
+			priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 			require.NoError(t, err)
 			m, err := newCertManager(priv, cl)
 			require.NoError(t, err)

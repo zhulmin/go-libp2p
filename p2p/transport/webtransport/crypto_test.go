@@ -1,7 +1,6 @@
 package libp2pwebtransport
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -136,11 +135,10 @@ func TestCertificateVerification(t *testing.T) {
 
 func TestDeterministicCertHashes(t *testing.T) {
 	// Run this test 1000 times since we want to make sure the signatures are deterministic
-	runs := 1000
+	const runs = 1000
 	for i := 0; i < runs; i++ {
 		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
-			zeroSeed := [32]byte{}
-			priv, _, err := ic.GenerateEd25519Key(bytes.NewReader(zeroSeed[:]))
+			priv, _, err := ic.GenerateEd25519Key(rand.Reader)
 			require.NoError(t, err)
 			cert, certPriv, err := generateCert(priv, time.Time{}, time.Time{}.Add(time.Hour*24*14))
 			require.NoError(t, err)
@@ -166,11 +164,12 @@ func TestDeterministicCertHashes(t *testing.T) {
 // See deterministicReader for more context.
 func TestDeterministicSig(t *testing.T) {
 	// Run this test 1000 times since we want to make sure the signatures are deterministic
-	runs := 1000
+	const runs = 1000
 	for i := 0; i < runs; i++ {
 		t.Run(fmt.Sprintf("Run=%d", i), func(t *testing.T) {
-			zeroSeed := [32]byte{}
-			deterministicHKDFReader := newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
+			seed := make([]byte, 32)
+			rand.Read(seed)
+			deterministicHKDFReader := newDeterministicReader(seed, nil, deterministicCertInfo)
 			b := [1024]byte{}
 			io.ReadFull(deterministicHKDFReader, b[:])
 			caPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
@@ -179,7 +178,7 @@ func TestDeterministicSig(t *testing.T) {
 			sig, err := caPrivateKey.Sign(deterministicHKDFReader, b[:], crypto.SHA256)
 			require.NoError(t, err)
 
-			deterministicHKDFReader = newDeterministicReader(zeroSeed[:], nil, deterministicCertInfo)
+			deterministicHKDFReader = newDeterministicReader(seed, nil, deterministicCertInfo)
 			b2 := [1024]byte{}
 			io.ReadFull(deterministicHKDFReader, b2[:])
 			caPrivateKey2, err := ecdsa.GenerateKey(elliptic.P256(), deterministicHKDFReader)
