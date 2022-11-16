@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 
@@ -106,7 +107,7 @@ var NoSecurity Option = func(cfg *Config) error {
 // name is the protocol name.
 func Muxer(name string, muxer network.Multiplexer) Option {
 	return func(cfg *Config) error {
-		cfg.Muxers = append(cfg.Muxers, config.Muxer{Multiplexer: muxer, ID: protocol.ID(name)})
+		cfg.Muxers = append(cfg.Muxers, tptu.StreamMuxer{Muxer: muxer, ID: protocol.ID(name)})
 		return nil
 	}
 }

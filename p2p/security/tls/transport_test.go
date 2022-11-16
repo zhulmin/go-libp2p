@@ -24,6 +24,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
+	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -183,16 +184,15 @@ type testcase struct {
 }
 
 func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
-
 	tests := []testcase{
 		{clientProtos: nil, serverProtos: nil, expectedResult: ""},
-		{[]protocol.ID{"muxer1/1.0.0", "muxer2/1.0.1"}, []protocol.ID{"muxer2/1.0.1", "muxer1/1.0.0"}, "muxer2/1.0.1"},
-		{[]protocol.ID{"muxer1/1.0.0", "muxer2/1.0.1", "libp2p"}, []protocol.ID{"muxer2/1.0.1", "muxer1/1.0.0", "libp2p"}, "muxer2/1.0.1"},
-		{[]protocol.ID{"muxer1/1.0.0", "libp2p"}, []protocol.ID{"libp2p"}, ""},
-		{[]protocol.ID{"libp2p"}, []protocol.ID{"libp2p"}, ""},
-		{[]protocol.ID{"muxer1"}, []protocol.ID{}, ""},
-		{[]protocol.ID{}, []protocol.ID{"muxer1"}, ""},
-		{[]protocol.ID{"muxer2"}, []protocol.ID{"muxer1"}, ""},
+		{clientProtos: []protocol.ID{"muxer1", "muxer2"}, serverProtos: []protocol.ID{"muxer2", "muxer1"}, expectedResult: "muxer2"},
+		{clientProtos: []protocol.ID{"muxer1", "muxer2", "libp2p"}, serverProtos: []protocol.ID{"muxer2", "muxer1", "libp2p"}, expectedResult: "muxer2"},
+		{clientProtos: []protocol.ID{"muxer1", "libp2p"}, serverProtos: []protocol.ID{"libp2p"}, expectedResult: ""},
+		{clientProtos: []protocol.ID{"libp2p"}, serverProtos: []protocol.ID{"libp2p"}, expectedResult: ""},
+		{clientProtos: []protocol.ID{"muxer1"}, serverProtos: []protocol.ID{}, expectedResult: ""},
+		{clientProtos: []protocol.ID{}, serverProtos: []protocol.ID{"muxer1"}, expectedResult: ""},
+		{clientProtos: []protocol.ID{"muxer2"}, serverProtos: []protocol.ID{"muxer1"}, expectedResult: ""},
 	}
 
 	clientID, clientKey := createPeer(t)
@@ -240,9 +240,17 @@ func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
 
 	// Iterate through the NextProto combinations.
 	for _, test := range tests {
-		clientTransport, err := New(ID, clientKey, test.clientProtos)
+		clientMuxers := make([]tptu.StreamMuxer, 0, len(test.clientProtos))
+		for _, id := range test.clientProtos {
+			clientMuxers = append(clientMuxers, tptu.StreamMuxer{ID: id})
+		}
+		clientTransport, err := New(ID, clientKey, clientMuxers)
 		require.NoError(t, err)
-		serverTransport, err := New(ID, serverKey, test.serverProtos)
+		serverMuxers := make([]tptu.StreamMuxer, 0, len(test.clientProtos))
+		for _, id := range test.serverProtos {
+			serverMuxers = append(serverMuxers, tptu.StreamMuxer{ID: id})
+		}
+		serverTransport, err := New(ID, serverKey, serverMuxers)
 		require.NoError(t, err)
 
 		t.Run("TLS handshake with ALPN extension", func(t *testing.T) {

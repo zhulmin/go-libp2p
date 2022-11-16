@@ -13,7 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/pnet"
-	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
@@ -71,7 +70,7 @@ type Config struct {
 	PeerKey crypto.PrivKey
 
 	Transports         []fx.Option
-	Muxers             []Muxer
+	Muxers             []tptu.StreamMuxer
 	SecurityTransports []fx.Option
 	Insecure           bool
 	PSK                pnet.PSK
@@ -168,31 +167,21 @@ func (cfg *Config) addTransports(h host.Host) error {
 		return fmt.Errorf("swarm does not support transports")
 	}
 
-	muxers := make([]protocol.ID, 0, len(cfg.Muxers))
-	for _, m := range cfg.Muxers {
-		muxers = append(muxers, m.ID)
-	}
-
 	var security []fx.Option
 	if cfg.Insecure {
 		security = append(security, fx.Provide(makeInsecureTransport))
 	} else {
 		security = cfg.SecurityTransports
 	}
-	muxer, err := makeMuxer(cfg.Muxers)
-	if err != nil {
-		return err
-	}
 
 	fxopts := []fx.Option{
 		fx.WithLogger(func() fxevent.Logger { return getFXLogger() }),
 		fx.Provide(tptu.New),
-		fx.Provide(func() network.Multiplexer { return muxer }),
 		fx.Provide(fx.Annotate(
 			makeSecurityMuxer,
 			fx.ParamTags(`group:"security"`),
 		)),
-		fx.Supply(muxers),
+		fx.Supply(cfg.Muxers),
 		fx.Provide(func() host.Host { return h }),
 		fx.Provide(func() crypto.PrivKey { return h.Peerstore().PrivKey(h.ID()) }),
 		fx.Provide(func() connmgr.ConnectionGater { return cfg.ConnectionGater }),

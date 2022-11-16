@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
-	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	csms "github.com/libp2p/go-libp2p/p2p/net/conn-security-multistream"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
@@ -79,9 +78,7 @@ func makeUpgrader(t *testing.T, n *Swarm) transport.Upgrader {
 	secMuxer := new(csms.SSMuxer)
 	secMuxer.AddTransport(insecure.ID, insecure.NewWithIdentity(insecure.ID, id, pk))
 
-	stMuxer := msmux.NewBlankTransport()
-	stMuxer.AddTransport("/yamux/1.0.0", yamux.DefaultTransport)
-	u, err := tptu.New(secMuxer, stMuxer, nil, nil, nil)
+	u, err := tptu.New(secMuxer, []tptu.StreamMuxer{{ID: "/yamux/1.0.0", Muxer: yamux.DefaultTransport}}, nil, nil, nil)
 	require.NoError(t, err)
 	return u
 }

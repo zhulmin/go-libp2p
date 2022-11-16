@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
+	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
 
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -29,15 +30,15 @@ var _ sec.SecureTransport = &Transport{}
 
 // New creates a new Noise transport using the given private key as its
 // libp2p identity key.
-func New(id protocol.ID, privkey crypto.PrivKey, muxers []protocol.ID) (*Transport, error) {
+func New(id protocol.ID, privkey crypto.PrivKey, muxers []tptu.StreamMuxer) (*Transport, error) {
 	localID, err := peer.IDFromPrivateKey(privkey)
 	if err != nil {
 		return nil, err
 	}
 
 	smuxers := make([]string, 0, len(muxers))
-	for _, muxer := range muxers {
-		smuxers = append(smuxers, string(muxer))
+	for _, m := range muxers {
+		smuxers = append(smuxers, string(m.ID))
 	}
 
 	return &Transport{

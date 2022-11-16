@@ -11,12 +11,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	ipnet "github.com/libp2p/go-libp2p/core/pnet"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/transport"
-	msmux "github.com/libp2p/go-libp2p/p2p/muxer/muxer-multistream"
 	"github.com/libp2p/go-libp2p/p2p/net/pnet"
 
 	manet "github.com/multiformats/go-multiaddr/net"
+	mss "github.com/multiformats/go-multistream"
 )
 
 // ErrNilPeer is returned when attempting to upgrade an outbound connection
@@ -26,7 +27,10 @@ var ErrNilPeer = errors.New("nil peer")
 // AcceptQueueLength is the number of connections to fully setup before not accepting any new connections
 var AcceptQueueLength = 16
 
-const defaultAcceptTimeout = 15 * time.Second
+const (
+	defaultAcceptTimeout    = 15 * time.Second
+	defaultNegotiateTimeout = 60 * time.Second
+)
 
 type Option func(*upgrader) error
 
@@ -37,15 +41,23 @@ func WithAcceptTimeout(t time.Duration) Option {
 	}
 }
 
+type StreamMuxer struct {
+	ID    protocol.ID
+	Muxer network.Multiplexer
+}
+
 // Upgrader is a multistream upgrader that can upgrade an underlying connection
 // to a full transport connection (secure and multiplexed).
 type upgrader struct {
 	secure sec.SecureMuxer
-	muxer  network.Multiplexer
 
 	psk       ipnet.PSK
 	connGater connmgr.ConnectionGater
 	rcmgr     network.ResourceManager
+
+	msmuxer  *mss.MultistreamMuxer
+	muxers   []StreamMuxer
+	muxerIDs []string
 
 	// AcceptTimeout is the maximum duration an Accept is allowed to take.
 	// This includes the time between accepting the raw network connection,
@@ -57,14 +69,15 @@ type upgrader struct {
 
 var _ transport.Upgrader = &upgrader{}
 
-func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, psk ipnet.PSK, rcmgr network.ResourceManager, connGater connmgr.ConnectionGater, opts ...Option) (transport.Upgrader, error) {
+func New(secureMuxer sec.SecureMuxer, muxers []StreamMuxer, psk ipnet.PSK, rcmgr network.ResourceManager, connGater connmgr.ConnectionGater, opts ...Option) (transport.Upgrader, error) {
 	u := &upgrader{
 		secure:        secureMuxer,
-		muxer:         muxer,
 		acceptTimeout: defaultAcceptTimeout,
 		rcmgr:         rcmgr,
 		connGater:     connGater,
 		psk:           psk,
+		msmuxer:       mss.NewMultistreamMuxer(),
+		muxers:        muxers,
 	}
 	for _, opt := range opts {
 		if err := opt(u); err != nil {
@@ -73,6 +86,11 @@ func New(secureMuxer sec.SecureMuxer, muxer network.Multiplexer, psk ipnet.PSK, 
 	}
 	if u.rcmgr == nil {
 		u.rcmgr = &network.NullResourceManager{}
+	}
+	u.muxerIDs = make([]string, 0, len(muxers))
+	for _, m := range muxers {
+		u.msmuxer.AddHandler(string(m.ID), nil)
+		u.muxerIDs = append(u.muxerIDs, string(m.ID))
 	}
 	return u, nil
 }
@@ -177,17 +195,54 @@ func (u *upgrader) setupSecurity(ctx context.Context, conn net.Conn, p peer.ID, 
 	return u.secure.SecureOutbound(ctx, conn, p)
 }
 
+func (u *upgrader) negotiateMuxer(nc net.Conn, isServer bool) (*StreamMuxer, error) {
+	if err := nc.SetDeadline(time.Now().Add(defaultNegotiateTimeout)); err != nil {
+		return nil, err
+	}
+
+	var proto string
+	if isServer {
+		selected, _, err := u.msmuxer.Negotiate(nc)
+		if err != nil {
+			return nil, err
+		}
+		proto = selected
+	} else {
+		selected, err := mss.SelectOneOf(u.muxerIDs, nc)
+		if err != nil {
+			return nil, err
+		}
+		proto = selected
+	}
+
+	if err := nc.SetDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
+
+	if m := u.getMuxerByID(proto); m != nil {
+		return m, nil
+	}
+	return nil, fmt.Errorf("selected protocol we don't have a transport for")
+}
+
+func (u *upgrader) getMuxerByID(id string) *StreamMuxer {
+	for _, m := range u.muxers {
+		if string(m.ID) == id {
+			return &m
+		}
+	}
+	return nil
+}
+
 func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server bool, scope network.PeerScope) (network.MuxedConn, error) {
-	msmuxer, ok := u.muxer.(*msmux.Transport)
 	muxerSelected := conn.ConnState().NextProto
 	// Use muxer selected from security handshake if available. Otherwise fall back to multistream-selection.
-	if ok && len(muxerSelected) > 0 {
-		tpt, ok := msmuxer.GetTransportByKey(muxerSelected)
-		if !ok {
+	if len(muxerSelected) > 0 {
+		m := u.getMuxerByID(muxerSelected)
+		if m == nil {
 			return nil, fmt.Errorf("selected a muxer we don't know: %s", muxerSelected)
 		}
-
-		return tpt.NewConn(conn, server, scope)
+		return m.Muxer.NewConn(conn, server, scope)
 	}
 
 	done := make(chan struct{})
@@ -197,7 +252,12 @@ func (u *upgrader) setupMuxer(ctx context.Context, conn sec.SecureConn, server b
 	// TODO: The muxer should take a context.
 	go func() {
 		defer close(done)
-		smconn, err = u.muxer.NewConn(conn, server, scope)
+		var m *StreamMuxer
+		m, err = u.negotiateMuxer(conn, server)
+		if err != nil {
+			return
+		}
+		smconn, err = m.Muxer.NewConn(conn, server, scope)
 	}()
 
 	select {

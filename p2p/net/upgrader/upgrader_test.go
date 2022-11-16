@@ -24,27 +24,27 @@ import (
 )
 
 func createUpgrader(t *testing.T) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxer(t, &negotiatingMuxer{}, nil, nil)
+	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, nil, nil)
 }
 
 func createUpgraderWithConnGater(t *testing.T, connGater connmgr.ConnectionGater) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxer(t, &negotiatingMuxer{}, nil, connGater)
+	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, nil, connGater)
 }
 
 func createUpgraderWithResourceManager(t *testing.T, rcmgr network.ResourceManager) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxer(t, &negotiatingMuxer{}, rcmgr, nil)
+	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, rcmgr, nil)
 }
 
 func createUpgraderWithOpts(t *testing.T, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
-	return createUpgraderWithMuxer(t, &negotiatingMuxer{}, nil, nil, opts...)
+	return createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "negotiate", Muxer: &negotiatingMuxer{}}}, nil, nil, opts...)
 }
 
-func createUpgraderWithMuxer(t *testing.T, muxer network.Multiplexer, rcmgr network.ResourceManager, connGater connmgr.ConnectionGater, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
+func createUpgraderWithMuxers(t *testing.T, muxers []upgrader.StreamMuxer, rcmgr network.ResourceManager, connGater connmgr.ConnectionGater, opts ...upgrader.Option) (peer.ID, transport.Upgrader) {
 	priv, _, err := test.RandTestKeyPair(crypto.Ed25519, 256)
 	require.NoError(t, err)
 	id, err := peer.IDFromPrivateKey(priv)
 	require.NoError(t, err)
-	u, err := upgrader.New(&MuxAdapter{tpt: insecure.NewWithIdentity(insecure.ID, id, priv)}, muxer, nil, rcmgr, connGater, opts...)
+	u, err := upgrader.New(&MuxAdapter{tpt: insecure.NewWithIdentity(insecure.ID, id, priv)}, muxers, nil, rcmgr, connGater, opts...)
 	require.NoError(t, err)
 	return id, u
 }
@@ -177,7 +177,7 @@ func TestOutboundResourceManagement(t *testing.T) {
 	})
 
 	t.Run("failed negotiation", func(t *testing.T) {
-		id, upgrader := createUpgraderWithMuxer(t, &errorMuxer{}, nil, nil)
+		id, upgrader := createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "errorMuxer", Muxer: &errorMuxer{}}}, nil, nil)
 		ln := createListener(t, upgrader)
 		defer ln.Close()
 

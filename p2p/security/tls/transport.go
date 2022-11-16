@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
+	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -35,16 +36,20 @@ type Transport struct {
 var _ sec.SecureTransport = &Transport{}
 
 // New creates a TLS encrypted transport
-func New(id protocol.ID, key ci.PrivKey, muxers []protocol.ID) (*Transport, error) {
+func New(id protocol.ID, key ci.PrivKey, muxers []tptu.StreamMuxer) (*Transport, error) {
 	localPeer, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
+	}
+	muxerIDs := make([]protocol.ID, 0, len(muxers))
+	for _, m := range muxers {
+		muxerIDs = append(muxerIDs, m.ID)
 	}
 	t := &Transport{
 		protocolID: id,
 		localPeer:  localPeer,
 		privKey:    key,
-		muxers:     muxers,
+		muxers:     muxerIDs,
 	}
 
 	identity, err := NewIdentity(key)

@@ -134,7 +134,7 @@ func TestConnectionsClosedIfNotAccepted(t *testing.T) {
 func TestFailedUpgradeOnListen(t *testing.T) {
 	require := require.New(t)
 
-	id, u := createUpgraderWithMuxer(t, &errorMuxer{}, nil, nil)
+	id, u := createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "errorMuxer", Muxer: &errorMuxer{}}}, nil, nil)
 	ln := createListener(t, u)
 
 	errCh := make(chan error)
@@ -225,7 +225,7 @@ func TestConcurrentAccept(t *testing.T) {
 	var num = 3 * upgrader.AcceptQueueLength
 
 	blockingMuxer := newBlockingMuxer()
-	id, u := createUpgraderWithMuxer(t, blockingMuxer, nil, nil)
+	id, u := createUpgraderWithMuxers(t, []upgrader.StreamMuxer{{ID: "blockingMuxer", Muxer: blockingMuxer}}, nil, nil)
 	ln := createListener(t, u)
 	defer ln.Close()
 
