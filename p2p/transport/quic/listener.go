@@ -50,8 +50,7 @@ func newListener(pconn pConn, t *transport, localPeer peer.ID, key ic.PrivKey, i
 		return nil, err
 	}
 
-	localMultiaddrs := map[quic.VersionNumber]ma.Multiaddr{}
-	localMultiaddrs[quic.Version1] = localMultiaddr
+	localMultiaddrs := map[quic.VersionNumber]ma.Multiaddr{quic.Version1: localMultiaddr}
 
 	if enableDraft29 {
 		localMultiaddr, err := toQuicMultiaddr(ln.Addr(), quic.VersionDraft29)
