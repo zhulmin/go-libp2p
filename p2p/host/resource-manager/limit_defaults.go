@@ -492,7 +492,7 @@ var DefaultLimits = ScalingLimitConfig{
 	},
 
 	PeerBaseLimit: BaseLimit{
-		ConnsInbound:    4,
+		ConnsInbound:    8,
 		ConnsOutbound:   8,
 		Conns:           8,
 		StreamsInbound:  256,
