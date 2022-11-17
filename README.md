@@ -19,9 +19,7 @@
 - [Usage](#usage)
   - [Examples](#examples)
 - [Development](#development)
-  - [Using the go-libp2p Workspace](#using-the-go-libp2p-workspace)
   - [Tests](#tests)
-  - [Packages](#packages)
 - [Contribute](#contribute)
 - [Supported Go Versions](#supported-go-versions)
 
