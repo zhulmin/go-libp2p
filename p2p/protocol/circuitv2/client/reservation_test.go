@@ -82,7 +82,7 @@ func TestReservationFailures(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			host, err := libp2p.New()
+			host, err := libp2p.New(libp2p.ResourceManager(&network.NullResourceManager{}))
 			require.NoError(t, err)
 			defer host.Close()
 			if tc.streamHandler != nil {
