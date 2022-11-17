@@ -324,7 +324,7 @@ func TestHandshakeConnectionCancellations(t *testing.T) {
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err = clientTransport.SecureOutbound(ctx, clientInsecureConn, serverID)
+		_, err = clientTransport.SecureOutbound(ctx, &delayedConn{Conn: clientInsecureConn, delay: 5 * time.Millisecond}, serverID)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Error(t, <-errChan)
 	})
