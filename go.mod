@@ -27,7 +27,7 @@ require (
 	github.com/libp2p/go-msgio v0.2.0
 	github.com/libp2p/go-nat v0.1.0
 	github.com/libp2p/go-netroute v0.2.0
-	github.com/libp2p/go-openssl v0.1.0
+	github.com/libp2p/go-openssl v0.1.1-0.20221117030306-b8529e4f56c8
 	github.com/libp2p/go-reuseport v0.2.0
 	github.com/libp2p/go-yamux/v4 v4.0.0
 	github.com/libp2p/zeroconf/v2 v2.2.0
