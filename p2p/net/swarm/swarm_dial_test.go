@@ -204,3 +204,15 @@ func TestRemoveWebTransportAddrs(t *testing.T) {
 	require.Equal(t, []ma.Multiaddr{quicAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{quicAddr, webtransportAddr}))
 	require.Equal(t, []ma.Multiaddr{webtransportAddr}, maybeRemoveWebTransportAddrs([]ma.Multiaddr{webtransportAddr}))
 }
+
+func TestRemoveQuicDraft29(t *testing.T) {
+	tcpAddr := ma.StringCast("/ip4/9.5.6.4/tcp/1234")
+	quicDraft29Addr := ma.StringCast("/ip4/1.2.3.4/udp/443/quic")
+	quicV1Addr := ma.StringCast("/ip4/1.2.3.4/udp/443/quic-v1")
+
+	require.Equal(t, []ma.Multiaddr{tcpAddr, quicV1Addr}, maybeRemoveQUICDraft29([]ma.Multiaddr{tcpAddr, quicV1Addr}))
+	require.Equal(t, []ma.Multiaddr{tcpAddr, quicDraft29Addr}, maybeRemoveQUICDraft29([]ma.Multiaddr{tcpAddr, quicDraft29Addr}))
+	require.Equal(t, []ma.Multiaddr{tcpAddr, quicV1Addr}, maybeRemoveQUICDraft29([]ma.Multiaddr{tcpAddr, quicDraft29Addr, quicV1Addr}))
+	require.Equal(t, []ma.Multiaddr{quicV1Addr}, maybeRemoveQUICDraft29([]ma.Multiaddr{quicV1Addr, quicDraft29Addr}))
+	require.Equal(t, []ma.Multiaddr{quicDraft29Addr}, maybeRemoveQUICDraft29([]ma.Multiaddr{quicDraft29Addr}))
+}
