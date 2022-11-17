@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"crypto/rand"
+	"fmt"
 	"testing"
 )
 
@@ -69,23 +70,27 @@ func TestRSASmallKey(t *testing.T) {
 }
 
 func TestRSASignZero(t *testing.T) {
-	priv, pub, err := GenerateRSAKeyPair(2048, rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	for i := 0; i < 200; i++ {
+		t.Run(fmt.Sprintf("run %d", i), func(t *testing.T) {
+			priv, pub, err := GenerateRSAKeyPair(2048, rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	data := make([]byte, 0)
-	sig, err := priv.Sign(data)
-	if err != nil {
-		t.Fatal(err)
-	}
+			data := make([]byte, 0)
+			sig, err := priv.Sign(data)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	ok, err := pub.Verify(data, sig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok {
-		t.Fatal("signature didn't match")
+			ok, err := pub.Verify(data, sig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !ok {
+				t.Fatal("signature didn't match")
+			}
+		})
 	}
 }
 
