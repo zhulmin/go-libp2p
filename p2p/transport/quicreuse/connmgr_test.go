@@ -41,8 +41,9 @@ func checkClosed(t *testing.T, cm *ConnManager) {
 }
 
 func TestListenQUICDraft29Disabled(t *testing.T) {
-	cm, err := NewConnManager([32]byte{}, false, false, false)
+	cm, err := NewConnManager([32]byte{}, DisableDraft29(), DisableReuseport())
 	require.NoError(t, err)
+	defer cm.Close()
 	_, err = cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic"), &tls.Config{}, nil)
 	require.EqualError(t, err, "can't listen on `/quic` multiaddr (QUIC draft 29 version) when draft 29 support is disabled")
 	ln, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{"proto"}}, nil)
@@ -62,7 +63,11 @@ func TestListenOnSameProto(t *testing.T) {
 }
 
 func testListenOnSameProto(t *testing.T, enableReuseport bool) {
-	cm, err := NewConnManager([32]byte{}, enableReuseport, true, false)
+	var opts []Option
+	if !enableReuseport {
+		opts = append(opts, DisableReuseport())
+	}
+	cm, err := NewConnManager([32]byte{}, opts...)
 	require.NoError(t, err)
 	defer checkClosed(t, cm)
 	defer cm.Close()
@@ -97,7 +102,7 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 		return nil, errors.New("listen error")
 	}
 
-	cm, err := NewConnManager([32]byte{}, true, true, false)
+	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)
 	defer cm.Close()
 
@@ -122,7 +127,7 @@ func TestConnectionPassedToQUICForDialing(t *testing.T) {
 		return nil, errors.New("dial error")
 	}
 
-	cm, err := NewConnManager([32]byte{}, true, true, false)
+	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)
 	defer cm.Close()
 
@@ -186,7 +191,11 @@ func TestListener(t *testing.T) {
 }
 
 func testListener(t *testing.T, enableReuseport bool) {
-	cm, err := NewConnManager([32]byte{}, enableReuseport, true, false)
+	var opts []Option
+	if !enableReuseport {
+		opts = append(opts, DisableReuseport())
+	}
+	cm, err := NewConnManager([32]byte{}, opts...)
 	require.NoError(t, err)
 
 	id1, tlsConf1 := getTLSConfForProto(t, "proto1")

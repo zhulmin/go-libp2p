@@ -20,6 +20,7 @@ type ConnManager struct {
 	reuseUDP6       *reuse
 	enableDraft29   bool
 	enableReuseport bool
+	enableMetrics   bool
 
 	serverConfig *quic.Config
 	clientConfig *quic.Config
@@ -33,7 +34,18 @@ type connListenerEntry struct {
 	ln       *connListener
 }
 
-func NewConnManager(statelessResetKey quic.StatelessResetKey, enableReuseport, enableMetrics, enableDraft29 bool) (*ConnManager, error) {
+func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*ConnManager, error) {
+	cm := &ConnManager{
+		enableReuseport: true,
+		enableDraft29:   true,
+		conns:           make(map[string]connListenerEntry),
+	}
+	for _, o := range opts {
+		if err := o(cm); err != nil {
+			return nil, err
+		}
+	}
+
 	quicConf := quicConfig.Clone()
 	quicConf.StatelessResetKey = &statelessResetKey
 
@@ -41,25 +53,20 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, enableReuseport, e
 	if qlogTracer != nil {
 		tracers = append(tracers, qlogTracer)
 	}
-	if enableMetrics {
+	if cm.enableMetrics {
 		tracers = append(tracers, &metricsTracer{})
 	}
 	if len(tracers) > 0 {
 		quicConf.Tracer = quiclogging.NewMultiplexedTracer(tracers...)
 	}
 	serverConfig := quicConf.Clone()
-	if !enableDraft29 {
+	if !cm.enableDraft29 {
 		serverConfig.Versions = []quic.VersionNumber{quic.Version1}
 	}
 
-	cm := &ConnManager{
-		enableReuseport: enableReuseport,
-		enableDraft29:   enableDraft29,
-		clientConfig:    quicConf,
-		serverConfig:    serverConfig,
-		conns:           make(map[string]connListenerEntry),
-	}
-	if enableReuseport {
+	cm.clientConfig = quicConf
+	cm.serverConfig = serverConfig
+	if cm.enableReuseport {
 		cm.reuseUDP4 = newReuse()
 		cm.reuseUDP6 = newReuse()
 	}

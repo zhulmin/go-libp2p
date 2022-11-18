@@ -99,7 +99,17 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	if _, err := io.ReadFull(keyReader, statelessResetKey[:]); err != nil {
 		return nil, err
 	}
-	connManager, err := quicreuse.NewConnManager(statelessResetKey, !cfg.disableReuseport, cfg.metrics, !cfg.disableDraft29)
+	var reuseOpts []quicreuse.Option
+	if cfg.metrics {
+		reuseOpts = append(reuseOpts, quicreuse.EnableMetrics())
+	}
+	if cfg.disableReuseport {
+		reuseOpts = append(reuseOpts, quicreuse.DisableReuseport())
+	}
+	if cfg.disableDraft29 {
+		reuseOpts = append(reuseOpts, quicreuse.DisableDraft29())
+	}
+	connManager, err := quicreuse.NewConnManager(statelessResetKey, reuseOpts...)
 	if err != nil {
 		return nil, err
 	}
