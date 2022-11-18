@@ -1,4 +1,4 @@
-package libp2pquic
+package quicreuse
 
 import (
 	"errors"
@@ -9,10 +9,12 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-var quicV1MA ma.Multiaddr = ma.StringCast("/quic-v1")
-var quicDraft29MA ma.Multiaddr = ma.StringCast("/quic")
+var (
+	quicV1MA      = ma.StringCast("/quic-v1")
+	quicDraft29MA = ma.StringCast("/quic")
+)
 
-func toQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, error) {
+func ToQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, error) {
 	udpMA, err := manet.FromNetAddr(na)
 	if err != nil {
 		return nil, err
@@ -27,7 +29,7 @@ func toQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, err
 	}
 }
 
-func fromQuicMultiaddr(addr ma.Multiaddr) (net.Addr, quic.VersionNumber, error) {
+func FromQuicMultiaddr(addr ma.Multiaddr) (*net.UDPAddr, quic.VersionNumber, error) {
 	var version quic.VersionNumber
 	var partsBeforeQUIC []ma.Multiaddr
 	ma.ForEach(addr, func(c ma.Component) bool {
@@ -54,5 +56,9 @@ func fromQuicMultiaddr(addr ma.Multiaddr) (net.Addr, quic.VersionNumber, error) 
 	if err != nil {
 		return nil, version, err
 	}
-	return netAddr, version, err
+	udpAddr, ok := netAddr.(*net.UDPAddr)
+	if !ok {
+		return nil, 0, errors.New("not a *net.UDPAddr")
+	}
+	return udpAddr, version, nil
 }

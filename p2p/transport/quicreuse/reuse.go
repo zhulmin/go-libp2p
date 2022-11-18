@@ -1,4 +1,4 @@
-package libp2pquic
+package quicreuse
 
 import (
 	"net"
@@ -8,6 +8,23 @@ import (
 	"github.com/google/gopacket/routing"
 	"github.com/libp2p/go-netroute"
 )
+
+type pConn interface {
+	net.PacketConn
+
+	// count conn reference
+	DecreaseCount()
+	IncreaseCount()
+}
+
+type noreuseConn struct {
+	*net.UDPConn
+}
+
+func (c *noreuseConn) IncreaseCount() {}
+func (c *noreuseConn) DecreaseCount() {
+	c.UDPConn.Close()
+}
 
 // Constant. Defined as variables to simplify testing.
 var (

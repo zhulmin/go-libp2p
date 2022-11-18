@@ -1,4 +1,4 @@
-package quicutils
+package quicreuse
 
 import (
 	"bytes"

@@ -2,7 +2,6 @@ package libp2pquic
 
 import (
 	"context"
-	"net"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -13,17 +12,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-type pConn interface {
-	net.PacketConn
-
-	// count conn reference
-	DecreaseCount()
-	IncreaseCount()
-}
-
 type conn struct {
 	quicConn  quic.Connection
-	pconn     pConn
 	transport *transport
 	scope     network.ConnManagementScope
 
@@ -44,7 +34,6 @@ var _ tpt.CapableConn = &conn{}
 func (c *conn) Close() error {
 	c.transport.removeConn(c.quicConn)
 	err := c.quicConn.CloseWithError(0, "")
-	c.pconn.DecreaseCount()
 	c.scope.Done()
 	return err
 }

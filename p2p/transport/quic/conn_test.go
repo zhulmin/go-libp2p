@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
@@ -386,7 +388,6 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 		// now allow the address and make sure the connection goes through
 		cg.EXPECT().InterceptAccept(gomock.Any()).Return(true)
 		cg.EXPECT().InterceptSecured(gomock.Any(), gomock.Any(), gomock.Any()).Return(true)
-		clientTransport.(*transport).clientConfig.HandshakeIdleTimeout = 2 * time.Second
 		conn, err = clientTransport.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 		defer conn.Close()
@@ -421,7 +422,6 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 
 		// now allow the peerId and make sure the connection goes through
 		cg.EXPECT().InterceptSecured(gomock.Any(), gomock.Any(), gomock.Any()).Return(true)
-		clientTransport.(*transport).clientConfig.HandshakeIdleTimeout = 2 * time.Second
 		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddrs()[0], serverID)
 		require.NoError(t, err)
 		conn.Close()
@@ -538,7 +538,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	clientTransport, err := NewTransport(clientKey, nil, nil, nil, tc.Options...)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
-	proxyAddr, err := toQuicMultiaddr(proxy.LocalAddr(), quic.Version1)
+	proxyAddr, err := quicreuse.ToQuicMultiaddr(proxy.LocalAddr(), quic.Version1)
 	require.NoError(t, err)
 	conn, err := clientTransport.Dial(context.Background(), proxyAddr, serverID)
 	require.NoError(t, err)
@@ -723,7 +723,7 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 			ctx := context.Background()
 
 			for _, a := range ln1.Multiaddrs() {
-				_, v, err := fromQuicMultiaddr(a)
+				_, v, err := quicreuse.FromQuicMultiaddr(a)
 				require.NoError(t, err)
 
 				done := make(chan struct{})
@@ -733,9 +733,9 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 					require.NoError(t, err)
 					defer conn.Close()
 
-					_, versionConnLocal, err := fromQuicMultiaddr(conn.LocalMultiaddr())
+					_, versionConnLocal, err := quicreuse.FromQuicMultiaddr(conn.LocalMultiaddr())
 					require.NoError(t, err)
-					_, versionConnRemote, err := fromQuicMultiaddr(conn.RemoteMultiaddr())
+					_, versionConnRemote, err := quicreuse.FromQuicMultiaddr(conn.RemoteMultiaddr())
 					require.NoError(t, err)
 
 					require.Equal(t, v, versionConnLocal)
@@ -744,9 +744,9 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 
 				conn, err := t2.Dial(ctx, a, serverID)
 				require.NoError(t, err)
-				_, versionConnLocal, err := fromQuicMultiaddr(conn.LocalMultiaddr())
+				_, versionConnLocal, err := quicreuse.FromQuicMultiaddr(conn.LocalMultiaddr())
 				require.NoError(t, err)
-				_, versionConnRemote, err := fromQuicMultiaddr(conn.RemoteMultiaddr())
+				_, versionConnRemote, err := quicreuse.FromQuicMultiaddr(conn.RemoteMultiaddr())
 				require.NoError(t, err)
 
 				require.Equal(t, v, versionConnLocal)

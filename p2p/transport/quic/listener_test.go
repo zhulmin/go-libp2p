@@ -3,9 +3,7 @@ package libp2pquic
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,7 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 
-	"github.com/lucas-clemente/quic-go"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -29,30 +26,6 @@ func newTransport(t *testing.T, rcmgr network.ResourceManager) tpt.Transport {
 	tr, err := NewTransport(key, nil, nil, rcmgr)
 	require.NoError(t, err)
 	return tr
-}
-
-// The conn passed to quic-go should be a conn that quic-go can be
-// type-asserted to a UDPConn. That way, it can use all kinds of optimizations.
-func TestConnUsedForListening(t *testing.T) {
-	origQuicListen := quicListen
-	t.Cleanup(func() { quicListen = origQuicListen })
-
-	var conn net.PacketConn
-	quicListen = func(c net.PacketConn, _ *tls.Config, _ *quic.Config) (quic.Listener, error) {
-		conn = c
-		return nil, errors.New("listen error")
-	}
-	localAddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
-	require.NoError(t, err)
-
-	tr := newTransport(t, nil)
-	defer tr.(io.Closer).Close()
-	_, err = tr.Listen(localAddr)
-	require.EqualError(t, err, "listen error")
-	require.NotNil(t, conn)
-	defer conn.Close()
-	_, ok := conn.(quic.OOBCapablePacketConn)
-	require.True(t, ok)
 }
 
 func TestListenAddr(t *testing.T) {

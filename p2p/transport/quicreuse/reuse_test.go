@@ -1,4 +1,4 @@
-package libp2pquic
+package quicreuse
 
 import (
 	"bytes"
@@ -44,7 +44,7 @@ func platformHasRoutingTables() bool {
 func isGarbageCollectorRunning() bool {
 	var b bytes.Buffer
 	pprof.Lookup("goroutine").WriteTo(&b, 1)
-	return strings.Contains(b.String(), "quic.(*reuse).gc")
+	return strings.Contains(b.String(), "quicreuse.(*reuse).gc")
 }
 
 func cleanup(t *testing.T, reuse *reuse) {

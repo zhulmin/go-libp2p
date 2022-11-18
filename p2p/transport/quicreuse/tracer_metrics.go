@@ -1,4 +1,4 @@
-package libp2pquic
+package quicreuse
 
 import (
 	"context"

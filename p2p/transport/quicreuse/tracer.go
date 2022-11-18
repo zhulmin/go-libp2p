@@ -1,4 +1,4 @@
-package quicutils
+package quicreuse
 
 import (
 	"bufio"
@@ -17,11 +17,11 @@ var log = golog.Logger("quic-utils")
 
 // QLOGTracer holds a qlog tracer, if qlogging is enabled (enabled using the QLOGDIR environment variable).
 // Otherwise it is nil.
-var QLOGTracer logging.Tracer
+var qlogTracer logging.Tracer
 
 func init() {
 	if qlogDir := os.Getenv("QLOGDIR"); len(qlogDir) > 0 {
-		QLOGTracer = initQlogger(qlogDir)
+		qlogTracer = initQlogger(qlogDir)
 	}
 }
 

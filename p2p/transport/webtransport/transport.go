@@ -18,7 +18,6 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
-	"github.com/libp2p/go-libp2p/p2p/transport/internal/quicutils"
 
 	"github.com/benbjohnson/clock"
 	logging "github.com/ipfs/go-log/v2"
@@ -119,9 +118,7 @@ func New(key ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceMa
 		return nil, err
 	}
 	t.noise = n
-	if qlogTracer := quicutils.QLOGTracer; qlogTracer != nil {
-		t.quicConfig.Tracer = qlogTracer
-	}
+	// TODO: make it possible to use qlog
 	return t, nil
 }
 
