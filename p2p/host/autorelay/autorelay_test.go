@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -476,8 +477,32 @@ func TestReconnectToStaticRelays(t *testing.T) {
 
 	defer h.Close()
 
+	addrUpdated, err := h.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
+	require.NoError(t, err)
+
+	found := false
+
+addrUpdatedEventLoop:
+	for {
+		select {
+		case evAny := <-addrUpdated.Out():
+			ev := evAny.(event.EvtLocalAddressesUpdated)
+			for _, updatedAddr := range ev.Current {
+				if updatedAddr.Action == event.Added {
+					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+						found = true
+						break addrUpdatedEventLoop
+					}
+				}
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("timeout waiting for address updated event")
+		}
+	}
+	require.True(t, found, "Didn't find relay addr in event")
+	require.Equal(t, 1, numRelays(h))
+
 	cl.Add(time.Minute)
-	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 10*time.Second, 50*time.Millisecond)
 
 	relaysInUse := usedRelays(h)
 	oldRelay := relaysInUse[0]
@@ -488,5 +513,6 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	}
 
 	cl.Add(time.Hour)
-	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 10*time.Second, 100*time.Millisecond)
+	<-addrUpdated.Out()
+	require.Equal(t, 0, numRelays(h))
 }
