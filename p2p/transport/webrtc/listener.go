@@ -29,7 +29,7 @@ var (
 	// establishment.
 	defaultMultihash *multihash.DecodedMultihash = nil
 	// static assert
-	_                tpt.Listener          = &listener{}
+	_ tpt.Listener = &listener{}
 )
 
 func init() {
@@ -140,7 +140,7 @@ func (l *listener) Addr() net.Addr {
 }
 
 func (l *listener) Multiaddrs() []ma.Multiaddr {
-	return []ma.Multiaddr{ l.localMultiaddr }
+	return []ma.Multiaddr{l.localMultiaddr}
 }
 
 func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
