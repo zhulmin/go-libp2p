@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
@@ -30,7 +29,7 @@ var (
 	// establishment.
 	defaultMultihash *multihash.DecodedMultihash = nil
 	// static assert
-	_                transport.Listener          = &listener{}
+	_                tpt.Listener          = &listener{}
 )
 
 func init() {
