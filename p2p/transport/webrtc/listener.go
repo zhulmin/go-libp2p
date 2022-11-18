@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/transport"
 
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
@@ -28,6 +29,8 @@ var (
 	// as the remote fingerprint during the intial PeerConnection connection
 	// establishment.
 	defaultMultihash *multihash.DecodedMultihash = nil
+	// static assert
+	_                transport.Listener          = &listener{}
 )
 
 func init() {
@@ -46,7 +49,6 @@ func init() {
 
 }
 
-// / implement net.Listener
 type listener struct {
 	transport                 *WebRTCTransport
 	config                    webrtc.Configuration
@@ -138,8 +140,8 @@ func (l *listener) Addr() net.Addr {
 	return l.mux.LocalAddr()
 }
 
-func (l *listener) Multiaddr() ma.Multiaddr {
-	return l.localMultiaddr
+func (l *listener) Multiaddrs() []ma.Multiaddr {
+	return []ma.Multiaddr{ l.localMultiaddr }
 }
 
 func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
