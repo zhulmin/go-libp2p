@@ -1,7 +1,6 @@
 package libp2pwebrtc
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"os"
@@ -66,7 +65,7 @@ type dataChannel struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	m              sync.Mutex
-	readBuf        bytes.Buffer
+	readBuf        []byte
 	writeAvailable chan struct{}
 	reader         protoio.Reader
 	writer         protoio.Writer
@@ -91,6 +90,7 @@ func newDataChannel(
 		writeAvailable: make(chan struct{}),
 		reader:         protoio.NewDelimitedReader(rwc, 16384),
 		writer:         protoio.NewDelimitedWriter(rwc),
+		readBuf:        []byte{},
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
@@ -137,9 +137,10 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		}
 
 		d.m.Lock()
-		read, err := d.readBuf.Read(b)
+		read := copy(b, d.readBuf)
+		d.readBuf = d.readBuf[read:]
 		d.m.Unlock()
-		if state := d.getState(); err == io.EOF && (state == stateReadClosed || state == stateClosed) {
+		if state := d.getState(); len(d.readBuf) == 0 && (state == stateReadClosed || state == stateClosed) {
 			return read, io.EOF
 		}
 		if read > 0 {
@@ -154,7 +155,7 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 
 		// read in a separate goroutine to enable read deadlines
 		go func() {
-			err = d.reader.ReadMsg(&msg)
+			err := d.reader.ReadMsg(&msg)
 			if err != nil {
 				if err != io.EOF {
 					log.Warnf("error reading from datachannel: %v", err)
@@ -167,7 +168,7 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 
 			if state := d.getState(); state != stateClosed && state != stateReadClosed && msg.Message != nil {
 				d.m.Lock()
-				d.readBuf.Write(msg.Message)
+				d.readBuf = append(d.readBuf, msg.Message...)
 				d.m.Unlock()
 			}
 			d.processControlMessage(msg)
