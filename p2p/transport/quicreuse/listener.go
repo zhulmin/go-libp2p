@@ -71,7 +71,7 @@ func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*con
 					return conf, nil
 				}
 			}
-			return nil, errors.New("no supported protocol found")
+			return nil, fmt.Errorf("no supported protocol found. offered: %+v", info.SupportedProtos)
 		},
 	}
 	quicConf := quicConfig.Clone()

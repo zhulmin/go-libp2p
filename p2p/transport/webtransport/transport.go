@@ -18,6 +18,7 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	"github.com/benbjohnson/clock"
 	logging "github.com/ipfs/go-log/v2"
@@ -72,9 +73,9 @@ type transport struct {
 	pid     peer.ID
 	clock   clock.Clock
 
-	quicConfig *quic.Config
-	rcmgr      network.ResourceManager
-	gater      connmgr.ConnectionGater
+	connManager *quicreuse.ConnManager
+	rcmgr       network.ResourceManager
+	gater       connmgr.ConnectionGater
 
 	listenOnce    sync.Once
 	listenOnceErr error
@@ -92,22 +93,20 @@ var _ tpt.Transport = &transport{}
 var _ tpt.Resolver = &transport{}
 var _ io.Closer = &transport{}
 
-func New(key ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
+func New(key ic.PrivKey, connManager *quicreuse.ConnManager, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
 	id, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
 	t := &transport{
-		pid:     id,
-		privKey: key,
-		rcmgr:   rcmgr,
-		gater:   gater,
-		clock:   clock.New(),
-		conns:   map[uint64]*conn{},
+		pid:         id,
+		privKey:     key,
+		rcmgr:       rcmgr,
+		gater:       gater,
+		clock:       clock.New(),
+		connManager: connManager,
+		conns:       map[uint64]*conn{},
 	}
-	t.quicConfig = &quic.Config{
-		AllowConnectionWindowIncrease: t.allowWindowIncrease,
-		Versions:                      []quic.VersionNumber{quic.Version1}}
 	for _, opt := range opts {
 		if err := opt(t); err != nil {
 			return nil, err
@@ -118,7 +117,6 @@ func New(key ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceMa
 		return nil, err
 	}
 	t.noise = n
-	// TODO: make it possible to use qlog
 	return t, nil
 }
 
@@ -127,6 +125,7 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 	if err != nil {
 		return nil, err
 	}
+	url := fmt.Sprintf("https://%s%s?type=noise", addr, webtransportHTTPEndpoint)
 	certHashes, err := extractCertHashes(raddr)
 	if err != nil {
 		return nil, err
@@ -145,7 +144,8 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 		return nil, err
 	}
 
-	sess, err := t.dial(ctx, addr, sni, certHashes)
+	maddr, _ := ma.SplitFunc(raddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_WEBTRANSPORT })
+	sess, err := t.dial(ctx, maddr, url, sni, certHashes)
 	if err != nil {
 		scope.Done()
 		return nil, err
@@ -166,14 +166,14 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 	return conn, nil
 }
 
-func (t *transport) dial(ctx context.Context, addr string, sni string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, error) {
-	url := fmt.Sprintf("https://%s%s?type=noise", addr, webtransportHTTPEndpoint)
+func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string, certHashes []multihash.DecodedMultihash) (*webtransport.Session, error) {
 	var tlsConf *tls.Config
 	if t.tlsClientConf != nil {
 		tlsConf = t.tlsClientConf.Clone()
 	} else {
 		tlsConf = &tls.Config{}
 	}
+	tlsConf.NextProtos = append(tlsConf.NextProtos, http3.NextProtoH3)
 
 	if sni != "" {
 		tlsConf.ServerName = sni
@@ -187,10 +187,15 @@ func (t *transport) dial(ctx context.Context, addr string, sni string, certHashe
 			return verifyRawCerts(rawCerts, certHashes)
 		}
 	}
+	conn, err := t.connManager.DialQUIC(ctx, addr, tlsConf, t.allowWindowIncrease)
+	if err != nil {
+		return nil, err
+	}
 	dialer := webtransport.Dialer{
 		RoundTripper: &http3.RoundTripper{
-			TLSClientConfig: tlsConf,
-			QuicConfig:      t.quicConfig,
+			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				return conn.(quic.EarlyConnection), nil
+			},
 		},
 	}
 	rsp, sess, err := dialer.Dial(ctx, url, nil)
@@ -299,7 +304,19 @@ func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 			return nil, t.listenOnceErr
 		}
 	}
-	return newListener(laddr, t, t.staticTLSConf)
+	tlsConf := t.staticTLSConf.Clone()
+	if tlsConf == nil {
+		tlsConf = &tls.Config{GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
+			return t.certManager.GetConfig(), nil
+		}}
+	}
+	tlsConf.NextProtos = append(tlsConf.NextProtos, http3.NextProtoH3)
+
+	ln, err := t.connManager.ListenQUIC(laddr, tlsConf, t.allowWindowIncrease)
+	if err != nil {
+		return nil, err
+	}
+	return newListener(ln, t, t.staticTLSConf != nil)
 }
 
 func (t *transport) Protocols() []int {
@@ -364,7 +381,7 @@ func extractSNI(maddr ma.Multiaddr) (sni string, foundSniComponent bool) {
 }
 
 // Resolve implements transport.Resolver
-func (t *transport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
+func (t *transport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]ma.Multiaddr, error) {
 	sni, foundSniComponent := extractSNI(maddr)
 
 	if foundSniComponent || sni == "" {

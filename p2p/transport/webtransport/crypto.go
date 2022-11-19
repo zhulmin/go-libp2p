@@ -17,6 +17,7 @@ import (
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 
+	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/multiformats/go-multihash"
 	"golang.org/x/crypto/hkdf"
 )
@@ -34,6 +35,7 @@ func getTLSConf(key ic.PrivKey, start, end time.Time) (*tls.Config, error) {
 			PrivateKey:  priv,
 			Leaf:        cert,
 		}},
+		NextProtos: []string{http3.NextProtoH3},
 	}, nil
 }
 

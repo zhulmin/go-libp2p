@@ -2,7 +2,6 @@ package libp2pwebtransport
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -13,11 +12,10 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
-	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/marten-seemann/webtransport-go"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 var errClosed = errors.New("closed")
@@ -27,8 +25,8 @@ const handshakeTimeout = 10 * time.Second
 
 type listener struct {
 	transport       *transport
-	tlsConf         *tls.Config
 	isStaticTLSConf bool
+	reuseListener   quicreuse.Listener
 
 	server webtransport.Server
 
@@ -45,42 +43,21 @@ type listener struct {
 
 var _ tpt.Listener = &listener{}
 
-func newListener(laddr ma.Multiaddr, t *transport, tlsConf *tls.Config) (tpt.Listener, error) {
-	network, addr, err := manet.DialArgs(laddr)
+func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf bool) (tpt.Listener, error) {
+	localMultiaddr, err := toWebtransportMultiaddr(reuseListener.Addr())
 	if err != nil {
 		return nil, err
 	}
-	udpAddr, err := net.ResolveUDPAddr(network, addr)
-	if err != nil {
-		return nil, err
-	}
-	udpConn, err := net.ListenUDP(network, udpAddr)
-	if err != nil {
-		return nil, err
-	}
-	localMultiaddr, err := toWebtransportMultiaddr(udpConn.LocalAddr())
-	if err != nil {
-		return nil, err
-	}
-	isStaticTLSConf := tlsConf != nil
-	if tlsConf == nil {
-		tlsConf = &tls.Config{GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
-			return t.certManager.GetConfig(), nil
-		}}
-	}
+
 	ln := &listener{
+		reuseListener:   reuseListener,
 		transport:       t,
-		tlsConf:         tlsConf,
 		isStaticTLSConf: isStaticTLSConf,
 		queue:           make(chan tpt.CapableConn, queueLen),
 		serverClosed:    make(chan struct{}),
-		addr:            udpConn.LocalAddr(),
+		addr:            reuseListener.Addr(),
 		multiaddr:       localMultiaddr,
 		server: webtransport.Server{
-			H3: http3.Server{
-				QuicConfig: t.quicConfig,
-				TLSConfig:  tlsConf,
-			},
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 	}
@@ -90,10 +67,14 @@ func newListener(laddr ma.Multiaddr, t *transport, tlsConf *tls.Config) (tpt.Lis
 	ln.server.H3.Handler = mux
 	go func() {
 		defer close(ln.serverClosed)
-		defer func() { udpConn.Close() }()
-		if err := ln.server.Serve(udpConn); err != nil {
+		for {
+			conn, err := ln.reuseListener.Accept(context.Background())
 			// TODO: only output if the server hasn't been closed
-			log.Debugw("serving failed", "addr", udpConn.LocalAddr(), "error", err)
+			log.Debugw("serving failed", "addr", ln.Addr(), "error", err)
+			if err != nil {
+				return
+			}
+			go ln.server.ServeQUICConn(conn)
 		}
 	}()
 	return ln, nil
@@ -227,6 +208,7 @@ func (l *listener) Multiaddrs() []ma.Multiaddr {
 
 func (l *listener) Close() error {
 	l.ctxCancel()
+	l.reuseListener.Close()
 	err := l.server.Close()
 	<-l.serverClosed
 	return err
