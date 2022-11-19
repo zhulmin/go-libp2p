@@ -7,6 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -76,11 +77,12 @@ func TestQUICVersions(t *testing.T) {
 
 func TestDisableQUICDraft29(t *testing.T) {
 	h1, err := libp2p.New(
-		libp2p.Transport(libp2pquic.NewTransport, libp2pquic.DisableDraft29()),
+		libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.DisableDraft29()),
+		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
 		libp2p.ListenAddrStrings(
-			"/ip4/127.0.0.1/udp/12345/quic",    // QUIC draft-29
-			"/ip4/127.0.0.1/udp/12345/quic-v1", // QUIC v1
+			"/ip4/127.0.0.1/udp/12346/quic",    // QUIC draft-29
+			"/ip4/127.0.0.1/udp/12346/quic-v1", // QUIC v1
 		),
 	)
 	require.NoError(t, err)
@@ -97,7 +99,7 @@ func TestDisableQUICDraft29(t *testing.T) {
 	require.NoError(t, err)
 	defer h2.Close()
 	require.ErrorContains(t,
-		h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/udp/12345/quic")}}),
+		h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/udp/12346/quic")}}),
 		"no compatible QUIC version found",
 	)
 	// make sure that dialing QUIC v1 works

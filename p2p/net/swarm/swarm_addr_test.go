@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/libp2p/go-libp2p/core/peer"
-
 	ic "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
@@ -80,7 +80,10 @@ func TestDialAddressSelection(t *testing.T) {
 	tcpTr, err := tcp.NewTCPTransport(nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.AddTransport(tcpTr))
-	quicTr, err := quic.NewTransport(priv, nil, nil, nil)
+	reuse, err := quicreuse.NewConnManager([32]byte{})
+	require.NoError(t, err)
+	defer reuse.Close()
+	quicTr, err := quic.NewTransport(priv, reuse, nil, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.AddTransport(quicTr))
 	webtransportTr, err := webtransport.New(priv, nil, nil)

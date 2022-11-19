@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/control"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -160,7 +162,11 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		}
 	}
 	if !cfg.disableQUIC {
-		quicTransport, err := quic.NewTransport(priv, nil, cfg.connectionGater, nil)
+		reuse, err := quicreuse.NewConnManager([32]byte{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		quicTransport, err := quic.NewTransport(priv, reuse, nil, cfg.connectionGater, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -110,7 +110,7 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 		if err != nil {
 			return nil, err
 		}
-		ln, err := newConnListener(conn, c.serverConfig)
+		ln, err := newConnListener(conn, c.serverConfig, c.enableDraft29)
 		if err != nil {
 			return nil, err
 		}
@@ -214,6 +214,13 @@ func (c *ConnManager) Dial(network string, raddr *net.UDPAddr) (pConn, error) {
 		return nil, err
 	}
 	return &noreuseConn{conn}, nil
+}
+
+func (c *ConnManager) Protocols() []int {
+	if c.enableDraft29 {
+		return []int{ma.P_QUIC, ma.P_QUIC_V1}
+	}
+	return []int{ma.P_QUIC_V1}
 }
 
 func (c *ConnManager) Close() error {

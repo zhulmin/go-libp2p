@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
@@ -39,7 +41,11 @@ func run(port string) error {
 		return err
 	}
 
-	t, err := libp2pquic.NewTransport(priv, nil, nil, nil)
+	reuse, err := quicreuse.NewConnManager([32]byte{})
+	if err != nil {
+		return err
+	}
+	t, err := libp2pquic.NewTransport(priv, reuse, nil, nil, nil)
 	if err != nil {
 		return err
 	}

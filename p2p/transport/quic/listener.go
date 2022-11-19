@@ -28,20 +28,15 @@ type listener struct {
 
 var _ tpt.Listener = &listener{}
 
-func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager, enableDraft29 bool) (tpt.Listener, error) {
-	localMultiaddr, err := quicreuse.ToQuicMultiaddr(ln.Addr(), quic.Version1)
-	if err != nil {
-		return nil, err
-	}
-
-	localMultiaddrs := map[quic.VersionNumber]ma.Multiaddr{quic.Version1: localMultiaddr}
-
-	if enableDraft29 {
-		localMultiaddr, err := quicreuse.ToQuicMultiaddr(ln.Addr(), quic.VersionDraft29)
-		if err != nil {
-			return nil, err
+func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (tpt.Listener, error) {
+	localMultiaddrs := make(map[quic.VersionNumber]ma.Multiaddr)
+	for _, addr := range ln.Multiaddrs() {
+		if _, err := addr.ValueForProtocol(ma.P_QUIC); err == nil {
+			localMultiaddrs[quic.VersionDraft29] = addr
 		}
-		localMultiaddrs[quic.VersionDraft29] = localMultiaddr
+		if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
+			localMultiaddrs[quic.Version1] = addr
+		}
 	}
 
 	return &listener{

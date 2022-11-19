@@ -2,19 +2,15 @@ package libp2pquic
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net"
 	"sync"
 	"time"
 
 	manet "github.com/multiformats/go-multiaddr/net"
-
-	"golang.org/x/crypto/hkdf"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -38,7 +34,6 @@ var ErrHolePunching = errors.New("hole punching attempted; no active dial")
 
 var HolePunchTimeout = 5 * time.Second
 
-const statelessResetKeyInfo = "libp2p quic stateless reset key"
 const errorCodeConnectionGating = 0x47415445 // GATE in ASCII
 
 // The Transport implements the tpt.Transport interface for QUIC connections.
@@ -52,8 +47,6 @@ type transport struct {
 
 	holePunchingMx sync.Mutex
 	holePunching   map[holePunchKey]*activeHolePunch
-
-	enableDraft29 bool
 
 	connMx sync.Mutex
 	conns  map[quic.Connection]*conn
@@ -72,12 +65,7 @@ type activeHolePunch struct {
 }
 
 // NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (tpt.Transport, error) {
-	var cfg config
-	if err := cfg.apply(opts...); err != nil {
-		return nil, fmt.Errorf("unable to apply quic-tpt option(s): %w", err)
-	}
-
+func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
@@ -90,43 +78,20 @@ func NewTransport(key ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, r
 	if err != nil {
 		return nil, err
 	}
-	keyBytes, err := key.Raw()
-	if err != nil {
-		return nil, err
-	}
-	keyReader := hkdf.New(sha256.New, keyBytes, nil, []byte(statelessResetKeyInfo))
-	var statelessResetKey quic.StatelessResetKey
-	if _, err := io.ReadFull(keyReader, statelessResetKey[:]); err != nil {
-		return nil, err
-	}
-	var reuseOpts []quicreuse.Option
-	if cfg.metrics {
-		reuseOpts = append(reuseOpts, quicreuse.EnableMetrics())
-	}
-	if cfg.disableReuseport {
-		reuseOpts = append(reuseOpts, quicreuse.DisableReuseport())
-	}
-	if cfg.disableDraft29 {
-		reuseOpts = append(reuseOpts, quicreuse.DisableDraft29())
-	}
-	connManager, err := quicreuse.NewConnManager(statelessResetKey, reuseOpts...)
-	if err != nil {
-		return nil, err
-	}
+
 	if rcmgr == nil {
 		rcmgr = &network.NullResourceManager{}
 	}
 
 	return &transport{
-		privKey:       key,
-		localPeer:     localPeer,
-		identity:      identity,
-		connManager:   connManager,
-		gater:         gater,
-		rcmgr:         rcmgr,
-		conns:         make(map[quic.Connection]*conn),
-		holePunching:  make(map[holePunchKey]*activeHolePunch),
-		enableDraft29: !cfg.disableDraft29,
+		privKey:      key,
+		localPeer:    localPeer,
+		identity:     identity,
+		connManager:  connManager,
+		gater:        gater,
+		rcmgr:        rcmgr,
+		conns:        make(map[quic.Connection]*conn),
+		holePunching: make(map[holePunchKey]*activeHolePunch),
 	}, nil
 }
 
@@ -309,7 +274,7 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	l, err := newListener(ln, t, t.localPeer, t.privKey, t.rcmgr, t.enableDraft29)
+	l, err := newListener(ln, t, t.localPeer, t.privKey, t.rcmgr)
 	if err != nil {
 		_ = ln.Close()
 		return nil, err
@@ -338,10 +303,7 @@ func (t *transport) Proxy() bool {
 
 // Protocols returns the set of protocols handled by this transport.
 func (t *transport) Protocols() []int {
-	if t.enableDraft29 {
-		return []int{ma.P_QUIC, ma.P_QUIC_V1}
-	}
-	return []int{ma.P_QUIC_V1}
+	return t.connManager.Protocols()
 }
 
 func (t *transport) String() string {
@@ -349,5 +311,5 @@ func (t *transport) String() string {
 }
 
 func (t *transport) Close() error {
-	return t.connManager.Close()
+	return nil
 }

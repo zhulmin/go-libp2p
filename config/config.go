@@ -30,6 +30,7 @@ import (
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -78,6 +79,7 @@ type Config struct {
 
 	PeerKey crypto.PrivKey
 
+	QUICReuse          []fx.Option
 	Transports         []fx.Option
 	Muxers             []tptu.StreamMuxer
 	SecurityTransports []Security
@@ -237,6 +239,13 @@ func (cfg *Config) addTransports(h host.Host) error {
 				fx.ParamTags(`group:"security_unordered"`),
 				fx.ResultTags(`name:"security"`),
 			)))
+	}
+
+	fxopts = append(fxopts, fx.Provide(PrivKeyToStatelessResetKey))
+	if cfg.QUICReuse != nil {
+		fxopts = append(fxopts, cfg.QUICReuse...)
+	} else {
+		fxopts = append(fxopts, fx.Provide(quicreuse.NewConnManager)) // TODO: close the ConnManager when shutting down the node
 	}
 
 	fxopts = append(fxopts, fx.Invoke(

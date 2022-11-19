@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/lucas-clemente/quic-go"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var quicListen = quic.Listen // so we can mock it in tests
@@ -17,6 +18,7 @@ var quicListen = quic.Listen // so we can mock it in tests
 type Listener interface {
 	Accept(context.Context) (quic.Connection, error)
 	Addr() net.Addr
+	Multiaddrs() []ma.Multiaddr
 	io.Closer
 }
 
@@ -30,16 +32,31 @@ type connListener struct {
 	l       quic.Listener
 	conn    pConn
 	running chan struct{}
+	addrs   []ma.Multiaddr
 
 	mx        sync.Mutex
 	protocols map[string]protoConf
 }
 
-func newConnListener(c pConn, quicConfig *quic.Config) (*connListener, error) {
+func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*connListener, error) {
+	localMultiaddrs := make([]ma.Multiaddr, 0, 2)
+	a, err := ToQuicMultiaddr(c.LocalAddr(), quic.Version1)
+	if err != nil {
+		return nil, err
+	}
+	localMultiaddrs = append(localMultiaddrs, a)
+	if enableDraft29 {
+		a, err := ToQuicMultiaddr(c.LocalAddr(), quic.VersionDraft29)
+		if err != nil {
+			return nil, err
+		}
+		localMultiaddrs = append(localMultiaddrs, a)
+	}
 	cl := &connListener{
 		protocols: map[string]protoConf{},
 		running:   make(chan struct{}),
 		conn:      c,
+		addrs:     localMultiaddrs,
 	}
 	tlsConf := &tls.Config{
 		GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
@@ -93,7 +110,7 @@ func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 		}
 	}
 
-	ln := newSingleListener(l.l.Addr(), func() {
+	ln := newSingleListener(l.l.Addr(), l.addrs, func() {
 		l.mx.Lock()
 		for _, proto := range tlsConf.NextProtos {
 			delete(l.protocols, proto)
@@ -144,17 +161,19 @@ const queueLen = 16
 type listener struct {
 	queue     chan quic.Connection
 	addr      net.Addr
+	addrs     []ma.Multiaddr
 	remove    func()
 	closeOnce sync.Once
 }
 
 var _ Listener = &listener{}
 
-func newSingleListener(addr net.Addr, remove func()) *listener {
+func newSingleListener(addr net.Addr, addrs []ma.Multiaddr, remove func()) *listener {
 	return &listener{
 		queue:  make(chan quic.Connection, queueLen),
 		remove: remove,
 		addr:   addr,
+		addrs:  addrs,
 	}
 }
 
@@ -180,6 +199,10 @@ func (l *listener) Accept(ctx context.Context) (quic.Connection, error) {
 
 func (l *listener) Addr() net.Addr {
 	return l.addr
+}
+
+func (l *listener) Multiaddrs() []ma.Multiaddr {
+	return l.addrs
 }
 
 func (l *listener) Close() error {

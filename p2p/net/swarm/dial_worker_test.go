@@ -19,6 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -58,7 +59,11 @@ func makeSwarm(t *testing.T) *Swarm {
 		t.Fatal(err)
 	}
 
-	quicTransport, err := quic.NewTransport(priv, nil, nil, nil)
+	reuse, err := quicreuse.NewConnManager([32]byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quicTransport, err := quic.NewTransport(priv, reuse, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

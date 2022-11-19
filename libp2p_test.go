@@ -173,7 +173,7 @@ func TestChainOptions(t *testing.T) {
 
 func TestTransportConstructorTCP(t *testing.T) {
 	h, err := New(
-		Transport(tcp.NewTCPTransport),
+		Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
 		DisableRelay(),
 	)
 	require.NoError(t, err)
@@ -186,7 +186,7 @@ func TestTransportConstructorTCP(t *testing.T) {
 
 func TestTransportConstructorQUIC(t *testing.T) {
 	h, err := New(
-		Transport(quic.NewTransport, quic.DisableReuseport()),
+		Transport(quic.NewTransport),
 		DisableRelay(),
 	)
 	require.NoError(t, err)
