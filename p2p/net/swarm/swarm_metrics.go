@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"go.opencensus.io/stats"
@@ -12,8 +13,9 @@ import (
 const metricNamespace = "swarm/"
 
 var (
-	connsOpened = stats.Int64(metricNamespace+"connections_opened", "Connections Opened", stats.UnitDimensionless)
-	connsClosed = stats.Int64(metricNamespace+"connections_closed", "Connections Closed", stats.UnitDimensionless)
+	connsOpened  = stats.Int64(metricNamespace+"connections_opened", "Connections Opened", stats.UnitDimensionless)
+	connsClosed  = stats.Int64(metricNamespace+"connections_closed", "Connections Closed", stats.UnitDimensionless)
+	connDuration = stats.Float64(metricNamespace+"connection_duration", "Duration of a Connection", stats.UnitSeconds)
 )
 
 var (
@@ -23,12 +25,36 @@ var (
 	muxerTag, _     = tag.NewKey("muxer")
 )
 
+var connDurationSeconds []float64
+
+func init() {
+	d := 0.25 // 250ms
+	connDurationSeconds = append(connDurationSeconds)
+	for d < 7*24*3600 { // one week
+		d *= 2
+		connDurationSeconds = append(connDurationSeconds, d)
+	}
+}
+
 var (
-	connOpenView   = &view.View{Measure: connsOpened, Aggregation: view.Sum(), TagKeys: []tag.Key{directionTag, transportTag, securityTag, muxerTag}}
-	connClosedView = &view.View{Measure: connsClosed, Aggregation: view.Sum(), TagKeys: []tag.Key{directionTag, transportTag, securityTag, muxerTag}}
+	connOpenView = &view.View{
+		Measure:     connsOpened,
+		Aggregation: view.Sum(),
+		TagKeys:     []tag.Key{directionTag, transportTag, securityTag, muxerTag},
+	}
+	connClosedView = &view.View{
+		Measure:     connsClosed,
+		Aggregation: view.Sum(),
+		TagKeys:     []tag.Key{directionTag, transportTag, securityTag, muxerTag},
+	}
+	connDurationView = &view.View{
+		Measure:     connDuration,
+		Aggregation: view.Distribution(connDurationSeconds...),
+		TagKeys:     []tag.Key{directionTag, transportTag, securityTag, muxerTag},
+	}
 )
 
-var DefaultViews = []*view.View{connOpenView, connClosedView}
+var DefaultViews = []*view.View{connOpenView, connClosedView, connDurationView}
 
 func getDirection(dir network.Direction) string {
 	switch dir {
@@ -71,4 +97,11 @@ func recordConnectionClosed(dir network.Direction, cs network.ConnectionState) {
 	tags = append(tags, tag.Upsert(directionTag, getDirection(dir)))
 	tags = appendConnectionState(tags, cs)
 	stats.RecordWithTags(context.Background(), tags, connsClosed.M(1))
+}
+
+func recordConnectionDuration(dir network.Direction, t time.Duration, cs network.ConnectionState) {
+	tags := make([]tag.Mutator, 0, 4)
+	tags = append(tags, tag.Upsert(directionTag, getDirection(dir)))
+	tags = appendConnectionState(tags, cs)
+	stats.RecordWithTags(context.Background(), tags, connDuration.M(t.Seconds()))
 }
