@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
@@ -104,4 +105,65 @@ func TestDisableQUICDraft29(t *testing.T) {
 	)
 	// make sure that dialing QUIC v1 works
 	require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{addrs[0]}}))
+}
+
+func TestQUICAndWebTransport(t *testing.T) {
+	h1, err := libp2p.New(
+		libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.DisableDraft29()),
+		libp2p.Transport(libp2pquic.NewTransport),
+		libp2p.Transport(webtransport.New),
+		libp2p.ListenAddrStrings(
+			"/ip4/127.0.0.1/udp/12347/quic-v1",
+			"/ip4/127.0.0.1/udp/12347/quic-v1/webtransport",
+		),
+	)
+	require.NoError(t, err)
+	defer h1.Close()
+
+	addrs := h1.Addrs()
+	require.Len(t, addrs, 2)
+	require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(addrs[0]))
+	require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(addrs[1]))
+	var quicAddr, webtransportAddr ma.Multiaddr
+	for _, addr := range addrs {
+		if _, err := addr.ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
+			webtransportAddr = addr
+		} else {
+			quicAddr = addr
+		}
+	}
+	require.NotNil(t, webtransportAddr, "expected to have a WebTransport address")
+	require.NotNil(t, quicAddr, "expected to have a QUIC v1 address")
+
+	h2, err := libp2p.New(
+		libp2p.Transport(libp2pquic.NewTransport),
+		libp2p.NoListenAddrs,
+	)
+	require.NoError(t, err)
+	require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	for _, conns := range [][]network.Conn{h2.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h2.ID())} {
+		require.Len(t, conns, 1)
+		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
+			t.Fatalf("expected a QUIC connection, got a WebTransport connection (%s <-> %s)", conns[0].LocalMultiaddr(), conns[0].RemoteMultiaddr())
+		}
+		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
+		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].RemoteMultiaddr()))
+	}
+	h2.Close()
+
+	h3, err := libp2p.New(
+		libp2p.Transport(webtransport.New),
+		libp2p.NoListenAddrs,
+	)
+	require.NoError(t, err)
+	require.NoError(t, h3.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	for _, conns := range [][]network.Conn{h3.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h3.ID())} {
+		require.Len(t, conns, 1)
+		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err != nil {
+			t.Fatalf("expected a WebTransport connection, got a QUIC connection (%s <-> %s)", conns[0].LocalMultiaddr(), conns[0].RemoteMultiaddr())
+		}
+		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
+		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].RemoteMultiaddr()))
+	}
+	h3.Close()
 }
