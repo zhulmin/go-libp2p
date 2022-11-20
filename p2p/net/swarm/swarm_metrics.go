@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -13,9 +14,10 @@ import (
 const metricNamespace = "swarm/"
 
 var (
-	connsOpened  = stats.Int64(metricNamespace+"connections_opened", "Connections Opened", stats.UnitDimensionless)
-	connsClosed  = stats.Int64(metricNamespace+"connections_closed", "Connections Closed", stats.UnitDimensionless)
-	connDuration = stats.Float64(metricNamespace+"connection_duration", "Duration of a Connection", stats.UnitSeconds)
+	connsOpened          = stats.Int64(metricNamespace+"connections_opened", "Connections Opened", stats.UnitDimensionless)
+	connsClosed          = stats.Int64(metricNamespace+"connections_closed", "Connections Closed", stats.UnitDimensionless)
+	connDuration         = stats.Float64(metricNamespace+"connection_duration", "Duration of a Connection", stats.UnitSeconds)
+	connHandshakeLatency = stats.Float64(metricNamespace+"handshake_latency", "Duration of the libp2p handshake", stats.UnitSeconds)
 )
 
 var (
@@ -25,16 +27,32 @@ var (
 	muxerTag, _     = tag.NewKey("muxer")
 )
 
-var connDurationSeconds []float64
-
-func init() {
-	d := 0.25 // 250ms
-	connDurationSeconds = append(connDurationSeconds)
-	for d < 7*24*3600 { // one week
-		d *= 2
-		connDurationSeconds = append(connDurationSeconds, d)
+func exponentialDistribution(min, max float64) []float64 {
+	var v []float64
+	for d := min; d < 2*max; d *= 2 {
+		v = append(v, d)
 	}
+	return v
 }
+
+func getHandshakeLatencyBuckes() []float64 {
+	var buckets []float64
+	for i := 0.01; i <= 1; i += 0.02 {
+		buckets = append(buckets, i)
+	}
+	for i := 1.1; i <= 5; i += 0.1 {
+		buckets = append(buckets, i)
+	}
+	for i := 5.25; i <= 10; i += 0.25 {
+		buckets = append(buckets, i)
+	}
+	return buckets
+}
+
+var (
+	handshakeLatencySeconds = getHandshakeLatencyBuckes()
+	connDurationSeconds     = exponentialDistribution(250, (7 * 24 * time.Hour).Seconds())
+)
 
 var (
 	connOpenView = &view.View{
@@ -52,9 +70,14 @@ var (
 		Aggregation: view.Distribution(connDurationSeconds...),
 		TagKeys:     []tag.Key{directionTag, transportTag, securityTag, muxerTag},
 	}
+	connHandshakeLatencyView = &view.View{
+		Measure:     connHandshakeLatency,
+		Aggregation: view.Distribution(handshakeLatencySeconds...),
+		TagKeys:     []tag.Key{transportTag, securityTag, muxerTag},
+	}
 )
 
-var DefaultViews = []*view.View{connOpenView, connClosedView, connDurationView}
+var DefaultViews = []*view.View{connOpenView, connClosedView, connDurationView, connHandshakeLatencyView}
 
 func getDirection(dir network.Direction) string {
 	switch dir {
@@ -104,4 +127,10 @@ func recordConnectionDuration(dir network.Direction, t time.Duration, cs network
 	tags = append(tags, tag.Upsert(directionTag, getDirection(dir)))
 	tags = appendConnectionState(tags, cs)
 	stats.RecordWithTags(context.Background(), tags, connDuration.M(t.Seconds()))
+}
+
+func recordHandshakeLatency(t time.Duration, cs network.ConnectionState) {
+	tags := make([]tag.Mutator, 0, 3)
+	tags = appendConnectionState(tags, cs)
+	stats.RecordWithTags(context.Background(), tags, connHandshakeLatency.M(t.Seconds()))
 }
