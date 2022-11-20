@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/libp2p/go-libp2p/core/transport"
+
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -139,4 +141,16 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 
 func (l *listener) Multiaddrs() []ma.Multiaddr {
 	return []ma.Multiaddr{l.laddr}
+}
+
+type transportListener struct {
+	transport.Listener
+}
+
+func (l *transportListener) Accept() (transport.CapableConn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &capableConn{CapableConn: conn}, nil
 }

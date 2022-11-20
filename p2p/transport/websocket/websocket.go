@@ -166,7 +166,11 @@ func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p pee
 		connScope.Done()
 		return nil, err
 	}
-	return t.upgrader.Upgrade(ctx, t, macon, network.DirOutbound, p, connScope)
+	conn, err := t.upgrader.Upgrade(ctx, t, macon, network.DirOutbound, p, connScope)
+	if err != nil {
+		return nil, err
+	}
+	return &capableConn{CapableConn: conn}, nil
 }
 
 func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Conn, error) {
@@ -230,5 +234,5 @@ func (t *WebsocketTransport) Listen(a ma.Multiaddr) (transport.Listener, error) 
 	if err != nil {
 		return nil, err
 	}
-	return t.upgrader.UpgradeListener(t, malist), nil
+	return &transportListener{Listener: t.upgrader.UpgradeListener(t, malist)}, nil
 }

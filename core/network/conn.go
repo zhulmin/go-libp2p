@@ -36,10 +36,12 @@ type Conn interface {
 
 // ConnectionState holds information about the connection.
 type ConnectionState struct {
-	// The stream multiplexer used on this connection (if any).
+	// The stream multiplexer used on this connection (if any). For example: /yamux/1.0.0
 	StreamMultiplexer string
-	// The security protocol used on this connection (if any).
+	// The security protocol used on this connection (if any). For example: /tls/1.0.0
 	Security string
+	// the transport used on this connection. For example: tcp
+	Transport string
 }
 
 // ConnSecurity is the interface that one can mix into a connection interface to
