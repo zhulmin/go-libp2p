@@ -144,7 +144,7 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 		pconn, err := pnet.NewProtectedConn(u.psk, conn)
 		if err != nil {
 			conn.Close()
-			return nil, fmt.Errorf("failed to setup private network protector: %s", err)
+			return nil, fmt.Errorf("failed to setup private network protector: %w", err)
 		}
 		conn = pconn
 	} else if ipnet.ForcePrivateNetwork {
@@ -155,7 +155,7 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 	sconn, security, server, err := u.setupSecurity(ctx, conn, p, dir)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to negotiate security protocol: %s", err)
+		return nil, fmt.Errorf("failed to negotiate security protocol: %w", err)
 	}
 
 	// call the connection gater, if one is registered.
@@ -182,7 +182,7 @@ func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn ma
 	muxer, smconn, err := u.setupMuxer(ctx, sconn, server, connScope.PeerScope())
 	if err != nil {
 		sconn.Close()
-		return nil, fmt.Errorf("failed to negotiate stream multiplexer: %s", err)
+		return nil, fmt.Errorf("failed to negotiate stream multiplexer: %w", err)
 	}
 
 	tc := &transportConn{
