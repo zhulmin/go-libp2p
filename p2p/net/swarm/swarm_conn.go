@@ -60,6 +60,8 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) doClose() {
+	recordConnectionClosed(c.stat.Direction, c.ConnState())
+
 	c.swarm.removeConn(c)
 
 	// Prevent new streams from opening.
