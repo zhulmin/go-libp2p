@@ -3,10 +3,8 @@ package libp2pwebrtc
 import (
 	"context"
 	"io"
-	"os"
-
 	"net"
-
+	"os"
 	"sync"
 	"time"
 
@@ -25,7 +23,7 @@ const (
 	maxMessageSize uint64 = 16384
 	// Max message size limit in the SDP is limited to 16384 bytes.
 	// We keep a maximum of 2 messages in the buffer
-	maxBufferedAmount uint64 = 2 * maxMessageSize
+	maxBufferedAmount uint64 = 3 * maxMessageSize
 	// bufferedAmountLowThreshold and maxBufferedAmount are bound
 	// to a stream but congestion control is done on the whole
 	// SCTP association. This means that a single stream can monopolize
@@ -39,13 +37,6 @@ const (
 	varintOverhead int = 2
 )
 
-const (
-	stateOpen uint32 = iota
-	stateReadClosed
-	stateWriteClosed
-	stateClosed
-)
-
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type dataChannel struct {
@@ -53,14 +44,14 @@ type dataChannel struct {
 	rwc           datachannel.ReadWriteCloser
 	laddr         net.Addr
 	raddr         net.Addr
-	readDeadline  *deadline
-	writeDeadline *deadline
+	readDeadline  time.Time
+	writeDeadline time.Time
 
 	closeWriteOnce sync.Once
 	closeReadOnce  sync.Once
 	resetOnce      sync.Once
 
-	state uint32
+	state channelState
 
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -83,8 +74,8 @@ func newDataChannel(
 		rwc:            rwc,
 		laddr:          laddr,
 		raddr:          raddr,
-		readDeadline:   newDeadline(),
-		writeDeadline:  newDeadline(),
+		readDeadline:   time.Time{},
+		writeDeadline:  time.Time{},
 		ctx:            ctx,
 		cancel:         cancel,
 		writeAvailable: make(chan struct{}),
@@ -102,45 +93,32 @@ func newDataChannel(
 }
 
 func (d *dataChannel) processControlMessage(msg pb.Message) {
-	d.m.Lock()
-	defer d.m.Unlock()
-	if d.state == stateClosed {
-		return
-	}
 	if msg.Flag == nil {
 		return
 	}
-	switch msg.GetFlag() {
-	case pb.Message_FIN:
-		if d.state == stateWriteClosed {
-			d.Close()
-			return
-		}
-		d.state = stateReadClosed
-	case pb.Message_STOP_SENDING:
-		if d.state == stateReadClosed {
-			d.Close()
-			return
-		}
-		d.state = stateWriteClosed
-	case pb.Message_RESET:
-		d.channel.Close()
+	d.m.Lock()
+	previous := d.state
+	current := d.state.handleIncomingFlag(msg.GetFlag())
+	d.state = current
+	defer d.m.Unlock()
+	// no state transition
+	if current == stateClosed && previous != current {
+		_ = d.Close()
 	}
 }
 
 func (d *dataChannel) Read(b []byte) (int, error) {
 	for {
-		select {
-		case <-d.readDeadline.wait():
-			return 0, os.ErrDeadlineExceeded
-		default:
+		if state := d.getState(); state == stateClosed || state == stateReadClosed {
+			return 0, io.EOF
 		}
 
 		d.m.Lock()
 		read := copy(b, d.readBuf)
 		d.readBuf = d.readBuf[read:]
+		remaining := len(d.readBuf)
 		d.m.Unlock()
-		if state := d.getState(); len(d.readBuf) == 0 && (state == stateReadClosed || state == stateClosed) {
+		if state := d.getState(); remaining == 0 && (state == stateReadClosed || state == stateClosed) {
 			return read, io.EOF
 		}
 		if read > 0 {
@@ -149,42 +127,18 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 
 		// read until data message
 		var msg pb.Message
-		signal := make(chan struct {
-			error
-		})
-
-		// read in a separate goroutine to enable read deadlines
-		go func() {
-			err := d.reader.ReadMsg(&msg)
-			if err != nil {
-				if err != io.EOF {
-					log.Warnf("error reading from datachannel: %v", err)
-				}
-				signal <- struct {
-					error
-				}{err}
-				return
-			}
-
-			if state := d.getState(); state != stateClosed && state != stateReadClosed && msg.Message != nil {
-				d.m.Lock()
-				d.readBuf = append(d.readBuf, msg.Message...)
-				d.m.Unlock()
-			}
-			d.processControlMessage(msg)
-
-			signal <- struct{ error }{nil}
-
-		}()
-		select {
-		case sig := <-signal:
-			if sig.error != nil {
-				return 0, sig.error
-			}
-		case <-d.readDeadline.wait():
-			return 0, os.ErrDeadlineExceeded
+		err := d.reader.ReadMsg(&msg)
+		if err != nil {
+			return 0, err
 		}
 
+		if state := d.getState(); state != stateClosed && state != stateReadClosed && msg.Message != nil {
+			d.m.Lock()
+			d.readBuf = append(d.readBuf, msg.Message...)
+			d.m.Unlock()
+		}
+
+		d.processControlMessage(msg)
 	}
 }
 
@@ -192,45 +146,60 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 	if s := d.getState(); s == stateWriteClosed || s == stateClosed {
 		return 0, io.ErrClosedPipe
 	}
-
 	var err error
 	var (
-		start     int = 0
-		end           = len(b)
-		chunkSize     = int(maxMessageSize) - protoOverhead - varintOverhead
-		n             = 0
+		chunkSize = int(maxMessageSize) - protoOverhead - varintOverhead
+		n         = 0
 	)
 
-	for start < len(b) {
-		end = len(b)
-		if start+chunkSize < end {
-			end = start + chunkSize
+	for len(b) > 0 {
+
+		d.m.Lock()
+		dl := d.writeDeadline
+		if !dl.IsZero() && time.Now().After(dl) {
+			d.m.Unlock()
+			return 0, os.ErrDeadlineExceeded
 		}
-		chunk := b[start:end]
-		n, err = d.partialWrite(chunk)
+		d.m.Unlock()
+
+		// check timer
+		end := chunkSize
+		if len(b) < end {
+			end = len(b)
+		}
+
+		written, err := d.partialWrite(b[:end])
 		if err != nil {
 			break
 		}
-		start += n
+		b = b[end:]
+		n += written
 	}
-	return start, err
+	return n, err
 }
 
 func (d *dataChannel) partialWrite(b []byte) (int, error) {
 	if s := d.getState(); s == stateWriteClosed || s == stateClosed {
 		return 0, io.ErrClosedPipe
 	}
-	select {
-	case <-d.writeDeadline.wait():
-		return 0, os.ErrDeadlineExceeded
-	default:
+
+	timedOut := make(chan struct{})
+	d.m.Lock() 
+	dl := d.writeDeadline
+	d.m.Unlock()
+	if !dl.IsZero() {
+		timer := time.AfterFunc(time.Until(dl), func() { close(timedOut) })
+		defer timer.Stop()
 	}
+
 	msg := &pb.Message{Message: b}
+	// if the next message will add more data than we are willing to buffer,
+	// block until we have sent enough bytes to reduce the amount of data buffered.
 	if d.channel.BufferedAmount()+uint64(len(b))+uint64(varintOverhead) > maxBufferedAmount {
 		select {
-		case <-d.writeAvailable:
-		case <-d.writeDeadline.wait():
+		case <-timedOut:
 			return 0, os.ErrDeadlineExceeded
+		case <-d.writeAvailable:
 		}
 	}
 	return d.writeMessage(msg)
@@ -325,16 +294,20 @@ func (d *dataChannel) SetDeadline(t time.Time) error {
 }
 
 func (d *dataChannel) SetReadDeadline(t time.Time) error {
-	d.readDeadline.set(t)
+	d.m.Lock()
+	defer d.m.Unlock()
+	d.readDeadline = t
 	return nil
 }
 
 func (d *dataChannel) SetWriteDeadline(t time.Time) error {
-	d.writeDeadline.set(t)
+	d.m.Lock()
+	defer d.m.Unlock()
+	d.writeDeadline = t
 	return nil
 }
 
-func (d *dataChannel) getState() uint32 {
+func (d *dataChannel) getState() channelState {
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.state
