@@ -2,6 +2,7 @@ package libp2pwebrtc
 
 import (
 	"encoding/hex"
+	"math/rand"
 	"strings"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -56,4 +57,14 @@ func encodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
 		return "", err
 	}
 	return multibase.Encode(multibase.Base58BTC, encoded)
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+
+func genUfrag(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
 }

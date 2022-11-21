@@ -199,8 +199,14 @@ func (c *connection) LocalPeer() peer.ID {
 }
 
 // only used during setup
-func (c *connection) setRemotePeer(id peer.ID) {
+func (c *connection) setRemotePeer(id peer.ID) error {
 	c.remotePeer = id
+	key, err := id.ExtractPublicKey()
+	if err != nil {
+		return err
+	}
+	c.remoteKey = key
+	return nil
 }
 
 func (c *connection) LocalPrivateKey() ic.PrivKey {
@@ -213,10 +219,6 @@ func (c *connection) RemotePeer() peer.ID {
 
 func (c *connection) RemotePublicKey() ic.PubKey {
 	return c.remoteKey
-}
-
-func (c *connection) setRemotePublicKey(key ic.PubKey) {
-	c.remoteKey = key
 }
 
 // implement network.ConnMultiaddrs

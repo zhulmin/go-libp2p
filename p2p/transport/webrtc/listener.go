@@ -104,7 +104,7 @@ func (l *listener) startAcceptLoop() {
 			go func() {
 				ctx, cancelFunc := context.WithTimeout(context.Background(), 20*time.Second)
 				defer cancelFunc()
-				conn, err := l.accept(ctx, addr)
+				conn, err := l.acceptWrap(ctx, addr)
 				if err != nil {
 					log.Debugf("could not accept connection: %v", err)
 					return
@@ -143,31 +143,28 @@ func (l *listener) Multiaddrs() []ma.Multiaddr {
 	return []ma.Multiaddr{l.localMultiaddr}
 }
 
-func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
-	var (
-		scope network.ConnManagementScope
-		pc    *webrtc.PeerConnection
-	)
-
-	cleanup := func() {
-		if scope != nil {
-			scope.Done()
-		}
-		if pc != nil {
-			_ = pc.Close()
-		}
-	}
-
+func (l *listener) acceptWrap(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
 	remoteMultiaddr, err := manet.FromNetAddr(addr.raddr)
 	if err != nil {
 		return nil, err
 	}
-
-	scope, err = l.transport.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
+	scope, err := l.transport.rcmgr.OpenConnection(network.DirInbound, false, remoteMultiaddr)
 	if err != nil {
-		defer cleanup()
 		return nil, err
 	}
+	pc, conn, err := l.accept(ctx, scope, remoteMultiaddr, addr)
+	if err != nil {
+		scope.Done()
+		if pc != nil {
+			_ = pc.Close()
+		}
+		return nil, err
+	}
+	return conn, nil
+}
+
+func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
+
 
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
@@ -179,26 +176,24 @@ func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableC
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 
-	pc, err = api.NewPeerConnection(l.config)
+	pc, err := api.NewPeerConnection(l.config)
 	if err != nil {
-		defer cleanup()
-		return nil, err
+		return pc, nil, err
 	}
 
 	// signaling channel wraps an error in a struct to make
 	// the error nullable.
-	signalChan := make(chan struct{ error })
+	signalChan := make(chan error)
 	var wrappedChannel *dataChannel
 	var handshakeOnce sync.Once
 	// this enforces that the correct data channel label is used
 	// for the handshake
-	handshakeChannel, err := pc.CreateDataChannel("handshake", &webrtc.DataChannelInit{
+	handshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: func(v bool) *bool { return &v }(true),
 		ID:         func(v uint16) *uint16 { return &v }(0),
 	})
 	if err != nil {
-		defer cleanup()
-		return nil, err
+		return pc, nil, err
 	}
 
 	// The raw datachannel is wrapped in the libp2p abstraction
@@ -213,10 +208,9 @@ func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableC
 	// offer-answer exchange, so any messages sent from the remote get
 	// buffered.
 	handshakeChannel.OnOpen(func() {
-		log.Debugf("handshake channel open")
 		rwc, err := handshakeChannel.Detach()
 		if err != nil {
-			signalChan <- struct{ error }{errDatachannel("could not detach", err)}
+			signalChan <- errDatachannel("could not detach", err)
 			return
 		}
 		wrappedChannel = newDataChannel(
@@ -227,7 +221,7 @@ func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableC
 			addr.raddr,
 		)
 		handshakeOnce.Do(func() {
-			signalChan <- struct{ error }{nil}
+			signalChan <- nil
 		})
 	})
 
@@ -236,7 +230,7 @@ func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableC
 	// handshake channel.
 	handshakeChannel.OnError(func(e error) {
 		handshakeOnce.Do(func() {
-			signalChan <- struct{ error }{e}
+			signalChan <- e
 
 		})
 	})
@@ -251,26 +245,21 @@ func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableC
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
-		defer cleanup()
-		return nil, err
+		return pc, nil, err
 	}
 
 	err = pc.SetLocalDescription(answer)
 	if err != nil {
-		defer cleanup()
-		return nil, err
+		return pc, nil, err
 	}
 
 	// await datachannel moving to open state
 	select {
 	case <-ctx.Done():
-		defer cleanup()
-		return nil, ctx.Err()
-	case signal := <-signalChan:
-		if signal.error != nil {
-			defer cleanup()
-			log.Debugf("datachannel: ", signal.error)
-			return nil, errDatachannel("datachannel error", signal.error)
+		return pc, nil, ctx.Err()
+	case err := <-signalChan:
+		if err != nil {
+			return pc, nil, errDatachannel("datachannel error", err)
 		}
 	}
 
@@ -292,19 +281,16 @@ func (l *listener) accept(ctx context.Context, addr candidateAddr) (tpt.CapableC
 	// we do not yet know A's peer ID so accept any inbound
 	secureConn, err := l.transport.noiseHandshake(ctx, pc, wrappedChannel, "", crypto.SHA256, true)
 	if err != nil {
-		defer cleanup()
-		return nil, err
+		return pc, nil, err
 	}
 
 	// earliest point where we know the remote's peerID
 	err = scope.SetPeer(secureConn.RemotePeer())
 	if err != nil {
-		defer cleanup()
-		return nil, err
+		return pc, nil, err
 	}
 
-	conn.setRemotePeer(secureConn.RemotePeer())
-	conn.setRemotePublicKey(secureConn.RemotePublicKey())
-
-	return conn, nil
+	err = conn.setRemotePeer(secureConn.RemotePeer())
+	return pc, conn, err
 }
+
