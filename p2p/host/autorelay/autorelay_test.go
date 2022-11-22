@@ -320,7 +320,10 @@ func TestRelayV1(t *testing.T) {
 		)
 		defer h.Close()
 
-		require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+		addrUpdated, err := h.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
+		require.NoError(t, err)
+
+		expectDeltaInAddrUpdated(t, addrUpdated, 1)
 	})
 }
 
