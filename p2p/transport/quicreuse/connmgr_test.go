@@ -115,6 +115,49 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 	}
 }
 
+type mockFailAcceptListener struct {
+	addr net.Addr
+}
+
+// Accept implements quic.Listener
+func (l *mockFailAcceptListener) Accept(context.Context) (quic.Connection, error) {
+	return nil, fmt.Errorf("Some error")
+}
+
+// Addr implements quic.Listener
+func (l *mockFailAcceptListener) Addr() net.Addr {
+	return l.addr
+}
+
+// Close implements quic.Listener
+func (l *mockFailAcceptListener) Close() error {
+	return nil
+}
+
+var _ quic.Listener = &mockFailAcceptListener{}
+
+func TestAcceptErrorGetCleanedUp(t *testing.T) {
+	origQuicListen := quicListen
+	t.Cleanup(func() { quicListen = origQuicListen })
+
+	quicListen = func(c net.PacketConn, _ *tls.Config, _ *quic.Config) (quic.Listener, error) {
+		return &mockFailAcceptListener{
+			addr: c.LocalAddr(),
+		}, nil
+	}
+
+	cm, err := NewConnManager([32]byte{}, DisableReuseport())
+	require.NoError(t, err)
+	defer cm.Close()
+
+	l, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{"proto"}}, nil)
+	require.NoError(t, err)
+	defer l.Close()
+	_, err = l.Accept(context.Background())
+	require.EqualError(t, err, "accept goroutine finished")
+
+}
+
 // The connection passed to quic-go needs to be type-assertable to a net.UDPConn,
 // in order to enable features like batch processing and ECN.
 func TestConnectionPassedToQUICForDialing(t *testing.T) {

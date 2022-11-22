@@ -117,7 +117,7 @@ func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 		}
 		l.mx.Unlock()
 		onRemove()
-	})
+	}, l.running)
 	for _, proto := range tlsConf.NextProtos {
 		l.protocols[proto] = protoConf{
 			ln:                  ln,
@@ -159,21 +159,23 @@ const queueLen = 16
 
 // A listener for a single ALPN protocol (set).
 type listener struct {
-	queue     chan quic.Connection
-	addr      net.Addr
-	addrs     []ma.Multiaddr
-	remove    func()
-	closeOnce sync.Once
+	queue             chan quic.Connection
+	acceptLoopRunning chan struct{}
+	addr              net.Addr
+	addrs             []ma.Multiaddr
+	remove            func()
+	closeOnce         sync.Once
 }
 
 var _ Listener = &listener{}
 
-func newSingleListener(addr net.Addr, addrs []ma.Multiaddr, remove func()) *listener {
+func newSingleListener(addr net.Addr, addrs []ma.Multiaddr, remove func(), running chan struct{}) *listener {
 	return &listener{
-		queue:  make(chan quic.Connection, queueLen),
-		remove: remove,
-		addr:   addr,
-		addrs:  addrs,
+		queue:             make(chan quic.Connection, queueLen),
+		acceptLoopRunning: running,
+		remove:            remove,
+		addr:              addr,
+		addrs:             addrs,
 	}
 }
 
@@ -189,6 +191,8 @@ func (l *listener) Accept(ctx context.Context) (quic.Connection, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-l.acceptLoopRunning:
+		return nil, errors.New("accept goroutine finished")
 	case c, ok := <-l.queue:
 		if !ok {
 			return nil, errors.New("listener closed")
