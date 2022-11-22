@@ -108,3 +108,21 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	// the multiaddr first
 	return crypto.SHA256, false
 }
+
+func getSupportdSDPString(code uint64) string {
+	switch code {
+	case multihash.MD5:
+		return "md5"
+	case multihash.SHA1:
+		return "sha-1"
+	case multihash.SHA3_224:
+		return "sha-224"
+	case multihash.SHA2_256:
+		return "sha-256"
+	case multihash.SHA3_384:
+		return "sha-384"
+	case multihash.SHA2_512:
+		return "sha-512"
+	}
+	return ""
+}

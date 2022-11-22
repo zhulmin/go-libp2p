@@ -298,7 +298,7 @@ func (t *WebRTCTransport) dial(
 		}
 	case <-ctx.Done():
 		return pc, nil, errDataChannelTimeout
-	case channel =<-dcChannel:
+	case channel = <-dcChannel:
 	}
 
 	// the local address of the selected candidate pair should be the
