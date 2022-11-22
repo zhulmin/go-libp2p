@@ -458,6 +458,40 @@ func TestIncorrectInit(t *testing.T) {
 	_ = newPrivateNode(t)
 }
 
+func expectDeltaInAddrUpdated(t *testing.T, addrUpdated event.Subscription, expectedDelta int) {
+	t.Helper()
+	delta := 0
+	for {
+		select {
+		case evAny := <-addrUpdated.Out():
+			ev := evAny.(event.EvtLocalAddressesUpdated)
+			for _, updatedAddr := range ev.Removed {
+				if updatedAddr.Action == event.Removed {
+					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+						delta -= 1
+						if delta == expectedDelta {
+							return
+						}
+					}
+				}
+			}
+			for _, updatedAddr := range ev.Current {
+				if updatedAddr.Action == event.Added {
+					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+						delta += 1
+						if delta == expectedDelta {
+							return
+						}
+					}
+				}
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("timeout waiting for address updated event")
+		}
+	}
+
+}
+
 func TestReconnectToStaticRelays(t *testing.T) {
 	cl := clock.NewMock()
 	var staticRelays []peer.AddrInfo
@@ -480,26 +514,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	addrUpdated, err := h.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
 	require.NoError(t, err)
 
-	found := false
-
-addrUpdatedEventLoop:
-	for {
-		select {
-		case evAny := <-addrUpdated.Out():
-			ev := evAny.(event.EvtLocalAddressesUpdated)
-			for _, updatedAddr := range ev.Current {
-				if updatedAddr.Action == event.Added {
-					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-						found = true
-						break addrUpdatedEventLoop
-					}
-				}
-			}
-		case <-time.After(10 * time.Second):
-			t.Fatal("timeout waiting for address updated event")
-		}
-	}
-	require.True(t, found, "Didn't find relay addr in event")
+	expectDeltaInAddrUpdated(t, addrUpdated, 1)
 	require.Equal(t, 1, numRelays(h))
 
 	cl.Add(time.Minute)
@@ -513,6 +528,6 @@ addrUpdatedEventLoop:
 	}
 
 	cl.Add(time.Hour)
-	<-addrUpdated.Out()
+	expectDeltaInAddrUpdated(t, addrUpdated, -1)
 	require.Equal(t, 0, numRelays(h))
 }
