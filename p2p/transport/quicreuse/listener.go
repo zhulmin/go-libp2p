@@ -34,8 +34,8 @@ type connListener struct {
 	running chan struct{}
 	addrs   []ma.Multiaddr
 
-	mx        sync.Mutex
-	protocols map[string]protoConf
+	protocolsMu sync.Mutex
+	protocols   map[string]protoConf
 }
 
 func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*connListener, error) {
@@ -60,8 +60,8 @@ func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*con
 	}
 	tlsConf := &tls.Config{
 		GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
-			cl.mx.Lock()
-			defer cl.mx.Unlock()
+			cl.protocolsMu.Lock()
+			defer cl.protocolsMu.Unlock()
 			for _, proto := range info.SupportedProtos {
 				if entry, ok := cl.protocols[proto]; ok {
 					conf := entry.tlsConf
@@ -86,8 +86,8 @@ func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*con
 }
 
 func (l *connListener) allowWindowIncrease(conn quic.Connection, delta uint64) bool {
-	l.mx.Lock()
-	defer l.mx.Unlock()
+	l.protocolsMu.Lock()
+	defer l.protocolsMu.Unlock()
 
 	conf, ok := l.protocols[conn.ConnectionState().TLS.ConnectionState.NegotiatedProtocol]
 	if !ok {
@@ -97,8 +97,8 @@ func (l *connListener) allowWindowIncrease(conn quic.Connection, delta uint64) b
 }
 
 func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (Listener, error) {
-	l.mx.Lock()
-	defer l.mx.Unlock()
+	l.protocolsMu.Lock()
+	defer l.protocolsMu.Unlock()
 
 	if len(tlsConf.NextProtos) == 0 {
 		return nil, errors.New("no ALPN found in tls.Config")
@@ -111,11 +111,11 @@ func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 	}
 
 	ln := newSingleListener(l.l.Addr(), l.addrs, func() {
-		l.mx.Lock()
+		l.protocolsMu.Lock()
 		for _, proto := range tlsConf.NextProtos {
 			delete(l.protocols, proto)
 		}
-		l.mx.Unlock()
+		l.protocolsMu.Unlock()
 		onRemove()
 	}, l.running)
 	for _, proto := range tlsConf.NextProtos {
@@ -138,14 +138,14 @@ func (l *connListener) Run() error {
 		}
 		proto := conn.ConnectionState().TLS.NegotiatedProtocol
 
-		l.mx.Lock()
+		l.protocolsMu.Lock()
 		ln, ok := l.protocols[proto]
 		if !ok {
-			l.mx.Unlock()
+			l.protocolsMu.Unlock()
 			return fmt.Errorf("negotiated unknown protocol: %s", proto)
 		}
 		ln.ln.add(conn)
-		l.mx.Unlock()
+		l.protocolsMu.Unlock()
 	}
 }
 

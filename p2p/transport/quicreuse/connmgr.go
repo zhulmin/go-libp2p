@@ -25,8 +25,8 @@ type ConnManager struct {
 	serverConfig *quic.Config
 	clientConfig *quic.Config
 
-	mx    sync.Mutex
-	conns map[string]connListenerEntry
+	connsMu sync.Mutex
+	conns   map[string]connListenerEntry
 }
 
 type connListenerEntry struct {
@@ -100,8 +100,8 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 		return nil, err
 	}
 
-	c.mx.Lock()
-	defer c.mx.Unlock()
+	c.connsMu.Lock()
+	defer c.connsMu.Unlock()
 
 	key := laddr.String()
 	entry, ok := c.conns[key]
@@ -130,8 +130,8 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 }
 
 func (c *ConnManager) onListenerClosed(key string) {
-	c.mx.Lock()
-	defer c.mx.Unlock()
+	c.connsMu.Lock()
+	defer c.connsMu.Unlock()
 
 	entry := c.conns[key]
 	entry.refCount = entry.refCount - 1
