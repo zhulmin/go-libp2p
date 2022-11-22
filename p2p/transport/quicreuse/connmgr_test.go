@@ -274,7 +274,6 @@ func testListener(t *testing.T, enableReuseport bool) {
 	require.NoError(t, err)
 	require.Equal(t, id2, id)
 
-	ln1.Close()
 	ln2.Close()
 	cm.Close()
 
