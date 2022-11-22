@@ -471,7 +471,7 @@ func expectDeltaInAddrUpdated(t *testing.T, addrUpdated event.Subscription, expe
 			for _, updatedAddr := range ev.Removed {
 				if updatedAddr.Action == event.Removed {
 					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-						delta -= 1
+						delta--
 						if delta == expectedDelta {
 							return
 						}
@@ -481,7 +481,7 @@ func expectDeltaInAddrUpdated(t *testing.T, addrUpdated event.Subscription, expe
 			for _, updatedAddr := range ev.Current {
 				if updatedAddr.Action == event.Added {
 					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-						delta += 1
+						delta++
 						if delta == expectedDelta {
 							return
 						}
