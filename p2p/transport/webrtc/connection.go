@@ -136,14 +136,16 @@ func (c *connection) IsClosed() bool {
 }
 
 func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error) {
+	type openStreamResult struct {
+		network.MuxedStream
+		error
+	}
+
 	if c.IsClosed() {
 		return nil, os.ErrClosed
 	}
 
-	result := make(chan struct {
-		network.MuxedStream
-		error
-	})
+	result := make(chan openStreamResult)
 	dc, err := c.pc.CreateDataChannel("", nil)
 	if err != nil {
 		return nil, err
@@ -154,20 +156,15 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 	dc.OnOpen(func() {
 		rwc, err := dc.Detach()
 		if err != nil {
-			result <- struct {
-				network.MuxedStream
-				error
-			}{nil,
+			result <- openStreamResult{
+				nil,
 				errDatachannel("could not detach", err),
 			}
 			return
 		}
 		stream = newDataChannel(dc, rwc, c.pc, nil, nil)
 		c.addStream(streamID, stream)
-		result <- struct {
-			network.MuxedStream
-			error
-		}{stream, err}
+		result <- openStreamResult{stream, err}
 	})
 
 	dc.OnClose(func() {

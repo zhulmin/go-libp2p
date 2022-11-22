@@ -165,7 +165,6 @@ func (l *listener) acceptWrap(ctx context.Context, addr candidateAddr) (tpt.Capa
 
 func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
 
-
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
 	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
@@ -293,4 +292,3 @@ func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope
 	err = conn.setRemotePeer(secureConn.RemotePeer())
 	return pc, conn, err
 }
-

@@ -60,6 +60,11 @@ type dataChannel struct {
 	writeAvailable chan struct{}
 	reader         protoio.Reader
 	writer         protoio.Writer
+
+	requestRead     chan struct{}
+	receivedMessage chan struct{}
+
+	wg sync.WaitGroup
 }
 
 func newDataChannel(
@@ -70,18 +75,20 @@ func newDataChannel(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	result := &dataChannel{
-		channel:        channel,
-		rwc:            rwc,
-		laddr:          laddr,
-		raddr:          raddr,
-		readDeadline:   time.Time{},
-		writeDeadline:  time.Time{},
-		ctx:            ctx,
-		cancel:         cancel,
-		writeAvailable: make(chan struct{}),
-		reader:         protoio.NewDelimitedReader(rwc, 16384),
-		writer:         protoio.NewDelimitedWriter(rwc),
-		readBuf:        []byte{},
+		channel:         channel,
+		rwc:             rwc,
+		laddr:           laddr,
+		raddr:           raddr,
+		readDeadline:    time.Time{},
+		writeDeadline:   time.Time{},
+		ctx:             ctx,
+		cancel:          cancel,
+		writeAvailable:  make(chan struct{}),
+		reader:          protoio.NewDelimitedReader(rwc, 16384),
+		writer:          protoio.NewDelimitedWriter(rwc),
+		readBuf:         []byte{},
+		requestRead:     make(chan struct{}, 5),
+		receivedMessage: make(chan struct{}, 5),
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
@@ -89,22 +96,10 @@ func newDataChannel(
 		result.writeAvailable <- struct{}{}
 	})
 
-	return result
-}
+	result.wg.Add(1)
+	go result.readLoop()
 
-func (d *dataChannel) processControlMessage(msg pb.Message) {
-	if msg.Flag == nil {
-		return
-	}
-	d.m.Lock()
-	previous := d.state
-	current := d.state.handleIncomingFlag(msg.GetFlag())
-	d.state = current
-	defer d.m.Unlock()
-	// no state transition
-	if current == stateClosed && previous != current {
-		_ = d.Close()
-	}
+	return result
 }
 
 func (d *dataChannel) Read(b []byte) (int, error) {
@@ -126,26 +121,32 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		}
 
 		// read until data message
-		var msg pb.Message
-		err := d.reader.ReadMsg(&msg)
-		if err != nil {
-			return 0, err
-		}
-
-		if state := d.getState(); state != stateClosed && state != stateReadClosed && msg.Message != nil {
-			d.m.Lock()
-			d.readBuf = append(d.readBuf, msg.Message...)
-			d.m.Unlock()
-		}
-
-		d.processControlMessage(msg)
+		d.requestRead <- struct{}{}
+		<-d.receivedMessage
 	}
 }
 
 func (d *dataChannel) Write(b []byte) (int, error) {
-	if s := d.getState(); s == stateWriteClosed || s == stateClosed {
+	state := d.getState()
+	if state == stateWriteClosed || state == stateClosed {
 		return 0, io.ErrClosedPipe
 	}
+
+	// Check if there is any message on the wire. This is used for control
+	// messages only
+	if state == stateReadClosed {
+		// drain the channel
+		select {
+		case <-d.receivedMessage:
+		default:
+		}
+		// async push a read request to the channel
+		select {
+		case d.requestRead <- struct{}{}:
+		default:
+		}
+	}
+
 	var err error
 	var (
 		chunkSize = int(maxMessageSize) - protoOverhead - varintOverhead
@@ -184,7 +185,7 @@ func (d *dataChannel) partialWrite(b []byte) (int, error) {
 	}
 
 	timedOut := make(chan struct{})
-	d.m.Lock() 
+	d.m.Lock()
 	dl := d.writeDeadline
 	d.m.Unlock()
 	if !dl.IsZero() {
@@ -225,6 +226,7 @@ func (d *dataChannel) Close() error {
 	d.cancel()
 	d.CloseWrite()
 	_ = d.channel.Close()
+	d.wg.Wait()
 	return nil
 }
 
@@ -232,14 +234,17 @@ func (d *dataChannel) CloseRead() error {
 	var err error
 	d.closeReadOnce.Do(func() {
 		d.m.Lock()
-		if d.state != stateClosed {
-			d.state = stateReadClosed
-		}
+		previousState := d.state
+		currentState := d.state.processOutgoingFlag(pb.Message_STOP_SENDING)
+		d.state = currentState
 		d.m.Unlock()
+		if previousState != currentState && currentState == stateClosed {
+			defer d.Close()
+		}
 		msg := &pb.Message{
 			Flag: pb.Message_STOP_SENDING.Enum(),
 		}
-		_, err = d.writeMessage(msg)
+		err = d.writer.WriteMsg(msg)
 	})
 	return err
 
@@ -257,14 +262,17 @@ func (d *dataChannel) CloseWrite() error {
 	var err error
 	d.closeWriteOnce.Do(func() {
 		d.m.Lock()
-		if d.state != stateClosed {
-			d.state = stateWriteClosed
-		}
+		previousState := d.state
+		currentState := d.state.processOutgoingFlag(pb.Message_FIN)
+		d.state = currentState
 		d.m.Unlock()
+		if previousState != currentState && currentState == stateClosed {
+			defer d.Close()
+		}
 		msg := &pb.Message{
 			Flag: pb.Message_FIN.Enum(),
 		}
-		_, err = d.writeMessage(msg)
+		err = d.writer.WriteMsg(msg)
 	})
 	return err
 }
@@ -311,4 +319,40 @@ func (d *dataChannel) getState() channelState {
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.state
+}
+
+func (d *dataChannel) readLoop() {
+	defer d.wg.Done()
+	for {
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-d.requestRead:
+		}
+
+		var msg pb.Message
+		err := d.reader.ReadMsg(&msg)
+		if err != nil {
+			log.Error("could not read message", err)
+			return
+		}
+
+		d.m.Lock()
+		if d.state != stateClosed && d.state != stateReadClosed && msg.Message != nil {
+			d.readBuf = append(d.readBuf, msg.Message...)
+		}
+		previous := d.state
+		current := d.state
+		if msg.Flag != nil {
+			current = d.state.handleIncomingFlag(msg.GetFlag())
+		}
+		d.state = current
+		d.m.Unlock()
+		d.receivedMessage <- struct{}{}
+
+		if previous != current && current == stateClosed {
+			d.Close()
+		}
+
+	}
 }

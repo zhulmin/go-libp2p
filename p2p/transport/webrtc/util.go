@@ -32,7 +32,7 @@ func fingerprintToSDP(fp *mh.DecodedMultihash) string {
 		return ""
 	}
 	fpDigest := maFingerprintToSdp(hex.EncodeToString(fp.Digest))
-	return "sha-256 " + fpDigest
+	return getSupportdSDPString(fp.Code) + " " + fpDigest
 }
 
 func decodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
