@@ -492,6 +492,9 @@ var DefaultLimits = ScalingLimitConfig{
 	},
 
 	PeerBaseLimit: BaseLimit{
+		// 8 for now so that it matches the number of concurrent dials we may do
+		// in swarm_dial.go. With future smart dialing work we should bring this
+		// down
 		ConnsInbound:    8,
 		ConnsOutbound:   8,
 		Conns:           8,
