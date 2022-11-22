@@ -69,9 +69,8 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 		defer close(ln.serverClosed)
 		for {
 			conn, err := ln.reuseListener.Accept(context.Background())
-			// TODO: only output if the server hasn't been closed
-			log.Debugw("serving failed", "addr", ln.Addr(), "error", err)
 			if err != nil {
+				log.Debugw("serving failed", "addr", ln.Addr(), "error", err)
 				return
 			}
 			go ln.server.ServeQUICConn(conn)
