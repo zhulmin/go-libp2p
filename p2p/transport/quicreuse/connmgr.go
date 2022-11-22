@@ -26,7 +26,7 @@ type ConnManager struct {
 	clientConfig *quic.Config
 
 	mx    sync.Mutex
-	conns map[string]connListenerEntry // TODO: think about garbage collection
+	conns map[string]connListenerEntry
 }
 
 type connListenerEntry struct {
