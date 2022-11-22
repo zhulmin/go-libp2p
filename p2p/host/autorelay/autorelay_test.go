@@ -515,7 +515,6 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	require.NoError(t, err)
 
 	expectDeltaInAddrUpdated(t, addrUpdated, 1)
-	require.Equal(t, 1, numRelays(h))
 
 	cl.Add(time.Minute)
 
@@ -529,5 +528,4 @@ func TestReconnectToStaticRelays(t *testing.T) {
 
 	cl.Add(time.Hour)
 	expectDeltaInAddrUpdated(t, addrUpdated, -1)
-	require.Equal(t, 0, numRelays(h))
 }
