@@ -139,10 +139,6 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 	return l.laddr
 }
 
-func (l *listener) Multiaddrs() []ma.Multiaddr {
-	return []ma.Multiaddr{l.laddr}
-}
-
 type transportListener struct {
 	transport.Listener
 }
