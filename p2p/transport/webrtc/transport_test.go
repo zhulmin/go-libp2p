@@ -238,6 +238,49 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 
 }
 
+func TestTransportWebRTC_StreamReadDeadline(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
+	require.NoError(t, err)
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+
+	tr1, connectingPeer := getTransport(t)
+	done := make(chan struct{})
+
+	go func() {
+		lconn, err := listener.Accept()
+		require.NoError(t, err)
+		t.Logf("listener accepted connection")
+		require.Equal(t, connectingPeer, lconn.RemotePeer())
+		done <- struct{}{}
+	}()
+
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+	require.NoError(t, err)
+	t.Logf("dialer opened connection")
+	stream, err := conn.OpenStream(context.Background())
+	require.NoError(t, err)
+
+	// deadline set to the past
+	timer := time.AfterFunc(150*time.Millisecond, func() { stream.SetReadDeadline(time.Now().Add(-100 * time.Millisecond)) })
+	defer timer.Stop()
+	_, err = stream.Read([]byte{0, 0})
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+
+	// future deadline exceeded
+	stream.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	_, err = stream.Read([]byte{0, 0})
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out")
+	}
+
+}
+
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 	// test multihash
 	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")

@@ -137,6 +137,7 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 			}
 			deadlineTimer.Reset(time.Until(deadline))
 		}
+
 		select {
 		case <-d.receivedMessage:
 		case <-timeout:
