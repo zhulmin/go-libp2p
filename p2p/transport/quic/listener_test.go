@@ -13,6 +13,7 @@ import (
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -36,13 +37,16 @@ func TestListenAddr(t *testing.T) {
 		localAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic")
 		ln, err := tr.Listen(localAddr)
 		require.NoError(t, err)
+		localAddrV1 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
+		ln2, err := tr.Listen(localAddrV1)
+		require.NoError(t, err)
 		defer ln.Close()
+		defer ln2.Close()
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
 
 		var multiaddrsStrings []string
-		t.Fatal("TODO use multiple listeners")
-		for _, a := range []ma.Multiaddr{ln.Multiaddrs()} {
+		for _, a := range []ma.Multiaddr{ln.Multiaddr(), ln2.Multiaddr()} {
 			multiaddrsStrings = append(multiaddrsStrings, a.String())
 		}
 		require.Contains(t, multiaddrsStrings, fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", port))
@@ -53,13 +57,15 @@ func TestListenAddr(t *testing.T) {
 		localAddr := ma.StringCast("/ip6/::/udp/0/quic")
 		ln, err := tr.Listen(localAddr)
 		require.NoError(t, err)
+		localAddrV1 := ma.StringCast("/ip6/::/udp/0/quic-v1")
+		ln2, err := tr.Listen(localAddrV1)
+		require.NoError(t, err)
 		defer ln.Close()
+		defer ln2.Close()
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
 		var multiaddrsStrings []string
-		t.Fatal("TODO use multiple listeners")
-		for _, a := range []ma.Multiaddr{ln.Multiaddrs()} {
-		for _, a := range ln.Multiaddrs() {
+		for _, a := range []ma.Multiaddr{ln.Multiaddr(), ln2.Multiaddr()} {
 			multiaddrsStrings = append(multiaddrsStrings, a.String())
 		}
 		require.Contains(t, multiaddrsStrings, fmt.Sprintf("/ip6/::/udp/%d/quic", port))
@@ -99,4 +105,30 @@ func TestAcceptAfterClose(t *testing.T) {
 	require.NoError(t, ln.Close())
 	_, err = ln.Accept()
 	require.Error(t, err)
+}
+
+func TestCorrectNumberOfVirtualListeners(t *testing.T) {
+	tr := newTransport(t, nil)
+	tpt := tr.(*transport)
+	defer tr.(io.Closer).Close()
+
+	localAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic")
+	udpAddr, _, err := quicreuse.FromQuicMultiaddr(localAddr)
+	require.NoError(t, err)
+
+	ln, err := tr.Listen(localAddr)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(tpt.listeners[udpAddr.String()]))
+	localAddrV1 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
+	ln2, err := tr.Listen(localAddrV1)
+	require.NoError(t, err)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, len(tpt.listeners[udpAddr.String()]))
+
+	ln.Close()
+	require.Equal(t, 1, len(tpt.listeners[udpAddr.String()]))
+	ln2.Close()
+	require.Equal(t, 0, len(tpt.listeners[udpAddr.String()]))
+
 }

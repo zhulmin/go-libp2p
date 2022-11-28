@@ -26,9 +26,7 @@ type listener struct {
 	localMultiaddrs map[quic.VersionNumber]ma.Multiaddr
 }
 
-var _ tpt.Listener = &listener{}
-
-func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (tpt.Listener, error) {
+func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.PrivKey, rcmgr network.ResourceManager) (listener, error) {
 	localMultiaddrs := make(map[quic.VersionNumber]ma.Multiaddr)
 	for _, addr := range ln.Multiaddrs() {
 		if _, err := addr.ValueForProtocol(ma.P_QUIC); err == nil {
@@ -39,7 +37,7 @@ func newListener(ln quicreuse.Listener, t *transport, localPeer peer.ID, key ic.
 		}
 	}
 
-	return &listener{
+	return listener{
 		reuseListener:   ln,
 		transport:       t,
 		rcmgr:           rcmgr,
@@ -143,9 +141,4 @@ func (l *listener) Close() error {
 // Addr returns the address of this listener.
 func (l *listener) Addr() net.Addr {
 	return l.reuseListener.Addr()
-}
-
-// Multiaddr returns the multiaddress of this listener.
-func (l *listener) Multiaddr() ma.Multiaddr {
-	return l.localMultiaddr
 }

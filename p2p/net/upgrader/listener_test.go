@@ -404,7 +404,7 @@ func TestNoCommonSecurityProto(t *testing.T) {
 		ln.Accept()
 	}()
 
-	_, err = dial(t, ub, ln.Multiaddrs()[0], idA, &network.NullScope{})
+	_, err = dial(t, ub, ln.Multiaddr(), idA, &network.NullScope{})
 	require.EqualError(t, err, "failed to negotiate security protocol: protocol not supported")
 	select {
 	case <-done:

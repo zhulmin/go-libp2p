@@ -552,7 +552,7 @@ func TestListenCloseCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	listenedAddrs := s.ListenAddresses()
-	require.Equal(t, 3, len(listenedAddrs))
+	require.Equal(t, 2, len(listenedAddrs))
 
 	s.ListenClose(listenedAddrs...)
 

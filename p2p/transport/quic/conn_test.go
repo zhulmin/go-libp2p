@@ -24,7 +24,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/lucas-clemente/quic-go"
 	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
-	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -721,10 +720,20 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 			t1, err := NewTransport(serverKey, newConnManager(t, serverOpts...), nil, nil, nil)
 			require.NoError(t, err)
 			defer t1.(io.Closer).Close()
-			laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1")
-			require.NoError(t, err)
+			laddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
 			ln1, err := t1.Listen(laddr)
 			require.NoError(t, err)
+			t.Cleanup(func() { ln1.Close() })
+
+			mas := []ma.Multiaddr{ln1.Multiaddr()}
+			var ln2 tpt.Listener
+			if !tc.serverDisablesDraft29 {
+				laddrDraft29 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic")
+				ln2, err = t1.Listen(laddrDraft29)
+				require.NoError(t, err)
+				t.Cleanup(func() { ln2.Close() })
+				mas = append(mas, ln2.Multiaddr())
+			}
 
 			t2, err := NewTransport(clientKey, newConnManager(t), nil, nil, nil)
 			require.NoError(t, err)
@@ -732,15 +741,22 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 
 			ctx := context.Background()
 
-			t.Fatal("TODO needs multiple listeners for different quic versions")
-			for _, a := range []multiaddr.Multiaddr{ln1.Multiaddr()} {
+			for _, a := range mas {
 				_, v, err := quicreuse.FromQuicMultiaddr(a)
 				require.NoError(t, err)
 
 				done := make(chan struct{})
 				go func() {
 					defer close(done)
-					conn, err := ln1.Accept()
+					var conn tpt.CapableConn
+					var err error
+					if v == quic.Version1 {
+						conn, err = ln1.Accept()
+					} else if v == quic.VersionDraft29 {
+						conn, err = ln2.Accept()
+					} else {
+						panic("unexpected version")
+					}
 					require.NoError(t, err)
 					defer conn.Close()
 
