@@ -49,6 +49,11 @@ func init() {
 
 }
 
+type candidateAddr struct {
+	ufrag string
+	raddr *net.UDPAddr
+}
+
 type listener struct {
 	transport                 *WebRTCTransport
 	config                    webrtc.Configuration
@@ -65,8 +70,8 @@ type listener struct {
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
 	candidateChan := make(chan candidateAddr, 1)
-	mux := udpmux.NewUDPMux(socket, func (ufrag string, addr net.Addr) {
-		candidateChan <- candidateAddr{ ufrag: ufrag, raddr: addr.(*net.UDPAddr) }
+	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) {
+		candidateChan <- candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}
 	})
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
@@ -91,7 +96,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		localMultiaddr:            laddr,
 		ctx:                       ctx,
 		cancel:                    cancel,
-		localAddr: socket.LocalAddr(),
+		localAddr:                 socket.LocalAddr(),
 		connChan:                  make(chan tpt.CapableConn, 20),
 	}
 
