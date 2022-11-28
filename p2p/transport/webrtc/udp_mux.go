@@ -272,7 +272,6 @@ func (m *udpMuxNewAddr) connWorker() {
 			msg := &stun.Message{
 				Raw: append([]byte{}, buf[:n]...),
 			}
-			// log.Info("received new stun message: %v", *msg)
 
 			if err = msg.Decode(); err != nil {
 				m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v\n", addr.String(), err)
@@ -294,7 +293,6 @@ func (m *udpMuxNewAddr) connWorker() {
 
 			// notify that a new connection is requested
 			if !ok {
-				// log.Debugf("new connection requested: %v %v", udpAddr, ufrag)
 				m.newAddrChan <- candidateAddr{raddr: udpAddr, ufrag: ufrag}
 				m.mu.Lock()
 				m.newAddrs[udpAddr] = struct{}{}
