@@ -198,11 +198,11 @@ func (l *listener) Addr() net.Addr {
 	return l.addr
 }
 
-func (l *listener) Multiaddrs() []ma.Multiaddr {
+func (l *listener) Multiaddr() ma.Multiaddr {
 	if l.transport.certManager == nil {
-		return []ma.Multiaddr{l.multiaddr}
+		return l.multiaddr
 	}
-	return []ma.Multiaddr{l.multiaddr.Encapsulate(l.transport.certManager.AddrComponent())}
+	return l.multiaddr.Encapsulate(l.transport.certManager.AddrComponent())
 }
 
 func (l *listener) Close() error {

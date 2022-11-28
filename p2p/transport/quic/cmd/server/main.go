@@ -54,7 +54,7 @@ func run(port string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Listening. Now run: go run cmd/client/main.go %s %s\n", ln.Multiaddrs()[0], peerID)
+	fmt.Printf("Listening. Now run: go run cmd/client/main.go %s %s\n", ln.Multiaddr(), peerID)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

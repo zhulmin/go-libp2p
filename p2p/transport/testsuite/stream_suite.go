@@ -197,7 +197,7 @@ func SubtestStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr,
 			serve(t, l)
 		}()
 
-		c, err := tb.Dial(context.Background(), l.Multiaddrs()[0], peerA)
+		c, err := tb.Dial(context.Background(), l.Multiaddr(), peerA)
 		if err != nil {
 			t.Error(err)
 			return
@@ -259,7 +259,7 @@ func SubtestStreamOpenStress(t *testing.T, ta, tb transport.Transport, maddr ma.
 		connA, err = l.Accept()
 		accepted <- err
 	}()
-	connB, err = tb.Dial(context.Background(), l.Multiaddrs()[0], peerA)
+	connB, err = tb.Dial(context.Background(), l.Multiaddr(), peerA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func SubtestStreamReset(t *testing.T, ta, tb transport.Transport, maddr ma.Multi
 
 	}()
 
-	muxb, err := tb.Dial(context.Background(), l.Multiaddrs()[0], peerA)
+	muxb, err := tb.Dial(context.Background(), l.Multiaddr(), peerA)
 	if err != nil {
 		t.Fatal(err)
 	}
