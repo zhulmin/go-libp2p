@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	ma "github.com/multiformats/go-multiaddr"
@@ -53,16 +54,20 @@ type listener struct {
 	config                    webrtc.Configuration
 	localFingerprint          webrtc.DTLSFingerprint
 	localFingerprintMultibase string
-	mux                       *udpMuxNewAddr
+	mux                       ice.UDPMux
 	ctx                       context.Context
 	cancel                    context.CancelFunc
+	localAddr                 net.Addr
 	localMultiaddr            ma.Multiaddr
 	connChan                  chan tpt.CapableConn
 	wg                        sync.WaitGroup
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
-	mux := NewUDPMuxNewAddr(ice.UDPMuxParams{UDPConn: socket}, make(chan candidateAddr))
+	candidateChan := make(chan candidateAddr, 1)
+	mux := udpmux.NewUDPMux(socket, func (ufrag string, addr net.Addr) {
+		candidateChan <- candidateAddr{ ufrag: ufrag, raddr: addr.(*net.UDPAddr) }
+	})
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -86,21 +91,22 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		localMultiaddr:            laddr,
 		ctx:                       ctx,
 		cancel:                    cancel,
+		localAddr: socket.LocalAddr(),
 		connChan:                  make(chan tpt.CapableConn, 20),
 	}
 
 	l.wg.Add(1)
-	go l.startAcceptLoop()
+	go l.startAcceptLoop(candidateChan)
 	return l, err
 }
 
-func (l *listener) startAcceptLoop() {
+func (l *listener) startAcceptLoop(candidateChan chan candidateAddr) {
 	defer l.wg.Done()
 	for {
 		select {
 		case <-l.ctx.Done():
 			return
-		case addr := <-l.mux.newAddrChan:
+		case addr := <-candidateChan:
 			go func() {
 				ctx, cancelFunc := context.WithTimeout(context.Background(), 20*time.Second)
 				defer cancelFunc()
@@ -136,7 +142,7 @@ func (l *listener) Close() error {
 }
 
 func (l *listener) Addr() net.Addr {
-	return l.mux.LocalAddr()
+	return l.localAddr
 }
 
 func (l *listener) Multiaddrs() []ma.Multiaddr {
@@ -216,7 +222,7 @@ func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope
 			handshakeChannel,
 			rwc,
 			pc,
-			l.mux.LocalAddr(),
+			l.localAddr,
 			addr.raddr,
 		)
 		handshakeOnce.Do(func() {
