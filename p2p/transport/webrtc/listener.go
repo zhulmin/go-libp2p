@@ -23,31 +23,7 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-var (
-	// since verification of the remote fingerprint is deferred until
-	// the noise handshake, a multihash with an arbitrary value is considered
-	// as the remote fingerprint during the intial PeerConnection connection
-	// establishment.
-	defaultMultihash *multihash.DecodedMultihash = nil
-	// static assert
-	_ tpt.Listener = &listener{}
-)
-
-func init() {
-	// populate default multihash
-	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
-	if err != nil {
-		panic(err)
-	}
-
-	defaultMultihash = &multihash.DecodedMultihash{
-		Code:   multihash.SHA2_256,
-		Name:   multihash.Codes[multihash.SHA2_256],
-		Digest: encoded,
-		Length: len(encoded),
-	}
-
-}
+var _ tpt.Listener = &listener{}
 
 type candidateAddr struct {
 	ufrag string
@@ -246,9 +222,8 @@ func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope
 	})
 
 	clientSdpString := renderClientSdp(sdpArgs{
-		Addr:        addr.raddr,
-		Fingerprint: defaultMultihash,
-		Ufrag:       addr.ufrag,
+		Addr:  addr.raddr,
+		Ufrag: addr.ufrag,
 	})
 	clientSdp := webrtc.SessionDescription{SDP: clientSdpString, Type: webrtc.SDPTypeOffer}
 	pc.SetRemoteDescription(clientSdp)

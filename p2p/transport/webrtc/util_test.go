@@ -1,9 +1,11 @@
 package libp2pwebrtc
 
 import (
+	"encoding/hex"
 	"net"
 	"testing"
 
+	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,10 +36,19 @@ a=candidate:1 1 UDP 1 0.0.0.0 37826 typ host
 `
 
 func TestRenderServerSDP(t *testing.T) {
+	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+	require.NoError(t, err)
+
+	testMultihash := &multihash.DecodedMultihash{
+		Code:   multihash.SHA2_256,
+		Name:   multihash.Codes[multihash.SHA2_256],
+		Digest: encoded,
+		Length: len(encoded),
+	}
 	args := sdpArgs{
 		Addr:        &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826},
 		Ufrag:       "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581",
-		Fingerprint: defaultMultihash,
+		Fingerprint: testMultihash,
 	}
 
 	sdp := renderServerSdp(args)
@@ -63,9 +74,8 @@ a=max-message-size:16384
 
 func TestRenderClientSDP(t *testing.T) {
 	args := sdpArgs{
-		Addr:        &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826},
-		Ufrag:       "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581",
-		Fingerprint: defaultMultihash,
+		Addr:  &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826},
+		Ufrag: "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581",
 	}
 	sdp := renderClientSdp(args)
 	require.Equal(t, expectedClientSDP, sdp)
