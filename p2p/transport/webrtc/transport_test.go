@@ -2,6 +2,7 @@ package libp2pwebrtc
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -238,6 +239,17 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 }
 
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
+	// test multihash
+	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+	require.NoError(t, err)
+
+	testMultihash := &multihash.DecodedMultihash{
+		Code:   multihash.SHA2_256,
+		Name:   multihash.Codes[multihash.SHA2_256],
+		Digest: encoded,
+		Length: len(encoded),
+	}
+
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -254,7 +266,7 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 		return component.Protocol().Code == multiaddr.P_CERTHASH
 	})
 
-	encodedCerthash, err := multihash.Encode(defaultMultihash.Digest, defaultMultihash.Code)
+	encodedCerthash, err := multihash.Encode(testMultihash.Digest, testMultihash.Code)
 	require.NoError(t, err)
 	badEncodedCerthash, err := multibase.Encode(multibase.Base58BTC, encodedCerthash)
 	require.NoError(t, err)

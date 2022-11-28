@@ -25,7 +25,7 @@ a=mid:0
 a=ice-options:trickle
 a=ice-ufrag:%s
 a=ice-pwd:%s
-a=fingerprint:%s
+a=fingerprint:sha-256 ba:78:16:bf:8f:01:cf:ea:41:41:40:de:5d:ae:22:23:b0:03:61:a3:96:17:7a:9c:b4:10:ff:61:f2:00:15:ad
 a=setup:actpass
 a=sctp-port:5000
 a=max-message-size:16384
@@ -45,7 +45,6 @@ func renderClientSdp(args sdpArgs) string {
 		args.Addr.Port,
 		args.Ufrag,
 		args.Ufrag,
-		fingerprintToSDP(args.Fingerprint),
 	)
 }
 
