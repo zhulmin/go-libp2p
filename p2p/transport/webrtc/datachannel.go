@@ -63,6 +63,7 @@ type dataChannel struct {
 
 	requestRead     chan struct{}
 	receivedMessage chan struct{}
+	deadlineUpdated chan struct{}
 
 	wg sync.WaitGroup
 }
@@ -89,6 +90,7 @@ func newDataChannel(
 		readBuf:         []byte{},
 		requestRead:     make(chan struct{}, 5),
 		receivedMessage: make(chan struct{}, 5),
+		deadlineUpdated: make(chan struct{}),
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
@@ -103,11 +105,9 @@ func newDataChannel(
 }
 
 func (d *dataChannel) Read(b []byte) (int, error) {
+	timeout := make(chan struct{})
+	var deadlineTimer *time.Timer
 	for {
-		if state := d.getState(); state == stateClosed || state == stateReadClosed {
-			return 0, io.EOF
-		}
-
 		d.m.Lock()
 		read := copy(b, d.readBuf)
 		d.readBuf = d.readBuf[read:]
@@ -122,7 +122,28 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 
 		// read until data message
 		d.requestRead <- struct{}{}
-		<-d.receivedMessage
+
+		d.m.Lock()
+		deadlineUpdated := d.deadlineUpdated
+		deadline := d.readDeadline
+		d.m.Unlock()
+		if !deadline.IsZero() {
+			if deadline.Before(time.Now()) {
+				return 0, os.ErrDeadlineExceeded
+			}
+			if deadlineTimer == nil {
+				deadlineTimer = time.AfterFunc(time.Until(deadline), func() { close(timeout) })
+				defer deadlineTimer.Stop()
+			}
+			deadlineTimer.Reset(time.Until(deadline))
+		}
+		select {
+		case <-d.receivedMessage:
+		case <-timeout:
+			return 0, os.ErrDeadlineExceeded
+		case <-deadlineUpdated:
+		case <-d.ctx.Done():
+		}
 	}
 }
 
@@ -154,16 +175,6 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 	)
 
 	for len(b) > 0 {
-
-		d.m.Lock()
-		dl := d.writeDeadline
-		if !dl.IsZero() && time.Now().After(dl) {
-			d.m.Unlock()
-			return 0, os.ErrDeadlineExceeded
-		}
-		d.m.Unlock()
-
-		// check timer
 		end := chunkSize
 		if len(b) < end {
 			end = len(b)
@@ -180,34 +191,54 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 }
 
 func (d *dataChannel) partialWrite(b []byte) (int, error) {
-	if s := d.getState(); s == stateWriteClosed || s == stateClosed {
-		return 0, io.ErrClosedPipe
-	}
 
-	timedOut := make(chan struct{})
-	d.m.Lock()
-	dl := d.writeDeadline
-	d.m.Unlock()
-	if !dl.IsZero() {
-		timer := time.AfterFunc(time.Until(dl), func() { close(timedOut) })
-		defer timer.Stop()
-	}
-
-	msg := &pb.Message{Message: b}
 	// if the next message will add more data than we are willing to buffer,
 	// block until we have sent enough bytes to reduce the amount of data buffered.
-	if d.channel.BufferedAmount()+uint64(len(b))+uint64(varintOverhead) > maxBufferedAmount {
-		select {
-		case <-timedOut:
-			return 0, os.ErrDeadlineExceeded
-		case <-d.writeAvailable:
+	timeout := make(chan struct{})
+	var deadlineTimer *time.Timer
+	for {
+		if s := d.getState(); s == stateWriteClosed || s == stateClosed {
+			return 0, io.ErrClosedPipe
+		}
+		d.m.Lock()
+		deadline := d.writeDeadline
+		deadlineUpdated := d.deadlineUpdated
+		d.m.Unlock()
+		if !deadline.IsZero() {
+			// check if deadline exceeded
+			if deadline.Before(time.Now()) {
+				return 0, os.ErrDeadlineExceeded
+			}
+
+			if deadlineTimer == nil {
+				deadlineTimer = time.AfterFunc(time.Until(deadline), func() { close(timeout) })
+				defer deadlineTimer.Stop()
+			}
+			deadlineTimer.Reset(time.Until(deadline))
+		}
+
+		msg := &pb.Message{Message: b}
+		if d.channel.BufferedAmount()+uint64(len(b))+uint64(varintOverhead) > maxBufferedAmount {
+			select {
+			case <-timeout:
+				return 0, os.ErrDeadlineExceeded
+			case <-d.writeAvailable:
+				return d.writeMessage(msg)
+			case <-d.ctx.Done():
+				return 0, io.ErrClosedPipe
+			case <-deadlineUpdated:
+
+			}
+		} else {
+			return d.writeMessage(msg)
 		}
 	}
-	return d.writeMessage(msg)
 }
 
 func (d *dataChannel) writeMessage(msg *pb.Message) (int, error) {
 	err := d.writer.WriteMsg(msg)
+	// this only returns the number of bytes sent from the buffer
+	// requested by the user.
 	return len(msg.GetMessage()), err
 
 }
@@ -296,8 +327,10 @@ func (d *dataChannel) Reset() error {
 }
 
 func (d *dataChannel) SetDeadline(t time.Time) error {
-	d.SetReadDeadline(t)
-	d.SetWriteDeadline(t)
+	d.m.Lock()
+	defer d.m.Unlock()
+	d.readDeadline = t
+	d.writeDeadline = t
 	return nil
 }
 
@@ -305,6 +338,9 @@ func (d *dataChannel) SetReadDeadline(t time.Time) error {
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.readDeadline = t
+	deadlineUpdated := d.deadlineUpdated
+	d.deadlineUpdated = make(chan struct{})
+	defer func() { close(deadlineUpdated) }()
 	return nil
 }
 
@@ -312,6 +348,9 @@ func (d *dataChannel) SetWriteDeadline(t time.Time) error {
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.writeDeadline = t
+	deadlineUpdated := d.deadlineUpdated
+	d.deadlineUpdated = make(chan struct{})
+	defer func() { close(deadlineUpdated) }()
 	return nil
 }
 
