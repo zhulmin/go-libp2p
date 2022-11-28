@@ -842,7 +842,7 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		certhashes := extractCertHashes(onlyWebtransportmultiaddr(t, l.Multiaddrs()))
+		certhashes := extractCertHashes(l.Multiaddr())
 		l.Close()
 
 		// These two certificates together are valid for at most certValidity - (4*clockSkewAllowance)
@@ -859,8 +859,7 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 		defer l.Close()
 
 		var found bool
-		addrs := onlyWebtransportmultiaddr(t, l.Multiaddrs())
-		ma.ForEach(addrs, func(c ma.Component) bool {
+		ma.ForEach(l.Multiaddr(), func(c ma.Component) bool {
 			if c.Protocol().Code == ma.P_CERTHASH {
 				for _, prevCerthash := range certhashes {
 					if c.Value() == prevCerthash {
@@ -877,15 +876,6 @@ func TestServerRotatesCertCorrectly(t *testing.T) {
 	}, nil))
 }
 
-func onlyWebtransportmultiaddr(t testing.TB, addrs []ma.Multiaddr) ma.Multiaddr {
-	addrs = ma.FilterAddrs(addrs, func(m ma.Multiaddr) bool {
-		_, err := m.ValueForProtocol(ma.P_WEBTRANSPORT)
-		return err == nil
-	})
-	require.NotEmpty(t, addrs)
-	return addrs[0]
-}
-
 func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 	cl := clock.NewMock()
 	// Move one year ahead to avoid edge cases around epoch
@@ -899,7 +889,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 	l, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
 	require.NoError(t, err)
 
-	certhashes := extractCertHashes(onlyWebtransportmultiaddr(t, l.Multiaddrs()))
+	certhashes := extractCertHashes(l.Multiaddr())
 	l.Close()
 
 	// Traverse various time boundaries and make sure we always keep a common certhash.
@@ -912,8 +902,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 		require.NoError(t, err)
 
 		var found bool
-		addrs := onlyWebtransportmultiaddr(t, l.Multiaddrs())
-		ma.ForEach(addrs, func(c ma.Component) bool {
+		ma.ForEach(l.Multiaddr(), func(c ma.Component) bool {
 			if c.Protocol().Code == ma.P_CERTHASH {
 				for _, prevCerthash := range certhashes {
 					if prevCerthash == c.Value() {
@@ -924,7 +913,7 @@ func TestServerRotatesCertCorrectlyAfterSteps(t *testing.T) {
 			}
 			return true
 		})
-		certhashes = extractCertHashes(onlyWebtransportmultiaddr(t, l.Multiaddrs()))
+		certhashes = extractCertHashes(l.Multiaddr())
 		l.Close()
 
 		require.True(t, found, "Failed after hour: %v", i)

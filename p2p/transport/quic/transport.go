@@ -50,6 +50,10 @@ type transport struct {
 
 	connMx sync.Mutex
 	conns  map[quic.Connection]*conn
+
+	listenersMu sync.Mutex
+	// map of UDPAddr as string to a virtualListeners
+	listeners map[string][]*virtualListener
 }
 
 var _ tpt.Transport = &transport{}
@@ -92,6 +96,8 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 		rcmgr:        rcmgr,
 		conns:        make(map[quic.Connection]*conn),
 		holePunching: make(map[holePunchKey]*activeHolePunch),
+
+		listeners: make(map[string][]*virtualListener),
 	}, nil
 }
 
@@ -269,16 +275,54 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		return conf, nil
 	}
 	tlsConf.NextProtos = []string{"libp2p"}
+	udpAddr, version, err := quicreuse.FromQuicMultiaddr(addr)
+	if err != nil {
+		return nil, err
+	}
 
-	ln, err := t.connManager.ListenQUIC(addr, &tlsConf, t.allowWindowIncrease)
-	if err != nil {
-		return nil, err
+	t.listenersMu.Lock()
+	defer t.listenersMu.Unlock()
+	listeners := t.listeners[udpAddr.String()]
+	var underlyingListener *listener
+	var acceptRunner *acceptLoopRunner
+	if len(listeners) != 0 {
+		// We already have an underlying listener, let's use it
+		underlyingListener = listeners[0].listener
+		acceptRunner = listeners[0].acceptRunnner
+		// Make sure our underlying listener is listening on the specified QUIC version
+		if _, ok := underlyingListener.localMultiaddrs[version]; !ok {
+			return nil, fmt.Errorf("can't listen on quic version %v, underlying listener doesn't support it", version)
+		}
+	} else {
+		ln, err := t.connManager.ListenQUIC(addr, &tlsConf, t.allowWindowIncrease)
+		if err != nil {
+			return nil, err
+		}
+		l, err := newListener(ln, t, t.localPeer, t.privKey, t.rcmgr)
+		if err != nil {
+			_ = ln.Close()
+			return nil, err
+		}
+		underlyingListener = &l
+
+		acceptRunner = &acceptLoopRunner{
+			muxer: make(map[quic.VersionNumber]chan acceptVal),
+		}
+		go acceptRunner.run(underlyingListener)
 	}
-	l, err := newListener(ln, t, t.localPeer, t.privKey, t.rcmgr)
-	if err != nil {
-		_ = ln.Close()
-		return nil, err
+
+	l := &virtualListener{
+		listener:      underlyingListener,
+		version:       version,
+		udpAddr:       udpAddr.String(),
+		t:             t,
+		acceptRunnner: acceptRunner,
+		acceptChan:    acceptRunner.acceptForVersion(version),
 	}
+
+	listeners = append(listeners, l)
+	t.listeners[udpAddr.String()] = listeners
+
 	return l, nil
 }
 
