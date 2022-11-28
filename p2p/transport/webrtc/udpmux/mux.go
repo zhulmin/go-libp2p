@@ -123,26 +123,24 @@ func (mux *udpMux) readLoop() {
 			return
 		default:
 		}
+		buf = buf[:cap(buf)]
 		n, addr, err := mux.socket.ReadFrom(buf)
+		buf = buf[:n]
 		if err != nil {
 			if os.IsTimeout(err) {
 				continue
 			}
 			return
 		}
-		udpAddr, ok := addr.(*net.UDPAddr)
-		if !ok {
-			// warn and continue
-			continue
-		}
+		udpAddr := addr.(*net.UDPAddr)
 		isIPv6 := udpAddr.IP.To4() == nil
 
 		mux.mu.Lock()
 		conn, ok := mux.addrMap[udpAddr.String()]
 		mux.mu.Unlock()
 		// if address was not found check if ufrag exists
-		if !ok && stun.IsMessage(buf[:n]) {
-			msg := &stun.Message{Raw: append([]byte{}, buf[:n]...)}
+		if !ok && stun.IsMessage(buf) {
+			msg := &stun.Message{Raw: buf}
 			if err := msg.Decode(); err != nil {
 				continue
 			}
