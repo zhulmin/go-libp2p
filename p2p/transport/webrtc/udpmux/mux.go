@@ -14,7 +14,6 @@ import (
 	"github.com/pion/stun"
 )
 
-const maxAddrSize = 512
 const receiveMTU = 1500
 
 var _ ice.UDPMux = &udpMux{}
