@@ -119,4 +119,4 @@ require (
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
 
-replace github.com/marten-seemann/webtransport-go@v0.4.0 => github.com/marcopolo/webtransport-go v0.4.1-0.20221129164322-78c3d214b166
+replace github.com/marten-seemann/webtransport-go => github.com/marcopolo/webtransport-go v0.4.1-0.20221129164322-78c3d214b166
