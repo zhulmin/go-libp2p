@@ -29,9 +29,10 @@ func (l *virtualListener) Multiaddr() ma.Multiaddr {
 }
 
 func (l *virtualListener) Close() error {
+	l.acceptRunnner.rmAcceptForVersion(l.version)
+
 	l.t.listenersMu.Lock()
 	defer l.t.listenersMu.Unlock()
-	l.acceptRunnner.rmAcceptForVersion(l.version)
 
 	var err error
 	listeners := l.t.listeners[l.udpAddr]
@@ -55,7 +56,16 @@ func (l *virtualListener) Close() error {
 }
 
 func (l *virtualListener) Accept() (tpt.CapableConn, error) {
-	v, ok := <-l.acceptChan
+	var v acceptVal
+	var ok bool
+	select {
+	// Check if we have a pending connection first
+	case v, ok = <-l.acceptChan:
+	default:
+		// No? Let's call Accept and wait for a connection
+		go l.acceptRunnner.Accept(l.listener, l.version)
+		v, ok = <-l.acceptChan
+	}
 	if !ok {
 		return nil, errors.New("listener closed")
 	}
@@ -69,6 +79,8 @@ type acceptVal struct {
 }
 
 type acceptLoopRunner struct {
+	listenerMu sync.Mutex
+
 	muxerMu sync.Mutex
 	muxer   map[quic.VersionNumber]chan acceptVal
 }
@@ -93,7 +105,7 @@ func (r *acceptLoopRunner) rmAcceptForVersion(v quic.VersionNumber) {
 
 	ch, ok := r.muxer[v]
 	if !ok {
-		panic("unexpected chan already found in accept muxer")
+		panic("expected chan in accept muxer")
 	}
 	ch <- acceptVal{err: errors.New("listener Accept closed")}
 	delete(r.muxer, v)
@@ -112,9 +124,12 @@ func (r *acceptLoopRunner) sendErrAndClose(err error) {
 	}
 }
 
-func (r *acceptLoopRunner) run(l *listener) error {
+func (r *acceptLoopRunner) Accept(l *listener, expectedVersion quic.VersionNumber) error {
 	for {
+		r.listenerMu.Lock()
 		conn, err := l.Accept()
+		r.listenerMu.Unlock()
+
 		if err != nil {
 			r.sendErrAndClose(err)
 			return err
@@ -143,6 +158,11 @@ func (r *acceptLoopRunner) run(l *listener) error {
 			// We dropped the connection, close it
 			conn.Close()
 			continue
+		}
+
+		if version == expectedVersion {
+			// We got the version we were expecting, we can exit.
+			return nil
 		}
 	}
 }
