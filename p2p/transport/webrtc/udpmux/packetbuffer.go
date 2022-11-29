@@ -11,23 +11,22 @@ import (
 
 type packet struct {
 	addr net.Addr
-	size  int
+	size int
 }
 
 type packetBuffer struct {
-	ctx context.Context
-	mu sync.Mutex
-	pdata *pool.Buffer
-	pkts []packet
-	notify chan struct{}
+	ctx         context.Context
+	mu          sync.Mutex
+	pdata       *pool.Buffer
+	pkts        []packet
+	notify      chan struct{}
 	readWaiting bool
 }
 
-
 func newPacketBuffer(ctx context.Context) *packetBuffer {
 	return &packetBuffer{
-		ctx: ctx,
-		pdata: new(pool.Buffer),
+		ctx:    ctx,
+		pdata:  new(pool.Buffer),
 		notify: make(chan struct{}),
 	}
 }
@@ -49,7 +48,6 @@ func (pb *packetBuffer) readFrom(buf []byte) (int, net.Addr, error) {
 			pb.mu.Unlock()
 			return copied, pkt.addr, nil
 		}
-
 
 		notify := pb.notify
 
@@ -81,9 +79,9 @@ func (pb *packetBuffer) writePacket(buf []byte, addr net.Addr) error {
 	if err != nil {
 		return err
 	}
-	pb.pkts = append(pb.pkts, packet{ addr: addr, size: len(buf) })
+	pb.pkts = append(pb.pkts, packet{addr: addr, size: len(buf)})
 
-	var notify chan struct {}
+	var notify chan struct{}
 	if pb.readWaiting {
 		pb.readWaiting = false
 		notify = pb.notify

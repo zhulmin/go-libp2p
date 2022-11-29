@@ -26,11 +26,11 @@ type ufragConnKey struct {
 }
 
 type udpMux struct {
-	mu            sync.Mutex
-	wg            sync.WaitGroup
-	ctx           context.Context
-	cancel        context.CancelFunc
-	socket        net.PacketConn
+	mu                   sync.Mutex
+	wg                   sync.WaitGroup
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	socket               net.PacketConn
 	unknownUfragCallback func(string, net.Addr)
 	ufragMap             map[ufragConnKey]*muxedConnection
 	addrMap              map[string]*muxedConnection

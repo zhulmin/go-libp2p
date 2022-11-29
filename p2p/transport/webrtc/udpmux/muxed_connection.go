@@ -15,18 +15,18 @@ type muxedConnection struct {
 	// list of remote addresses associated with this connection.
 	// this is useful as a mapping from [address] -> ufrag
 	addresses []string
-	ufrag string
-	mux    *udpMux
+	ufrag     string
+	mux       *udpMux
 }
 
 func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &muxedConnection{
-		ctx: ctx,
+		ctx:    ctx,
 		cancel: cancel,
 		buffer: newPacketBuffer(ctx),
-		ufrag: ufrag,
-		mux: mux,
+		ufrag:  ufrag,
+		mux:    mux,
 	}
 }
 
@@ -37,7 +37,7 @@ func (conn *muxedConnection) push(buf []byte, addr net.Addr) error {
 // Close implements net.PacketConn
 func (conn *muxedConnection) Close() error {
 	select {
-	case <- conn.ctx.Done():
+	case <-conn.ctx.Done():
 		return nil
 	default:
 	}
