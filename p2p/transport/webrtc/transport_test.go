@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"testing"
@@ -278,7 +279,45 @@ func TestTransportWebRTC_StreamReadDeadline(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out")
 	}
+}
 
+func TestTransportWebRTC_StreamCanCloseWhenReadActive(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
+	require.NoError(t, err)
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+
+	tr1, connectingPeer := getTransport(t)
+	done := make(chan struct{})
+
+	go func() {
+		lconn, err := listener.Accept()
+		require.NoError(t, err)
+		t.Logf("listener accepted connection")
+		require.Equal(t, connectingPeer, lconn.RemotePeer())
+		done <- struct{}{}
+	}()
+
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+	require.NoError(t, err)
+	t.Logf("dialer opened connection")
+	stream, err := conn.OpenStream(context.Background())
+	require.NoError(t, err)
+
+	time.AfterFunc(100*time.Millisecond, func() {
+		err = stream.Close()
+		require.NoError(t, err)
+	})
+
+	_, readerr := stream.Read(make([]byte, 19))
+	require.ErrorIs(t, readerr, io.EOF)
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out")
+	}
 }
 
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
@@ -321,9 +360,6 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 	require.Nil(t, conn)
 	require.Error(t, err)
 
-	webrtcErr, ok := err.(*webRTCTransportError)
-	require.True(t, ok, "could not cast to webRTCTransportError")
-	require.Equal(t, webrtcErr.kind, errKindConnectionFailed)
-	require.Contains(t, webrtcErr.message, "failed")
+	require.ErrorContains(t, err, "failed")
 
 }
