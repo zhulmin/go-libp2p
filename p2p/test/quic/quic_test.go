@@ -2,6 +2,7 @@ package quic_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/libp2p/go-libp2p"
@@ -119,6 +120,10 @@ func TestQUICAndWebTransport(t *testing.T) {
 	)
 	require.NoError(t, err)
 	defer h1.Close()
+	defer func() {
+		fmt.Println("Closing h1!!")
+
+	}()
 
 	addrs := h1.Addrs()
 	require.Len(t, addrs, 2)
@@ -165,5 +170,6 @@ func TestQUICAndWebTransport(t *testing.T) {
 		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
 		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].RemoteMultiaddr()))
 	}
+	fmt.Println("Closing h3!!!")
 	h3.Close()
 }

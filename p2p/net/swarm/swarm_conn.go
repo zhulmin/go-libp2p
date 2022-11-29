@@ -85,6 +85,7 @@ func (c *Conn) doClose() {
 		c.swarm.notifyAll(func(f network.Notifiee) {
 			f.Disconnected(c.swarm, c)
 		})
+		fmt.Println("Called done in conn close")
 		c.swarm.refs.Done() // taken in Swarm.addConn
 	}()
 }
@@ -104,6 +105,7 @@ func (c *Conn) removeStream(s *Stream) {
 func (c *Conn) start() {
 	go func() {
 		defer c.swarm.refs.Done()
+		defer fmt.Println("Called done in start")
 		defer c.Close()
 
 		for {
