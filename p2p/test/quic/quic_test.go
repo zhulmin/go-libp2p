@@ -119,10 +119,10 @@ func TestQUICAndWebTransport(t *testing.T) {
 		),
 	)
 	require.NoError(t, err)
+	defer fmt.Println("Done Closing h1!!")
 	defer h1.Close()
 	defer func() {
 		fmt.Println("Closing h1!!")
-
 	}()
 
 	addrs := h1.Addrs()

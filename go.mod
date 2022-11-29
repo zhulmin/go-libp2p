@@ -118,3 +118,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
+
+replace github.com/marten-seemann/webtransport-go@v0.4.0 => github.com/marcopolo/webtransport-go v0.4.1-0.20221129055849-3a9fe0de2cca
