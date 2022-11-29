@@ -308,7 +308,6 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		acceptRunner = &acceptLoopRunner{
 			muxer: make(map[quic.VersionNumber]chan acceptVal),
 		}
-		go acceptRunner.run(underlyingListener)
 	}
 
 	l := &virtualListener{
