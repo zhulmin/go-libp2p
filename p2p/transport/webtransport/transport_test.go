@@ -3,21 +3,16 @@ package libp2pwebtransport_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"os"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/quick"
@@ -271,13 +266,17 @@ func TestResourceManagerDialing(t *testing.T) {
 	defer ctrl.Finish()
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 
-	addr := ma.StringCast("/ip4/9.8.7.6/udp/1234/quic-v1/webtransport")
+	addr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
 	p := peer.ID("foobar")
 
 	_, key := newIdentity(t)
 	tr, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, rcmgr)
 	require.NoError(t, err)
 	defer tr.(io.Closer).Close()
+	l, err := tr.Listen(addr)
+	require.NoError(t, err)
+
+	addr = l.Multiaddr()
 
 	scope := mocknetwork.NewMockConnManagementScope(ctrl)
 	rcmgr.EXPECT().OpenConnection(network.DirOutbound, false, addr).Return(scope, nil)
@@ -453,88 +452,6 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 	}
 }
 
-func getTLSConf(t *testing.T, ip net.IP, start, end time.Time) *tls.Config {
-	t.Helper()
-	certTempl := &x509.Certificate{
-		SerialNumber:          big.NewInt(1234),
-		Subject:               pkix.Name{Organization: []string{"webtransport"}},
-		NotBefore:             start,
-		NotAfter:              end,
-		IsCA:                  true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-		IPAddresses:           []net.IP{ip},
-	}
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	caBytes, err := x509.CreateCertificate(rand.Reader, certTempl, certTempl, &priv.PublicKey, priv)
-	require.NoError(t, err)
-	cert, err := x509.ParseCertificate(caBytes)
-	require.NoError(t, err)
-	return &tls.Config{
-		Certificates: []tls.Certificate{{
-			Certificate: [][]byte{cert.Raw},
-			PrivateKey:  priv,
-			Leaf:        cert,
-		}},
-	}
-}
-
-func TestStaticTLSConf(t *testing.T) {
-	tlsConf := getTLSConf(t, net.ParseIP("127.0.0.1"), time.Now(), time.Now().Add(365*24*time.Hour))
-
-	serverID, serverKey := newIdentity(t)
-	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, &network.NullResourceManager{}, libp2pwebtransport.WithTLSConfig(tlsConf))
-	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
-	ln, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
-	require.NoError(t, err)
-	defer ln.Close()
-	require.Empty(t, extractCertHashes(ln.Multiaddr()), "listener address shouldn't contain any certhash")
-
-	t.Run("fails when the certificate is invalid", func(t *testing.T) {
-		_, key := newIdentity(t)
-		cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
-		require.NoError(t, err)
-		defer cl.(io.Closer).Close()
-
-		_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
-		require.Error(t, err)
-		if !strings.Contains(err.Error(), "certificate is not trusted") &&
-			!strings.Contains(err.Error(), "certificate signed by unknown authority") {
-			t.Fatalf("expected a certificate error, got %+v", err)
-		}
-	})
-
-	t.Run("fails when dialing with a wrong certhash", func(t *testing.T) {
-		_, key := newIdentity(t)
-		cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
-		require.NoError(t, err)
-		defer cl.(io.Closer).Close()
-
-		addr := ln.Multiaddr().Encapsulate(getCerthashComponent(t, []byte("foo")))
-		_, err = cl.Dial(context.Background(), addr, serverID)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "cert hash not found")
-	})
-
-	t.Run("accepts a valid TLS certificate", func(t *testing.T) {
-		_, key := newIdentity(t)
-		store := x509.NewCertPool()
-		store.AddCert(tlsConf.Certificates[0].Leaf)
-		tlsConf := &tls.Config{RootCAs: store}
-		cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{}, libp2pwebtransport.WithTLSClientConfig(tlsConf))
-		require.NoError(t, err)
-		defer cl.(io.Closer).Close()
-
-		require.True(t, cl.CanDial(ln.Multiaddr()))
-		conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
-		require.NoError(t, err)
-		defer conn.Close()
-	})
-}
-
 func TestAcceptQueueFilledUp(t *testing.T) {
 	serverID, serverKey := newIdentity(t)
 	tr, err := libp2pwebtransport.New(serverKey, nil, newConnManager(t), nil, &network.NullResourceManager{})
@@ -564,48 +481,6 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 		_, err = conn.AcceptStream()
 	}
 	require.Error(t, err)
-}
-
-func TestSNIIsSent(t *testing.T) {
-	server, key := newIdentity(t)
-
-	sentServerNameCh := make(chan string, 1)
-	var tlsConf *tls.Config
-	tlsConf = &tls.Config{
-		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-			sentServerNameCh <- chi.ServerName
-			return tlsConf, nil
-		},
-	}
-	tr, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{}, libp2pwebtransport.WithTLSConfig(tlsConf))
-	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
-
-	ln1, err := tr.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport"))
-	require.NoError(t, err)
-
-	_, key2 := newIdentity(t)
-	clientTr, err := libp2pwebtransport.New(key2, nil, newConnManager(t), nil, &network.NullResourceManager{})
-	require.NoError(t, err)
-	defer tr.(io.Closer).Close()
-
-	beforeQuicMa, withQuicMa := ma.SplitFunc(ln1.Multiaddr(), func(c ma.Component) bool {
-		return c.Protocol().Code == ma.P_QUIC_V1
-	})
-
-	quicComponent, restMa := ma.SplitLast(withQuicMa)
-
-	toDialMa := beforeQuicMa.Encapsulate(quicComponent).Encapsulate(ma.StringCast("/sni/example.com")).Encapsulate(restMa)
-
-	// We don't care if this dial succeeds, we just want to check if the SNI is sent to the server.
-	_, _ = clientTr.Dial(context.Background(), toDialMa, server)
-
-	select {
-	case sentServerName := <-sentServerNameCh:
-		require.Equal(t, "example.com", sentServerName)
-	case <-time.After(time.Minute):
-		t.Fatalf("Expected to get server name")
-	}
 }
 
 type reportingRcmgr struct {

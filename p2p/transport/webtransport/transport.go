@@ -48,16 +48,6 @@ func WithClock(cl clock.Clock) Option {
 	}
 }
 
-// WithTLSConfig sets a tls.Config used for listening.
-// When used, the certificate from that config will be used, and no /certhash will be added to the listener's multiaddr.
-// This is most useful when running a listener that has a valid (CA-signed) certificate.
-func WithTLSConfig(c *tls.Config) Option {
-	return func(t *transport) error {
-		t.staticTLSConf = c
-		return nil
-	}
-}
-
 // WithTLSClientConfig sets a custom tls.Config used for dialing.
 // This option is most useful for setting a custom tls.Config.RootCAs certificate pool.
 // When dialing a multiaddr that contains a /certhash component, this library will set InsecureSkipVerify and
@@ -134,6 +124,10 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 	certHashes, err := extractCertHashes(raddr)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(certHashes) == 0 {
+		return nil, errors.New("can't dial webtransport without certhashes")
 	}
 
 	sni, _ := extractSNI(raddr)
@@ -308,6 +302,8 @@ func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
 		if t.listenOnceErr != nil {
 			return nil, t.listenOnceErr
 		}
+	} else {
+		return nil, errors.New("static TLS config not supported on WebTransport")
 	}
 	tlsConf := t.staticTLSConf.Clone()
 	if tlsConf == nil {
