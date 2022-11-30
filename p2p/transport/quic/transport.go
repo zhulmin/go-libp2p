@@ -306,7 +306,8 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		underlyingListener = &l
 
 		acceptRunner = &acceptLoopRunner{
-			muxer: make(map[quic.VersionNumber]chan acceptVal),
+			acceptSem: make(chan struct{}, 1),
+			muxer:     make(map[quic.VersionNumber]chan acceptVal),
 		}
 	}
 
@@ -316,7 +317,7 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		udpAddr:       udpAddr.String(),
 		t:             t,
 		acceptRunnner: acceptRunner,
-		acceptChan:    acceptRunner.acceptForVersion(version),
+		acceptChan:    acceptRunner.AcceptForVersion(version),
 	}
 
 	listeners = append(listeners, l)
