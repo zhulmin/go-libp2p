@@ -357,3 +357,30 @@ func (t *transport) String() string {
 func (t *transport) Close() error {
 	return nil
 }
+
+func (t *transport) CloseVirtualListener(l *virtualListener) error {
+	t.listenersMu.Lock()
+	defer t.listenersMu.Unlock()
+
+	var err error
+	listeners := t.listeners[l.udpAddr]
+	if len(listeners) == 1 {
+		// This is the last virtual listener here, so we can close the underlying listener
+		err = l.listener.Close()
+		delete(t.listeners, l.udpAddr)
+		return err
+	}
+
+	for i := 0; i < len(listeners); i++ {
+		// Swap remove
+		if l == listeners[i] {
+			listeners[i] = listeners[len(listeners)-1]
+			listeners = listeners[:len(listeners)-1]
+			t.listeners[l.udpAddr] = listeners
+			break
+		}
+	}
+
+	return nil
+
+}

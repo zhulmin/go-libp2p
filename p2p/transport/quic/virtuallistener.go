@@ -30,29 +30,7 @@ func (l *virtualListener) Multiaddr() ma.Multiaddr {
 
 func (l *virtualListener) Close() error {
 	l.acceptRunnner.RmAcceptForVersion(l.version)
-
-	l.t.listenersMu.Lock()
-	defer l.t.listenersMu.Unlock()
-
-	var err error
-	listeners := l.t.listeners[l.udpAddr]
-	if len(listeners) == 1 {
-		// This is the last virtual listener here, so we can close the underlying listener
-		err = l.listener.Close()
-		delete(l.t.listeners, l.udpAddr)
-		return err
-	}
-
-	for i := 0; i < len(listeners); i++ {
-		// Swap remove
-		if l == listeners[i] {
-			listeners[i] = listeners[len(listeners)-1]
-			listeners = listeners[0 : len(listeners)-1]
-			l.t.listeners[l.udpAddr] = listeners
-			break
-		}
-	}
-	return nil
+	return l.t.CloseVirtualListener(l)
 }
 
 func (l *virtualListener) Accept() (tpt.CapableConn, error) {
@@ -157,8 +135,9 @@ func (r *acceptLoopRunner) innerAccept(l *listener, expectedVersion quic.Version
 	select {
 	case ch <- acceptVal{conn: conn}:
 	default:
-		// We dropped the connection, close it
+		// accept queue filled up, drop the connection
 		conn.Close()
+		log.Warn("Accept queue filled. Dropping connection.")
 	}
 
 	return nil, nil
