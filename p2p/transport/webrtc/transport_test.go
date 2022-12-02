@@ -146,6 +146,31 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 	}
 }
 
+func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
+	require.NoError(t, err)
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+	count := 5
+
+	go func() {
+		for i := 0; i < count; i++ {
+			ctr, _ := getTransport(t)
+			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+			require.NoError(t, err)
+			require.Equal(t, conn.RemotePeer(), listeningPeer)
+			conn.Close()
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	for i := 0; i < count; i++ {
+		_, err := listener.Accept()
+		require.NoError(t, err)
+	}
+}
+
 func TestTransportWebRTC_ListenerCanCreateStreams(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	tr1, connectingPeer := getTransport(t)

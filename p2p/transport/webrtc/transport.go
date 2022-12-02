@@ -327,11 +327,7 @@ func (t *WebRTCTransport) dial(
 	tctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_, err = t.noiseHandshake(tctx, pc, channel, p, remoteHashFunction, false)
-	if err != nil {
-		return pc, nil, err
-	}
-
-	return pc, conn, nil
+	return pc, conn, err
 }
 
 func (t *WebRTCTransport) getCertificateFingerprint() (webrtc.DTLSFingerprint, error) {
