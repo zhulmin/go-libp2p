@@ -20,10 +20,13 @@ var _ network.MuxedStream = &dataChannel{}
 
 const (
 	// maxMessageSize is limited to 16384 bytes in the SDP.
-	maxMessageSize uint64 = 16384
-	// Max message size limit in the SDP is limited to 16384 bytes.
-	// We keep a maximum of 2 messages in the buffer
-	maxBufferedAmount uint64 = 3 * maxMessageSize
+	maxMessageSize int = 16384
+	// maxMessageSize is set to 1MB since pion SCTP streams have
+	// an internal buffer size of 1MB by default. Currently, there is
+	// no method to change this value when creating a datachannel
+	// or a PeerConnection.
+	// https://github.com/pion/sctp/blob/c0159aa2d49c240362038edf88baa8a9e6cfcede/association.go#L47
+	maxBufferedAmount int = 1024 * 1024
 	// bufferedAmountLowThreshold and maxBufferedAmount are bound
 	// to a stream but congestion control is done on the whole
 	// SCTP association. This means that a single stream can monopolize
@@ -31,7 +34,7 @@ const (
 	// read stream data and it's remote continues to send. We can
 	// add messages to the send buffer once there is space for 1 full
 	// sized message.
-	bufferedAmountLowThreshold uint64 = 16384
+	bufferedAmountLowThreshold uint64 = uint64(maxMessageSize)
 
 	protoOverhead  int = 5
 	varintOverhead int = 2
@@ -85,7 +88,7 @@ func newDataChannel(
 		ctx:             ctx,
 		cancel:          cancel,
 		writeAvailable:  make(chan struct{}),
-		reader:          protoio.NewDelimitedReader(rwc, 16384),
+		reader:          protoio.NewDelimitedReaderWithSizedBuffer(rwc, 16384),
 		writer:          protoio.NewDelimitedWriter(rwc),
 		readBuf:         []byte{},
 		requestRead:     make(chan struct{}, 5),
@@ -95,7 +98,11 @@ func newDataChannel(
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
 	channel.OnBufferedAmountLow(func() {
-		result.writeAvailable <- struct{}{}
+		result.m.Lock()
+		writeAvailable := result.writeAvailable
+		result.writeAvailable = make(chan struct{})
+		result.m.Unlock()
+		close(writeAvailable)
 	})
 
 	result.wg.Add(1)
@@ -171,19 +178,16 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 
 	var err error
 	var (
-		chunkSize = int(maxMessageSize) - protoOverhead - varintOverhead
+		chunkSize = maxMessageSize - protoOverhead - varintOverhead
 		n         = 0
 	)
 
 	for len(b) > 0 {
-		end := chunkSize
-		if len(b) < end {
-			end = len(b)
-		}
+		end := min(chunkSize, len(b))
 
 		written, err := d.partialWrite(b[:end])
 		if err != nil {
-			break
+			return n + written, err
 		}
 		b = b[end:]
 		n += written
@@ -204,6 +208,7 @@ func (d *dataChannel) partialWrite(b []byte) (int, error) {
 		d.m.Lock()
 		deadline := d.writeDeadline
 		deadlineUpdated := d.deadlineUpdated
+		writeAvailable := d.writeAvailable
 		d.m.Unlock()
 		if !deadline.IsZero() {
 			// check if deadline exceeded
@@ -219,11 +224,12 @@ func (d *dataChannel) partialWrite(b []byte) (int, error) {
 		}
 
 		msg := &pb.Message{Message: b}
-		if d.channel.BufferedAmount()+uint64(len(b))+uint64(varintOverhead) > maxBufferedAmount {
+		bufferedAmount := int(d.channel.BufferedAmount()) + len(b) + protoOverhead + varintOverhead
+		if bufferedAmount > maxBufferedAmount {
 			select {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
-			case <-d.writeAvailable:
+			case <-writeAvailable:
 				return d.writeMessage(msg)
 			case <-d.ctx.Done():
 				return 0, io.ErrClosedPipe
