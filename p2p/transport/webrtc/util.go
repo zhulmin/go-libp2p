@@ -68,3 +68,10 @@ func genUfrag(n int) string {
 	}
 	return string(b)
 }
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
