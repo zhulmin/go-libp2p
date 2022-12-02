@@ -206,12 +206,10 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 	go func() {
 		lconn, err := listener.Accept()
 		require.NoError(t, err)
-		t.Logf("listener accepted connection")
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
 
 		stream, err := lconn.AcceptStream()
 		require.NoError(t, err)
-		t.Logf("listener accepted stream")
 		buf := make([]byte, 100)
 		n, err := stream.Read(buf)
 		require.NoError(t, err)
@@ -251,7 +249,6 @@ func TestTransportWebRTC_StreamSetReadDeadline(t *testing.T) {
 	go func() {
 		lconn, err := listener.Accept()
 		require.NoError(t, err)
-		t.Logf("listener accepted connection")
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
 		_, err = lconn.AcceptStream()
 		require.NoError(t, err)
@@ -259,7 +256,6 @@ func TestTransportWebRTC_StreamSetReadDeadline(t *testing.T) {
 
 	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 	require.NoError(t, err)
-	t.Logf("dialer opened connection")
 	stream, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)
 
