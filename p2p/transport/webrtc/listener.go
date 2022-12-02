@@ -25,6 +25,11 @@ import (
 
 var _ tpt.Listener = &listener{}
 
+const (
+	maxConnectionBufferSize int = 10
+	candidateSetupTimeout       = 20 * time.Second
+)
+
 type candidateAddr struct {
 	ufrag string
 	raddr *net.UDPAddr
@@ -73,15 +78,15 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		connChan:                  make(chan tpt.CapableConn, 20),
+		connChan:                  make(chan tpt.CapableConn, maxConnectionBufferSize),
 	}
 
 	l.wg.Add(1)
-	go l.startAcceptLoop(candidateChan)
+	go l.handleIncomingCandidates(candidateChan)
 	return l, err
 }
 
-func (l *listener) startAcceptLoop(candidateChan chan candidateAddr) {
+func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
 	defer l.wg.Done()
 	for {
 		select {
@@ -89,9 +94,9 @@ func (l *listener) startAcceptLoop(candidateChan chan candidateAddr) {
 			return
 		case addr := <-candidateChan:
 			go func() {
-				ctx, cancelFunc := context.WithTimeout(context.Background(), 20*time.Second)
+				ctx, cancelFunc := context.WithTimeout(context.Background(), candidateSetupTimeout)
 				defer cancelFunc()
-				conn, err := l.acceptWrap(ctx, addr)
+				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
 					log.Debugf("could not accept connection: %v", err)
 					return
@@ -130,7 +135,7 @@ func (l *listener) Multiaddrs() []ma.Multiaddr {
 	return []ma.Multiaddr{l.localMultiaddr}
 }
 
-func (l *listener) acceptWrap(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
+func (l *listener) handleCandidate(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
 	remoteMultiaddr, err := manet.FromNetAddr(addr.raddr)
 	if err != nil {
 		return nil, err
@@ -139,7 +144,7 @@ func (l *listener) acceptWrap(ctx context.Context, addr candidateAddr) (tpt.Capa
 	if err != nil {
 		return nil, err
 	}
-	pc, conn, err := l.accept(ctx, scope, remoteMultiaddr, addr)
+	pc, conn, err := l.setupConnection(ctx, scope, remoteMultiaddr, addr)
 	if err != nil {
 		scope.Done()
 		if pc != nil {
@@ -150,7 +155,7 @@ func (l *listener) acceptWrap(ctx context.Context, addr candidateAddr) (tpt.Capa
 	return conn, nil
 }
 
-func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
+func (l *listener) setupConnection(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
 
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
@@ -167,13 +172,10 @@ func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope
 		return pc, nil, err
 	}
 
-	// signaling channel wraps an error in a struct to make
-	// the error nullable.
 	signalChan := make(chan error)
 	var wrappedChannel *dataChannel
 	var handshakeOnce sync.Once
-	// this enforces that the correct data channel label is used
-	// for the handshake
+
 	handshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: func(v bool) *bool { return &v }(true),
 		ID:         func(v uint16) *uint16 { return &v }(0),
@@ -182,17 +184,6 @@ func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope
 		return pc, nil, err
 	}
 
-	// The raw datachannel is wrapped in the libp2p abstraction
-	// as early as possible to allow any messages sent by the remote
-	// to be buffered. This is done since the dialer leads the listener
-	// in the handshake process, and a faster dialer could have set up
-	// their connection and started sending Noise handshake messages before
-	// the listener has set up the onmessage callback. In this use case,
-	// since the data channels are negotiated out-of-band, they will be
-	// instantly in `readyState=open` once the SCTP connection is set up.
-	// Therefore, we wrap the datachannel before performing the
-	// offer-answer exchange, so any messages sent from the remote get
-	// buffered.
 	handshakeChannel.OnOpen(func() {
 		rwc, err := handshakeChannel.Detach()
 		if err != nil {
@@ -275,6 +266,8 @@ func (l *listener) accept(ctx context.Context, scope network.ConnManagementScope
 		return pc, nil, err
 	}
 
-	err = conn.setRemotePeer(secureConn.RemotePeer())
+	conn.setRemotePeer(secureConn.RemotePeer())
+	conn.setRemotePublicKey(secureConn.RemotePublicKey())
+
 	return pc, conn, err
 }

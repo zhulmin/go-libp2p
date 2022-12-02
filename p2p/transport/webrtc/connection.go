@@ -15,6 +15,10 @@ import (
 
 var _ tpt.CapableConn = &connection{}
 
+const (
+	maxStreamBufferSize int = 10
+)
+
 type connection struct {
 	pc        *webrtc.PeerConnection
 	transport *WebRTCTransport
@@ -28,13 +32,13 @@ type connection struct {
 	remoteKey       ic.PubKey
 	remoteMultiaddr ma.Multiaddr
 
+	m       sync.Mutex
 	streams map[uint16]*dataChannel
 
-	accept chan network.MuxedStream
+	streamChan chan network.MuxedStream
 
 	ctx    context.Context
 	cancel context.CancelFunc
-	m      sync.Mutex
 }
 
 func newConnection(
@@ -50,7 +54,7 @@ func newConnection(
 	remoteKey ic.PubKey,
 	remoteMultiaddr ma.Multiaddr,
 ) *connection {
-	accept := make(chan network.MuxedStream, 10)
+	streamChan := make(chan network.MuxedStream, maxStreamBufferSize)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -70,7 +74,7 @@ func newConnection(
 		cancel:          cancel,
 		streams:         make(map[uint16]*dataChannel),
 
-		accept: accept,
+		streamChan: streamChan,
 	}
 
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
@@ -86,7 +90,7 @@ func newConnection(
 			}
 			stream = newDataChannel(dc, rwc, pc, nil, nil)
 			conn.addStream(id, stream)
-			accept <- stream
+			streamChan <- stream
 		})
 
 		dc.OnClose(func() {
@@ -185,7 +189,7 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, os.ErrClosed
-	case stream := <-c.accept:
+	case stream := <-c.streamChan:
 		return stream, nil
 	}
 }
@@ -196,14 +200,12 @@ func (c *connection) LocalPeer() peer.ID {
 }
 
 // only used during setup
-func (c *connection) setRemotePeer(id peer.ID) error {
+func (c *connection) setRemotePeer(id peer.ID) {
 	c.remotePeer = id
-	key, err := id.ExtractPublicKey()
-	if err != nil {
-		return err
-	}
+}
+
+func (c *connection) setRemotePublicKey(key ic.PubKey) {
 	c.remoteKey = key
-	return nil
 }
 
 func (c *connection) LocalPrivateKey() ic.PrivKey {

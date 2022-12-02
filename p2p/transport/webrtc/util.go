@@ -56,7 +56,7 @@ func encodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return multibase.Encode(multibase.Base58BTC, encoded)
+	return multibase.Encode(multibase.Base64url, encoded)
 }
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"

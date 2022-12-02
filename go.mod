@@ -2,8 +2,6 @@ module github.com/libp2p/go-libp2p
 
 go 1.18
 
-replace github.com/libp2p/go-msgio => github.com/ckousik/go-msgio v0.0.0-20221201141125-79d34d00568e
-
 require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
