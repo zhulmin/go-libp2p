@@ -1,6 +1,7 @@
 package libp2pwebrtc
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
@@ -57,7 +58,7 @@ type dataChannel struct {
 	state channelState
 
 	ctx            context.Context
-	cancel         context.CancelFunc
+	cancelFunc     context.CancelFunc
 	m              sync.Mutex
 	readBuf        []byte
 	writeAvailable chan struct{}
@@ -78,21 +79,20 @@ func newDataChannel(
 	laddr, raddr net.Addr) *dataChannel {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	reader := bufio.NewReaderSize(rwc, maxMessageSize)
+
 	result := &dataChannel{
 		channel:         channel,
 		rwc:             rwc,
 		laddr:           laddr,
 		raddr:           raddr,
-		readDeadline:    time.Time{},
-		writeDeadline:   time.Time{},
 		ctx:             ctx,
-		cancel:          cancel,
+		cancelFunc:      cancel,
 		writeAvailable:  make(chan struct{}),
-		reader:          protoio.NewDelimitedReaderWithSizedBuffer(rwc, 16384),
+		reader:          protoio.NewDelimitedReader(reader, maxMessageSize),
 		writer:          protoio.NewDelimitedWriter(rwc),
-		readBuf:         []byte{},
-		requestRead:     make(chan struct{}, 5),
-		receivedMessage: make(chan struct{}, 5),
+		requestRead:     make(chan struct{}),
+		receivedMessage: make(chan struct{}),
 		deadlineUpdated: make(chan struct{}),
 	}
 
@@ -261,7 +261,7 @@ func (d *dataChannel) Close() error {
 	d.state = stateClosed
 	d.m.Unlock()
 
-	d.cancel()
+	d.cancelFunc()
 	d.CloseWrite()
 	_ = d.channel.Close()
 	d.wg.Wait()
@@ -292,7 +292,7 @@ func (d *dataChannel) remoteClosed() {
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.state = stateClosed
-	d.cancel()
+	d.cancelFunc()
 
 }
 
