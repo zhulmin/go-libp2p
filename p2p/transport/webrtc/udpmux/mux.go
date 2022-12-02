@@ -81,7 +81,6 @@ func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		if conn, ok := mux.ufragMap[key]; ok {
 			removedAddresses = append(removedAddresses, conn.addresses...)
-			_ = conn.Close()
 			delete(mux.ufragMap, key)
 		}
 	}

@@ -44,12 +44,10 @@ const (
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type dataChannel struct {
-	channel       *webrtc.DataChannel
-	rwc           datachannel.ReadWriteCloser
-	laddr         net.Addr
-	raddr         net.Addr
-	readDeadline  time.Time
-	writeDeadline time.Time
+	channel *webrtc.DataChannel
+	rwc     datachannel.ReadWriteCloser
+	laddr   net.Addr
+	raddr   net.Addr
 
 	closeWriteOnce sync.Once
 	closeReadOnce  sync.Once
@@ -57,16 +55,19 @@ type dataChannel struct {
 
 	state channelState
 
-	ctx            context.Context
-	cancelFunc     context.CancelFunc
-	m              sync.Mutex
-	readBuf        []byte
-	writeAvailable chan struct{}
-	reader         protoio.Reader
-	writer         protoio.Writer
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	reader     protoio.Reader
+	writer     protoio.Writer
 
 	requestRead     chan struct{}
 	receivedMessage chan struct{}
+
+	m               sync.Mutex
+	readBuf         []byte
+	readDeadline    time.Time
+	writeDeadline   time.Time
+	writeAvailable  chan struct{}
 	deadlineUpdated chan struct{}
 
 	wg sync.WaitGroup
@@ -266,8 +267,9 @@ func (d *dataChannel) Close() error {
 	d.m.Unlock()
 
 	d.cancelFunc()
-	d.CloseWrite()
+	_ = d.CloseWrite()
 	_ = d.channel.Close()
+	// this does not loop and call Close again
 	d.wg.Wait()
 	return nil
 }
@@ -332,7 +334,7 @@ func (d *dataChannel) Reset() error {
 	d.resetOnce.Do(func() {
 		msg := &pb.Message{Flag: pb.Message_RESET.Enum()}
 		_, err = d.writeMessage(msg)
-		d.Close()
+		err = d.Close()
 	})
 	return err
 }
@@ -383,7 +385,7 @@ func (d *dataChannel) readLoop() {
 		var msg pb.Message
 		err := d.reader.ReadMsg(&msg)
 		if err != nil {
-			log.Error("could not read message", err)
+			log.Errorf("[channel %d] could not read message: %v", *d.channel.ID(), err)
 			return
 		}
 

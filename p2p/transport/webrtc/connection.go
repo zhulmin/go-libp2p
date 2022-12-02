@@ -78,7 +78,6 @@ func newConnection(
 	}
 
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		log.Debugf("[%s] incoming datachannel: %s", localPeer, dc.Label())
 		id := *dc.ID()
 		var stream *dataChannel
 		dc.OnOpen(func() {
@@ -121,10 +120,6 @@ func (c *connection) Close() error {
 	}
 
 	c.scope.Done()
-	// cleanup routine
-	for _, stream := range c.streams {
-		_ = stream.Close()
-	}
 	c.cancel()
 	_ = c.pc.Close()
 	return nil
