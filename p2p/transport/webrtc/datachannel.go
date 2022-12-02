@@ -91,7 +91,7 @@ func newDataChannel(
 		writeAvailable:  make(chan struct{}),
 		reader:          protoio.NewDelimitedReader(reader, maxMessageSize),
 		writer:          protoio.NewDelimitedWriter(rwc),
-		requestRead:     make(chan struct{}),
+		requestRead:     make(chan struct{}, 1),
 		receivedMessage: make(chan struct{}),
 		deadlineUpdated: make(chan struct{}),
 	}
@@ -114,6 +114,7 @@ func newDataChannel(
 func (d *dataChannel) Read(b []byte) (int, error) {
 	timeout := make(chan struct{})
 	var deadlineTimer *time.Timer
+	first := true
 	for {
 		d.m.Lock()
 		read := copy(b, d.readBuf)
@@ -127,8 +128,11 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 			return read, nil
 		}
 
-		// read until data message
-		d.requestRead <- struct{}{}
+		// read until data message and only queue read request once
+		if first {
+			first = false
+			d.requestRead <- struct{}{}
+		}
 
 		d.m.Lock()
 		deadlineUpdated := d.deadlineUpdated
@@ -343,21 +347,21 @@ func (d *dataChannel) SetDeadline(t time.Time) error {
 
 func (d *dataChannel) SetReadDeadline(t time.Time) error {
 	d.m.Lock()
-	defer d.m.Unlock()
 	d.readDeadline = t
 	deadlineUpdated := d.deadlineUpdated
 	d.deadlineUpdated = make(chan struct{})
-	defer func() { close(deadlineUpdated) }()
+	d.m.Unlock()
+	close(deadlineUpdated)
 	return nil
 }
 
 func (d *dataChannel) SetWriteDeadline(t time.Time) error {
 	d.m.Lock()
-	defer d.m.Unlock()
 	d.writeDeadline = t
 	deadlineUpdated := d.deadlineUpdated
 	d.deadlineUpdated = make(chan struct{})
-	defer func() { close(deadlineUpdated) }()
+	d.m.Unlock()
+	close(deadlineUpdated)
 	return nil
 }
 
