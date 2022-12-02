@@ -111,7 +111,7 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		_, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+		_, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
 	}()
 
@@ -133,7 +133,7 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 	for i := 0; i < count; i++ {
 		go func() {
 			ctr, _ := getTransport(t)
-			conn, err := ctr.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 			require.NoError(t, err)
 			require.Equal(t, conn.RemotePeer(), listeningPeer)
 		}()
@@ -170,7 +170,7 @@ func TestTransportWebRTC_ListenerCanCreateStreams(t *testing.T) {
 
 	streamChan := make(chan network.MuxedStream)
 	go func() {
-		conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
 		t.Logf("connection opened by dialer")
 		stream, err := conn.AcceptStream()
@@ -221,7 +221,7 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 	}()
 
 	go func() {
-		conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
 		t.Logf("dialer opened connection")
 		stream, err := conn.OpenStream(context.Background())
@@ -257,14 +257,16 @@ func TestTransportWebRTC_StreamSetReadDeadline(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 	require.NoError(t, err)
 	t.Logf("dialer opened connection")
 	stream, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)
 
 	// deadline set to the past
-	timer := time.AfterFunc(150*time.Millisecond, func() { stream.SetReadDeadline(time.Now().Add(-100 * time.Millisecond)) })
+	timer := time.AfterFunc(150*time.Millisecond, func() {
+		stream.SetReadDeadline(time.Now().Add(-200 * time.Millisecond))
+	})
 	defer timer.Stop()
 	_, err = stream.Read([]byte{0, 0})
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
@@ -293,7 +295,7 @@ func TestTransportWebRTC_StreamSetWriteDeadline(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 	require.NoError(t, err)
 	stream, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)
@@ -322,7 +324,7 @@ func TestTransportWebRTC_ReadPartialMessage(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 	require.NoError(t, err)
 	stream, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)
@@ -353,7 +355,7 @@ func TestTransportWebRTC_StreamCanCloseWhenReadActive(t *testing.T) {
 		done <- struct{}{}
 	}()
 
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddrs()[0], listeningPeer)
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 	require.NoError(t, err)
 	t.Logf("dialer opened connection")
 	stream, err := conn.OpenStream(context.Background())
@@ -398,7 +400,7 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 		listener.Accept()
 	}()
 
-	badMultiaddr, _ := multiaddr.SplitFunc(listener.Multiaddrs()[0], func(component multiaddr.Component) bool {
+	badMultiaddr, _ := multiaddr.SplitFunc(listener.Multiaddr(), func(component multiaddr.Component) bool {
 		return component.Protocol().Code == multiaddr.P_CERTHASH
 	})
 

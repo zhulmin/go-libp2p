@@ -131,8 +131,8 @@ func (l *listener) Addr() net.Addr {
 	return l.localAddr
 }
 
-func (l *listener) Multiaddrs() []ma.Multiaddr {
-	return []ma.Multiaddr{l.localMultiaddr}
+func (l *listener) Multiaddr() ma.Multiaddr {
+	return l.localMultiaddr
 }
 
 func (l *listener) handleCandidate(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
