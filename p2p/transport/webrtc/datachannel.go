@@ -23,8 +23,8 @@ const (
 	// maxMessageSize is limited to 16384 bytes in the SDP.
 	maxMessageSize int = 16384
 	// Pion SCTP association has an internal receive buffer of 1MB (roughly, 1MB per connection).
-	// Currently, there is no way to change this value via the WebRTC API.
-	// https://github.com/pion/sctp/blob/c0159aa2d49c240362038edf88baa8a9e6cfcede/association.go#L47
+	// We can change this value in the SettingEngine before creating the peerconnection.
+	// https://github.com/pion/webrtc/blob/v3.1.49/sctptransport.go#L341
 	maxBufferedAmount int = 2 * maxMessageSize
 	// bufferedAmountLowThreshold and maxBufferedAmount are bound
 	// to a stream but congestion control is done on the whole
@@ -50,6 +50,7 @@ type dataChannel struct {
 	closeWriteOnce sync.Once
 	closeReadOnce  sync.Once
 	resetOnce      sync.Once
+	readLoopOnce   sync.Once
 
 	state channelState
 
@@ -104,13 +105,11 @@ func newDataChannel(
 		close(writeAvailable)
 	})
 
-	result.wg.Add(1)
-	go result.readLoop()
-
 	return result
 }
 
 func (d *dataChannel) Read(b []byte) (int, error) {
+
 	timeout := make(chan struct{})
 	var deadlineTimer *time.Timer
 	first := true
@@ -199,7 +198,6 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 }
 
 func (d *dataChannel) partialWrite(b []byte) (int, error) {
-
 	// if the next message will add more data than we are willing to buffer,
 	// block until we have sent enough bytes to reduce the amount of data buffered.
 	timeout := make(chan struct{})
@@ -266,7 +264,7 @@ func (d *dataChannel) Close() error {
 
 	d.cancelFunc()
 	_ = d.CloseWrite()
-	_ = d.channel.Close()
+	_ = d.rwc.Close()
 	// this does not loop and call Close again
 	d.wg.Wait()
 	return nil
@@ -411,4 +409,11 @@ func (d *dataChannel) readLoop() {
 		}
 
 	}
+}
+
+func (d *dataChannel) startReadLoop() {
+	d.readLoopOnce.Do(func() {
+		d.wg.Add(1)
+		go d.readLoop()
+	})
 }
