@@ -322,8 +322,51 @@ func TestTransportWebRTC_StreamSetWriteDeadline(t *testing.T) {
 	require.NoError(t, err)
 
 	stream.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
-	_, err = stream.Write(make([]byte, 2*maxBufferedAmount))
+	largeBuffer := make([]byte, 2*1024*1024)
+	_, err = stream.Write(largeBuffer)
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+}
+
+func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
+	require.NoError(t, err)
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+
+	tr1, connectingPeer := getTransport(t)
+
+	for i := 0; i < 2; i++ {
+		go func() {
+			lconn, err := listener.Accept()
+			require.NoError(t, err)
+			require.Equal(t, connectingPeer, lconn.RemotePeer())
+			_, err = lconn.AcceptStream()
+			require.NoError(t, err)
+		}()
+
+	}
+
+	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+	require.NoError(t, err)
+
+	errC := make(chan error)
+	// writers
+	for i := 0; i < 2; i++ {
+		go func() {
+			stream, err := conn.OpenStream(context.Background())
+			require.NoError(t, err)
+
+			stream.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
+			largeBuffer := make([]byte, 2*1024*1024)
+			_, err = stream.Write(largeBuffer)
+			errC <- err
+		}()
+	}
+
+	require.ErrorIs(t, <-errC, os.ErrDeadlineExceeded)
+	require.ErrorIs(t, <-errC, os.ErrDeadlineExceeded)
+
 }
 
 func TestTransportWebRTC_ReadPartialMessage(t *testing.T) {

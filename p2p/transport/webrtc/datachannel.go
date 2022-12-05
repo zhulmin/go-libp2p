@@ -22,12 +22,10 @@ var _ network.MuxedStream = &dataChannel{}
 const (
 	// maxMessageSize is limited to 16384 bytes in the SDP.
 	maxMessageSize int = 16384
-	// maxMessageSize is set to 1MB since pion SCTP streams have
-	// an internal buffer size of 1MB by default. Currently, there is
-	// no method to change this value when creating a datachannel
-	// or a PeerConnection.
+	// Pion SCTP association has an internal receive buffer of 1MB (roughly, 1MB per connection).
+	// Currently, there is no way to change this value via the WebRTC API.
 	// https://github.com/pion/sctp/blob/c0159aa2d49c240362038edf88baa8a9e6cfcede/association.go#L47
-	maxBufferedAmount int = 1024 * 1024
+	maxBufferedAmount int = 2 * maxMessageSize
 	// bufferedAmountLowThreshold and maxBufferedAmount are bound
 	// to a stream but congestion control is done on the whole
 	// SCTP association. This means that a single stream can monopolize
@@ -35,7 +33,7 @@ const (
 	// read stream data and it's remote continues to send. We can
 	// add messages to the send buffer once there is space for 1 full
 	// sized message.
-	bufferedAmountLowThreshold uint64 = uint64(maxMessageSize)
+	bufferedAmountLowThreshold uint64 = uint64(maxBufferedAmount) / 2
 
 	protoOverhead  int = 5
 	varintOverhead int = 2
@@ -235,23 +233,23 @@ func (d *dataChannel) partialWrite(b []byte) (int, error) {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				return d.writeMessage(msg)
+				return len(b), d.writeMessage(msg)
 			case <-d.ctx.Done():
 				return 0, io.ErrClosedPipe
 			case <-deadlineUpdated:
 
 			}
 		} else {
-			return d.writeMessage(msg)
+			return len(b), d.writeMessage(msg)
 		}
 	}
 }
 
-func (d *dataChannel) writeMessage(msg *pb.Message) (int, error) {
+func (d *dataChannel) writeMessage(msg *pb.Message) error {
 	err := d.writer.WriteMsg(msg)
 	// this only returns the number of bytes sent from the buffer
 	// requested by the user.
-	return len(msg.GetMessage()), err
+	return err
 
 }
 
@@ -333,7 +331,7 @@ func (d *dataChannel) Reset() error {
 	var err error
 	d.resetOnce.Do(func() {
 		msg := &pb.Message{Flag: pb.Message_RESET.Enum()}
-		_, err = d.writeMessage(msg)
+		err = d.writeMessage(msg)
 		err = d.Close()
 	})
 	return err
@@ -373,6 +371,12 @@ func (d *dataChannel) getState() channelState {
 	return d.state
 }
 
+// readLoop is required for both reads and writes since calling `Read`
+// on the underlying datachannel blocks indefinitely until data is available
+// or the datachannel is closed. Having Read run in a separate Goroutine driven
+// by the stream's `Read` call allows setting deadlines on the stream's `Read`
+// and also allows `Write` to read message flags in a non-blocking way after the
+// stream stops reading.
 func (d *dataChannel) readLoop() {
 	defer d.wg.Done()
 	for {
