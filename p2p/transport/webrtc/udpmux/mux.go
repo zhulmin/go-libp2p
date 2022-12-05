@@ -80,6 +80,7 @@ func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
 	for _, isIPv6 := range []bool{true, false} {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		if conn, ok := mux.ufragMap[key]; ok {
+			_ = conn.closeConnection()
 			removedAddresses = append(removedAddresses, conn.addresses...)
 			delete(mux.ufragMap, key)
 		}
@@ -167,6 +168,19 @@ func (mux *udpMux) readLoop() {
 			_ = conn.push(buf[:n], udpAddr)
 		}
 	}
+}
+
+func (mux *udpMux) hasConn(ufrag string) net.PacketConn {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+
+	for _, isIPv6 := range []bool{true, false} {
+		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
+		if conn, ok := mux.ufragMap[key]; ok {
+			return conn
+		}
+	}
+	return nil
 }
 
 func ufragFromStunMessage(msg *stun.Message, local_ufrag bool) (string, error) {

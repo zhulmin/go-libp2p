@@ -2,6 +2,7 @@ package udpmux
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 )
@@ -9,9 +10,9 @@ import (
 var _ net.PacketConn = &muxedConnection{}
 
 type muxedConnection struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	buffer *packetBuffer
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	buffer     *packetBuffer
 	// list of remote addresses associated with this connection.
 	// this is useful as a mapping from [address] -> ufrag
 	addresses []string
@@ -22,11 +23,11 @@ type muxedConnection struct {
 func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &muxedConnection{
-		ctx:    ctx,
-		cancel: cancel,
-		buffer: newPacketBuffer(ctx),
-		ufrag:  ufrag,
-		mux:    mux,
+		ctx:        ctx,
+		cancelFunc: cancel,
+		buffer:     newPacketBuffer(ctx),
+		ufrag:      ufrag,
+		mux:        mux,
 	}
 }
 
@@ -36,12 +37,9 @@ func (conn *muxedConnection) push(buf []byte, addr net.Addr) error {
 
 // Close implements net.PacketConn
 func (conn *muxedConnection) Close() error {
-	select {
-	case <-conn.ctx.Done():
+	if err := conn.closeConnection(); err != nil {
 		return nil
-	default:
 	}
-	conn.cancel()
 	conn.mux.RemoveConnByUfrag(conn.ufrag)
 	return nil
 }
@@ -74,4 +72,14 @@ func (*muxedConnection) SetWriteDeadline(t time.Time) error {
 // WriteTo implements net.PacketConn
 func (conn *muxedConnection) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return conn.mux.writeTo(p, addr)
+}
+
+func (conn *muxedConnection) closeConnection() error {
+	select {
+	case <-conn.ctx.Done():
+		return fmt.Errorf("already closed")
+	default:
+	}
+	conn.cancelFunc()
+	return nil
 }
