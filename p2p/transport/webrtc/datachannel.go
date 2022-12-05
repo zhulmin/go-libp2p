@@ -109,7 +109,7 @@ func newDataChannel(
 }
 
 func (d *dataChannel) Read(b []byte) (int, error) {
-
+	d.startReadLoop()
 	timeout := make(chan struct{})
 	var deadlineTimer *time.Timer
 	first := true
@@ -166,6 +166,7 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 	// Check if there is any message on the wire. This is used for control
 	// messages only
 	if state == stateReadClosed {
+		d.startReadLoop()
 		// drain the channel
 		select {
 		case <-d.receivedMessage:
