@@ -170,17 +170,11 @@ func (mux *udpMux) readLoop() {
 	}
 }
 
-func (mux *udpMux) hasConn(ufrag string) net.PacketConn {
+func (mux *udpMux) hasConn(ufrag string, isIPv6 bool) net.PacketConn {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
-
-	for _, isIPv6 := range []bool{true, false} {
-		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-		if conn, ok := mux.ufragMap[key]; ok {
-			return conn
-		}
-	}
-	return nil
+	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
+	return mux.ufragMap[key]
 }
 
 func ufragFromStunMessage(msg *stun.Message, local_ufrag bool) (string, error) {

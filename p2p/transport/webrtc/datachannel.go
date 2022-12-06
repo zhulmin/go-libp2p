@@ -388,7 +388,6 @@ func (d *dataChannel) readLoop() {
 		var msg pb.Message
 		err := d.reader.ReadMsg(&msg)
 		if err != nil {
-			log.Errorf("[channel %d] could not read message: %v", *d.channel.ID(), err)
 			return
 		}
 
