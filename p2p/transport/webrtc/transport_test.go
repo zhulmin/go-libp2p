@@ -179,20 +179,6 @@ func TestTransportWebRTC_ListenerCanCreateStreams(t *testing.T) {
 	listener, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
 
-	go func() {
-		conn, err := listener.Accept()
-		require.NoError(t, err)
-		t.Logf("listener accepted connection")
-
-		require.Equal(t, connectingPeer, conn.RemotePeer())
-
-		stream, err := conn.OpenStream(context.Background())
-		require.NoError(t, err)
-		t.Logf("listener opened stream")
-		_, err = stream.Write([]byte("test"))
-		require.NoError(t, err)
-	}()
-
 	streamChan := make(chan network.MuxedStream)
 	go func() {
 		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
@@ -204,15 +190,26 @@ func TestTransportWebRTC_ListenerCanCreateStreams(t *testing.T) {
 		streamChan <- stream
 	}()
 
-	var stream network.MuxedStream
+	conn, err := listener.Accept()
+	require.NoError(t, err)
+	t.Logf("listener accepted connection")
+	require.Equal(t, connectingPeer, conn.RemotePeer())
+
+	stream, err := conn.OpenStream(context.Background())
+	require.NoError(t, err)
+	t.Logf("listener opened stream")
+	_, err = stream.Write([]byte("test"))
+	require.NoError(t, err)
+
+	var str network.MuxedStream
 	select {
-	case stream = <-streamChan:
+	case str = <-streamChan:
 	case <-time.After(3 * time.Second):
 		t.Fatal("stream opening timed out")
 	}
 	buf := make([]byte, 100)
 	stream.SetReadDeadline(time.Now().Add(3 * time.Second))
-	n, err := stream.Read(buf)
+	n, err := str.Read(buf)
 	require.NoError(t, err)
 	require.Equal(t, "test", string(buf[:n]))
 
@@ -384,7 +381,7 @@ func TestTransportWebRTC_ReadPartialMessage(t *testing.T) {
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
 		stream, err := lconn.AcceptStream()
 		require.NoError(t, err)
-		_, err = stream.Write(make([]byte, 2*maxBufferedAmount))
+		_, err = stream.Write(make([]byte, 2*1024*1024))
 		require.NoError(t, err)
 	}()
 
@@ -394,7 +391,7 @@ func TestTransportWebRTC_ReadPartialMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := make([]byte, 10)
-	stream.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	stream.SetReadDeadline(time.Now().Add(10 * time.Second))
 	n, err := stream.Read(buf)
 	require.NoError(t, err)
 	require.Equal(t, n, 10)
