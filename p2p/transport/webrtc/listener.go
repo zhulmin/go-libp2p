@@ -54,7 +54,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	candidateChan := make(chan candidateAddr, candidateChanSize)
 	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) {
 		// Push to the candidateChan asynchronously to avoid blocking the mux goroutine
-		// on candidates being processed. This can cause new connections to fail at high 
+		// on candidates being processed. This can cause new connections to fail at high
 		// throughput but will allow packets for existing connections to be processed.
 		select {
 		case candidateChan <- candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}:
