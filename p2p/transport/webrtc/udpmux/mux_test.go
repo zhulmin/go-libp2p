@@ -47,6 +47,22 @@ func (dummyPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return 0, nil
 }
 
+func TestUDPMux_GetConn(t *testing.T) {
+	mux := NewUDPMux(dummyPacketConn{}, nil)
+	m := mux.(*udpMux)
+	require.Nil(t, m.hasConn("test", false))
+	conn, err := mux.GetConn("test", false)
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+
+	require.Nil(t, m.hasConn("test", true))
+	connv6, err := mux.GetConn("test", true)
+	require.NoError(t, err)
+	require.NotNil(t, connv6)
+
+	require.NotEqual(t, conn, connv6)
+}
+
 func TestUDPMux_RemoveConnectionOnClose(t *testing.T) {
 	mux := NewUDPMux(dummyPacketConn{}, nil)
 	conn, err := mux.GetConn("test", false)
@@ -54,10 +70,10 @@ func TestUDPMux_RemoveConnectionOnClose(t *testing.T) {
 	require.NotNil(t, conn)
 
 	m := mux.(*udpMux)
-	require.NotNil(t, m.hasConn("test"))
+	require.NotNil(t, m.hasConn("test", false))
 
 	err = conn.Close()
 	require.NoError(t, err)
 
-	require.Nil(t, m.hasConn("test"))
+	require.Nil(t, m.hasConn("test", false))
 }
