@@ -9,10 +9,14 @@ import (
 
 var _ net.PacketConn = &muxedConnection{}
 
+// muxedConnection provides a net.PacketConn abstraction
+// over packetQueue and adds the ability to store addresses
+// from which this connection (indexed by ufrag) received
+// data.
 type muxedConnection struct {
 	ctx        context.Context
 	cancelFunc context.CancelFunc
-	buffer     *packetBuffer
+	pq         *packetQueue
 	// list of remote addresses associated with this connection.
 	// this is useful as a mapping from [address] -> ufrag
 	addresses []string
@@ -25,14 +29,14 @@ func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 	return &muxedConnection{
 		ctx:        ctx,
 		cancelFunc: cancel,
-		buffer:     newPacketBuffer(ctx),
+		pq:         newPacketQueue(ctx),
 		ufrag:      ufrag,
 		mux:        mux,
 	}
 }
 
 func (conn *muxedConnection) push(buf []byte, addr net.Addr) error {
-	return conn.buffer.writePacket(buf, addr)
+	return conn.pq.push(buf, addr)
 }
 
 // Close implements net.PacketConn
@@ -51,7 +55,7 @@ func (conn *muxedConnection) LocalAddr() net.Addr {
 
 // ReadFrom implements net.PacketConn
 func (conn *muxedConnection) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	return conn.buffer.readFrom(p)
+	return conn.pq.pop(p)
 }
 
 // SetDeadline implements net.PacketConn

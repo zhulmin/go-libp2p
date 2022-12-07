@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/pion/ice/v2"
 	"github.com/pion/stun"
 )
@@ -18,13 +17,15 @@ const receiveMTU = 1500
 
 var _ ice.UDPMux = &udpMux{}
 
-var log = logging.Logger("webrtc-transport-mux")
-
 type ufragConnKey struct {
 	ufrag  string
 	isIPv6 bool
 }
 
+// udpMux multiplexes multiple ICE connections over a single net.PacketConn,
+// generally a UDP socket. The connections are indexed by (ufrag, IP address type)
+// and by remote address from which the connection has received valid STUN/RTC
+// packets.
 type udpMux struct {
 	mu                   sync.Mutex
 	wg                   sync.WaitGroup
@@ -67,7 +68,6 @@ func (mux *udpMux) Close() error {
 	default:
 	}
 	mux.cancel()
-	log.Warn("waiting for close")
 	mux.wg.Wait()
 	return nil
 }
@@ -76,18 +76,15 @@ func (mux *udpMux) Close() error {
 func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
-	removedAddresses := []string{}
 	for _, isIPv6 := range []bool{true, false} {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		if conn, ok := mux.ufragMap[key]; ok {
 			_ = conn.closeConnection()
-			removedAddresses = append(removedAddresses, conn.addresses...)
 			delete(mux.ufragMap, key)
+			for _, addr := range conn.addresses {
+				delete(mux.addrMap, addr)
+			}
 		}
-	}
-
-	for _, addr := range removedAddresses {
-		delete(mux.addrMap, addr)
 	}
 }
 
@@ -99,18 +96,19 @@ func (mux *udpMux) getOrCreateConn(ufrag string, isIPv6 bool) (net.PacketConn, e
 	}
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 	mux.mu.Lock()
+	defer mux.mu.Unlock()
 	// check if the required connection exists
 	if conn, ok := mux.ufragMap[key]; ok {
-		mux.mu.Unlock()
 		return conn, nil
 	}
 
 	conn := newMuxedConnection(mux, ufrag)
 	mux.ufragMap[key] = conn
-	mux.mu.Unlock()
+
 	return conn, nil
 }
 
+// writeTo writes a packet to the underlying net.PacketConn
 func (mux *udpMux) writeTo(buf []byte, addr net.Addr) (int, error) {
 	return mux.socket.WriteTo(buf, addr)
 }
@@ -135,6 +133,10 @@ func (mux *udpMux) readLoop() {
 		udpAddr := addr.(*net.UDPAddr)
 		isIPv6 := udpAddr.IP.To4() == nil
 
+		// Connections are indexed by remote address. We firest
+		// check if the remote address has a connection associated
+		// with it. If yes, we push the received packet to the connection
+		// and loop again.
 		mux.mu.Lock()
 		conn, ok := mux.addrMap[udpAddr.String()]
 		mux.mu.Unlock()
@@ -152,7 +154,6 @@ func (mux *udpMux) readLoop() {
 			mux.mu.Lock()
 			conn, ok = mux.ufragMap[key]
 			if !ok {
-				// the flaky bit of code
 				conn = newMuxedConnection(mux, ufrag)
 				mux.ufragMap[key] = conn
 				if mux.unknownUfragCallback != nil {
@@ -170,25 +171,24 @@ func (mux *udpMux) readLoop() {
 	}
 }
 
-func (mux *udpMux) hasConn(ufrag string, isIPv6 bool) net.PacketConn {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-	return mux.ufragMap[key]
-}
-
-func ufragFromStunMessage(msg *stun.Message, local_ufrag bool) (string, error) {
-	attr, stunAttrErr := msg.Get(stun.AttrUsername)
-	if stunAttrErr != nil {
-		return "", stunAttrErr
+// ufragFromStunMessage returns either the local or remote ufrag
+// from the STUN username attribute. Local ufrag is the ufrag of the
+// peer which initiated the connectivity check, e.g in a connectivity
+// check from A to B, the username attribute will be B_ufrag:A_ufrag
+// with the local ufrag value being A_ufrag. In case of ice-lite, the
+// localUfrag value will always be the remote peer's ufrag since ICE-lite
+// implementations do not generate connectivity checks.
+func ufragFromStunMessage(msg *stun.Message, localUfrag bool) (string, error) {
+	attr, err := msg.Get(stun.AttrUsername)
+	if err != nil {
+		return "", err
 	}
 	ufrag := strings.Split(string(attr), ":")
 	if len(ufrag) < 2 {
 		return "", fmt.Errorf("invalid STUN username attribute")
 	}
-	if local_ufrag {
+	if localUfrag {
 		return ufrag[1], nil
-	} else {
-		return ufrag[0], nil
 	}
+	return ufrag[0], nil
 }

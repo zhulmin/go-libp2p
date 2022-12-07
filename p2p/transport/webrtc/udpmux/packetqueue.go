@@ -14,7 +14,10 @@ type packet struct {
 	size int
 }
 
-type packetBuffer struct {
+// packetQueue is a blocking queue for buffering packets received
+// on net.PacketConn instances. Packets can be pushed by using
+// `push` and read by using `pop`
+type packetQueue struct {
 	ctx         context.Context
 	mu          sync.Mutex
 	pdata       *pool.Buffer
@@ -23,15 +26,17 @@ type packetBuffer struct {
 	readWaiting bool
 }
 
-func newPacketBuffer(ctx context.Context) *packetBuffer {
-	return &packetBuffer{
+func newPacketQueue(ctx context.Context) *packetQueue {
+	return &packetQueue{
 		ctx:    ctx,
 		pdata:  new(pool.Buffer),
 		notify: make(chan struct{}),
 	}
 }
 
-func (pb *packetBuffer) readFrom(buf []byte) (int, net.Addr, error) {
+// pop reads a packet from the packetBuffer or blocks until
+// either a packet becomes available or the buffer is closed.
+func (pb *packetQueue) pop(buf []byte) (int, net.Addr, error) {
 	for {
 		pb.mu.Lock()
 
@@ -68,7 +73,8 @@ func (pb *packetBuffer) readFrom(buf []byte) (int, net.Addr, error) {
 	}
 }
 
-func (pb *packetBuffer) writePacket(buf []byte, addr net.Addr) error {
+// push adds a packet to the packetBuffer
+func (pb *packetQueue) push(buf []byte, addr net.Addr) error {
 	select {
 	case <-pb.ctx.Done():
 		return io.ErrClosedPipe
