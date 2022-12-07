@@ -758,7 +758,6 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 						panic("unexpected version")
 					}
 					require.NoError(t, err)
-					defer conn.Close()
 
 					_, versionConnLocal, err := quicreuse.FromQuicMultiaddr(conn.LocalMultiaddr())
 					require.NoError(t, err)
