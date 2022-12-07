@@ -84,6 +84,7 @@ func (conn *muxedConnection) closeConnection() error {
 		return fmt.Errorf("already closed")
 	default:
 	}
+	conn.pq.close()
 	conn.cancelFunc()
 	return nil
 }

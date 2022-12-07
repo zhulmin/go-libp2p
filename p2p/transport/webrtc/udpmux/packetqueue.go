@@ -99,3 +99,7 @@ func (pb *packetQueue) push(buf []byte, addr net.Addr) error {
 	}
 	return nil
 }
+
+func (pb *packetQueue) close() {
+	pb.pdata.Reset()
+}
