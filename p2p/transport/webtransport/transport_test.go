@@ -473,17 +473,50 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 		return cl.Dial(context.Background(), ln.Multiaddr(), serverID)
 	}
 
-	for i := 0; i < 16; i++ {
-		conn, err := newConn()
-		require.NoError(t, err)
-		defer conn.Close()
+	const num = 16 + 1 // one more than the accept queue capacity
+	// Dial one more connection than the accept queue can hold.
+	errChan := make(chan error, num)
+	for i := 0; i < num; i++ {
+		go func() {
+			conn, err := newConn()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			_, err = conn.AcceptStream()
+			errChan <- err
+		}()
 	}
 
-	conn, err := newConn()
-	if err == nil {
-		_, err = conn.AcceptStream()
+	// Since the handshakes complete asynchronously, we won't know _which_ one is rejected,
+	// so the only thing we can test for is that exactly one connection attempt is rejected.
+	select {
+	case <-errChan:
+	case <-time.After(time.Second):
+		t.Fatal("expected one connection to be rejected")
 	}
-	require.Error(t, err)
+	select {
+	case <-errChan:
+		t.Fatal("only expected one connection to be rejected")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// test shutdown
+	require.NoError(t, ln.Close())
+	var count int
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	for i := 0; i < 16; i++ {
+		select {
+		case <-errChan:
+			count++
+			if count == 16 {
+				return
+			}
+		case <-timer.C:
+			t.Fatal("shutdown failed")
+		}
+	}
 }
 
 type reportingRcmgr struct {
