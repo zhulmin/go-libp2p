@@ -2,7 +2,13 @@ package swarm
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net"
+	"strings"
 	"time"
+
+	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/libp2p/go-libp2p/core/network"
 
@@ -16,6 +22,7 @@ const metricNamespace = "swarm/"
 var (
 	connsOpened          = stats.Int64(metricNamespace+"connections_opened", "Connections Opened", stats.UnitDimensionless)
 	connsClosed          = stats.Int64(metricNamespace+"connections_closed", "Connections Closed", stats.UnitDimensionless)
+	dialError            = stats.Int64(metricNamespace+"dial_error", "Dial Error", stats.UnitDimensionless)
 	connDuration         = stats.Float64(metricNamespace+"connection_duration", "Duration of a Connection", stats.UnitSeconds)
 	connHandshakeLatency = stats.Float64(metricNamespace+"handshake_latency", "Duration of the libp2p handshake", stats.UnitSeconds)
 )
@@ -25,7 +32,10 @@ var (
 	transportTag, _ = tag.NewKey("transport")
 	securityTag, _  = tag.NewKey("security")
 	muxerTag, _     = tag.NewKey("muxer")
+	dialErrorTag, _ = tag.NewKey("dial_error")
 )
+
+var transports = [...]int{ma.P_CIRCUIT, ma.P_WEBRTC, ma.P_WEBTRANSPORT, ma.P_QUIC, ma.P_QUIC_V1, ma.P_WSS, ma.P_WS, ma.P_TCP}
 
 func exponentialDistribution(min, max float64) []float64 {
 	var v []float64
@@ -65,6 +75,11 @@ var (
 		Aggregation: view.Sum(),
 		TagKeys:     []tag.Key{directionTag, transportTag, securityTag, muxerTag},
 	}
+	dialErrorView = &view.View{
+		Measure:     dialError,
+		Aggregation: view.Sum(),
+		TagKeys:     []tag.Key{transportTag, dialErrorTag},
+	}
 	connDurationView = &view.View{
 		Measure:     connDuration,
 		Aggregation: view.Distribution(connDurationSeconds...),
@@ -77,7 +92,7 @@ var (
 	}
 )
 
-var DefaultViews = []*view.View{connOpenView, connClosedView, connDurationView, connHandshakeLatencyView}
+var DefaultViews = []*view.View{connOpenView, connClosedView, dialErrorView, connDurationView, connHandshakeLatencyView}
 
 func getDirection(dir network.Direction) string {
 	switch dir {
@@ -133,4 +148,31 @@ func recordHandshakeLatency(t time.Duration, cs network.ConnectionState) {
 	tags := make([]tag.Mutator, 0, 3)
 	tags = appendConnectionState(tags, cs)
 	stats.RecordWithTags(context.Background(), tags, connHandshakeLatency.M(t.Seconds()))
+}
+
+func recordDialFailed(addr ma.Multiaddr, err error) {
+	var transport string
+	for _, p := range transports {
+		if _, err := addr.ValueForProtocol(p); err == nil {
+			transport = ma.ProtocolWithCode(p).Name
+			break
+		}
+	}
+	e := "other"
+	if errors.Is(err, context.Canceled) {
+		e = "canceled"
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		e = "deadline"
+	} else {
+		nerr, ok := err.(net.Error)
+		if ok && nerr.Timeout() {
+			e = "timeout"
+		} else if strings.Contains(err.Error(), "connect: connection refused") {
+			e = "connection refused"
+		}
+	}
+	if e == "other" {
+		fmt.Printf("transport: %s, category: %s (orig: %s)\n", transport, e, err)
+	}
+	stats.RecordWithTags(context.Background(), []tag.Mutator{tag.Upsert(transportTag, transport), tag.Upsert(dialErrorTag, e)}, dialError.M(1))
 }
