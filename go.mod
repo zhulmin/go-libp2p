@@ -2,7 +2,7 @@ module github.com/libp2p/go-libp2p
 
 go 1.18
 
-replace github.com/pion/webrtc/v3 => /home/ckousik/projects/webrtc
+replace github.com/pion/webrtc/v3 => github.com/ckousik/webrtc/v3 v3.0.0-20221212060300-27a6119719ec
 
 require (
 	github.com/benbjohnson/clock v1.3.0
