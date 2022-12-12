@@ -186,13 +186,12 @@ func TestFailuresOnInitiator(t *testing.T) {
 		},
 		"responder does NOT reply within hole punch deadline": {
 			holePunchTimeout: 10 * time.Millisecond,
-			rhandler: func(s network.Stream) {
-				time.Sleep(5 * time.Second)
-			},
-			errMsg: "i/o deadline reached",
+			rhandler:         func(s network.Stream) { time.Sleep(5 * time.Second) },
+			errMsg:           "i/o deadline reached",
 		},
 		"no addrs after filtering": {
-			errMsg: "aborting hole punch initiation as we have no public address",
+			errMsg:   "aborting hole punch initiation as we have no public address",
+			rhandler: func(s network.Stream) { time.Sleep(5 * time.Second) },
 			filter: func(remoteID peer.ID, maddrs []ma.Multiaddr) []ma.Multiaddr {
 				return []ma.Multiaddr{}
 			},
