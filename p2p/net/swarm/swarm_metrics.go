@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
+
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/libp2p/go-libp2p/core/network"
-
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -22,6 +23,7 @@ const metricNamespace = "swarm/"
 var (
 	connsOpened          = stats.Int64(metricNamespace+"connections_opened", "Connections Opened", stats.UnitDimensionless)
 	connsClosed          = stats.Int64(metricNamespace+"connections_closed", "Connections Closed", stats.UnitDimensionless)
+	keyType              = stats.Int64(metricNamespace+"key_type", "libp2p key type", stats.UnitDimensionless)
 	dialError            = stats.Int64(metricNamespace+"dial_error", "Dial Error", stats.UnitDimensionless)
 	connDuration         = stats.Float64(metricNamespace+"connection_duration", "Duration of a Connection", stats.UnitSeconds)
 	connHandshakeLatency = stats.Float64(metricNamespace+"handshake_latency", "Duration of the libp2p handshake", stats.UnitSeconds)
@@ -33,6 +35,7 @@ var (
 	securityTag, _  = tag.NewKey("security")
 	muxerTag, _     = tag.NewKey("muxer")
 	dialErrorTag, _ = tag.NewKey("dial_error")
+	keyTypeTag, _   = tag.NewKey("key_type")
 )
 
 var transports = [...]int{ma.P_CIRCUIT, ma.P_WEBRTC, ma.P_WEBTRANSPORT, ma.P_QUIC, ma.P_QUIC_V1, ma.P_WSS, ma.P_WS, ma.P_TCP}
@@ -75,6 +78,11 @@ var (
 		Aggregation: view.Sum(),
 		TagKeys:     []tag.Key{directionTag, transportTag, securityTag, muxerTag},
 	}
+	keyTypeView = &view.View{
+		Measure:     keyType,
+		Aggregation: view.Sum(),
+		TagKeys:     []tag.Key{keyTypeTag},
+	}
 	dialErrorView = &view.View{
 		Measure:     dialError,
 		Aggregation: view.Sum(),
@@ -92,7 +100,7 @@ var (
 	}
 )
 
-var DefaultViews = []*view.View{connOpenView, connClosedView, dialErrorView, connDurationView, connHandshakeLatencyView}
+var DefaultViews = []*view.View{connOpenView, connClosedView, keyTypeView, dialErrorView, connDurationView, connHandshakeLatencyView}
 
 func getDirection(dir network.Direction) string {
 	switch dir {
@@ -123,11 +131,12 @@ func appendConnectionState(tags []tag.Mutator, cs network.ConnectionState) []tag
 	return tags
 }
 
-func recordConnectionOpened(dir network.Direction, cs network.ConnectionState) {
+func recordConnectionOpened(dir network.Direction, p crypto.PubKey, cs network.ConnectionState) {
 	tags := make([]tag.Mutator, 0, 4)
 	tags = append(tags, tag.Upsert(directionTag, getDirection(dir)))
 	tags = appendConnectionState(tags, cs)
 	stats.RecordWithTags(context.Background(), tags, connsOpened.M(1))
+	stats.RecordWithTags(context.Background(), []tag.Mutator{tag.Upsert(keyTypeTag, p.Type().String())}, keyType.M(1))
 }
 
 func recordConnectionClosed(dir network.Direction, cs network.ConnectionState) {
