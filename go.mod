@@ -2,6 +2,8 @@ module github.com/libp2p/go-libp2p
 
 go 1.18
 
+replace github.com/pion/webrtc/v3 => /home/ckousik/projects/webrtc
+
 require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c
@@ -47,9 +49,9 @@ require (
 	github.com/multiformats/go-multistream v0.3.3
 	github.com/multiformats/go-varint v0.0.7
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
-	github.com/pion/datachannel v1.5.2
+	github.com/pion/datachannel v1.5.3-0.20221212014132-6d03d00b0c0c
 	github.com/pion/dtls/v2 v2.1.5
-	github.com/pion/ice/v2 v2.2.6
+	github.com/pion/ice/v2 v2.2.12
 	github.com/pion/stun v0.3.5
 	github.com/pion/webrtc/v3 v3.1.43
 	github.com/prometheus/client_golang v1.14.0
@@ -108,10 +110,10 @@ require (
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.10 // indirect
 	github.com/pion/rtp v1.7.13 // indirect
-	github.com/pion/sctp v1.8.2 // indirect
+	github.com/pion/sctp v1.8.4-0.20221201030332-6e962c66d1fe // indirect
 	github.com/pion/sdp/v3 v3.0.6 // indirect
 	github.com/pion/srtp/v2 v2.0.10 // indirect
-	github.com/pion/transport v0.13.1 // indirect
+	github.com/pion/transport v0.14.1 // indirect
 	github.com/pion/turn/v2 v2.0.8 // indirect
 	github.com/pion/udp v0.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

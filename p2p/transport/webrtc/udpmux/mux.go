@@ -60,10 +60,20 @@ func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr
 	return mux
 }
 
+// GetListenAddresses implements ice.UDPMux
+func (mux *udpMux) GetListenAddresses() []net.Addr {
+	return []net.Addr{mux.socket.LocalAddr()}
+}
+
 // GetConn implements ice.UDPMux
 // It creates a net.PacketConn for a given ufrag if an existing
-// one cannot be  found.
-func (mux *udpMux) GetConn(ufrag string, isIPv6 bool) (net.PacketConn, error) {
+// one cannot be  found. We differentiate IPv4 and IPv6 addresses
+// as a remote is capable of being reachable through multiple different
+// UDP addresses of the same IP address family (eg. Server-reflexive addresses
+// and peer-reflexive addresses).
+func (mux *udpMux) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) {
+	a, ok := addr.(*net.UDPAddr)
+	isIPv6 := ok && a.IP.To4() == nil
 	return mux.getOrCreateConn(ufrag, isIPv6)
 }
 
