@@ -107,8 +107,7 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// if we're here, we got some addrs. let's use our wrapped host to connect.
 	pi.Addrs = addrs
-	err := rh.host.Connect(ctx, pi)
-	if err != nil {
+	if cerr := rh.host.Connect(ctx, pi); cerr != nil {
 		// We couldn't connect. Let's check if we have the most
 		// up-to-date addresses for the given peer. If there
 		// are addresses we didn't know about previously, we
@@ -135,10 +134,10 @@ func (rh *RoutedHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			pi.Addrs = newAddrs
 			return rh.host.Connect(ctx, pi)
 		}
-
-		return err
+		// No appropriate new address found.
+		// Return the original dial error.
+		return cerr
 	}
-
 	return nil
 }
 
