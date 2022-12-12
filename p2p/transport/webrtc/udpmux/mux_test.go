@@ -54,16 +54,20 @@ func hasConn(m *udpMux, ufrag string, isIPv6 bool) *muxedConnection {
 	return m.ufragMap[key]
 }
 
+var (
+	addrV6 = net.UDPAddr{IP: net.IPv6zero, Port: 1234}
+)
+
 func TestUDPMux_GetConn(t *testing.T) {
 	mux := NewUDPMux(dummyPacketConn{}, nil)
 	m := mux.(*udpMux)
 	require.Nil(t, hasConn(m, "test", false))
-	conn, err := mux.GetConn("test", false)
+	conn, err := mux.GetConn("test", nil)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
 	require.Nil(t, hasConn(m, "test", true))
-	connv6, err := mux.GetConn("test", true)
+	connv6, err := mux.GetConn("test", &addrV6)
 	require.NoError(t, err)
 	require.NotNil(t, connv6)
 
@@ -72,7 +76,7 @@ func TestUDPMux_GetConn(t *testing.T) {
 
 func TestUDPMux_RemoveConnectionOnClose(t *testing.T) {
 	mux := NewUDPMux(dummyPacketConn{}, nil)
-	conn, err := mux.GetConn("test", false)
+	conn, err := mux.GetConn("test", nil)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 

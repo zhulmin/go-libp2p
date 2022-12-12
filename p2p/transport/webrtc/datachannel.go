@@ -59,12 +59,8 @@ type dataChannel struct {
 	reader     protoio.Reader
 	writer     protoio.Writer
 
-	requestRead     chan struct{}
-	receivedMessage chan struct{}
-
 	m               sync.Mutex
 	readBuf         []byte
-	readDeadline    time.Time
 	writeDeadline   time.Time
 	writeAvailable  chan struct{}
 	deadlineUpdated chan struct{}
@@ -91,8 +87,6 @@ func newDataChannel(
 		writeAvailable:  make(chan struct{}),
 		reader:          protoio.NewDelimitedReader(reader, maxMessageSize),
 		writer:          protoio.NewDelimitedWriter(rwc),
-		requestRead:     make(chan struct{}, 1),
-		receivedMessage: make(chan struct{}),
 		deadlineUpdated: make(chan struct{}),
 	}
 
@@ -109,11 +103,12 @@ func newDataChannel(
 }
 
 func (d *dataChannel) Read(b []byte) (int, error) {
-	d.startReadLoop()
-	timeout := make(chan struct{})
-	var deadlineTimer *time.Timer
-	first := true
+	// check if buffer has data
 	for {
+		if len(b) == 0 {
+			return 0, nil
+		}
+
 		d.m.Lock()
 		read := copy(b, d.readBuf)
 		d.readBuf = d.readBuf[read:]
@@ -126,34 +121,42 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 			return read, nil
 		}
 
-		// read until data message and only queue read request once
-		if first {
-			first = false
-			d.requestRead <- struct{}{}
+		// read from datachannel
+		var msg pb.Message
+		err := d.reader.ReadMsg(&msg)
+		if err != nil {
+			return 0, err
 		}
 
 		d.m.Lock()
-		deadlineUpdated := d.deadlineUpdated
-		deadline := d.readDeadline
+		if d.state != stateClosed && d.state != stateReadClosed && msg.Message != nil {
+			// read bytes into b
+			src := msg.GetMessage()
+			read = copy(b, src)
+			if read < len(src) {
+				d.readBuf = append(d.readBuf, src[read:]...)
+			}
+		}
 		d.m.Unlock()
-		if !deadline.IsZero() {
-			if deadline.Before(time.Now()) {
-				return 0, os.ErrDeadlineExceeded
-			}
-			if deadlineTimer == nil {
-				deadlineTimer = time.AfterFunc(time.Until(deadline), func() { close(timeout) })
-				defer deadlineTimer.Stop()
-			}
-			deadlineTimer.Reset(time.Until(deadline))
-		}
 
-		select {
-		case <-d.receivedMessage:
-		case <-timeout:
-			return 0, os.ErrDeadlineExceeded
-		case <-deadlineUpdated:
-		case <-d.ctx.Done():
+		if msg.Flag != nil {
+			d.processIncomingFlag(msg.GetFlag())
 		}
+		if read != 0 {
+			return read, nil
+		}
+	}
+}
+
+func (d *dataChannel) processIncomingFlag(flag pb.Message_Flag) {
+	d.m.Lock()
+	current := d.state
+	next := d.state.handleIncomingFlag(flag)
+	d.state = next
+	d.m.Unlock()
+
+	if current != next && next == stateClosed {
+		defer d.Close()
 	}
 }
 
@@ -166,17 +169,24 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 	// Check if there is any message on the wire. This is used for control
 	// messages only
 	if state == stateReadClosed {
-		d.startReadLoop()
-		// drain the channel
-		select {
-		case <-d.receivedMessage:
-		default:
-		}
-		// async push a read request to the channel
-		select {
-		case d.requestRead <- struct{}{}:
-		default:
-		}
+		d.readLoopOnce.Do(func() {
+			go func() {
+				// zero the read deadline, so read call only returns
+				// when the underlying datachannel closes or there is
+				// a message on the channel
+				d.rwc.SetReadDeadline(time.Time{})
+				var msg pb.Message
+				for {
+					err := d.reader.ReadMsg(&msg)
+					if err != nil {
+						return
+					}
+					if msg.Flag != nil {
+						d.processIncomingFlag(msg.GetFlag())
+					}
+				}
+			}()
+		})
 	}
 
 	var err error
@@ -232,24 +242,16 @@ func (d *dataChannel) partialWrite(b []byte) (int, error) {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				return len(b), d.writeMessage(msg)
+				return len(b), d.writer.WriteMsg(msg)
 			case <-d.ctx.Done():
 				return 0, io.ErrClosedPipe
 			case <-deadlineUpdated:
 
 			}
 		} else {
-			return len(b), d.writeMessage(msg)
+			return len(b), d.writer.WriteMsg(msg)
 		}
 	}
-}
-
-func (d *dataChannel) writeMessage(msg *pb.Message) error {
-	err := d.writer.WriteMsg(msg)
-	// this only returns the number of bytes sent from the buffer
-	// requested by the user.
-	return err
-
 }
 
 func (d *dataChannel) Close() error {
@@ -330,7 +332,7 @@ func (d *dataChannel) Reset() error {
 	var err error
 	d.resetOnce.Do(func() {
 		msg := &pb.Message{Flag: pb.Message_RESET.Enum()}
-		err = d.writeMessage(msg)
+		_ = d.writer.WriteMsg(msg)
 		err = d.Close()
 	})
 	return err
@@ -339,19 +341,12 @@ func (d *dataChannel) Reset() error {
 func (d *dataChannel) SetDeadline(t time.Time) error {
 	d.m.Lock()
 	defer d.m.Unlock()
-	d.readDeadline = t
 	d.writeDeadline = t
 	return nil
 }
 
 func (d *dataChannel) SetReadDeadline(t time.Time) error {
-	d.m.Lock()
-	d.readDeadline = t
-	deadlineUpdated := d.deadlineUpdated
-	d.deadlineUpdated = make(chan struct{})
-	d.m.Unlock()
-	close(deadlineUpdated)
-	return nil
+	return d.rwc.SetReadDeadline(t)
 }
 
 func (d *dataChannel) SetWriteDeadline(t time.Time) error {
@@ -368,52 +363,4 @@ func (d *dataChannel) getState() channelState {
 	d.m.Lock()
 	defer d.m.Unlock()
 	return d.state
-}
-
-// readLoop is required for both reads and writes since calling `Read`
-// on the underlying datachannel blocks indefinitely until data is available
-// or the datachannel is closed. Having Read run in a separate Goroutine driven
-// by the stream's `Read` call allows setting deadlines on the stream's `Read`
-// and also allows `Write` to read message flags in a non-blocking way after the
-// stream stops reading.
-func (d *dataChannel) readLoop() {
-	defer d.wg.Done()
-	for {
-		select {
-		case <-d.ctx.Done():
-			return
-		case <-d.requestRead:
-		}
-
-		var msg pb.Message
-		err := d.reader.ReadMsg(&msg)
-		if err != nil {
-			return
-		}
-
-		d.m.Lock()
-		if d.state != stateClosed && d.state != stateReadClosed && msg.Message != nil {
-			d.readBuf = append(d.readBuf, msg.Message...)
-		}
-		previous := d.state
-		current := d.state
-		if msg.Flag != nil {
-			current = d.state.handleIncomingFlag(msg.GetFlag())
-		}
-		d.state = current
-		d.m.Unlock()
-		d.receivedMessage <- struct{}{}
-
-		if previous != current && current == stateClosed {
-			d.Close()
-		}
-
-	}
-}
-
-func (d *dataChannel) startReadLoop() {
-	d.readLoopOnce.Do(func() {
-		d.wg.Add(1)
-		go d.readLoop()
-	})
 }
