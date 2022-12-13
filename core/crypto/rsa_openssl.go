@@ -7,7 +7,7 @@ import (
 	"errors"
 	"io"
 
-	openssl "github.com/libp2p/go-openssl"
+	"github.com/libp2p/go-openssl"
 )
 
 // RsaPrivateKey is an rsa private key
@@ -30,7 +30,8 @@ func GenerateRSAKeyPair(bits int, _ io.Reader) (PrivKey, PubKey, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return &RsaPrivateKey{opensslPrivateKey{key}}, &RsaPublicKey{opensslPublicKey{key: key}}, nil
+	priv := &RsaPrivateKey{opensslPrivateKey{key}}
+	return priv, priv.GetPublic(), nil
 }
 
 // GetPublic returns a public key
