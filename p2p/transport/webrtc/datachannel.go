@@ -3,6 +3,7 @@ package libp2pwebrtc
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -64,7 +65,10 @@ type dataChannel struct {
 	writeAvailable  chan struct{}
 	deadlineUpdated chan struct{}
 
-	wg sync.WaitGroup
+	// hack for closing the Read side using a deadline
+	// in case `Read` does not return.
+	forceClosed bool
+	wg          sync.WaitGroup
 }
 
 func newDataChannel(
@@ -125,6 +129,13 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		var msg pb.Message
 		err := d.reader.ReadMsg(&msg)
 		if err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				d.m.Lock()
+				defer d.m.Unlock()
+				if d.forceClosed {
+					return 0, io.EOF
+				}
+			}
 			return 0, err
 		}
 
@@ -258,6 +269,7 @@ func (d *dataChannel) Close() error {
 
 	d.m.Lock()
 	d.state = stateClosed
+	d.forceClosed = true
 	d.m.Unlock()
 
 	d.cancelFunc()
@@ -297,6 +309,7 @@ func (d *dataChannel) remoteClosed() {
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.state = stateClosed
+	d.forceClosed = true
 	d.cancelFunc()
 
 	// This is a hack. A recent commit in pion/datachannel

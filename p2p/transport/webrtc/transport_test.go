@@ -458,9 +458,9 @@ func TestTransportWebRTC_StreamCanCloseWhenReadActive(t *testing.T) {
 	})
 
 	_, err = stream.Read(make([]byte, 19))
-	// require.ErrorIs(t, err, io.EOF)
+	require.ErrorIs(t, err, io.EOF)
 	// This is temporary. This should be io.EOF
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	// require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
 	select {
 	case <-done:
