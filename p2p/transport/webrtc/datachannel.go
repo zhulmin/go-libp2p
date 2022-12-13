@@ -42,10 +42,9 @@ const (
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type dataChannel struct {
-	channel *webrtc.DataChannel
-	rwc     datachannel.ReadWriteCloser
-	laddr   net.Addr
-	raddr   net.Addr
+	rwc   datachannel.ReadWriteCloser
+	laddr net.Addr
+	raddr net.Addr
 
 	closeWriteOnce sync.Once
 	closeReadOnce  sync.Once
@@ -78,7 +77,6 @@ func newDataChannel(
 	reader := bufio.NewReaderSize(rwc, maxMessageSize)
 
 	result := &dataChannel{
-		channel:         channel,
 		rwc:             rwc,
 		laddr:           laddr,
 		raddr:           raddr,
@@ -103,8 +101,8 @@ func newDataChannel(
 }
 
 func (d *dataChannel) Read(b []byte) (int, error) {
-	// check if buffer has data
 	for {
+		// check if buffer has data
 		if len(b) == 0 {
 			return 0, nil
 		}
@@ -114,9 +112,11 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		d.readBuf = d.readBuf[read:]
 		remaining := len(d.readBuf)
 		d.m.Unlock()
+
 		if state := d.getState(); remaining == 0 && (state == stateReadClosed || state == stateClosed) {
 			return read, io.EOF
 		}
+
 		if read > 0 {
 			return read, nil
 		}
@@ -130,20 +130,12 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 
 		d.m.Lock()
 		if d.state != stateClosed && d.state != stateReadClosed && msg.Message != nil {
-			// read bytes into b
-			src := msg.GetMessage()
-			read = copy(b, src)
-			if read < len(src) {
-				d.readBuf = append(d.readBuf, src[read:]...)
-			}
+			d.readBuf = append(d.readBuf, msg.GetMessage()...)
 		}
 		d.m.Unlock()
 
 		if msg.Flag != nil {
 			d.processIncomingFlag(msg.GetFlag())
-		}
-		if read != 0 {
-			return read, nil
 		}
 	}
 }
@@ -170,11 +162,13 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 	// messages only
 	if state == stateReadClosed {
 		d.readLoopOnce.Do(func() {
+			d.wg.Add(1)
 			go func() {
+				defer d.wg.Done()
 				// zero the read deadline, so read call only returns
 				// when the underlying datachannel closes or there is
 				// a message on the channel
-				d.rwc.SetReadDeadline(time.Time{})
+				d.SetReadDeadline(time.Time{})
 				var msg pb.Message
 				for {
 					err := d.reader.ReadMsg(&msg)
@@ -236,8 +230,9 @@ func (d *dataChannel) partialWrite(b []byte) (int, error) {
 		}
 
 		msg := &pb.Message{Message: b}
-		bufferedAmount := int(d.channel.BufferedAmount()) + len(b) + protoOverhead + varintOverhead
-		if bufferedAmount > maxBufferedAmount {
+		bufferedAmount := int(d.rwc.(*datachannel.DataChannel).BufferedAmount())
+		addedBuffer := bufferedAmount + len(b) + protoOverhead + varintOverhead
+		if addedBuffer > maxBufferedAmount {
 			select {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
@@ -266,11 +261,16 @@ func (d *dataChannel) Close() error {
 	d.m.Unlock()
 
 	d.cancelFunc()
-	_ = d.CloseWrite()
-	_ = d.rwc.Close()
-	// this does not loop and call Close again
+	// This is a hack. A recent commit in pion/datachannel
+	// caused a regression where read blocks indefinitely
+	// even when then channel is closed.
+	// PR being worked on here: https://github.com/pion/datachannel/pull/161
+	// This method allows any read calls to fail with
+	// deadline exceeded and unblocks them.
+	d.SetReadDeadline(time.Now().Add(-100 * time.Second))
+	err := d.rwc.Close()
 	d.wg.Wait()
-	return nil
+	return err
 }
 
 func (d *dataChannel) CloseRead() error {
@@ -298,6 +298,14 @@ func (d *dataChannel) remoteClosed() {
 	defer d.m.Unlock()
 	d.state = stateClosed
 	d.cancelFunc()
+
+	// This is a hack. A recent commit in pion/datachannel
+	// caused a regression where read blocks indefinitely
+	// even when then channel is closed.
+	// PR being worked on here: https://github.com/pion/datachannel/pull/161
+	// This method allows any read calls to fail with
+	// deadline exceeded and unblocks them.
+	d.SetReadDeadline(time.Now().Add(-100 * time.Second))
 
 }
 
@@ -346,7 +354,7 @@ func (d *dataChannel) SetDeadline(t time.Time) error {
 }
 
 func (d *dataChannel) SetReadDeadline(t time.Time) error {
-	return d.rwc.SetReadDeadline(t)
+	return d.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
 }
 
 func (d *dataChannel) SetWriteDeadline(t time.Time) error {
