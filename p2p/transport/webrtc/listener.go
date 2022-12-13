@@ -198,6 +198,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 			return
 		}
 		wrappedChannel = newDataChannel(
+			nil,
 			handshakeChannel,
 			rwc,
 			pc,

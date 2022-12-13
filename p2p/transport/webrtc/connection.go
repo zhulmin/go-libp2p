@@ -87,15 +87,11 @@ func newConnection(
 				log.Errorf("[%s] could not detch channel: %s", localPeer, dc.Label())
 				return
 			}
-			stream = newDataChannel(dc, rwc, pc, nil, nil)
+			stream = newDataChannel(conn, dc, rwc, pc, nil, nil)
 			conn.addStream(id, stream)
 			streamChan <- stream
 		})
 
-		dc.OnClose(func() {
-			stream.remoteClosed()
-			conn.removeStream(id)
-		})
 	})
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
@@ -161,7 +157,7 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 			}
 			return
 		}
-		stream = newDataChannel(dc, rwc, c.pc, nil, nil)
+		stream = newDataChannel(c, dc, rwc, c.pc, nil, nil)
 		c.addStream(streamID, stream)
 		result <- openStreamResult{stream, err}
 	})
