@@ -43,6 +43,8 @@ const (
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type dataChannel struct {
+	conn  *connection
+	id    uint16
 	rwc   datachannel.ReadWriteCloser
 	laddr net.Addr
 	raddr net.Addr
@@ -72,6 +74,7 @@ type dataChannel struct {
 }
 
 func newDataChannel(
+	connection *connection,
 	channel *webrtc.DataChannel,
 	rwc datachannel.ReadWriteCloser,
 	pc *webrtc.PeerConnection,
@@ -81,6 +84,8 @@ func newDataChannel(
 	reader := bufio.NewReaderSize(rwc, maxMessageSize)
 
 	result := &dataChannel{
+		conn:            connection,
+		id:              *channel.ID(),
 		rwc:             rwc,
 		laddr:           laddr,
 		raddr:           raddr,
@@ -99,6 +104,13 @@ func newDataChannel(
 		result.writeAvailable = make(chan struct{})
 		result.m.Unlock()
 		close(writeAvailable)
+	})
+
+	channel.OnClose(func() {
+		result.remoteClosed()
+		if connection != nil {
+			connection.removeStream(result.id)
+		}
 	})
 
 	return result
@@ -271,6 +283,9 @@ func (d *dataChannel) Close() error {
 	d.state = stateClosed
 	d.forceClosed = true
 	d.m.Unlock()
+	if d.conn != nil {
+		d.conn.removeStream(d.id)
+	}
 
 	d.cancelFunc()
 	// This is a hack. A recent commit in pion/datachannel

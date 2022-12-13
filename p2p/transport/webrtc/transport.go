@@ -243,7 +243,7 @@ func (t *WebRTCTransport) dial(
 			signalChan <- err
 			return
 		}
-		wrappedChannel := newDataChannel(handshakeChannel, rwc, pc, nil, raddr)
+		wrappedChannel := newDataChannel(nil, handshakeChannel, rwc, pc, nil, raddr)
 		cp, err := handshakeChannel.Transport().Transport().ICETransport().GetSelectedCandidatePair()
 		if cp == nil || err != nil {
 			err = errDatachannel("could not fetch selected candidate pair", err)
