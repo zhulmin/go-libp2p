@@ -41,9 +41,7 @@ func (conn *muxedConnection) push(buf []byte, addr net.Addr) error {
 
 // Close implements net.PacketConn
 func (conn *muxedConnection) Close() error {
-	if err := conn.closeConnection(); err != nil {
-		return nil
-	}
+	_ = conn.closeConnection()
 	conn.mux.RemoveConnByUfrag(conn.ufrag)
 	return nil
 }

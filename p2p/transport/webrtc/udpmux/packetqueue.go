@@ -2,6 +2,7 @@ package udpmux
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -9,10 +10,16 @@ import (
 	pool "github.com/libp2p/go-buffer-pool"
 )
 
+const maxPacketsInQueue int = 128
+
 type packet struct {
 	addr net.Addr
-	size int
+	buf  []byte
 }
+
+var (
+	errTooManyPackets = fmt.Errorf("too many packets in queue; dropping")
+)
 
 // packetQueue is a blocking queue for buffering packets received
 // on net.PacketConn instances. Packets can be pushed by using
@@ -20,7 +27,6 @@ type packet struct {
 type packetQueue struct {
 	ctx         context.Context
 	mu          sync.Mutex
-	pdata       *pool.Buffer
 	pkts        []packet
 	notify      chan struct{}
 	readWaiting bool
@@ -29,77 +35,84 @@ type packetQueue struct {
 func newPacketQueue(ctx context.Context) *packetQueue {
 	return &packetQueue{
 		ctx:    ctx,
-		pdata:  new(pool.Buffer),
 		notify: make(chan struct{}),
 	}
 }
 
-// pop reads a packet from the packetBuffer or blocks until
+// pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the buffer is closed.
-func (pb *packetQueue) pop(buf []byte) (int, net.Addr, error) {
+func (pq *packetQueue) pop(buf []byte) (int, net.Addr, error) {
 	for {
-		pb.mu.Lock()
+		pq.mu.Lock()
 
-		if len(pb.pkts) != 0 {
-			pkt := pb.pkts[0]
-			pktdata := pb.pdata.Next(pkt.size)
-			pb.pkts = pb.pkts[1:]
-			copied := copy(buf, pktdata)
-			if copied < len(pktdata) {
-				pb.mu.Unlock()
-				return copied, pkt.addr, io.ErrShortBuffer
+		if len(pq.pkts) != 0 {
+			pkt := pq.pkts[0]
+			defer pool.Put(pkt.buf[:cap(pkt.buf)])
+			pq.pkts = pq.pkts[1:]
+			pq.mu.Unlock()
+
+			copied := copy(buf, pkt.buf)
+			var err error
+			if copied < len(pkt.buf) {
+				err = io.ErrShortBuffer
 			}
 
-			pb.mu.Unlock()
-			return copied, pkt.addr, nil
+			return copied, pkt.addr, err
 		}
 
-		notify := pb.notify
-
-		pb.readWaiting = true
-		pb.mu.Unlock()
+		notify := pq.notify
+		pq.readWaiting = true
+		pq.mu.Unlock()
 
 		select {
 		case <-notify:
-		case <-pb.ctx.Done():
-			pb.mu.Lock()
-			if len(pb.pkts) == 0 {
-				pb.pdata.Reset()
-				pb.mu.Unlock()
+		case <-pq.ctx.Done():
+			pq.mu.Lock()
+			if len(pq.pkts) == 0 {
+				pq.mu.Unlock()
 				return 0, nil, io.EOF
 			}
-			pb.mu.Unlock()
+			pq.mu.Unlock()
 		}
 	}
 }
 
-// push adds a packet to the packetBuffer
-func (pb *packetQueue) push(buf []byte, addr net.Addr) error {
+// push adds a packet to the packetQueue
+func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
 	select {
-	case <-pb.ctx.Done():
+	case <-pq.ctx.Done():
 		return io.ErrClosedPipe
 	default:
 	}
-	pb.mu.Lock()
-	_, err := pb.pdata.Write(buf)
-	if err != nil {
-		return err
+	pq.mu.Lock()
+	if len(pq.pkts) == maxPacketsInQueue {
+		// cleanup the packet and return
+		defer pool.Put(buf[:cap(buf)])
+		pq.mu.Unlock()
+		return errTooManyPackets
 	}
-	pb.pkts = append(pb.pkts, packet{addr: addr, size: len(buf)})
+	pq.pkts = append(pq.pkts, packet{addr, buf})
 
 	var notify chan struct{}
-	if pb.readWaiting {
-		pb.readWaiting = false
-		notify = pb.notify
-		pb.notify = make(chan struct{})
+	if pq.readWaiting {
+		pq.readWaiting = false
+		notify = pq.notify
+		pq.notify = make(chan struct{})
 	}
-	pb.mu.Unlock()
+	pq.mu.Unlock()
 	if notify != nil {
 		close(notify)
 	}
 	return nil
 }
 
-func (pb *packetQueue) close() {
-	pb.pdata.Reset()
+// discard all packets in the queue and return
+// buffers
+func (pq *packetQueue) close() {
+	pq.mu.Lock()
+	defer pq.mu.Unlock()
+	for _, pkt := range pq.pkts {
+		buf := pkt.buf[:cap(pkt.buf)]
+		pool.Put(buf)
+	}
 }

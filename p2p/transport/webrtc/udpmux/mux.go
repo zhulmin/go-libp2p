@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/pion/ice/v2"
 	"github.com/pion/stun"
 )
@@ -131,61 +132,81 @@ func (mux *udpMux) writeTo(buf []byte, addr net.Addr) (int, error) {
 }
 
 func (mux *udpMux) readLoop() {
-	buf := make([]byte, receiveMTU)
 	for {
 		select {
 		case <-mux.ctx.Done():
 			return
 		default:
 		}
-		buf = buf[:cap(buf)]
+
+		buf := pool.Get(receiveMTU)
+
 		n, addr, err := mux.socket.ReadFrom(buf)
-		buf = buf[:n]
 		if err != nil {
+			pool.Put(buf)
 			if os.IsTimeout(err) {
 				continue
 			}
 			return
 		}
-		udpAddr := addr.(*net.UDPAddr)
-		isIPv6 := udpAddr.IP.To4() == nil
+		buf = buf[:n]
 
-		// Connections are indexed by remote address. We firest
-		// check if the remote address has a connection associated
-		// with it. If yes, we push the received packet to the connection
-		// and loop again.
-		mux.mu.Lock()
-		conn, ok := mux.addrMap[udpAddr.String()]
-		mux.mu.Unlock()
-		// if address was not found check if ufrag exists
-		if !ok && stun.IsMessage(buf) {
-			msg := &stun.Message{Raw: buf}
-			if err := msg.Decode(); err != nil {
-				continue
-			}
-			ufrag, err := ufragFromStunMessage(msg, false)
-			if err != nil {
-				continue
-			}
-			key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-			mux.mu.Lock()
-			conn, ok = mux.ufragMap[key]
-			if !ok {
-				conn = newMuxedConnection(mux, ufrag)
-				mux.ufragMap[key] = conn
-				if mux.unknownUfragCallback != nil {
-					mux.unknownUfragCallback(ufrag, udpAddr)
-				}
-			}
-			conn.addresses = append(conn.addresses, udpAddr.String())
-			mux.addrMap[udpAddr.String()] = conn
-			mux.mu.Unlock()
-		}
-
-		if conn != nil {
-			_ = conn.push(buf[:n], udpAddr)
+		// a non-nil error signifies that the packet was not
+		// passed on to any connection, and therefore the current
+		// function has ownership of the packet. Otherwise, the
+		// ownership of the packet is passed to a connection
+		err = mux.processPacket(buf, addr)
+		if err != nil {
+			buf = buf[:cap(buf)]
+			pool.Put(buf)
 		}
 	}
+}
+
+func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
+	udpAddr := addr.(*net.UDPAddr)
+	isIPv6 := udpAddr.IP.To4() == nil
+
+	// Connections are indexed by remote address. We firest
+	// check if the remote address has a connection associated
+	// with it. If yes, we push the received packet to the connection
+	// and loop again.
+	mux.mu.Lock()
+	conn, ok := mux.addrMap[udpAddr.String()]
+	mux.mu.Unlock()
+	// if address was not found check if ufrag exists
+	if !ok && stun.IsMessage(buf) {
+		msg := &stun.Message{Raw: buf}
+		if err := msg.Decode(); err != nil {
+			return err
+		}
+		ufrag, err := ufragFromStunMessage(msg, false)
+		if err != nil {
+			return err
+		}
+		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
+		mux.mu.Lock()
+		conn, ok = mux.ufragMap[key]
+		if !ok {
+			conn = newMuxedConnection(mux, ufrag)
+			mux.ufragMap[key] = conn
+			// this happens when the lock is held,
+			// but it's not a problem since the packets are
+			// handled sequentially in the same goroutine
+			if mux.unknownUfragCallback != nil {
+				mux.unknownUfragCallback(ufrag, udpAddr)
+			}
+		}
+		conn.addresses = append(conn.addresses, udpAddr.String())
+		mux.addrMap[udpAddr.String()] = conn
+		mux.mu.Unlock()
+	}
+
+	if conn != nil {
+		_ = conn.push(buf, addr)
+		return nil
+	}
+	return fmt.Errorf("connection not found")
 }
 
 // ufragFromStunMessage returns either the local or remote ufrag
