@@ -27,7 +27,6 @@ require (
 	github.com/libp2p/go-msgio v0.2.0
 	github.com/libp2p/go-nat v0.1.0
 	github.com/libp2p/go-netroute v0.2.1
-	github.com/libp2p/go-openssl v0.1.0
 	github.com/libp2p/go-reuseport v0.2.0
 	github.com/libp2p/go-yamux/v4 v4.0.0
 	github.com/libp2p/zeroconf/v2 v2.2.0
@@ -89,7 +88,6 @@ require (
 	github.com/marten-seemann/qtls-go1-18 v0.1.3 // indirect
 	github.com/marten-seemann/qtls-go1-19 v0.1.1 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
-	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
@@ -102,7 +100,6 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
-	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
