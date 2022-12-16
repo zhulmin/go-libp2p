@@ -12,7 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createEchos(t *testing.T, count int, makeOpts ...func(int) libp2p.Option) []*Echo {
+type fataler interface {
+	Fatal(args ...any)
+}
+
+func createEchos(t fataler, count int, makeOpts ...func(int) libp2p.Option) []*Echo {
 	result := make([]*Echo, 0, count)
 
 	for i := 0; i < count; i++ {
