@@ -518,7 +518,7 @@ func peerScopeName(p peer.ID) string {
 }
 
 // ParsePeerScopeName returns "" if name is not a peerScopeName
-func ParsePeerScopeName(name string) peer.ID {
+func ParsePeerScopeName(name string) string {
 	if !strings.HasPrefix(name, "peer:") || IsSpan(name) {
 		return ""
 	}
@@ -526,11 +526,11 @@ func ParsePeerScopeName(name string) peer.ID {
 	if len(parts) != 2 {
 		return ""
 	}
-	p, err := peer.Decode(parts[1])
-	if err != nil {
-		return ""
-	}
-	return p
+	return parts[1]
+}
+
+func IsPeerScope(name string) bool {
+	return strings.HasPrefix(name, "peer:") || !IsSpan(name)
 }
 
 // ParseServiceScopeName returns the service name if name is a serviceScopeName.

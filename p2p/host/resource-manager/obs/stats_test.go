@@ -11,7 +11,11 @@ import (
 )
 
 func TestTraceReporterStartAndClose(t *testing.T) {
-	rcmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(obs.StatsTraceReporter{}))
+	tr, err := obs.NewStatsTraceReporter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(tr))
 	if err != nil {
 		t.Fatal(err)
 	}

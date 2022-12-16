@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 
 	"go.opencensus.io/stats"
@@ -125,19 +126,72 @@ var DefaultViews []*view.View = []*view.View{
 }
 
 // StatsTraceReporter reports stats on the resource manager using its traces.
-type StatsTraceReporter struct{}
+type StatsTraceReporter struct {
+	// mutsCache     map[mutKey][]tag.Mutator
+	// mutsCacheLock sync.RWMutex
+
+	mutsCache *lru.Cache[tags, []tag.Mutator]
+}
+
+type tags struct {
+	direction string
+	scope     string
+	service   string
+	protocol  string
+	resource  string
+}
+
+const (
+	dirInbound    = "inbound"
+	dirOutbound   = "outbound"
+	scopeService  = "service"
+	scopeProtocol = "protocol"
+)
 
 func NewStatsTraceReporter() (StatsTraceReporter, error) {
 	// TODO tell prometheus the system limits
-	return StatsTraceReporter{}, nil
+	cache, err := lru.New[tags, []tag.Mutator](2048)
+	if err != nil {
+		return StatsTraceReporter{}, err
+	}
+	return StatsTraceReporter{
+		mutsCache: cache,
+	}, nil
 }
 
-func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
+func (r *StatsTraceReporter) record(ctx context.Context, tags tags, m stats.Measurement) {
+	mutators, ok := r.mutsCache.Get(tags)
+	if !ok {
+		mutators = nil
+
+		if tags.direction != "" {
+			mutators = append(mutators, tag.Upsert(directionTag, tags.direction))
+		}
+		if tags.scope != "" {
+			mutators = append(mutators, tag.Upsert(scopeTag, tags.scope))
+		}
+		if tags.service != "" {
+			mutators = append(mutators, tag.Upsert(serviceTag, tags.service))
+		}
+		if tags.protocol != "" {
+			mutators = append(mutators, tag.Upsert(protocolTag, tags.protocol))
+		}
+		if tags.resource != "" {
+			mutators = append(mutators, tag.Upsert(resourceTag, tags.resource))
+		}
+
+		r.mutsCache.Add(tags, mutators)
+	}
+
+	stats.RecordWithTags(ctx, mutators, m)
+}
+
+func (r *StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 	ctx := context.Background()
 
 	switch evt.Type {
 	case rcmgr.TraceAddStreamEvt, rcmgr.TraceRemoveStreamEvt:
-		if p := rcmgr.ParsePeerScopeName(evt.Name); p.Validate() == nil {
+		if rcmgr.IsPeerScope(evt.Name) {
 			// Aggregated peer stats. Counts how many peers have N number of streams open.
 			// Uses two buckets aggregations. One to count how many streams the
 			// peer has now. The other to count the negative value, or how many
@@ -148,10 +202,10 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			peerStreamsOut := int64(evt.StreamsOut)
 			if oldStreamsOut != peerStreamsOut {
 				if oldStreamsOut != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "outbound")}, peerStreamsNegative.M(oldStreamsOut))
+					r.record(ctx, tags{direction: dirOutbound}, peerStreamsNegative.M(oldStreamsOut))
 				}
 				if peerStreamsOut != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "outbound")}, peerStreams.M(peerStreamsOut))
+					r.record(ctx, tags{direction: dirOutbound}, peerStreams.M(peerStreamsOut))
 				}
 			}
 
@@ -159,20 +213,22 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			peerStreamsIn := int64(evt.StreamsIn)
 			if oldStreamsIn != peerStreamsIn {
 				if oldStreamsIn != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "inbound")}, peerStreamsNegative.M(oldStreamsIn))
+					r.record(ctx, tags{direction: dirInbound}, peerStreamsNegative.M(oldStreamsIn))
 				}
 				if peerStreamsIn != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "inbound")}, peerStreams.M(peerStreamsIn))
+					r.record(ctx, tags{direction: dirOutbound}, peerStreams.M(peerStreamsIn))
 				}
 			}
 		} else {
-			var tags []tag.Mutator
+			var scope, service, protocol string
 			if rcmgr.IsSystemScope(evt.Name) || rcmgr.IsTransientScope(evt.Name) {
-				tags = append(tags, tag.Upsert(scopeTag, evt.Name))
+				scope = evt.Name
 			} else if svc := rcmgr.ParseServiceScopeName(evt.Name); svc != "" {
-				tags = append(tags, tag.Upsert(scopeTag, "service"), tag.Upsert(serviceTag, svc))
+				scope = scopeService
+				service = svc
 			} else if proto := rcmgr.ParseProtocolScopeName(evt.Name); proto != "" {
-				tags = append(tags, tag.Upsert(scopeTag, "protocol"), tag.Upsert(protocolTag, proto))
+				scope = scopeProtocol
+				protocol = proto
 			} else {
 				// Not measuring connscope, servicepeer and protocolpeer. Lots of data, and
 				// you can use aggregated peer stats + service stats to infer
@@ -181,24 +237,16 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			}
 
 			if evt.DeltaOut != 0 {
-				stats.RecordWithTags(
-					ctx,
-					append([]tag.Mutator{tag.Upsert(directionTag, "outbound")}, tags...),
-					streams.M(int64(evt.DeltaOut)),
-				)
+				r.record(ctx, tags{scope: scope, service: service, protocol: protocol, direction: dirOutbound}, streams.M(int64(evt.DeltaOut)))
 			}
 
 			if evt.DeltaIn != 0 {
-				stats.RecordWithTags(
-					ctx,
-					append([]tag.Mutator{tag.Upsert(directionTag, "inbound")}, tags...),
-					streams.M(int64(evt.DeltaIn)),
-				)
+				r.record(ctx, tags{scope: scope, service: service, protocol: protocol, direction: dirInbound}, streams.M(int64(evt.DeltaOut)))
 			}
 		}
 
 	case rcmgr.TraceAddConnEvt, rcmgr.TraceRemoveConnEvt:
-		if p := rcmgr.ParsePeerScopeName(evt.Name); p.Validate() == nil {
+		if rcmgr.IsPeerScope(evt.Name) {
 			// Aggregated peer stats. Counts how many peers have N number of connections.
 			// Uses two buckets aggregations. One to count how many streams the
 			// peer has now. The other to count the negative value, or how many
@@ -209,10 +257,10 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			connsOut := int64(evt.ConnsOut)
 			if oldConnsOut != connsOut {
 				if oldConnsOut != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "outbound")}, peerConnsNegative.M(oldConnsOut))
+					r.record(ctx, tags{direction: dirOutbound}, peerConnsNegative.M(oldConnsOut))
 				}
 				if connsOut != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "outbound")}, peerConns.M(connsOut))
+					r.record(ctx, tags{direction: dirOutbound}, peerConns.M(oldConnsOut))
 				}
 			}
 
@@ -220,16 +268,16 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			connsIn := int64(evt.ConnsIn)
 			if oldConnsIn != connsIn {
 				if oldConnsIn != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "inbound")}, peerConnsNegative.M(oldConnsIn))
+					r.record(ctx, tags{direction: dirInbound}, peerConnsNegative.M(oldConnsIn))
 				}
 				if connsIn != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "inbound")}, peerConns.M(connsIn))
+					r.record(ctx, tags{direction: dirInbound}, peerConns.M(connsIn))
 				}
 			}
 		} else {
-			var tags []tag.Mutator
+			var scope string
 			if rcmgr.IsSystemScope(evt.Name) || rcmgr.IsTransientScope(evt.Name) {
-				tags = append(tags, tag.Upsert(scopeTag, evt.Name))
+				scope = evt.Name
 			} else if rcmgr.IsConnScope(evt.Name) {
 				// Not measuring this. I don't think it's useful.
 				break
@@ -239,32 +287,20 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			}
 
 			if evt.DeltaOut != 0 {
-				stats.RecordWithTags(
-					ctx,
-					append([]tag.Mutator{tag.Upsert(directionTag, "outbound")}, tags...),
-					conns.M(int64(evt.DeltaOut)),
-				)
+				r.record(ctx, tags{scope: scope, direction: dirOutbound}, conns.M(int64(evt.DeltaOut)))
 			}
 
 			if evt.DeltaIn != 0 {
-				stats.RecordWithTags(
-					ctx,
-					append([]tag.Mutator{tag.Upsert(directionTag, "inbound")}, tags...),
-					conns.M(int64(evt.DeltaIn)),
-				)
+				r.record(ctx, tags{scope: scope, direction: dirInbound}, conns.M(int64(evt.DeltaIn)))
 			}
 
 			// Represents the delta in fds
 			if evt.Delta != 0 {
-				stats.RecordWithTags(
-					ctx,
-					tags,
-					fds.M(int64(evt.Delta)),
-				)
+				r.record(ctx, tags{scope: scope}, fds.M(int64(evt.Delta)))
 			}
 		}
 	case rcmgr.TraceReserveMemoryEvt, rcmgr.TraceReleaseMemoryEvt:
-		if p := rcmgr.ParsePeerScopeName(evt.Name); p.Validate() == nil {
+		if rcmgr.IsPeerScope(evt.Name) {
 			oldMem := evt.Memory - evt.Delta
 			if oldMem != evt.Memory {
 				if oldMem != 0 {
@@ -285,13 +321,15 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 				}
 			}
 		} else {
-			var tags []tag.Mutator
+			var scope, service, protocol string
 			if rcmgr.IsSystemScope(evt.Name) || rcmgr.IsTransientScope(evt.Name) {
-				tags = append(tags, tag.Upsert(scopeTag, evt.Name))
+				scope = evt.Name
 			} else if svc := rcmgr.ParseServiceScopeName(evt.Name); svc != "" {
-				tags = append(tags, tag.Upsert(scopeTag, "service"), tag.Upsert(serviceTag, svc))
+				scope = scopeService
+				service = svc
 			} else if proto := rcmgr.ParseProtocolScopeName(evt.Name); proto != "" {
-				tags = append(tags, tag.Upsert(scopeTag, "protocol"), tag.Upsert(protocolTag, proto))
+				scope = scopeProtocol
+				protocol = proto
 			} else {
 				// Not measuring connscope, servicepeer and protocolpeer. Lots of data, and
 				// you can use aggregated peer stats + service stats to infer
@@ -300,7 +338,7 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			}
 
 			if evt.Delta != 0 {
-				stats.RecordWithTags(ctx, tags, memory.M(int64(evt.Delta)))
+				r.record(ctx, tags{scope: scope, service: service, protocol: protocol}, memory.M(int64(evt.Delta)))
 			}
 		}
 
@@ -321,24 +359,16 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 
 		// If something else gets added here, make sure to update the size hint
 		// below when we make `tagsWithDir`.
-		tags := []tag.Mutator{tag.Upsert(scopeTag, scopeName), tag.Upsert(resourceTag, resource)}
-
 		if evt.DeltaIn != 0 {
-			tagsWithDir := make([]tag.Mutator, 0, 3)
-			tagsWithDir = append(tagsWithDir, tag.Insert(directionTag, "inbound"))
-			tagsWithDir = append(tagsWithDir, tags...)
-			stats.RecordWithTags(ctx, tagsWithDir[0:], blockedResources.M(int64(1)))
+			r.record(ctx, tags{scope: scopeName, resource: resource, direction: dirInbound}, blockedResources.M(int64(1)))
 		}
 
 		if evt.DeltaOut != 0 {
-			tagsWithDir := make([]tag.Mutator, 0, 3)
-			tagsWithDir = append(tagsWithDir, tag.Insert(directionTag, "outbound"))
-			tagsWithDir = append(tagsWithDir, tags...)
-			stats.RecordWithTags(ctx, tagsWithDir, blockedResources.M(int64(1)))
+			r.record(ctx, tags{scope: scopeName, resource: resource, direction: dirOutbound}, blockedResources.M(int64(1)))
 		}
 
 		if evt.Delta != 0 {
-			stats.RecordWithTags(ctx, tags, blockedResources.M(1))
+			r.record(ctx, tags{scope: scopeName, resource: resource}, blockedResources.M(1))
 		}
 	}
 }

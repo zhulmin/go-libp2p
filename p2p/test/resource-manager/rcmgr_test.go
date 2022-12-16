@@ -17,9 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeRcmgrOption(t *testing.T, cfg rcmgr.LimitConfig) func(int) libp2p.Option {
+type rcmgrOptionT interface {
+	require.TestingT
+	Name() string
+}
+
+func makeRcmgrOption(t rcmgrOptionT, cfg rcmgr.LimitConfig, opts ...rcmgr.Option) func(int) libp2p.Option {
 	return func(i int) libp2p.Option {
-		var opts []rcmgr.Option
 		if os.Getenv("LIBP2P_TEST_RCMGR_TRACE") == "1" {
 			opts = append(opts, rcmgr.WithTrace(fmt.Sprintf("%s-%d.json.gz", t.Name(), i)))
 		}
