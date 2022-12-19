@@ -259,69 +259,61 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 
 }
 
-func TestTransportWebRTC_StreamSetReadDeadline(t *testing.T) {
+func TestTransportWebRTC_Deadline(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
 	listener, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
-
 	tr1, connectingPeer := getTransport(t)
 
-	go func() {
-		lconn, err := listener.Accept()
-		require.NoError(t, err)
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		_, err = lconn.AcceptStream()
-		require.NoError(t, err)
-	}()
+	t.Run("SetReadDeadline", func(t *testing.T) {
+		go func() {
+			lconn, err := listener.Accept()
+			require.NoError(t, err)
+			require.Equal(t, connectingPeer, lconn.RemotePeer())
+			_, err = lconn.AcceptStream()
+			require.NoError(t, err)
+		}()
 
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-	require.NoError(t, err)
-	stream, err := conn.OpenStream(context.Background())
-	require.NoError(t, err)
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+		require.NoError(t, err)
+		stream, err := conn.OpenStream(context.Background())
+		require.NoError(t, err)
 
-	// deadline set to the past
-	timer := time.AfterFunc(150*time.Millisecond, func() {
-		stream.SetReadDeadline(time.Now().Add(-200 * time.Millisecond))
+		// deadline set to the past
+		timer := time.AfterFunc(150*time.Millisecond, func() {
+			stream.SetReadDeadline(time.Now().Add(-200 * time.Millisecond))
+		})
+		defer timer.Stop()
+		_, err = stream.Read([]byte{0, 0})
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+
+		// future deadline exceeded
+		stream.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, err = stream.Read([]byte{0, 0})
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 	})
-	defer timer.Stop()
-	_, err = stream.Read([]byte{0, 0})
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
-	// future deadline exceeded
-	stream.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-	_, err = stream.Read([]byte{0, 0})
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	t.Run("SetWriteDeadline", func(t *testing.T) {
+		go func() {
+			lconn, err := listener.Accept()
+			require.NoError(t, err)
+			require.Equal(t, connectingPeer, lconn.RemotePeer())
+			_, err = lconn.AcceptStream()
+			require.NoError(t, err)
+		}()
 
-}
-
-func TestTransportWebRTC_StreamSetWriteDeadline(t *testing.T) {
-	tr, listeningPeer := getTransport(t)
-	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
-	require.NoError(t, err)
-	listener, err := tr.Listen(listenMultiaddr)
-	require.NoError(t, err)
-
-	tr1, connectingPeer := getTransport(t)
-
-	go func() {
-		lconn, err := listener.Accept()
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		_, err = lconn.AcceptStream()
+		stream, err := conn.OpenStream(context.Background())
 		require.NoError(t, err)
-	}()
 
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-	require.NoError(t, err)
-	stream, err := conn.OpenStream(context.Background())
-	require.NoError(t, err)
-
-	stream.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
-	largeBuffer := make([]byte, 2*1024*1024)
-	_, err = stream.Write(largeBuffer)
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		stream.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
+		largeBuffer := make([]byte, 2*1024*1024)
+		_, err = stream.Write(largeBuffer)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	})
 }
 
 func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
@@ -366,7 +358,7 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 
 }
 
-func TestTransportWebRTC_ReadPartialMessage(t *testing.T) {
+func TestTransportWebRTC_Read(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -375,98 +367,117 @@ func TestTransportWebRTC_ReadPartialMessage(t *testing.T) {
 
 	tr1, connectingPeer := getTransport(t)
 
-	go func() {
-		lconn, err := listener.Accept()
+	t.Run("read partial message", func(t *testing.T) {
+		go func() {
+			lconn, err := listener.Accept()
+			require.NoError(t, err)
+			require.Equal(t, connectingPeer, lconn.RemotePeer())
+			stream, err := lconn.AcceptStream()
+			require.NoError(t, err)
+			_, err = stream.Write(make([]byte, 2*1024*1024))
+			require.NoError(t, err)
+		}()
+
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		stream, err := lconn.AcceptStream()
+		stream, err := conn.OpenStream(context.Background())
 		require.NoError(t, err)
-		_, err = stream.Write(make([]byte, 2*1024*1024))
+
+		buf := make([]byte, 10)
+		stream.SetReadDeadline(time.Now().Add(10 * time.Second))
+		n, err := stream.Read(buf)
 		require.NoError(t, err)
-	}()
-
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-	require.NoError(t, err)
-	stream, err := conn.OpenStream(context.Background())
-	require.NoError(t, err)
-
-	buf := make([]byte, 10)
-	stream.SetReadDeadline(time.Now().Add(10 * time.Second))
-	n, err := stream.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t, n, 10)
-
-}
-
-func TestTransportWebRTC_ReadZeroBytes(t *testing.T) {
-	tr, listeningPeer := getTransport(t)
-	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
-	require.NoError(t, err)
-	listener, err := tr.Listen(listenMultiaddr)
-	require.NoError(t, err)
-
-	tr1, connectingPeer := getTransport(t)
-
-	go func() {
-		lconn, err := listener.Accept()
-		require.NoError(t, err)
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		stream, err := lconn.AcceptStream()
-		require.NoError(t, err)
-		_, err = stream.Write(make([]byte, 2*1024*1024))
-		require.NoError(t, err)
-	}()
-
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-	require.NoError(t, err)
-	stream, err := conn.OpenStream(context.Background())
-	require.NoError(t, err)
-
-	stream.SetReadDeadline(time.Now().Add(10 * time.Second))
-	n, err := stream.Read([]byte{})
-	require.NoError(t, err)
-	require.Equal(t, n, 0)
-}
-
-func TestTransportWebRTC_StreamCanCloseWhenReadActive(t *testing.T) {
-	tr, listeningPeer := getTransport(t)
-	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
-	require.NoError(t, err)
-	listener, err := tr.Listen(listenMultiaddr)
-	require.NoError(t, err)
-
-	tr1, connectingPeer := getTransport(t)
-	done := make(chan struct{})
-
-	go func() {
-		lconn, err := listener.Accept()
-		require.NoError(t, err)
-		t.Logf("listener accepted connection")
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		done <- struct{}{}
-	}()
-
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-	require.NoError(t, err)
-	t.Logf("dialer opened connection")
-	stream, err := conn.OpenStream(context.Background())
-	require.NoError(t, err)
-
-	time.AfterFunc(100*time.Millisecond, func() {
-		err := stream.Close()
-		require.NoError(t, err)
+		require.Equal(t, n, 10)
 	})
 
-	_, err = stream.Read(make([]byte, 19))
-	require.ErrorIs(t, err, io.EOF)
-	// This is temporary. This should be io.EOF
-	// require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	t.Run("read zero bytes", func(t *testing.T) {
+		go func() {
+			lconn, err := listener.Accept()
+			require.NoError(t, err)
+			require.Equal(t, connectingPeer, lconn.RemotePeer())
+			stream, err := lconn.AcceptStream()
+			require.NoError(t, err)
+			_, err = stream.Write(make([]byte, 2*1024*1024))
+			require.NoError(t, err)
+		}()
 
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("timed out")
-	}
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+		require.NoError(t, err)
+		stream, err := conn.OpenStream(context.Background())
+		require.NoError(t, err)
+
+		stream.SetReadDeadline(time.Now().Add(10 * time.Second))
+		n, err := stream.Read([]byte{})
+		require.NoError(t, err)
+		require.Equal(t, n, 0)
+
+	})
+}
+
+func TestTransportWebRTC_Close(t *testing.T) {
+	tr, listeningPeer := getTransport(t)
+	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
+	require.NoError(t, err)
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+
+	tr1, connectingPeer := getTransport(t)
+
+	t.Run("StreamCanCloseWhenReadActive", func(t *testing.T) {
+		done := make(chan struct{})
+
+		go func() {
+			lconn, err := listener.Accept()
+			require.NoError(t, err)
+			t.Logf("listener accepted connection")
+			require.Equal(t, connectingPeer, lconn.RemotePeer())
+			done <- struct{}{}
+		}()
+
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+		require.NoError(t, err)
+		t.Logf("dialer opened connection")
+		stream, err := conn.OpenStream(context.Background())
+		require.NoError(t, err)
+
+		time.AfterFunc(100*time.Millisecond, func() {
+			err := stream.Close()
+			require.NoError(t, err)
+		})
+
+		_, err = stream.Read(make([]byte, 19))
+		require.ErrorIs(t, err, io.EOF)
+
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out")
+		}
+	})
+
+	t.Run("RemoteClosesStream", func(t *testing.T) {
+		go func() {
+			lconn, err := listener.Accept()
+			require.NoError(t, err)
+			require.Equal(t, connectingPeer, lconn.RemotePeer())
+			stream, err := lconn.AcceptStream()
+			time.Sleep(100 * time.Millisecond)
+			_ = stream.Close()
+
+		}()
+
+		buf := make([]byte, 2)
+
+		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
+		require.NoError(t, err)
+		stream, err := conn.OpenStream(context.Background())
+		require.NoError(t, err)
+
+		err = stream.SetReadDeadline(time.Now().Add(2 * time.Second))
+		require.NoError(t, err)
+		_, err = stream.Read(buf)
+		require.ErrorIs(t, err, io.EOF)
+	})
 }
 
 func TestTransportWebRTC_ReceiveFlagsAfterReadClosed(t *testing.T) {
