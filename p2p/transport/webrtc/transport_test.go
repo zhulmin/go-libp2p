@@ -461,6 +461,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, connectingPeer, lconn.RemotePeer())
 			stream, err := lconn.AcceptStream()
+			require.NoError(t, err)
 			time.Sleep(100 * time.Millisecond)
 			_ = stream.Close()
 
