@@ -31,8 +31,7 @@ https://github.com/libp2p/go-libp2p/issues/1806
     - [3. WebTransport: Update to new draft versions](#3-webtransport-update-to-new-draft-versions)
   - [B. ⚡️ Handshakes at the Speed of Light](#b-️-handshakes-at-the-speed-of-light)
     - [1. Early Muxer Negotiation](#1-early-muxer-negotiation)
-    - [2. Adding security protocol](#2-adding-security-protocol)
-    - [3. 0.5 RTT data optimization](#3-05-rtt-data-optimization)
+    - [2. 0.5 RTT data optimization](#2-05-rtt-data-optimization-(for-QUIC))
   - [C. 🧠 Smart Dialing](#c--smart-dialing)
     - [1. Happy Eyeballs](#1-happy-eyeballs)
     - [2. QUIC Blackhole detector](#2-quic-blackhole-detector)
@@ -97,16 +96,15 @@ These projects are parallel workstreams, weighed equally with roadmap items in t
 ### 2023
 
 #### Early Q1 (January)
-- [B.2 ⚡ Adding security protocol](#2-adding-security-protocol)
 - [C.2 🧠 QUIC Blackhole detector](#2-quic-blackhole-detector)
 
 #### Mid Q1 (February)
+- [B.2 ⚡ 0.5 RTT data optimization (for QUIC)](#3-05-rtt-data-optimization)
+  -  🎉 Estimated Project Completion
 - [C.3 🧠 RTT estimation](#3-rtt-estimation)
   - 🎉 Estimated Project Completion
 
 #### End of Q1 (March)
-- [B.3 ⚡ 0.5 RTT data optimization (for QUIC)](#3-05-rtt-data-optimization)
-  -  🎉 Estimated Project Completion
 - [***➡️ test-plans/Benchmarking using remote runners***](https://github.com/libp2p/test-plans/blob/master/ROADMAP.md#2-benchmarking-using-remote-runners)
 
 ### Up Next
@@ -140,10 +138,8 @@ As the protocol is still under development by IETF and W3C, the go-libp2p implem
 
 #### 1. [Early Muxer Negotiation](https://github.com/libp2p/specs/issues/426)
 Cutting off the 1 RTT wasted on muxer negotiation
-#### 2. [Adding security protocol](https://github.com/libp2p/specs/pull/353)
-Cutting off the 1 RTT wasted on security protocol negotiation by including the security protocol in the multiaddr
-#### 3. 0.5 RTT data optimization
-Using 0.5-RTT data (for TLS) / a Noise Extension to ship the list of Identify protocols, cutting of 1 RTT that many protocols spend waiting on `IdentifyWait`
+#### 2. 0.5 RTT data optimization (for QUIC)
+Using 0.5-RTT data (for QUIC) to ship the list of Identify protocols, cutting of 1 RTT that many protocols spend waiting on `IdentifyWait`
 
 ### [C. 🧠 Smart Dialing](https://github.com/libp2p/go-libp2p/issues/1808)
 
