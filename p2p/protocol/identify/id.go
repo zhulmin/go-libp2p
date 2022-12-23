@@ -42,12 +42,13 @@ const maxPushConcurrency = 32
 // StreamReadTimeout is the read timeout on all incoming Identify family streams.
 var StreamReadTimeout = 60 * time.Second
 
-var (
-	legacyIDSize     = 2 * 1024 // 2k Bytes
-	signedIDSize     = 8 * 1024 // 8K
-	maxMessages      = 10
-	defaultUserAgent = "github.com/libp2p/go-libp2p"
+const (
+	legacyIDSize = 2 * 1024 // 2k Bytes
+	signedIDSize = 8 * 1024 // 8K
+	maxMessages  = 10
 )
+
+var defaultUserAgent = "github.com/libp2p/go-libp2p"
 
 type addPeerHandlerReq struct {
 	rp   peer.ID
