@@ -181,6 +181,28 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 		s.rcmgr = &network.NullResourceManager{}
 	}
 
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.conns.Lock()
+				numPeers := len(s.conns.m)
+				var numDups int
+				for _, conns := range s.conns.m {
+					if len(conns) > 1 {
+						numDups++
+					}
+				}
+				s.conns.Unlock()
+				log.Infow("swarm conn stats", "num peers", numPeers, "num duplicates", numDups)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	s.dsync = newDialSync(s.dialWorkerLoop)
 	s.limiter = newDialLimiter(s.dialAddr)
 	s.backf.init(s.ctx)
