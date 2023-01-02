@@ -60,8 +60,9 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) doClose() {
-	recordConnectionClosed(c.stat.Direction, c.ConnState())
-	recordConnectionDuration(c.stat.Direction, time.Since(c.stat.Stats.Opened), c.ConnState())
+	if c.swarm.metricsTracer != nil {
+		c.swarm.metricsTracer.ClosedConnection(c.stat.Direction, time.Since(c.stat.Stats.Opened), c.ConnState())
+	}
 
 	c.swarm.removeConn(c)
 

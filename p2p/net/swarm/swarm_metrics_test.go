@@ -20,12 +20,13 @@ func BenchmarkMetricsConnOpen(b *testing.B) {
 	}
 	_, pub, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(b, err)
+	tr := NewMetricsTracer()
 	for i := 0; i < b.N; i++ {
 		switch i % 2 {
 		case 0:
-			recordConnectionOpened(network.DirInbound, pub, quicConnState)
+			tr.OpenedConnection(network.DirInbound, pub, quicConnState)
 		case 1:
-			recordConnectionOpened(network.DirInbound, pub, tcpConnState)
+			tr.OpenedConnection(network.DirInbound, pub, tcpConnState)
 		}
 	}
 }

@@ -493,12 +493,17 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	start := time.Now()
 	connC, err := tpt.Dial(ctx, addr, p)
 	if err != nil {
-		recordDialFailed(addr, err)
+		if s.metricsTracer != nil {
+			s.metricsTracer.FailedDialing(addr, err)
+		}
 		return nil, err
 	}
 	canonicallog.LogPeerStatus(100, connC.RemotePeer(), connC.RemoteMultiaddr(), "connection_status", "established", "dir", "outbound")
-	recordConnectionOpened(network.DirOutbound, connC.RemotePublicKey(), connC.ConnState())
-	recordHandshakeLatency(time.Since(start), connC.ConnState())
+	if s.metricsTracer != nil {
+		connState := connC.ConnState()
+		s.metricsTracer.OpenedConnection(network.DirOutbound, connC.RemotePublicKey(), connState)
+		s.metricsTracer.CompletedHandshake(time.Since(start), connState)
+	}
 
 	// Trust the transport? Yeah... right.
 	if connC.RemotePeer() != p {
