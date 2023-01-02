@@ -3,7 +3,6 @@ package swarm
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -66,8 +65,26 @@ var (
 	)
 )
 
-func init() {
+var initMetricsOnce sync.Once
+
+func initMetrics() {
 	prometheus.MustRegister(connsOpened, keyTypes, connsClosed, dialError, connDuration, connHandshakeLatency)
+}
+
+type MetricsTracer interface {
+	OpenedConnection(network.Direction, crypto.PubKey, network.ConnectionState)
+	ClosedConnection(network.Direction, time.Duration, network.ConnectionState)
+	CompletedHandshake(time.Duration, network.ConnectionState)
+	FailedDialing(ma.Multiaddr, error)
+}
+
+type metricsTracer struct{}
+
+var _ MetricsTracer = &metricsTracer{}
+
+func NewMetricsTracer() *metricsTracer {
+	initMetricsOnce.Do(initMetrics)
+	return &metricsTracer{}
 }
 
 var stringPool = sync.Pool{New: func() any {
@@ -110,7 +127,7 @@ func appendConnectionState(tags []string, cs network.ConnectionState) []string {
 	return tags
 }
 
-func recordConnectionOpened(dir network.Direction, p crypto.PubKey, cs network.ConnectionState) {
+func (m *metricsTracer) OpenedConnection(dir network.Direction, p crypto.PubKey, cs network.ConnectionState) {
 	tags := getStringSlice()
 	defer putStringSlice(tags)
 
@@ -124,37 +141,27 @@ func recordConnectionOpened(dir network.Direction, p crypto.PubKey, cs network.C
 	keyTypes.WithLabelValues(*tags...).Inc()
 }
 
-func recordConnectionClosed(dir network.Direction, cs network.ConnectionState) {
+func (m *metricsTracer) ClosedConnection(dir network.Direction, duration time.Duration, cs network.ConnectionState) {
 	tags := getStringSlice()
 	defer putStringSlice(tags)
 	*tags = append(*tags, getDirection(dir))
 	*tags = appendConnectionState(*tags, cs)
 	connsClosed.WithLabelValues(*tags...).Inc()
-}
 
-func recordConnectionDuration(dir network.Direction, t time.Duration, cs network.ConnectionState) {
-	tags := getStringSlice()
-	defer putStringSlice(tags)
+	*tags = (*tags)[:0]
 	*tags = append(*tags, getDirection(dir))
 	*tags = appendConnectionState(*tags, cs)
-	connDuration.WithLabelValues(*tags...).Observe(t.Seconds())
+	connDuration.WithLabelValues(*tags...).Observe(duration.Seconds())
 }
 
-func recordHandshakeLatency(t time.Duration, cs network.ConnectionState) {
+func (m *metricsTracer) CompletedHandshake(t time.Duration, cs network.ConnectionState) {
 	tags := getStringSlice()
 	defer putStringSlice(tags)
 	*tags = appendConnectionState(*tags, cs)
 	connHandshakeLatency.WithLabelValues(*tags...).Observe(t.Seconds())
 }
 
-func recordDialFailed(addr ma.Multiaddr, err error) {
-	var transport string
-	for _, p := range transports {
-		if _, err := addr.ValueForProtocol(p); err == nil {
-			transport = ma.ProtocolWithCode(p).Name
-			break
-		}
-	}
+func (m *metricsTracer) FailedDialing(_ ma.Multiaddr, err error) {
 	e := "other"
 	if errors.Is(err, context.Canceled) {
 		e = "canceled"
@@ -167,9 +174,6 @@ func recordDialFailed(addr ma.Multiaddr, err error) {
 		} else if strings.Contains(err.Error(), "connect: connection refused") {
 			e = "connection refused"
 		}
-	}
-	if e == "other" {
-		fmt.Printf("transport: %s, category: %s (orig: %s)\n", transport, e, err)
 	}
 	dialError.WithLabelValues(e).Inc()
 }
