@@ -189,6 +189,31 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 		s.rcmgr = &network.NullResourceManager{}
 	}
 
+	if s.metricsTracer != nil {
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			for range ticker.C {
+				s.conns.RLock()
+				var numIncoming, numOutgoing int
+				for _, l := range s.conns.m {
+					for _, c := range l {
+						switch c.Stat().Direction {
+						case network.DirInbound:
+							numIncoming++
+						case network.DirOutbound:
+							numOutgoing++
+						default:
+							fmt.Printf("%#v\n", c)
+							panic("no direction")
+						}
+					}
+				}
+				s.conns.RUnlock()
+				fmt.Printf("swarm stats: incoming: %d, outgoing: %d\n", numIncoming, numOutgoing)
+			}
+		}()
+	}
+
 	s.dsync = newDialSync(s.dialWorkerLoop)
 	s.limiter = newDialLimiter(s.dialAddr)
 	s.backf.init(s.ctx)
