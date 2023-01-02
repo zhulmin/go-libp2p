@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -69,6 +70,19 @@ func init() {
 	prometheus.MustRegister(connsOpened, keyTypes, connsClosed, dialError, connDuration, connHandshakeLatency)
 }
 
+var stringPool = sync.Pool{New: func() any {
+	s := make([]string, 0, 8)
+	return &s
+}}
+
+func getStringSlice() *[]string {
+	s := stringPool.Get().(*[]string)
+	*s = (*s)[:0]
+	return s
+}
+
+func putStringSlice(s *[]string) { stringPool.Put(s) }
+
 var transports = [...]int{ma.P_CIRCUIT, ma.P_WEBRTC, ma.P_WEBTRANSPORT, ma.P_QUIC, ma.P_QUIC_V1, ma.P_WSS, ma.P_WS, ma.P_TCP}
 
 func getDirection(dir network.Direction) string {
@@ -97,31 +111,40 @@ func appendConnectionState(tags []string, cs network.ConnectionState) []string {
 }
 
 func recordConnectionOpened(dir network.Direction, p crypto.PubKey, cs network.ConnectionState) {
-	tags := make([]string, 0, 4)
-	tags = append(tags, getDirection(dir))
-	tags = appendConnectionState(tags, cs)
-	connsOpened.WithLabelValues(tags...).Inc()
-	keyTypes.WithLabelValues(getDirection(dir), p.Type().String()).Inc()
+	tags := getStringSlice()
+	defer putStringSlice(tags)
+
+	*tags = append(*tags, getDirection(dir))
+	*tags = appendConnectionState(*tags, cs)
+	connsOpened.WithLabelValues(*tags...).Inc()
+
+	*tags = (*tags)[:0]
+	*tags = append(*tags, getDirection(dir))
+	*tags = append(*tags, p.Type().String())
+	keyTypes.WithLabelValues(*tags...).Inc()
 }
 
 func recordConnectionClosed(dir network.Direction, cs network.ConnectionState) {
-	tags := make([]string, 0, 4)
-	tags = append(tags, getDirection(dir))
-	tags = appendConnectionState(tags, cs)
-	connsClosed.WithLabelValues(tags...).Inc()
+	tags := getStringSlice()
+	defer putStringSlice(tags)
+	*tags = append(*tags, getDirection(dir))
+	*tags = appendConnectionState(*tags, cs)
+	connsClosed.WithLabelValues(*tags...).Inc()
 }
 
 func recordConnectionDuration(dir network.Direction, t time.Duration, cs network.ConnectionState) {
-	tags := make([]string, 0, 4)
-	tags = append(tags, getDirection(dir))
-	tags = appendConnectionState(tags, cs)
-	connDuration.WithLabelValues(tags...).Observe(t.Seconds())
+	tags := getStringSlice()
+	defer putStringSlice(tags)
+	*tags = append(*tags, getDirection(dir))
+	*tags = appendConnectionState(*tags, cs)
+	connDuration.WithLabelValues(*tags...).Observe(t.Seconds())
 }
 
 func recordHandshakeLatency(t time.Duration, cs network.ConnectionState) {
-	tags := make([]string, 0, 3)
-	tags = appendConnectionState(tags, cs)
-	connHandshakeLatency.WithLabelValues(tags...).Observe(t.Seconds())
+	tags := getStringSlice()
+	defer putStringSlice(tags)
+	*tags = appendConnectionState(*tags, cs)
+	connHandshakeLatency.WithLabelValues(*tags...).Observe(t.Seconds())
 }
 
 func recordDialFailed(addr ma.Multiaddr, err error) {
