@@ -132,6 +132,7 @@ func (ph *peerHandler) sendDelta(ctx context.Context) error {
 		_ = ds.Reset()
 		return fmt.Errorf("failed to send delta message, %w", err)
 	}
+	recordDelta(network.DirOutbound, mes.Size())
 	log.Debugw("sent identify update", "protocol", ds.Protocol(), "peer", c.RemotePeer(),
 		"peer address", c.RemoteMultiaddr())
 
@@ -153,7 +154,7 @@ func (ph *peerHandler) sendPush(ctx context.Context) error {
 	ph.snapshotMu.Lock()
 	ph.snapshot = snapshot
 	ph.snapshotMu.Unlock()
-	if err := ph.ids.writeChunkedIdentifyMsg(dp.Conn(), snapshot, dp); err != nil {
+	if err := ph.ids.writeChunkedIdentifyMsg(dp.Conn(), snapshot, dp, true); err != nil {
 		_ = dp.Reset()
 		return fmt.Errorf("failed to send push message: %w", err)
 	}

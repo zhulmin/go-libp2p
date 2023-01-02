@@ -371,7 +371,7 @@ func (ids *idService) identifyConn(c network.Conn) error {
 		return err
 	}
 
-	return ids.handleIdentifyResponse(s)
+	return ids.handleIdentifyResponse(s, false)
 }
 
 func (ids *idService) sendIdentifyResp(s network.Stream) {
@@ -408,11 +408,11 @@ func (ids *idService) sendIdentifyResp(s network.Stream) {
 	ph.snapshotMu.RLock()
 	snapshot := ph.snapshot
 	ph.snapshotMu.RUnlock()
-	ids.writeChunkedIdentifyMsg(c, snapshot, s)
+	ids.writeChunkedIdentifyMsg(c, snapshot, s, false)
 	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
 }
 
-func (ids *idService) handleIdentifyResponse(s network.Stream) error {
+func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) error {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Warnf("error attaching stream to identify service: %s", err)
 		s.Reset()
@@ -443,6 +443,11 @@ func (ids *idService) handleIdentifyResponse(s network.Stream) error {
 
 	log.Debugf("%s received message from %s %s", s.Protocol(), c.RemotePeer(), c.RemoteMultiaddr())
 
+	if isPush {
+		recordPush(network.DirInbound, mes.Size())
+	} else {
+		recordIdentify(network.DirInbound, mes.Size())
+	}
 	ids.consumeMessage(mes, c)
 
 	return nil
@@ -476,13 +481,18 @@ func (ids *idService) getSnapshot() *identifySnapshot {
 	return snapshot
 }
 
-func (ids *idService) writeChunkedIdentifyMsg(c network.Conn, snapshot *identifySnapshot, s network.Stream) error {
+func (ids *idService) writeChunkedIdentifyMsg(c network.Conn, snapshot *identifySnapshot, s network.Stream, isPush bool) error {
 	mes := ids.createBaseIdentifyResponse(c, snapshot)
 	sr := ids.getSignedRecord(snapshot)
 	mes.SignedPeerRecord = sr
 	writer := protoio.NewDelimitedWriter(s)
 
 	if sr == nil || proto.Size(mes) <= legacyIDSize {
+		if isPush {
+			recordPush(network.DirOutbound, mes.Size())
+		} else {
+			recordIdentify(network.DirOutbound, mes.Size())
+		}
 		return writer.WriteMsg(mes)
 	}
 	mes.SignedPeerRecord = nil
@@ -493,6 +503,11 @@ func (ids *idService) writeChunkedIdentifyMsg(c network.Conn, snapshot *identify
 	// then write just the signed record
 	m := &pb.Identify{SignedPeerRecord: sr}
 	err := writer.WriteMsg(m)
+	if isPush {
+		recordPush(network.DirOutbound, m.Size()+mes.Size())
+	} else {
+		recordIdentify(network.DirOutbound, m.Size()+mes.Size())
+	}
 	return err
 }
 
