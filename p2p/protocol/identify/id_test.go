@@ -2,12 +2,17 @@ package identify_test
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	mrand "math/rand"
 	"reflect"
 	"sort"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gogo/protobuf/proto"
+	// "google.golang.org/protobuf/proto"
 
 	"github.com/libp2p/go-libp2p"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -35,6 +40,64 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func randomString(l int) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	s := make([]byte, 0, l)
+	for i := 0; i < l; i++ {
+		s = append(s, alphabet[mrand.Intn(len(alphabet))])
+	}
+	return string(s)
+}
+
+func getRandomIdentifyProtobuf(b *testing.B) *pb.Identify {
+	v := identify.DefaultProtocolVersion
+	agent := "007"
+	_, pub, err := ic.GenerateEd25519Key(rand.Reader)
+	require.NoError(b, err)
+	pubRaw, err := pub.Raw()
+	require.NoError(b, err)
+	var listenAddrs [][]byte
+	for i := 0; i < 8; i++ {
+		listenAddrs = append(listenAddrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", 1234+i)).Bytes())
+	}
+	var protocols []string
+	for i := 0; i < 20; i++ {
+		protocols = append(protocols, randomString(15+mrand.Intn(15)))
+	}
+	signedPeerRecord := make([]byte, 200)
+	rand.Read(signedPeerRecord)
+	return &pb.Identify{
+		ProtocolVersion:  &v,
+		AgentVersion:     &agent,
+		PublicKey:        pubRaw,
+		ListenAddrs:      listenAddrs,
+		ObservedAddr:     ma.StringCast("/ip4/127.0.0.1/tcp/1234").Bytes(),
+		Protocols:        protocols,
+		SignedPeerRecord: signedPeerRecord,
+	}
+}
+
+func BenchmarkIdentifyProtobufMarshal(b *testing.B) {
+	id := getRandomIdentifyProtobuf(b)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := proto.Marshal(id)
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkIdentifyProtobufUnmarshal(b *testing.B) {
+	id := getRandomIdentifyProtobuf(b)
+	data, err := proto.Marshal(id)
+	require.NoError(b, err)
+	b.ResetTimer()
+
+	var mes pb.Identify
+	for i := 0; i < b.N; i++ {
+		require.NoError(b, proto.Unmarshal(data, &mes))
+	}
+}
 
 func init() {
 	logging.SetLogLevel("net/identify", "debug")
