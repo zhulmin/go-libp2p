@@ -411,18 +411,6 @@ func (mr *MockPeerstoreMockRecorder) SetProtocols(arg0 interface{}, arg1 ...inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProtocols", reflect.TypeOf((*MockPeerstore)(nil).SetProtocols), varargs...)
 }
 
-// Start mocks base method.
-func (m *MockPeerstore) Start() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Start")
-}
-
-// Start indicates an expected call of Start.
-func (mr *MockPeerstoreMockRecorder) Start() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockPeerstore)(nil).Start))
-}
-
 // SupportsProtocols mocks base method.
 func (m *MockPeerstore) SupportsProtocols(arg0 peer.ID, arg1 ...string) ([]string, error) {
 	m.ctrl.T.Helper()
