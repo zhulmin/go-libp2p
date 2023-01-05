@@ -9,7 +9,6 @@ require (
 	github.com/flynn/noise v1.0.0
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.19
-	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru/v2 v2.0.1
 	github.com/ipfs/go-cid v0.3.2
 	github.com/ipfs/go-datastore v0.6.0
@@ -56,6 +55,7 @@ require (
 	golang.org/x/sys v0.3.0
 	golang.org/x/tools v0.3.0
 	google.golang.org/protobuf v1.28.1
+	nhooyr.io/websocket v1.8.7
 )
 
 require (
