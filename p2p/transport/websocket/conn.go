@@ -7,10 +7,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 )
 
+const maxReadAttempts = 5
+
 type conn struct {
 	net.Conn
-	localAddr  addrWrapper
-	remoteAddr addrWrapper
+	readAttempts uint8
+	localAddr    addrWrapper
+	remoteAddr   addrWrapper
 }
 
 var _ net.Conn = (conn)(conn{})
@@ -25,7 +28,8 @@ func (c conn) RemoteAddr() net.Addr {
 
 func (c conn) Read(b []byte) (int, error) {
 	n, err := c.Conn.Read(b)
-	if err == nil && n == 0 {
+	if err == nil && n == 0 && c.readAttempts < maxReadAttempts {
+		c.readAttempts++
 		// Nothing happened, let's read again.
 		return c.Read(b)
 	}
