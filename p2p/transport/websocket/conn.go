@@ -16,7 +16,7 @@ type conn struct {
 	remoteAddr   addrWrapper
 }
 
-var _ net.Conn = (conn)(conn{})
+var _ net.Conn = conn{}
 
 func (c conn) LocalAddr() net.Addr {
 	return c.localAddr

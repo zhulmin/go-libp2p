@@ -15,7 +15,7 @@ type addrWrapper struct {
 	*url.URL
 }
 
-var _ net.Addr = (addrWrapper)(addrWrapper{})
+var _ net.Addr = addrWrapper{}
 
 // Network returns the network type for a WebSocket, "websocket".
 func (a addrWrapper) Network() string {
