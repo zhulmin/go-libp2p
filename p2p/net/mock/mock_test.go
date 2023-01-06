@@ -528,7 +528,7 @@ func TestLimitedStreams(t *testing.T) {
 	}
 
 	wg.Wait()
-	if !within(time.Since(before), time.Second*2, time.Second) {
+	if !within(time.Since(before), time.Second*5/2, time.Second) {
 		t.Fatal("Expected 2ish seconds but got ", time.Since(before))
 	}
 }

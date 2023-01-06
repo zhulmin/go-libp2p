@@ -367,6 +367,7 @@ func (h *BasicHost) updateLocalIpAddr() {
 func (h *BasicHost) Start() {
 	h.psManager.Start()
 	h.refCount.Add(1)
+	h.ids.Start()
 	go h.background()
 }
 

@@ -30,9 +30,13 @@ import (
 
 var log = logging.Logger("net/identify")
 
-// ID is the protocol.ID of version 1.0.0 of the identify
-// service.
-const ID = "/ipfs/id/1.0.0"
+const (
+	// ID is the protocol.ID of version 1.0.0 of the identify service.
+	ID = "/ipfs/id/1.0.0"
+	// IDPush is the protocol.ID of the Identify push protocol.
+	// It sends full identify messages containing the current state of the peer.
+	IDPush = "/ipfs/id/push/1.0.0"
+)
 
 const DefaultProtocolVersion = "ipfs/0.1.0"
 
@@ -51,13 +55,11 @@ const (
 
 var defaultUserAgent = "github.com/libp2p/go-libp2p"
 
-type addPeerHandlerReq struct {
-	rp   peer.ID
-	resp chan *peerHandler
-}
-
-type rmPeerHandlerReq struct {
-	p peer.ID
+type identifySnapshot struct {
+	timestamp time.Time
+	protocols []protocol.ID
+	addrs     []ma.Multiaddr
+	record    *record.Envelope
 }
 
 type IDService interface {
@@ -75,7 +77,28 @@ type IDService interface {
 	// ObservedAddrsFor returns the addresses peers have reported we've dialed from,
 	// for a specific local address.
 	ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr
+	Start()
 	io.Closer
+}
+
+type identifyPushSupport uint8
+
+const (
+	identifyPushSupportUnknown identifyPushSupport = iota
+	identifyPushSupported
+	identifyPushUnsupported
+)
+
+type entry struct {
+	// The IdentifyWaitChan is created when IdentifyWait is called for the first time.
+	// IdentifyWait closes this channel when the Identify request completes, or when it fails.
+	IdentifyWaitChan chan struct{}
+
+	// PushSupport saves our knowledge about the peer's support of the Identify Push protocol.
+	// Before the identify request returns, we don't know yet if the peer supports Identify Push.
+	PushSupport identifyPushSupport
+	// Timestamp is the time of the last snapshot we sent to this peer.
+	Timestamp time.Time
 }
 
 // idService is a structure that implements ProtocolIdentify.
@@ -83,8 +106,8 @@ type IDService interface {
 // useful information about the local peer. A sort of hello.
 //
 // The idService sends:
-//   - Our IPFS Protocol Version
-//   - Our IPFS Agent Version
+//   - Our libp2p Protocol Version
+//   - Our libp2p Agent Version
 //   - Our public Listen Addresses
 type idService struct {
 	Host            host.Host
@@ -98,9 +121,13 @@ type idService struct {
 
 	disableSignedPeerRecord bool
 
-	// Identified connections (finished and in progress).
 	connsMu sync.RWMutex
-	conns   map[network.Conn]chan struct{}
+	// The conns map contains all connections we're currently handling.
+	// Connections are inserted as soon as they're available in the swarm, and - crucially -
+	// before any stream can be opened or accepted on that connection.
+	// Connections are removed from the map when the connection disconnects.
+	// It is therefore safe to assume that a connection was (recently) closed if there's no entry in this map.
+	conns map[network.Conn]entry
 
 	addrMu sync.Mutex
 
@@ -118,11 +145,8 @@ type idService struct {
 		snapshot *identifySnapshot
 	}
 
-	addPeerHandlerCh chan addPeerHandlerReq
-	rmPeerHandlerCh  chan rmPeerHandlerReq
-
-	// pushSemaphore limits the push concurrency to avoid storms
-	// that clog the transient scope.
+	triggerPush chan struct{}
+	// pushSemaphore limits the push concurrency
 	pushSemaphore chan struct{}
 }
 
@@ -144,30 +168,24 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		protocolVersion = cfg.protocolVersion
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &idService{
-		Host:            h,
-		UserAgent:       userAgent,
-		ProtocolVersion: protocolVersion,
-
-		conns: make(map[network.Conn]chan struct{}),
-
+		Host:                    h,
+		UserAgent:               userAgent,
+		ProtocolVersion:         protocolVersion,
+		ctx:                     ctx,
+		ctxCancel:               cancel,
+		conns:                   make(map[network.Conn]entry),
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
-
-		addPeerHandlerCh: make(chan addPeerHandlerReq),
-		rmPeerHandlerCh:  make(chan rmPeerHandlerReq),
-
-		pushSemaphore: make(chan struct{}, maxPushConcurrency),
+		triggerPush:             make(chan struct{}, 1),
+		pushSemaphore:           make(chan struct{}, 1),
 	}
-	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 
 	observedAddrs, err := NewObservedAddrManager(h)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create observed address manager: %s", err)
 	}
 	s.observedAddrs = observedAddrs
-
-	s.refCount.Add(1)
-	go s.loop()
 
 	s.emitters.evtPeerProtocolsUpdated, err = h.EventBus().Emitter(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
@@ -183,19 +201,22 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 	}
 
 	// register protocols that do not depend on peer records.
-	h.SetStreamHandler(ID, s.sendIdentifyResp)
-	h.SetStreamHandler(IDPush, s.pushHandler)
-	// do this after adding the stream handlers, so that these protocols will be included
-	s.updateSnapshot()
+	h.SetStreamHandler(ID, s.handleIdentifyRequest)
+	h.SetStreamHandler(IDPush, s.handlePush)
 
-	h.Network().Notify((*netNotifiee)(s))
 	return s, nil
 }
 
-func (ids *idService) loop() {
+func (ids *idService) Start() {
+	ids.updateSnapshot()
+	ids.Host.Network().Notify((*netNotifiee)(ids))
+	ids.refCount.Add(1)
+	go ids.loop(ids.ctx)
+}
+
+func (ids *idService) loop(ctx context.Context) {
 	defer ids.refCount.Done()
 
-	phs := make(map[peer.ID]*peerHandler)
 	sub, err := ids.Host.EventBus().Subscribe(
 		[]any{&event.EvtLocalProtocolsUpdated{}, &event.EvtLocalAddressesUpdated{}},
 		eventbus.BufSize(256),
@@ -205,91 +226,88 @@ func (ids *idService) loop() {
 		log.Errorf("failed to subscribe to events on the bus, err=%s", err)
 		return
 	}
-
-	phClosedCh := make(chan peer.ID)
-
-	defer func() {
-		sub.Close()
-		// The context will cancel the workers. Now, wait for them to
-		// exit.
-		for range phs {
-			<-phClosedCh
-		}
-	}()
-
-	// Use a fresh context for the handlers. Otherwise, they'll get canceled
-	// before we're ready to shutdown and they'll have "stopped" without us
-	// _calling_ stop.
-	handlerCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	defer sub.Close()
 
 	for {
 		select {
-		case addReq := <-ids.addPeerHandlerCh:
-			rp := addReq.rp
-			ph, ok := phs[rp]
-			if !ok && ids.Host.Network().Connectedness(rp) == network.Connected {
-				ph = newPeerHandler(rp, ids)
-				ph.start(handlerCtx, func() { phClosedCh <- rp })
-				phs[rp] = ph
-			}
-			addReq.resp <- ph
-		case rmReq := <-ids.rmPeerHandlerCh:
-			rp := rmReq.p
-			if ids.Host.Network().Connectedness(rp) != network.Connected {
-				// before we remove the peerhandler, we should ensure that it will not send any
-				// more messages. Otherwise, we might create a new handler and the Identify response
-				// synchronized with the new handler might be overwritten by a message sent by this "old" handler.
-				ph, ok := phs[rp]
-				if !ok {
-					// move on, move on, there's nothing to see here.
-					continue
-				}
-				// This is idempotent if already stopped.
-				ph.stop()
-			}
-
-		case rp := <-phClosedCh:
-			ph := phs[rp]
-
-			// If we are connected to the peer, it means that we got a connection from the peer
-			// before we could finish removing it's handler on the previous disconnection.
-			// If we delete the handler, we wont be able to push updates to it
-			// till we see a new connection. So, we should restart the handler.
-			// The fact that we got the handler on this channel means that it's context and handler
-			// have completed because we write the handler to this chanel only after it closed.
-			if ids.Host.Network().Connectedness(rp) == network.Connected {
-				ph.start(handlerCtx, func() { phClosedCh <- rp })
-			} else {
-				delete(phs, rp)
-			}
-
+		case <-ids.triggerPush:
+			ids.refCount.Add(1)
+			go func() {
+				defer ids.refCount.Done()
+				ids.sendPushes(ctx)
+			}()
 		case e, more := <-sub.Out():
 			if !more {
 				return
 			}
 			ids.updateSnapshot()
 			switch e.(type) {
-			case event.EvtLocalAddressesUpdated:
-				for pid := range phs {
-					select {
-					case phs[pid].pushCh <- struct{}{}:
-					default:
-						log.Debugf("dropping addr updated message for %s as buffer full", pid)
-					}
-				}
-			case event.EvtLocalProtocolsUpdated:
-				for pid := range phs {
-					select {
-					case phs[pid].pushCh <- struct{}{}:
-					default:
-						log.Debugf("dropping protocol updated message for %s as buffer full", pid)
-					}
+			case event.EvtLocalAddressesUpdated, event.EvtLocalProtocolsUpdated:
+				// trigger a push
+				select {
+				case ids.triggerPush <- struct{}{}:
+				default: // another push is already queued
 				}
 			}
-		case <-ids.ctx.Done():
+		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+func (ids *idService) sendPushes(ctx context.Context) {
+	select {
+	case ids.pushSemaphore <- struct{}{}:
+	default:
+		// another sendPushes call is currently running
+		return
+	}
+	defer func() { <-ids.pushSemaphore }()
+
+	ids.connsMu.RLock()
+	conns := make([]network.Conn, 0, len(ids.conns))
+	for c, e := range ids.conns {
+		// Push even if we don't know if push is supported.
+		// This will be only the case while the IdentifyWaitChan call is in flight.
+		if e.PushSupport == identifyPushSupported || e.PushSupport == identifyPushSupportUnknown {
+			conns = append(conns, c)
+		}
+	}
+	ids.connsMu.RUnlock()
+
+	sem := make(chan struct{}, maxPushConcurrency)
+	for _, c := range conns {
+		// check if the connection is still alive
+		ids.connsMu.RLock()
+		e, ok := ids.conns[c]
+		ids.connsMu.RUnlock()
+		if !ok {
+			continue
+		}
+		// check if we already sent the current snapshot to this peer
+		ids.currentSnapshot.Lock()
+		snapshot := ids.currentSnapshot.snapshot
+		ids.currentSnapshot.Unlock()
+		if !e.Timestamp.Before(snapshot.timestamp) {
+			log.Debugw("already sent this snapshot to peer", "peer", c.RemotePeer(), "timestamp", snapshot.timestamp)
+			continue
+		}
+		// we haven't, send it now
+		sem <- struct{}{}
+		go func(c network.Conn) {
+			defer func() { <-sem }()
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			str, err := ids.Host.NewStream(ctx, c.RemotePeer(), IDPush)
+			if err != nil { // connection might have been closed recently
+				return
+			}
+			// TODO: find out if the peer supports push if we didn't have any information about push support
+			if err := ids.sendIdentifyResp(str); err != nil {
+				log.Debugw("failed to send identify push", "peer", c.RemotePeer(), "error", err)
+				return
+			}
+		}(c)
 	}
 }
 
@@ -309,58 +327,56 @@ func (ids *idService) ObservedAddrsFor(local ma.Multiaddr) []ma.Multiaddr {
 	return ids.observedAddrs.AddrsFor(local)
 }
 
+// IdentifyConn runs the Identify protocol on a connection.
+// It returns when we've received the peer's Identify message (or the request fails).
+// If successful, the peer store will contain the peer's addresses and supported protocols.
 func (ids *idService) IdentifyConn(c network.Conn) {
 	<-ids.IdentifyWait(c)
 }
 
+// IdentifyWait runs the Identify protocol on a connection.
+// It doesn't block and returns a channel that is closed when we receive
+// the peer's Identify message (or the request fails).
+// If successful, the peer store will contain the peer's addresses and supported protocols.
 func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
-	ids.connsMu.RLock()
-	wait, found := ids.conns[c]
-	ids.connsMu.RUnlock()
-
-	if found {
-		return wait
-	}
-
 	ids.connsMu.Lock()
 	defer ids.connsMu.Unlock()
 
-	wait, found = ids.conns[c]
-	if !found {
-		wait = make(chan struct{})
-		ids.conns[c] = wait
-
-		// Spawn an identify. The connection may actually be closed
-		// already, but that doesn't really matter. We'll fail to open a
-		// stream then forget the connection.
-		go func() {
-			defer close(wait)
-			if err := ids.identifyConn(c); err != nil {
-				log.Warnf("failed to identify %s: %s", c.RemotePeer(), err)
-				ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
-				return
-			}
-			ids.emitters.evtPeerIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: c.RemotePeer()})
-		}()
+	e, found := ids.conns[c]
+	if !found { // No entry found. Connection was most likely closed (and removed from this map) recently.
+		ch := make(chan struct{})
+		close(ch)
+		return ch
 	}
 
-	return wait
-}
+	if e.IdentifyWaitChan != nil {
+		return e.IdentifyWaitChan
+	}
+	// First call to IdentifyWait for this connection. Create the channel.
+	e.IdentifyWaitChan = make(chan struct{})
+	ids.conns[c] = e
 
-func (ids *idService) removeConn(c network.Conn) {
-	ids.connsMu.Lock()
-	delete(ids.conns, c)
-	ids.connsMu.Unlock()
+	// Spawn an identify. The connection may actually be closed
+	// already, but that doesn't really matter. We'll fail to open a
+	// stream then forget the connection.
+	go func() {
+		defer close(e.IdentifyWaitChan)
+		if err := ids.identifyConn(c); err != nil {
+			log.Warnf("failed to identify %s: %s", c.RemotePeer(), err)
+			ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
+			return
+		}
+
+		ids.emitters.evtPeerIdentificationCompleted.Emit(event.EvtPeerIdentificationCompleted{Peer: c.RemotePeer()})
+	}()
+
+	return e.IdentifyWaitChan
 }
 
 func (ids *idService) identifyConn(c network.Conn) error {
 	s, err := c.NewStream(network.WithUseTransient(context.TODO(), "identify"))
 	if err != nil {
-		log.Debugw("error opening identify stream", "error", err)
-
-		// We usually do this on disconnect, but we may have already
-		// processed the disconnect event.
-		ids.removeConn(c)
+		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return err
 	}
 
@@ -379,39 +395,27 @@ func (ids *idService) identifyConn(c network.Conn) error {
 	return ids.handleIdentifyResponse(s, false)
 }
 
-func (ids *idService) sendIdentifyResp(s network.Stream) {
-	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Warnf("error attaching stream to identify service: %s", err)
-		s.Reset()
-		return
-	}
+// handlePush handles incoming identify push streams
+func (ids *idService) handlePush(s network.Stream) {
+	ids.handleIdentifyResponse(s, true)
+}
 
+func (ids *idService) handleIdentifyRequest(s network.Stream) {
+	_ = ids.sendIdentifyResp(s)
+}
+
+func (ids *idService) sendIdentifyResp(s network.Stream) error {
+	if err := s.Scope().SetService(ServiceName); err != nil {
+		s.Reset()
+		return fmt.Errorf("failed to attaching stream to identify service: %w", err)
+	}
 	defer s.Close()
 
-	c := s.Conn()
-
-	phCh := make(chan *peerHandler, 1)
-	select {
-	case ids.addPeerHandlerCh <- addPeerHandlerReq{c.RemotePeer(), phCh}:
-	case <-ids.ctx.Done():
-		return
-	}
-
-	var ph *peerHandler
-	select {
-	case ph = <-phCh:
-	case <-ids.ctx.Done():
-		return
-	}
-
-	if ph == nil {
-		// Peer disconnected, abort.
-		s.Reset()
-		return
-	}
-
-	ids.writeChunkedIdentifyMsg(c, s)
-	log.Debugf("%s sent message to %s %s", ID, c.RemotePeer(), c.RemoteMultiaddr())
+	ids.currentSnapshot.Lock()
+	snapshot := ids.currentSnapshot.snapshot
+	ids.currentSnapshot.Unlock()
+	log.Debugf("%s sending message to %s %s", ID, s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
+	return ids.writeChunkedIdentifyMsg(s, snapshot)
 }
 
 func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) error {
@@ -447,6 +451,19 @@ func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) erro
 
 	ids.consumeMessage(mes, c, isPush)
 
+	ids.connsMu.Lock()
+	defer ids.connsMu.Unlock()
+	e, ok := ids.conns[c]
+	if !ok { // might already have disconnected
+		return nil
+	}
+	sup, err := ids.Host.Peerstore().SupportsProtocols(c.RemotePeer(), IDPush)
+	if supportsIdentifyPush := err == nil && len(sup) > 0; supportsIdentifyPush {
+		e.PushSupport = identifyPushSupported
+	} else {
+		e.PushSupport = identifyPushUnsupported
+	}
+	ids.conns[c] = e
 	return nil
 }
 
@@ -467,8 +484,8 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 }
 
 func (ids *idService) updateSnapshot() {
-	log.Debug("updating Identify snapshot")
 	snapshot := &identifySnapshot{
+		timestamp: time.Now(),
 		addrs:     ids.Host.Addrs(),
 		protocols: ids.Host.Mux().Protocols(),
 	}
@@ -483,10 +500,8 @@ func (ids *idService) updateSnapshot() {
 	ids.currentSnapshot.snapshot = snapshot
 }
 
-func (ids *idService) writeChunkedIdentifyMsg(c network.Conn, s network.Stream) error {
-	ids.currentSnapshot.Lock()
-	snapshot := ids.currentSnapshot.snapshot
-	ids.currentSnapshot.Unlock()
+func (ids *idService) writeChunkedIdentifyMsg(s network.Stream, snapshot *identifySnapshot) error {
+	c := s.Conn()
 	log.Debugw("sending snapshot with protocols", "protos", snapshot.protocols)
 
 	mes := ids.createBaseIdentifyResponse(c, snapshot)
@@ -506,10 +521,7 @@ func (ids *idService) writeChunkedIdentifyMsg(c network.Conn, s network.Stream) 
 	return writer.WriteMsg(&pb.Identify{SignedPeerRecord: sr})
 }
 
-func (ids *idService) createBaseIdentifyResponse(
-	conn network.Conn,
-	snapshot *identifySnapshot,
-) *pb.Identify {
+func (ids *idService) createBaseIdentifyResponse(conn network.Conn, snapshot *identifySnapshot) *pb.Identify {
 	mes := &pb.Identify{}
 
 	remoteAddr := conn.RemoteMultiaddr()
@@ -820,38 +832,38 @@ func signedPeerRecordFromMessage(msg *pb.Identify) (*record.Envelope, error) {
 	return env, err
 }
 
-// netNotifiee defines methods to be used with the IpfsDHT
+// netNotifiee defines methods to be used with the swarm
 type netNotifiee idService
 
 func (nn *netNotifiee) IDService() *idService {
 	return (*idService)(nn)
 }
 
-func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
-	nn.IDService().IdentifyWait(v)
+func (nn *netNotifiee) Connected(_ network.Network, c network.Conn) {
+	// We rely on this notification being received before we receive any incoming streams on the connection.
+	// The swarm implementation guarantees this.
+	ids := nn.IDService()
+	ids.connsMu.Lock()
+	ids.conns[c] = entry{}
+	ids.connsMu.Unlock()
+
+	nn.IDService().IdentifyWait(c)
 }
 
-func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
+func (nn *netNotifiee) Disconnected(_ network.Network, c network.Conn) {
 	ids := nn.IDService()
 
 	// Stop tracking the connection.
-	ids.removeConn(v)
+	ids.connsMu.Lock()
+	delete(ids.conns, c)
+	ids.connsMu.Unlock()
 
-	// undo the setting of addresses to peer.ConnectedAddrTTL we did
-	ids.addrMu.Lock()
-	defer ids.addrMu.Unlock()
-
-	if ids.Host.Network().Connectedness(v.RemotePeer()) != network.Connected {
-		// consider removing the peer handler for this
-		select {
-		case ids.rmPeerHandlerCh <- rmPeerHandlerReq{v.RemotePeer()}:
-		case <-ids.ctx.Done():
-			return
-		}
-
+	if ids.Host.Network().Connectedness(c.RemotePeer()) != network.Connected {
 		// Last disconnect.
-		ps := ids.Host.Peerstore()
-		ps.UpdateAddrs(v.RemotePeer(), peerstore.ConnectedAddrTTL, peerstore.RecentlyConnectedAddrTTL)
+		// Undo the setting of addresses to peer.ConnectedAddrTTL we did
+		ids.addrMu.Lock()
+		defer ids.addrMu.Unlock()
+		ids.Host.Peerstore().UpdateAddrs(c.RemotePeer(), peerstore.ConnectedAddrTTL, peerstore.RecentlyConnectedAddrTTL)
 	}
 }
 

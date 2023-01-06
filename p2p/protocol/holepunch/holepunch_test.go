@@ -7,6 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
+
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-testing/race"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -68,6 +72,8 @@ var _ identify.IDService = &mockIDService{}
 func newMockIDService(t *testing.T, h host.Host) identify.IDService {
 	ids, err := identify.NewIDService(h)
 	require.NoError(t, err)
+	ids.Start()
+	t.Cleanup(func() { ids.Close() })
 	return &mockIDService{IDService: ids}
 }
 
@@ -448,9 +454,22 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePunc
 		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
 	require.NoError(t, err)
-
 	_, err = relayv1.NewRelay(relay)
 	require.NoError(t, err)
+
+	// make sure the relay service is started and advertised by Identify
+	h, err := libp2p.New(
+		libp2p.NoListenAddrs,
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.DisableRelay(),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+	require.NoError(t, h.Connect(context.Background(), peer.AddrInfo{ID: relay.ID(), Addrs: relay.Addrs()}))
+	require.Eventually(t, func() bool {
+		supported, err := h.Peerstore().SupportsProtocols(relay.ID(), proto.ProtoIDv2Hop, relayv1.ProtoID)
+		return err == nil && len(supported) > 0
+	}, 3*time.Second, 100*time.Millisecond)
 
 	h2 = mkHostWithStaticAutoRelay(t, relay)
 	if addHolePuncher {
