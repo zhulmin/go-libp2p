@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log"
@@ -38,7 +39,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if _, err := str.Write([]byte("foobar")); err != nil {
+	testdata := bytes.Repeat([]byte{0x42}, 4<<20) // ~4 MB of 0x42
+	if _, err := str.Write(testdata); err != nil {
 		log.Fatal(err)
 	}
 	if err := str.CloseWrite(); err != nil {
@@ -48,5 +50,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("received echo:", string(data))
+	log.Println("received echo. matches:", bytes.Equal(data, testdata))
 }
