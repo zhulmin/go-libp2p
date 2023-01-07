@@ -56,10 +56,8 @@ type dataChannel struct {
 
 	state channelState
 
-	ctx        context.Context
-	cancelFunc context.CancelFunc
-	reader     protoio.Reader
-	writer     protoio.Writer
+	reader protoio.Reader
+	writer protoio.Writer
 
 	m               sync.Mutex
 	readBuf         []byte
@@ -70,7 +68,10 @@ type dataChannel struct {
 	// hack for closing the Read side using a deadline
 	// in case `Read` does not return.
 	forceClosed bool
-	wg          sync.WaitGroup
+
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func newDataChannel(
@@ -90,7 +91,7 @@ func newDataChannel(
 		laddr:           laddr,
 		raddr:           raddr,
 		ctx:             ctx,
-		cancelFunc:      cancel,
+		cancel:          cancel,
 		writeAvailable:  make(chan struct{}),
 		reader:          protoio.NewDelimitedReader(reader, maxMessageSize),
 		writer:          protoio.NewDelimitedWriter(rwc),
@@ -104,13 +105,6 @@ func newDataChannel(
 		result.writeAvailable = make(chan struct{})
 		result.m.Unlock()
 		close(writeAvailable)
-	})
-
-	channel.OnClose(func() {
-		result.remoteClosed()
-		if connection != nil {
-			connection.removeStream(result.id)
-		}
 	})
 
 	return result
@@ -141,6 +135,12 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		var msg pb.Message
 		err := d.reader.ReadMsg(&msg)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				d.remoteClosed()
+				if d.conn != nil {
+					d.conn.removeStream(d.id)
+				}
+			}
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				d.m.Lock()
 				defer d.m.Unlock()
@@ -287,7 +287,7 @@ func (d *dataChannel) Close() error {
 		d.conn.removeStream(d.id)
 	}
 
-	d.cancelFunc()
+	d.cancel()
 	// This is a hack. A recent commit in pion/datachannel
 	// caused a regression where read blocks indefinitely
 	// even when then channel is closed.
@@ -325,7 +325,7 @@ func (d *dataChannel) remoteClosed() {
 	defer d.m.Unlock()
 	d.state = stateClosed
 	d.forceClosed = true
-	d.cancelFunc()
+	d.cancel()
 
 	// This is a hack. A recent commit in pion/datachannel
 	// caused a regression where read blocks indefinitely

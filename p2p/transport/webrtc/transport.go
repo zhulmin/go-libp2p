@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/connmgr"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -47,7 +48,7 @@ var _ tpt.Transport = &WebRTCTransport{}
 
 type Option func(*WebRTCTransport) error
 
-func New(privKey ic.PrivKey, rcmgr network.ResourceManager, opts ...Option) (*WebRTCTransport, error) {
+func New(privKey ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (*WebRTCTransport, error) {
 	localPeerId, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
 		return nil, errInternal("could not get local peer ID", err)
@@ -240,20 +241,29 @@ func (t *WebRTCTransport) dial(
 	handshakeChannel.OnOpen(func() {
 		rwc, err := handshakeChannel.Detach()
 		if err != nil {
-			signalChan <- err
+			select {
+			case signalChan <- err:
+			default:
+			}
 			return
 		}
 		wrappedChannel := newDataChannel(nil, handshakeChannel, rwc, pc, nil, raddr)
 		cp, err := handshakeChannel.Transport().Transport().ICETransport().GetSelectedCandidatePair()
 		if cp == nil || err != nil {
 			err = errDatachannel("could not fetch selected candidate pair", err)
-			signalChan <- err
+			select {
+			case signalChan <- err:
+			default:
+			}
 			return
 		}
 
 		laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
 		wrappedChannel.laddr = laddr
-		dcChannel <- wrappedChannel
+		select {
+		case dcChannel <- wrappedChannel:
+		default:
+		}
 	})
 
 	// do offer-answer exchange
@@ -267,11 +277,7 @@ func (t *WebRTCTransport) dial(
 		return pc, nil, errConnectionFailed("could not set local description", err)
 	}
 
-	answerSdpString := renderServerSdp(sdpArgs{
-		Addr:        raddr,
-		Fingerprint: remoteMultihash,
-		Ufrag:       ufrag,
-	})
+	answerSdpString := renderServerSdp(raddr, ufrag, remoteMultihash)
 
 	answer := webrtc.SessionDescription{SDP: answerSdpString, Type: webrtc.SDPTypeAnswer}
 	err = pc.SetRemoteDescription(answer)
@@ -309,10 +315,8 @@ func (t *WebRTCTransport) dial(
 		return pc, nil, err
 	}
 
-	remotePublicKey, err := p.ExtractPublicKey()
-	if err != nil {
-		return pc, nil, err
-	}
+	// we can only know the remote public key after the noise handshake,
+	// but need to set up the callbacks on the peerconnection
 	conn := newConnection(
 		pc,
 		t,
@@ -321,12 +325,13 @@ func (t *WebRTCTransport) dial(
 		t.privKey,
 		localAddr,
 		p,
-		remotePublicKey,
+		nil,
 		remoteMultiaddr,
 	)
 	tctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_, err = t.noiseHandshake(tctx, pc, channel, p, remoteHashFunction, false)
+	secConn, err := t.noiseHandshake(tctx, pc, channel, p, remoteHashFunction, false)
+	conn.setRemotePublicKey(secConn.RemotePublicKey())
 	return pc, conn, err
 }
 
