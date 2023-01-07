@@ -26,9 +26,9 @@ import (
 var _ tpt.Listener = &listener{}
 
 const (
-	maxConnectionBufferSize int = 10
-	candidateSetupTimeout       = 20 * time.Second
-	candidateChanSize           = 20
+	maxBufferedConnections = 10
+	candidateSetupTimeout  = 20 * time.Second
+	maxNumCandidates       = 20
 )
 
 type candidateAddr struct {
@@ -37,30 +37,27 @@ type candidateAddr struct {
 }
 
 type listener struct {
-	transport                 *WebRTCTransport
+	transport *WebRTCTransport
+	mux       ice.UDPMux
+
 	config                    webrtc.Configuration
 	localFingerprint          webrtc.DTLSFingerprint
 	localFingerprintMultibase string
-	mux                       ice.UDPMux
-	ctx                       context.Context
-	cancel                    context.CancelFunc
-	localAddr                 net.Addr
-	localMultiaddr            ma.Multiaddr
-	connChan                  chan tpt.CapableConn
-	wg                        sync.WaitGroup
+
+	localAddr      net.Addr
+	localMultiaddr ma.Multiaddr
+
+	// buffered incoming connections
+	connChan chan tpt.CapableConn
+
+	// used to control the lifecycle of the listener
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
-	candidateChan := make(chan candidateAddr, candidateChanSize)
-	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) {
-		// Push to the candidateChan asynchronously to avoid blocking the mux goroutine
-		// on candidates being processed. This can cause new connections to fail at high
-		// throughput but will allow packets for existing connections to be processed.
-		select {
-		case candidateChan <- candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}:
-		default:
-		}
-	})
+	candidateChan := make(chan candidateAddr, maxNumCandidates)
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -71,9 +68,19 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		return nil, err
 	}
 	localMhBuf, _ := multihash.Encode(localMh, multihash.SHA2_256)
-	localFpMultibase, _ := multibase.Encode(multibase.Base58BTC, localMhBuf)
+	localFpMultibase, _ := multibase.Encode(multibase.Base64url, localMhBuf)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) {
+		// Push to the candidateChan asynchronously to avoid blocking the mux goroutine
+		// on candidates being processed. This can cause new connections to fail at high
+		// throughput but will allow packets for existing connections to be processed.
+		select {
+		case candidateChan <- candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}:
+		default:
+			log.Debug("candidate chan full, dropping incoming candidate")
+		}
+	})
 
 	l := &listener{
 		mux:                       mux,
@@ -85,7 +92,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		connChan:                  make(chan tpt.CapableConn, maxConnectionBufferSize),
+		connChan:                  make(chan tpt.CapableConn, maxBufferedConnections),
 	}
 
 	l.wg.Add(1)
@@ -101,8 +108,8 @@ func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
 			return
 		case addr := <-candidateChan:
 			go func() {
-				ctx, cancelFunc := context.WithTimeout(context.Background(), candidateSetupTimeout)
-				defer cancelFunc()
+				ctx, cancel := context.WithTimeout(context.Background(), candidateSetupTimeout)
+				defer cancel()
 				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
 					log.Debugf("could not accept connection: %v", err)
@@ -191,10 +198,14 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		return pc, nil, err
 	}
 
+	// handshakeChannel immediately opens since negotiated = true
 	handshakeChannel.OnOpen(func() {
 		rwc, err := handshakeChannel.Detach()
 		if err != nil {
-			signalChan <- errDatachannel("could not detach", err)
+			select {
+			case signalChan <- errDatachannel("could not detach", err):
+			default:
+			}
 			return
 		}
 		wrappedChannel = newDataChannel(
@@ -206,7 +217,10 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 			addr.raddr,
 		)
 		handshakeOnce.Do(func() {
-			signalChan <- nil
+			select {
+			case signalChan <- nil:
+			default:
+			}
 		})
 	})
 
@@ -215,15 +229,17 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	// handshake channel.
 	handshakeChannel.OnError(func(e error) {
 		handshakeOnce.Do(func() {
-			signalChan <- e
+			select {
+			case signalChan <- e:
+			default:
+			}
 
 		})
 	})
 
-	clientSdpString := renderClientSdp(sdpArgs{
-		Addr:  addr.raddr,
-		Ufrag: addr.ufrag,
-	})
+	// we infer the client sdp from the incoming STUN connectivity check
+	// by setting the ice-ufrag equal to the incoming check.
+	clientSdpString := renderClientSdp(addr.raddr, addr.ufrag)
 	clientSdp := webrtc.SessionDescription{SDP: clientSdpString, Type: webrtc.SDPTypeOffer}
 	pc.SetRemoteDescription(clientSdp)
 

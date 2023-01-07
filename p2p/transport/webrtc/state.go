@@ -4,7 +4,7 @@ import (
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
-type channelState uint32
+type channelState uint8
 
 const (
 	stateOpen channelState = iota

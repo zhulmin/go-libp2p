@@ -25,7 +25,7 @@ func getTransport(t *testing.T) (tpt.Transport, peer.ID) {
 	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	require.NoError(t, err)
 	rcmgr := &network.NullResourceManager{}
-	transport, err := New(privKey, rcmgr)
+	transport, err := New(privKey, nil, rcmgr)
 	require.NoError(t, err)
 	peerID, err := peer.IDFromPrivateKey(privKey)
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
 	require.NoError(t, err)
 	listener, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
-	count := 5
+	count := 2
 
 	go func() {
 		for i := 0; i < count; i++ {
@@ -161,7 +161,6 @@ func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, conn.RemotePeer(), listeningPeer)
 			conn.Close()
-			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 

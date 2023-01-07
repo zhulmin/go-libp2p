@@ -45,13 +45,11 @@ func TestRenderServerSDP(t *testing.T) {
 		Digest: encoded,
 		Length: len(encoded),
 	}
-	args := sdpArgs{
-		Addr:        &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826},
-		Ufrag:       "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581",
-		Fingerprint: testMultihash,
-	}
+	addr := &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826}
+	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
+	fingerprint := testMultihash
 
-	sdp := renderServerSdp(args)
+	sdp := renderServerSdp(addr, ufrag, fingerprint)
 	require.Equal(t, expectedServerSDP, sdp)
 }
 
@@ -73,10 +71,8 @@ a=max-message-size:16384
 `
 
 func TestRenderClientSDP(t *testing.T) {
-	args := sdpArgs{
-		Addr:  &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826},
-		Ufrag: "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581",
-	}
-	sdp := renderClientSdp(args)
+	addr := &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826}
+	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
+	sdp := renderClientSdp(addr, ufrag)
 	require.Equal(t, expectedClientSDP, sdp)
 }

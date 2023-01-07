@@ -8,12 +8,6 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-type sdpArgs struct {
-	Addr        *net.UDPAddr
-	Ufrag       string
-	Fingerprint *multihash.DecodedMultihash
-}
-
 const clientSDP string = `
 v=0
 o=- 0 0 IN %s %s
@@ -31,20 +25,20 @@ a=sctp-port:5000
 a=max-message-size:16384
 `
 
-func renderClientSdp(args sdpArgs) string {
+func renderClientSdp(addr *net.UDPAddr, ufrag string) string {
 	ipVersion := "IP4"
-	if args.Addr.IP.To4() == nil {
+	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
 	}
 	return fmt.Sprintf(
 		clientSDP,
 		ipVersion,
-		args.Addr.IP,
+		addr.IP,
 		ipVersion,
-		args.Addr.IP,
-		args.Addr.Port,
-		args.Ufrag,
-		args.Ufrag,
+		addr.IP,
+		addr.Port,
+		ufrag,
+		ufrag,
 	)
 }
 
@@ -67,24 +61,24 @@ a=max-message-size:16384
 a=candidate:1 1 UDP 1 %s %d typ host
 `
 
-func renderServerSdp(args sdpArgs) string {
+func renderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.DecodedMultihash) string {
 	ipVersion := "IP4"
-	if args.Addr.IP.To4() == nil {
+	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
 	}
-	fp := fingerprintToSDP(args.Fingerprint)
+	fp := fingerprintToSDP(fingerprint)
 	return fmt.Sprintf(
 		serverSDP,
 		ipVersion,
-		args.Addr.IP,
-		args.Addr.Port,
+		addr.IP,
+		addr.Port,
 		ipVersion,
-		args.Addr.IP,
-		args.Ufrag,
-		args.Ufrag,
+		addr.IP,
+		ufrag,
+		ufrag,
 		fp,
-		args.Addr.IP,
-		args.Addr.Port,
+		addr.IP,
+		addr.Port,
 	)
 }
 

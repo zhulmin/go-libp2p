@@ -105,7 +105,9 @@ func newConnection(
 
 // ConnState implements transport.CapableConn
 func (c *connection) ConnState() network.ConnectionState {
-	return network.ConnectionState{}
+	return network.ConnectionState{
+		Transport: "webrtc",
+	}
 }
 
 // Implement network.MuxedConn
@@ -117,8 +119,7 @@ func (c *connection) Close() error {
 
 	c.scope.Done()
 	c.cancel()
-	_ = c.pc.Close()
-	return nil
+	return c.pc.Close()
 }
 
 func (c *connection) IsClosed() bool {
@@ -151,20 +152,21 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 	dc.OnOpen(func() {
 		rwc, err := dc.Detach()
 		if err != nil {
-			result <- openStreamResult{
+			select {
+			case result <- openStreamResult{
 				nil,
 				errDatachannel("could not detach", err),
+			}:
+			default:
 			}
 			return
 		}
 		stream = newDataChannel(c, dc, rwc, c.pc, nil, nil)
 		c.addStream(streamID, stream)
-		result <- openStreamResult{stream, err}
-	})
-
-	dc.OnClose(func() {
-		stream.remoteClosed()
-		c.removeStream(streamID)
+		select {
+		case result <- openStreamResult{stream, err}:
+		default:
+		}
 	})
 
 	select {
