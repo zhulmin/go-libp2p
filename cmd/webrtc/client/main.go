@@ -7,18 +7,18 @@ import (
 	"os"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/protocol"
-
-	"github.com/libp2p/go-libp2p/core/peer"
-
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 )
 
 func main() {
 	h, err := libp2p.New(
 		libp2p.Transport(libp2pwebrtc.New),
+		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.NoListenAddrs,
 		libp2p.ResourceManager(&network.NullResourceManager{}),
 	)
