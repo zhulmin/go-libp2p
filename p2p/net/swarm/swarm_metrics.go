@@ -45,7 +45,7 @@ var (
 			Name: metricNamespace + "dial_errors_total",
 			Help: "Dial Error",
 		},
-		[]string{"error"},
+		[]string{"transport", "error"},
 	)
 	connDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -99,8 +99,6 @@ func getStringSlice() *[]string {
 }
 
 func putStringSlice(s *[]string) { stringPool.Put(s) }
-
-var transports = [...]int{ma.P_CIRCUIT, ma.P_WEBRTC, ma.P_WEBTRANSPORT, ma.P_QUIC, ma.P_QUIC_V1, ma.P_WSS, ma.P_WS, ma.P_TCP}
 
 func getDirection(dir network.Direction) string {
 	switch dir {
@@ -161,7 +159,15 @@ func (m *metricsTracer) CompletedHandshake(t time.Duration, cs network.Connectio
 	connHandshakeLatency.WithLabelValues(*tags...).Observe(t.Seconds())
 }
 
-func (m *metricsTracer) FailedDialing(_ ma.Multiaddr, err error) {
+var transports = [...]int{ma.P_CIRCUIT, ma.P_WEBRTC, ma.P_WEBTRANSPORT, ma.P_QUIC, ma.P_QUIC_V1, ma.P_WSS, ma.P_WS, ma.P_TCP}
+
+func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, err error) {
+	var transport string
+	for _, t := range transports {
+		if _, err := addr.ValueForProtocol(t); err == nil {
+			transport = ma.ProtocolWithCode(t).Name
+		}
+	}
 	e := "other"
 	if errors.Is(err, context.Canceled) {
 		e = "canceled"
@@ -175,5 +181,5 @@ func (m *metricsTracer) FailedDialing(_ ma.Multiaddr, err error) {
 			e = "connection refused"
 		}
 	}
-	dialError.WithLabelValues(e).Inc()
+	dialError.WithLabelValues(transport, e).Inc()
 }
