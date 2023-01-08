@@ -404,6 +404,9 @@ func (t *WebRTCTransport) dial(
 	tctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	secConn, err := t.noiseHandshake(tctx, pc, channel, p, remoteHashFunction, false)
+	if err != nil {
+		return pc, conn, err
+	}
 	conn.setRemotePublicKey(secConn.RemotePublicKey())
 	return pc, conn, err
 }

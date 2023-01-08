@@ -103,7 +103,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		acceptQueue:               make(chan tpt.CapableConn),
+		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections),
 		inFlightConnections:       0,
 		maxInFlightConnections:    transport.maxInFlightConnections,
 	}

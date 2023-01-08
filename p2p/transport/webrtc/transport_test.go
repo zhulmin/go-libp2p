@@ -573,7 +573,6 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	count := uint64(2)
 	tr, listeningPeer := getTransport(t,
-		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
 		WithListenerMaxInFlightConnections(count),
 	)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
@@ -598,7 +597,7 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 			}()
 			<-start
 			_, err := tr1.Dial(ctx, listener.Multiaddr(), listeningPeer)
-			if err != nil {
+			if err == nil {
 				atomic.AddUint64(&success, 1)
 			}
 
