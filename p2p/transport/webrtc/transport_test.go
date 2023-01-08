@@ -7,6 +7,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,11 +23,11 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func getTransport(t *testing.T) (tpt.Transport, peer.ID) {
+func getTransport(t *testing.T, opts ...Option) (tpt.Transport, peer.ID) {
 	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	require.NoError(t, err)
 	rcmgr := &network.NullResourceManager{}
-	transport, err := New(privKey, nil, rcmgr)
+	transport, err := New(privKey, nil, nil, rcmgr, opts...)
 	require.NoError(t, err)
 	peerID, err := peer.IDFromPrivateKey(privKey)
 	require.NoError(t, err)
@@ -561,8 +563,49 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 
 	conn, err := tr1.Dial(context.Background(), badMultiaddr, listeningPeer)
 	require.Nil(t, conn)
+	t.Log(err)
 	require.Error(t, err)
 
 	require.ErrorContains(t, err, "failed")
 
+}
+
+func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
+	count := uint64(2)
+	tr, listeningPeer := getTransport(t,
+		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+		WithListenerMaxInFlightConnections(count),
+	)
+	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
+	require.NoError(t, err)
+	listener, err := tr.Listen(listenMultiaddr)
+	require.NoError(t, err)
+
+	tr1, _ := getTransport(t,
+		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+		WithListenerMaxInFlightConnections(count),
+	)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	var success uint64
+	for i := 0; uint64(i) < count+2; i++ {
+		wg.Add(1)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer func() {
+				wg.Done()
+				cancel()
+			}()
+			<-start
+			_, err := tr1.Dial(ctx, listener.Multiaddr(), listeningPeer)
+			if err != nil {
+				atomic.AddUint64(&success, 1)
+			}
+
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	require.Equal(t, count, atomic.LoadUint64(&success))
 }

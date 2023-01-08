@@ -18,6 +18,7 @@ import (
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
@@ -36,41 +37,102 @@ var log = logging.Logger("webrtc-transport")
 
 var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_WEBRTC), mafmt.Base(ma.P_CERTHASH))
 
+// timeout values for the peerconnection
+// https://github.com/pion/webrtc/blob/v3.1.50/settingengine.go#L102-L109
+const DefaultDisconnectedTimeout = 5 * time.Second
+const DefaultFailedTimeout = 25 * time.Second
+const DefaultKeepaliveTimeout = 2 * time.Second
+
 type WebRTCTransport struct {
 	webrtcConfig webrtc.Configuration
 	rcmgr        network.ResourceManager
 	privKey      ic.PrivKey
 	noiseTpt     *noise.Transport
 	localPeerId  peer.ID
+
+	// timeouts
+	peerConnectionFailedTimeout       time.Duration
+	peerConnectionDisconnectedTimeout time.Duration
+	peerConnectionKeepaliveTimeout    time.Duration
+
+	// in-flight connections
+	maxInFlightConnections uint64
 }
 
 var _ tpt.Transport = &WebRTCTransport{}
 
 type Option func(*WebRTCTransport) error
 
-func New(privKey ic.PrivKey, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (*WebRTCTransport, error) {
+// WithPeerConnectionIceTimeouts sets the ice disconnect, failure and keepalive timeouts
+func WithPeerConnectionIceTimeouts(disconnect time.Duration, failed time.Duration, keepalive time.Duration) Option {
+	return func(t *WebRTCTransport) error {
+		if failed < disconnect {
+			return fmt.Errorf("disconnect timeout cannot be greater than failed timeout")
+		}
+		if disconnect <= keepalive {
+			return fmt.Errorf("keepalive timeout cannot be greater than or equal to failed timeout")
+		}
+		t.peerConnectionDisconnectedTimeout = disconnect
+		t.peerConnectionFailedTimeout = failed
+		t.peerConnectionKeepaliveTimeout = keepalive
+		return nil
+	}
+}
+
+// WithListenerMaxInFlightConnections sets the maximum number of connections that are in-flight, i.e
+// they are being negotiated, or are waiting to be accepted.
+func WithListenerMaxInFlightConnections(m uint64) Option {
+	return func(t *WebRTCTransport) error {
+		t.maxInFlightConnections = m
+		return nil
+	}
+}
+
+func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (*WebRTCTransport, error) {
+	if psk != nil {
+		log.Error("WebRTC doesn't support private networks yet.")
+		return nil, fmt.Errorf("WebRTC doesn't support private networks yet")
+	}
 	localPeerId, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
-		return nil, errInternal("could not get local peer ID", err)
+		return nil, fmt.Errorf("could not get local peer ID: %w", err)
 	}
 	// We use elliptic P-256 since it is widely supported by browsers.
 	// See: https://github.com/libp2p/specs/pull/412#discussion_r968294244
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, errInternal("could not generate key for cert", err)
+		return nil, fmt.Errorf("could not generate key for cert: %w", err)
 	}
 	cert, err := webrtc.GenerateCertificate(pk)
 	if err != nil {
-		return nil, errInternal("could not generate certificate", err)
+		return nil, fmt.Errorf("could not generate certificate: %w", err)
 	}
 	config := webrtc.Configuration{
 		Certificates: []webrtc.Certificate{*cert},
 	}
 	noiseTpt, err := noise.New(noise.ID, privKey, nil)
 	if err != nil {
-		return nil, errInternal("unable to create noise transport", err)
+		return nil, fmt.Errorf("unable to create noise transport: %w", err)
 	}
-	return &WebRTCTransport{rcmgr: rcmgr, webrtcConfig: config, privKey: privKey, noiseTpt: noiseTpt, localPeerId: localPeerId}, nil
+	transport := &WebRTCTransport{
+		rcmgr:        rcmgr,
+		webrtcConfig: config,
+		privKey:      privKey,
+		noiseTpt:     noiseTpt,
+		localPeerId:  localPeerId,
+
+		peerConnectionDisconnectedTimeout: DefaultDisconnectedTimeout,
+		peerConnectionFailedTimeout:       DefaultFailedTimeout,
+		peerConnectionKeepaliveTimeout:    DefaultKeepaliveTimeout,
+
+		maxInFlightConnections: DefaultMaxInFlightConnections,
+	}
+	for _, opt := range opts {
+		if err := opt(transport); err != nil {
+			return nil, err
+		}
+	}
+	return transport, nil
 }
 
 func (t *WebRTCTransport) Protocols() []int {
@@ -89,20 +151,20 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	addr, wrtcComponent := ma.SplitLast(addr)
 	isWebrtc := wrtcComponent.Equal(ma.StringCast("/webrtc"))
 	if !isWebrtc {
-		return nil, errMultiaddr("must listen on webrtc multiaddr", nil)
+		return nil, fmt.Errorf("must listen on webrtc multiaddr")
 	}
 	nw, host, err := manet.DialArgs(addr)
 	if err != nil {
-		return nil, errMultiaddr("listener could not fetch dialargs", err)
+		return nil, fmt.Errorf("listener could not fetch dialargs: %w", err)
 	}
 	udpAddr, err := net.ResolveUDPAddr(nw, host)
 	if err != nil {
-		return nil, errMultiaddr("listener could not resolve udp address", err)
+		return nil, fmt.Errorf("listener could not resolve udp address: %w", err)
 	}
 
 	socket, err := net.ListenUDP(nw, udpAddr)
 	if err != nil {
-		return nil, errInternal("could not listen on udp", err)
+		return nil, fmt.Errorf("could not listen on udp: %w", err)
 	}
 
 	// construct multiaddr
@@ -170,21 +232,21 @@ func (t *WebRTCTransport) dial(
 
 	remoteMultihash, err := decodeRemoteFingerprint(remoteMultiaddr)
 	if err != nil {
-		return pc, nil, errMultiaddr("could not decode fingerprint", err)
+		return pc, nil, fmt.Errorf("could not decode fingerprint: %w", err)
 	}
 	remoteHashFunction, ok := getSupportedSDPHash(remoteMultihash.Code)
 	if !ok {
-		return pc, nil, errMultiaddr("unsupported hash function", nil)
+		return pc, nil, fmt.Errorf("unsupported hash function: %w", nil)
 	}
 
 	rnw, rhost, err := manet.DialArgs(remoteMultiaddr)
 	if err != nil {
-		return pc, nil, errMultiaddr("could not generate dial args", err)
+		return pc, nil, fmt.Errorf("could not generate dial args: %w", err)
 	}
 
 	raddr, err := net.ResolveUDPAddr(rnw, rhost)
 	if err != nil {
-		return pc, nil, errMultiaddr("could not resolve udp address", err)
+		return pc, nil, fmt.Errorf("could not resolve udp address: %w", err)
 	}
 
 	// Instead of encoding the local fingerprint we
@@ -198,11 +260,14 @@ func (t *WebRTCTransport) dial(
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.SetLite(false)
 	settingEngine.DetachDataChannels()
+
+	settingEngine.SetICETimeouts(t.peerConnectionDisconnectedTimeout, t.peerConnectionFailedTimeout, t.peerConnectionKeepaliveTimeout)
+
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 
 	pc, err = api.NewPeerConnection(t.webrtcConfig)
 	if err != nil {
-		return pc, nil, errInternal("could not instantiate peerconnection", err)
+		return pc, nil, fmt.Errorf("could not instantiate peerconnection: %w", err)
 	}
 
 	signalChan := make(chan error)
@@ -218,12 +283,20 @@ func (t *WebRTCTransport) dial(
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
 			connectedOnce.Do(func() {
-				signalChan <- nil
+				select {
+				case signalChan <- nil:
+				default:
+				}
 			})
 		case webrtc.PeerConnectionStateFailed:
+			fallthrough
+		case webrtc.PeerConnectionStateDisconnected:
 			connectedOnce.Do(func() {
-				err := errConnectionFailed("peerconnection move to failed state", nil)
-				signalChan <- err
+				select {
+				case signalChan <- fmt.Errorf("peerconnection failed to connect"):
+				default:
+				}
+
 			})
 		}
 	})
@@ -235,7 +308,7 @@ func (t *WebRTCTransport) dial(
 		ID:         func(v uint16) *uint16 { return &v }(0),
 	})
 	if err != nil {
-		return pc, nil, errDatachannel("could not create", err)
+		return pc, nil, fmt.Errorf("could not create datachannel: %w", err)
 	}
 	// handshakeChannel immediately opens since negotiated = true
 	handshakeChannel.OnOpen(func() {
@@ -250,7 +323,7 @@ func (t *WebRTCTransport) dial(
 		wrappedChannel := newDataChannel(nil, handshakeChannel, rwc, pc, nil, raddr)
 		cp, err := handshakeChannel.Transport().Transport().ICETransport().GetSelectedCandidatePair()
 		if cp == nil || err != nil {
-			err = errDatachannel("could not fetch selected candidate pair", err)
+			err = fmt.Errorf("could not fetch selected candidate pair: %w", err)
 			select {
 			case signalChan <- err:
 			default:
@@ -269,12 +342,12 @@ func (t *WebRTCTransport) dial(
 	// do offer-answer exchange
 	offer, err := pc.CreateOffer(nil)
 	if err != nil {
-		return pc, nil, errConnectionFailed("could not create offer", err)
+		return pc, nil, fmt.Errorf("could not create offer: %w", err)
 	}
 
 	err = pc.SetLocalDescription(offer)
 	if err != nil {
-		return pc, nil, errConnectionFailed("could not set local description", err)
+		return pc, nil, fmt.Errorf("could not set local description: %w", err)
 	}
 
 	answerSdpString := renderServerSdp(raddr, ufrag, remoteMultihash)
@@ -282,7 +355,7 @@ func (t *WebRTCTransport) dial(
 	answer := webrtc.SessionDescription{SDP: answerSdpString, Type: webrtc.SDPTypeAnswer}
 	err = pc.SetRemoteDescription(answer)
 	if err != nil {
-		return pc, nil, errConnectionFailed("could not set remote description", err)
+		return pc, nil, fmt.Errorf("could not set remote description: %w", err)
 	}
 
 	// await peerconnection opening
@@ -292,7 +365,7 @@ func (t *WebRTCTransport) dial(
 			return pc, nil, err
 		}
 	case <-ctx.Done():
-		return pc, nil, errDataChannelTimeout
+		return pc, nil, fmt.Errorf("datachannel timed out")
 	}
 
 	// get wrapped data channel from the callback
@@ -303,7 +376,7 @@ func (t *WebRTCTransport) dial(
 			return pc, nil, err
 		}
 	case <-ctx.Done():
-		return pc, nil, errDataChannelTimeout
+		return pc, nil, fmt.Errorf("datachannel timed out")
 	case channel = <-dcChannel:
 	}
 
@@ -396,25 +469,25 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *dataChannel, peer peer.ID, hash crypto.Hash, inbound bool) (secureConn sec.SecureConn, err error) {
 	prologue, err := t.generateNoisePrologue(pc, hash, inbound)
 	if err != nil {
-		return nil, errNoise("could not generate prologue", err)
+		return nil, fmt.Errorf("could not generate prologue: %w", err)
 	}
 	sessionTransport, err := t.noiseTpt.WithSessionOptions(
 		noise.Prologue(prologue),
 		noise.DisablePeerIDCheck(),
 	)
 	if err != nil {
-		return nil, errNoise("could not instantiate transport", err)
+		return nil, fmt.Errorf("could not instantiate transport: %w", err)
 	}
 	if inbound {
 		secureConn, err = sessionTransport.SecureOutbound(ctx, datachannel, "")
 		if err != nil {
-			err = errNoise("failed to secure inbound", err)
+			err = fmt.Errorf("failed to secure inbound: %w", err)
 			return
 		}
 	} else {
 		secureConn, err = sessionTransport.SecureInbound(ctx, datachannel, peer)
 		if err != nil {
-			err = errNoise("failed to secure outbound", err)
+			err = fmt.Errorf("failed to secure outbound: %w", err)
 			return
 		}
 	}

@@ -2,6 +2,7 @@ package libp2pwebrtc
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 
@@ -16,7 +17,7 @@ import (
 var _ tpt.CapableConn = &connection{}
 
 const (
-	maxStreamBufferSize int = 10
+	maxAcceptQueueLen int = 10
 )
 
 type connection struct {
@@ -35,7 +36,7 @@ type connection struct {
 	m       sync.Mutex
 	streams map[uint16]*dataChannel
 
-	streamChan chan network.MuxedStream
+	acceptQueue chan network.MuxedStream
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -54,7 +55,7 @@ func newConnection(
 	remoteKey ic.PubKey,
 	remoteMultiaddr ma.Multiaddr,
 ) *connection {
-	streamChan := make(chan network.MuxedStream, maxStreamBufferSize)
+	acceptQueue := make(chan network.MuxedStream, maxAcceptQueueLen)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -74,7 +75,7 @@ func newConnection(
 		cancel:          cancel,
 		streams:         make(map[uint16]*dataChannel),
 
-		streamChan: streamChan,
+		acceptQueue: acceptQueue,
 	}
 
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
@@ -88,19 +89,40 @@ func newConnection(
 				return
 			}
 			stream = newDataChannel(conn, dc, rwc, pc, nil, nil)
-			conn.addStream(id, stream)
-			streamChan <- stream
+			select {
+			case acceptQueue <- stream:
+				conn.addStream(id, stream)
+			default:
+				log.Warn("cannot buffer incoming stream, will reset")
+				stream.Reset()
+			}
+
 		})
 
 	})
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if state == webrtc.PeerConnectionStateClosed || state == webrtc.PeerConnectionStateDisconnected {
+		switch state {
+		case webrtc.PeerConnectionStateDisconnected:
+			fallthrough
+		case webrtc.PeerConnectionStateFailed:
+			conn.resetStreams()
+			conn.Close()
+		case webrtc.PeerConnectionStateClosed:
 			conn.Close()
 		}
 	})
 
 	return conn
+}
+
+func (c *connection) resetStreams() {
+	if c.IsClosed() {
+		return
+	}
+	for _, stream := range c.streams {
+		stream.Reset()
+	}
 }
 
 // ConnState implements transport.CapableConn
@@ -155,18 +177,23 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 			select {
 			case result <- openStreamResult{
 				nil,
-				errDatachannel("could not detach", err),
+				fmt.Errorf("could not detach dataChannel: %w", err),
 			}:
 			default:
 			}
 			return
 		}
 		stream = newDataChannel(c, dc, rwc, c.pc, nil, nil)
-		c.addStream(streamID, stream)
 		select {
 		case result <- openStreamResult{stream, err}:
+			c.addStream(streamID, stream)
 		default:
+			stream.Reset()
 		}
+	})
+
+	dc.OnError(func(err error) {
+		log.Warn("datachannel error: %w", err)
 	})
 
 	select {
@@ -182,7 +209,7 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, os.ErrClosed
-	case stream := <-c.streamChan:
+	case stream := <-c.acceptQueue:
 		return stream, nil
 	}
 }

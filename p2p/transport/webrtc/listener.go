@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto"
 	"encoding/hex"
+	"fmt"
 	"net"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -26,9 +28,9 @@ import (
 var _ tpt.Listener = &listener{}
 
 const (
-	maxBufferedConnections = 10
-	candidateSetupTimeout  = 20 * time.Second
-	maxNumCandidates       = 20
+	candidateSetupTimeout                = 20 * time.Second
+	maxNumCandidates                     = 20
+	DefaultMaxInFlightConnections uint64 = 10
 )
 
 type candidateAddr struct {
@@ -38,7 +40,8 @@ type candidateAddr struct {
 
 type listener struct {
 	transport *WebRTCTransport
-	mux       ice.UDPMux
+
+	mux ice.UDPMux
 
 	config                    webrtc.Configuration
 	localFingerprint          webrtc.DTLSFingerprint
@@ -48,7 +51,15 @@ type listener struct {
 	localMultiaddr ma.Multiaddr
 
 	// buffered incoming connections
-	connChan chan tpt.CapableConn
+	acceptQueue chan tpt.CapableConn
+	// Accepting a connection requires instantiating a peerconnection
+	// and a noise connection which is expensive. We therefore limit
+	// the number of in-flight connection requests. A connection
+	// is considered to be in flight from the instant it is handled
+	// until it is dequed by a call to Accept, or errors out in some
+	// way.
+	inFlightConnections    uint64
+	maxInFlightConnections uint64
 
 	// used to control the lifecycle of the listener
 	ctx    context.Context
@@ -92,7 +103,9 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		connChan:                  make(chan tpt.CapableConn, maxBufferedConnections),
+		acceptQueue:               make(chan tpt.CapableConn),
+		inFlightConnections:       0,
+		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
 
 	l.wg.Add(1)
@@ -107,15 +120,29 @@ func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
 		case <-l.ctx.Done():
 			return
 		case addr := <-candidateChan:
+			if atomic.LoadUint64(&l.inFlightConnections) >= l.maxInFlightConnections {
+				// TODO: should we send an error STUN response here? It seems like Pion and browsers will retry
+				// STUN binding requests even when an error response is received.
+				// Refer: https://github.com/pion/ice/blob/master/agent.go#L1045-L1131
+				log.Warnf("server is busy, rejecting incoming connection from: %s", addr.raddr)
+				continue
+			}
+			atomic.AddUint64(&l.inFlightConnections, 1)
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), candidateSetupTimeout)
 				defer cancel()
 				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
 					log.Debugf("could not accept connection: %v", err)
+					atomic.AddUint64(&l.inFlightConnections, ^uint64(0))
 					return
 				}
-				l.connChan <- conn
+				select {
+				case l.acceptQueue <- conn:
+				default:
+					atomic.AddUint64(&l.inFlightConnections, ^uint64(0))
+					conn.Close()
+				}
 			}()
 		}
 	}
@@ -125,7 +152,8 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 	select {
 	case <-l.ctx.Done():
 		return nil, os.ErrClosed
-	case conn := <-l.connChan:
+	case conn := <-l.acceptQueue:
+		atomic.AddUint64(&l.inFlightConnections, ^uint64(0))
 		return conn, nil
 	}
 }
@@ -177,6 +205,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	settingEngine.SetLite(true)
 	settingEngine.SetICEUDPMux(l.mux)
 	settingEngine.DisableCertificateFingerprintVerification(true)
+	settingEngine.SetICETimeouts(l.transport.peerConnectionDisconnectedTimeout, l.transport.peerConnectionFailedTimeout, l.transport.peerConnectionKeepaliveTimeout)
 	settingEngine.DetachDataChannels()
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
@@ -203,7 +232,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		rwc, err := handshakeChannel.Detach()
 		if err != nil {
 			select {
-			case signalChan <- errDatachannel("could not detach", err):
+			case signalChan <- fmt.Errorf("could not detach: %w", err):
 			default:
 			}
 			return
@@ -259,7 +288,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		return pc, nil, ctx.Err()
 	case err := <-signalChan:
 		if err != nil {
-			return pc, nil, errDatachannel("datachannel error", err)
+			return pc, nil, fmt.Errorf("datachannel error: %w", err)
 		}
 	}
 

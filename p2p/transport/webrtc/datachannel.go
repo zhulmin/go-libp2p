@@ -67,7 +67,7 @@ type dataChannel struct {
 
 	// hack for closing the Read side using a deadline
 	// in case `Read` does not return.
-	forceClosed bool
+	closeErr error
 
 	wg     sync.WaitGroup
 	ctx    context.Context
@@ -144,8 +144,8 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				d.m.Lock()
 				defer d.m.Unlock()
-				if d.forceClosed {
-					return 0, io.EOF
+				if d.closeErr != nil {
+					return 0, d.closeErr
 				}
 			}
 			return 0, err
@@ -281,7 +281,7 @@ func (d *dataChannel) Close() error {
 
 	d.m.Lock()
 	d.state = stateClosed
-	d.forceClosed = true
+	d.closeErr = io.EOF
 	d.m.Unlock()
 	if d.conn != nil {
 		d.conn.removeStream(d.id)
@@ -324,7 +324,7 @@ func (d *dataChannel) remoteClosed() {
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.state = stateClosed
-	d.forceClosed = true
+	d.closeErr = io.EOF
 	d.cancel()
 
 	// This is a hack. A recent commit in pion/datachannel
@@ -369,7 +369,15 @@ func (d *dataChannel) Reset() error {
 	d.resetOnce.Do(func() {
 		msg := &pb.Message{Flag: pb.Message_RESET.Enum()}
 		_ = d.writer.WriteMsg(msg)
-		err = d.Close()
+		d.m.Lock()
+		d.state = stateClosed
+		d.closeErr = io.ErrClosedPipe
+		d.m.Unlock()
+		if d.conn != nil {
+			d.conn.removeStream(d.id)
+		}
+		// hack to force close the read
+		d.SetReadDeadline(time.Now().Add(-100 * time.Millisecond))
 	})
 	return err
 }
