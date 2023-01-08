@@ -571,7 +571,7 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 }
 
 func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
-	count := uint64(2)
+	count := uint32(3)
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),
 	)
@@ -586,8 +586,8 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	)
 	var wg sync.WaitGroup
 	start := make(chan struct{})
-	var success uint64
-	for i := 0; uint64(i) < count+2; i++ {
+	var success uint32
+	for i := 0; uint32(i) < count+2; i++ {
 		wg.Add(1)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -598,7 +598,7 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 			<-start
 			_, err := tr1.Dial(ctx, listener.Multiaddr(), listeningPeer)
 			if err == nil {
-				atomic.AddUint64(&success, 1)
+				atomic.AddUint32(&success, 1)
 			}
 
 		}()
@@ -606,5 +606,5 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 
 	close(start)
 	wg.Wait()
-	require.Equal(t, count, atomic.LoadUint64(&success))
+	require.Equal(t, count, atomic.LoadUint32(&success))
 }

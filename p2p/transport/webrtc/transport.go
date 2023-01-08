@@ -56,7 +56,7 @@ type WebRTCTransport struct {
 	peerConnectionKeepaliveTimeout    time.Duration
 
 	// in-flight connections
-	maxInFlightConnections uint64
+	maxInFlightConnections uint32
 }
 
 var _ tpt.Transport = &WebRTCTransport{}
@@ -81,7 +81,7 @@ func WithPeerConnectionIceTimeouts(disconnect time.Duration, failed time.Duratio
 
 // WithListenerMaxInFlightConnections sets the maximum number of connections that are in-flight, i.e
 // they are being negotiated, or are waiting to be accepted.
-func WithListenerMaxInFlightConnections(m uint64) Option {
+func WithListenerMaxInFlightConnections(m uint32) Option {
 	return func(t *WebRTCTransport) error {
 		t.maxInFlightConnections = m
 		return nil

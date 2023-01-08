@@ -30,7 +30,7 @@ var _ tpt.Listener = &listener{}
 const (
 	candidateSetupTimeout                = 20 * time.Second
 	maxNumCandidates                     = 20
-	DefaultMaxInFlightConnections uint64 = 10
+	DefaultMaxInFlightConnections uint32 = 10
 )
 
 type candidateAddr struct {
@@ -58,8 +58,9 @@ type listener struct {
 	// is considered to be in flight from the instant it is handled
 	// until it is dequed by a call to Accept, or errors out in some
 	// way.
-	inFlightConnections    uint64
-	maxInFlightConnections uint64
+	//
+	inFlightConnections    uint32
+	maxInFlightConnections uint32
 
 	// used to control the lifecycle of the listener
 	ctx    context.Context
@@ -120,27 +121,27 @@ func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
 		case <-l.ctx.Done():
 			return
 		case addr := <-candidateChan:
-			if atomic.LoadUint64(&l.inFlightConnections) >= l.maxInFlightConnections {
+			if atomic.LoadUint32(&l.inFlightConnections) >= l.maxInFlightConnections {
 				// TODO: should we send an error STUN response here? It seems like Pion and browsers will retry
 				// STUN binding requests even when an error response is received.
 				// Refer: https://github.com/pion/ice/blob/master/agent.go#L1045-L1131
 				log.Warnf("server is busy, rejecting incoming connection from: %s", addr.raddr)
 				continue
 			}
-			atomic.AddUint64(&l.inFlightConnections, 1)
+			atomic.AddUint32(&l.inFlightConnections, 1)
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), candidateSetupTimeout)
 				defer cancel()
 				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
 					log.Debugf("could not accept connection: %v", err)
-					atomic.AddUint64(&l.inFlightConnections, ^uint64(0))
+					atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 					return
 				}
 				select {
 				case l.acceptQueue <- conn:
 				default:
-					atomic.AddUint64(&l.inFlightConnections, ^uint64(0))
+					atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 					conn.Close()
 				}
 			}()
@@ -153,7 +154,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 	case <-l.ctx.Done():
 		return nil, os.ErrClosed
 	case conn := <-l.acceptQueue:
-		atomic.AddUint64(&l.inFlightConnections, ^uint64(0))
+		atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 		return conn, nil
 	}
 }
