@@ -104,13 +104,13 @@ func newConnection(
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		switch state {
 		case webrtc.PeerConnectionStateDisconnected:
-			log.Warn("peer connection disconnected")
+			log.Warnf("[%s] peer connection disconnected", localPeer)
 		case webrtc.PeerConnectionStateFailed:
 			log.Warn("peer connection reset")
 			conn.resetStreams()
 			fallthrough
 		case webrtc.PeerConnectionStateClosed:
-			log.Warn("peer connection closed")
+			log.Warnf("[%s] peer connection closed", localPeer)
 			conn.Close()
 		}
 	})
