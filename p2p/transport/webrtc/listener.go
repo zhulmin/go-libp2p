@@ -29,7 +29,6 @@ var _ tpt.Listener = &listener{}
 
 const (
 	candidateSetupTimeout                = 20 * time.Second
-	maxNumCandidates                     = 20
 	DefaultMaxInFlightConnections uint32 = 10
 )
 
@@ -69,7 +68,7 @@ type listener struct {
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
-	candidateChan := make(chan candidateAddr, maxNumCandidates)
+	candidateChan := make(chan candidateAddr, DefaultMaxInFlightConnections)
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -141,6 +140,7 @@ func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
 				select {
 				case l.acceptQueue <- conn:
 				default:
+					log.Warnf("could not push connection")
 					atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 					conn.Close()
 				}
@@ -199,7 +199,6 @@ func (l *listener) handleCandidate(ctx context.Context, addr candidateAddr) (tpt
 }
 
 func (l *listener) setupConnection(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
-
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
 	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
@@ -208,6 +207,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	settingEngine.DisableCertificateFingerprintVerification(true)
 	settingEngine.SetICETimeouts(l.transport.peerConnectionDisconnectedTimeout, l.transport.peerConnectionFailedTimeout, l.transport.peerConnectionKeepaliveTimeout)
 	settingEngine.DetachDataChannels()
+	settingEngine.SetReceiveMTU(udpmux.ReceiveMTU)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 
@@ -219,6 +219,29 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	signalChan := make(chan error)
 	var wrappedChannel *dataChannel
 	var handshakeOnce sync.Once
+	var connectedOnce sync.Once
+
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
+			connectedOnce.Do(func() {
+				select {
+				case signalChan <- nil:
+				default:
+				}
+			})
+		case webrtc.PeerConnectionStateDisconnected:
+			fallthrough
+		case webrtc.PeerConnectionStateFailed:
+			log.Errorf("listener: connection could not be established: ufrag: %s", addr.ufrag)
+			connectedOnce.Do(func() {
+				select {
+				case signalChan <- fmt.Errorf("peerconnection could not connect"):
+				default:
+				}
+			})
+		}
+	})
 
 	handshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: func(v bool) *bool { return &v }(true),
@@ -254,9 +277,6 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		})
 	})
 
-	// Checking the peerconnection state is not necessary in this case as any
-	// error caused while accepting will trigger the onerror callback of the
-	// handshake channel.
 	handshakeChannel.OnError(func(e error) {
 		handshakeOnce.Do(func() {
 			select {
@@ -281,6 +301,16 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	err = pc.SetLocalDescription(answer)
 	if err != nil {
 		return pc, nil, err
+	}
+
+	select {
+	case <-ctx.Done():
+		return pc, nil, ctx.Err()
+	case err := <-signalChan:
+		if err != nil {
+			return pc, nil, fmt.Errorf("peerconnection error: %w", err)
+		}
+
 	}
 
 	// await datachannel moving to open state

@@ -124,6 +124,9 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		d.m.Unlock()
 
 		if state := d.getState(); remaining == 0 && (state == stateReadClosed || state == stateClosed) {
+			if d.closeErr != nil {
+				return read, d.closeErr
+			}
 			return read, io.EOF
 		}
 

@@ -26,15 +26,18 @@ var (
 // `push` and read by using `pop`
 type packetQueue struct {
 	ctx         context.Context
+	cancel      context.CancelFunc
 	mu          sync.Mutex
 	pkts        []packet
 	notify      chan struct{}
 	readWaiting bool
 }
 
-func newPacketQueue(ctx context.Context) *packetQueue {
+func newPacketQueue() *packetQueue {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &packetQueue{
 		ctx:    ctx,
+		cancel: cancel,
 		notify: make(chan struct{}),
 	}
 }
@@ -110,7 +113,10 @@ func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
 // buffers
 func (pq *packetQueue) close() {
 	pq.mu.Lock()
-	defer pq.mu.Unlock()
+	defer func() {
+		pq.cancel()
+		pq.mu.Unlock()
+	}()
 	for _, pkt := range pq.pkts {
 		buf := pkt.buf[:cap(pkt.buf)]
 		pool.Put(buf)

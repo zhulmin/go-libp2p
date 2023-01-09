@@ -9,12 +9,15 @@ import (
 	"strings"
 	"sync"
 
+	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/pion/ice/v2"
 	"github.com/pion/stun"
 )
 
-const receiveMTU = 1500
+var log = logging.Logger("mux")
+
+const ReceiveMTU = 1500
 
 var _ ice.UDPMux = &udpMux{}
 
@@ -92,6 +95,9 @@ func (mux *udpMux) Close() error {
 
 // RemoveConnByUfrag implements ice.UDPMux
 func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
+	if ufrag == "" {
+		return
+	}
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 	for _, isIPv6 := range []bool{true, false} {
@@ -100,6 +106,7 @@ func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
 			_ = conn.closeConnection()
 			delete(mux.ufragMap, key)
 			for _, addr := range conn.addresses {
+				// log.Errorf("deleting address : %v %v", ufrag, addr)
 				delete(mux.addrMap, addr)
 			}
 		}
@@ -139,10 +146,11 @@ func (mux *udpMux) readLoop() {
 		default:
 		}
 
-		buf := pool.Get(receiveMTU)
+		buf := pool.Get(2049)
 
-		n, addr, err := mux.socket.ReadFrom(buf)
+		n, addr, err := mux.socket.ReadFrom(buf[:ReceiveMTU])
 		if err != nil {
+			log.Errorf("error reading from socket: %w", err)
 			pool.Put(buf)
 			if os.IsTimeout(err) {
 				continue
@@ -155,8 +163,8 @@ func (mux *udpMux) readLoop() {
 		// passed on to any connection, and therefore the current
 		// function has ownership of the packet. Otherwise, the
 		// ownership of the packet is passed to a connection
-		err = mux.processPacket(buf, addr)
-		if err != nil {
+		processErr := mux.processPacket(buf, addr)
+		if processErr != nil {
 			buf = buf[:cap(buf)]
 			pool.Put(buf)
 		}
@@ -164,7 +172,10 @@ func (mux *udpMux) readLoop() {
 }
 
 func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
-	udpAddr := addr.(*net.UDPAddr)
+	udpAddr, ok := addr.(*net.UDPAddr)
+	if !ok {
+		return fmt.Errorf("underlying connection did not return a UDP address")
+	}
 	isIPv6 := udpAddr.IP.To4() == nil
 
 	// Connections are indexed by remote address. We firest
@@ -177,46 +188,53 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	// if address was not found check if ufrag exists
 	if !ok && stun.IsMessage(buf) {
 		msg := &stun.Message{Raw: buf}
-		if err := msg.Decode(); err != nil {
+		if err := msg.Decode(); err != nil || msg.Type != stun.BindingRequest {
+			log.Debug("incoming message should be a STUN binding request")
 			return err
 		}
-		ufrag, err := ufragFromStunMessage(msg, false)
+
+		ufrag, err := ufragFromStunMessage(msg)
 		if err != nil {
+			log.Debug("could not find STUN username: %w", err)
 			return err
 		}
+
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		mux.mu.Lock()
 		conn, ok = mux.ufragMap[key]
 		if !ok {
 			conn = newMuxedConnection(mux, ufrag)
 			mux.ufragMap[key] = conn
-			// this happens when the lock is held,
-			// but it's not a problem since the packets are
-			// handled sequentially in the same goroutine
-			if mux.unknownUfragCallback != nil {
-				mux.unknownUfragCallback(ufrag, udpAddr)
-			}
 		}
-		conn.addresses = append(conn.addresses, udpAddr.String())
 		mux.addrMap[udpAddr.String()] = conn
+		conn.addresses = append(conn.addresses, udpAddr.String())
 		mux.mu.Unlock()
+		if !ok && mux.unknownUfragCallback != nil {
+			mux.unknownUfragCallback(ufrag, udpAddr)
+		}
 	}
 
 	if conn != nil {
-		_ = conn.push(buf, addr)
+		err := conn.push(buf, addr)
+		if err != nil {
+			log.Error("could not push packet")
+		}
 		return nil
 	}
+
 	return fmt.Errorf("connection not found")
 }
 
-// ufragFromStunMessage returns either the local or remote ufrag
+// ufragFromStunMessage returns the local or ufrag
 // from the STUN username attribute. Local ufrag is the ufrag of the
 // peer which initiated the connectivity check, e.g in a connectivity
 // check from A to B, the username attribute will be B_ufrag:A_ufrag
 // with the local ufrag value being A_ufrag. In case of ice-lite, the
 // localUfrag value will always be the remote peer's ufrag since ICE-lite
-// implementations do not generate connectivity checks.
-func ufragFromStunMessage(msg *stun.Message, localUfrag bool) (string, error) {
+// implementations do not generate connectivity checks. In our specific
+// case, since the local and remote ufrag is equal, we can return
+// either value.
+func ufragFromStunMessage(msg *stun.Message) (string, error) {
 	attr, err := msg.Get(stun.AttrUsername)
 	if err != nil {
 		return "", err
@@ -225,8 +243,5 @@ func ufragFromStunMessage(msg *stun.Message, localUfrag bool) (string, error) {
 	if len(ufrag) < 2 {
 		return "", fmt.Errorf("invalid STUN username attribute")
 	}
-	if localUfrag {
-		return ufrag[1], nil
-	}
-	return ufrag[0], nil
+	return ufrag[1], nil
 }

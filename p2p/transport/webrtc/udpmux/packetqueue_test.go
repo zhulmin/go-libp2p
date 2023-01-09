@@ -1,7 +1,6 @@
 package udpmux
 
 import (
-	"context"
 	"net"
 	"net/netip"
 	"testing"
@@ -12,8 +11,7 @@ import (
 )
 
 func TestPacketQueue_QueuePacketsForRead(t *testing.T) {
-	ctx := context.Background()
-	b := newPacketQueue(ctx)
+	b := newPacketQueue()
 	b.push([]byte{1, 2, 3}, net.UDPAddrFromAddrPort(netip.MustParseAddrPort("127.0.0.1:1234")))
 	b.push([]byte{5, 6, 7, 8}, net.UDPAddrFromAddrPort(netip.MustParseAddrPort("127.0.0.1:1235")))
 
@@ -28,8 +26,7 @@ func TestPacketQueue_QueuePacketsForRead(t *testing.T) {
 }
 
 func TestPacketQueue_WaitsForData(t *testing.T) {
-	ctx := context.Background()
-	pb := newPacketQueue(ctx)
+	pb := newPacketQueue()
 	buf := pool.Get(100)
 
 	timer := time.AfterFunc(200*time.Millisecond, func() {
@@ -43,8 +40,7 @@ func TestPacketQueue_WaitsForData(t *testing.T) {
 }
 
 func TestPacketQueue_DropsPacketsWhenQueueIsFull(t *testing.T) {
-	ctx := context.Background()
-	pq := newPacketQueue(ctx)
+	pq := newPacketQueue()
 	addr := net.UDPAddrFromAddrPort(netip.MustParseAddrPort("127.0.0.1:12345"))
 	for i := 0; i < maxPacketsInQueue; i++ {
 		buf := pool.Get(255)

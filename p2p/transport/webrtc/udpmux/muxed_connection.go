@@ -29,7 +29,7 @@ func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 	return &muxedConnection{
 		ctx:        ctx,
 		cancelFunc: cancel,
-		pq:         newPacketQueue(ctx),
+		pq:         newPacketQueue(),
 		ufrag:      ufrag,
 		mux:        mux,
 	}

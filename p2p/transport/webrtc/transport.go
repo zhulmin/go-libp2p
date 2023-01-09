@@ -22,6 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -258,9 +259,9 @@ func (t *WebRTCTransport) dial(
 
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.SetICECredentials(ufrag, ufrag)
-	settingEngine.SetLite(false)
 	settingEngine.DetachDataChannels()
 
+	settingEngine.SetReceiveMTU(udpmux.ReceiveMTU)
 	settingEngine.SetICETimeouts(t.peerConnectionDisconnectedTimeout, t.peerConnectionFailedTimeout, t.peerConnectionKeepaliveTimeout)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
@@ -281,6 +282,8 @@ func (t *WebRTCTransport) dial(
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		switch state {
+		case webrtc.PeerConnectionStateConnecting:
+			log.Warn("connecting")
 		case webrtc.PeerConnectionStateConnected:
 			connectedOnce.Do(func() {
 				select {
@@ -362,10 +365,11 @@ func (t *WebRTCTransport) dial(
 	select {
 	case err := <-signalChan:
 		if err != nil {
+			log.Error("peer connection timed out")
 			return pc, nil, err
 		}
 	case <-ctx.Done():
-		return pc, nil, fmt.Errorf("datachannel timed out")
+		return pc, nil, fmt.Errorf("peerconnection opening timed out")
 	}
 
 	// get wrapped data channel from the callback
@@ -401,7 +405,7 @@ func (t *WebRTCTransport) dial(
 		nil,
 		remoteMultiaddr,
 	)
-	tctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	tctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	secConn, err := t.noiseHandshake(tctx, pc, channel, p, remoteHashFunction, false)
 	if err != nil {
@@ -482,15 +486,15 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 		return nil, fmt.Errorf("could not instantiate transport: %w", err)
 	}
 	if inbound {
-		secureConn, err = sessionTransport.SecureOutbound(ctx, datachannel, "")
+		secureConn, err = sessionTransport.SecureOutbound(ctx, datachannel, peer)
 		if err != nil {
-			err = fmt.Errorf("failed to secure inbound: %w", err)
+			err = fmt.Errorf("failed to secure inbound [noise outbound]: %w %v", err, ctx.Value("id"))
 			return
 		}
 	} else {
 		secureConn, err = sessionTransport.SecureInbound(ctx, datachannel, peer)
 		if err != nil {
-			err = fmt.Errorf("failed to secure outbound: %w", err)
+			err = fmt.Errorf("failed to secure outbound [noise inbound]: %w %v", err, ctx.Value("id"))
 			return
 		}
 	}

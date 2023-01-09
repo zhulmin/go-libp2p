@@ -85,7 +85,7 @@ func newConnection(
 			// datachannel cannot be detached before opening
 			rwc, err := dc.Detach()
 			if err != nil {
-				log.Errorf("[%s] could not detch channel: %s", localPeer, dc.Label())
+				log.Errorf("[%s] could not detach channel: %s", localPeer, dc.Label())
 				return
 			}
 			stream = newDataChannel(conn, dc, rwc, pc, nil, nil)
@@ -104,11 +104,13 @@ func newConnection(
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		switch state {
 		case webrtc.PeerConnectionStateDisconnected:
-			fallthrough
+			log.Warn("peer connection disconnected")
 		case webrtc.PeerConnectionStateFailed:
+			log.Warn("peer connection reset")
 			conn.resetStreams()
-			conn.Close()
+			fallthrough
 		case webrtc.PeerConnectionStateClosed:
+			log.Warn("peer connection closed")
 			conn.Close()
 		}
 	})
@@ -169,6 +171,8 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 		return nil, err
 	}
 
+	// OnOpen will return immediately for detached datachannels
+	// refer: https://github.com/pion/webrtc/blob/7ab3174640b3ce15abebc2516a2ca3939b5f105f/datachannel.go#L278-L282
 	streamID := *dc.ID()
 	var stream *dataChannel
 	dc.OnOpen(func() {
