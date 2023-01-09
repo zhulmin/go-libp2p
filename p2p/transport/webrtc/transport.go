@@ -260,7 +260,7 @@ func (t *WebRTCTransport) dial(
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.DetachDataChannels()
-
+	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetReceiveMTU(udpmux.ReceiveMTU)
 	settingEngine.SetICETimeouts(t.peerConnectionDisconnectedTimeout, t.peerConnectionFailedTimeout, t.peerConnectionKeepaliveTimeout)
 

@@ -68,7 +68,7 @@ type listener struct {
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
-	candidateChan := make(chan candidateAddr, DefaultMaxInFlightConnections)
+	candidateChan := make(chan candidateAddr, transport.maxInFlightConnections)
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
 				defer cancel()
 				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
-					log.Debugf("could not accept connection: %v", err)
+					log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
 					atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 					return
 				}
@@ -204,6 +204,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
 	settingEngine.SetLite(true)
 	settingEngine.SetICEUDPMux(l.mux)
+	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.DisableCertificateFingerprintVerification(true)
 	settingEngine.SetICETimeouts(l.transport.peerConnectionDisconnectedTimeout, l.transport.peerConnectionFailedTimeout, l.transport.peerConnectionKeepaliveTimeout)
 	settingEngine.DetachDataChannels()

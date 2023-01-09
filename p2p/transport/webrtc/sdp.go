@@ -16,7 +16,6 @@ c=IN %s %s
 t=0 0
 m=application %d UDP/DTLS/SCTP webrtc-datachannel
 a=mid:0
-a=ice-options:trickle
 a=ice-ufrag:%s
 a=ice-pwd:%s
 a=fingerprint:sha-256 ba:78:16:bf:8f:01:cf:ea:41:41:40:de:5d:ae:22:23:b0:03:61:a3:96:17:7a:9c:b4:10:ff:61:f2:00:15:ad

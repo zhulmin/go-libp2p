@@ -125,14 +125,14 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 }
 
 func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
-	tr, listeningPeer := getTransport(t, WithListenerMaxInFlightConnections(500),
+	count := 500
+	tr, listeningPeer := getTransport(t, WithListenerMaxInFlightConnections(uint32(count)),
 		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
 	)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
 	listener, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
-	count := 5
 
 	done := make(chan struct{})
 	go func() {
@@ -155,12 +155,11 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 					t.Logf("dialing : %v", err)
 					continue
 				}
-				conn.Close()
+				require.NotNil(t, conn)
 				return
 			}
 
 		}()
-		time.Sleep(50 * time.Millisecond)
 	}
 
 	select {
