@@ -45,7 +45,7 @@ type connection struct {
 	remoteMultiaddr ma.Multiaddr
 
 	m       sync.Mutex
-	streams map[uint16]*dataChannel
+	streams map[uint16]*webRTCStream
 
 	acceptQueue chan acceptStream
 
@@ -84,7 +84,7 @@ func newConnection(
 		remoteMultiaddr: remoteMultiaddr,
 		ctx:             ctx,
 		cancel:          cancel,
-		streams:         make(map[uint16]*dataChannel),
+		streams:         make(map[uint16]*webRTCStream),
 
 		acceptQueue: make(chan acceptStream, maxAcceptQueueLen),
 	}
@@ -117,9 +117,13 @@ func (c *connection) resetStreams() {
 	}
 	c.m.Lock()
 	defer c.m.Unlock()
-	for _, stream := range c.streams {
-		stream.reset()
+	for k, stream := range c.streams {
+		// reset the streams, but we do not need to be notified
+		// of stream closure
+		stream.close(true, false)
+		delete(c.streams, k)
 	}
+
 }
 
 // ConnState implements transport.CapableConn
@@ -163,7 +167,7 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 	if err != nil {
 		return nil, fmt.Errorf("could not open stream: %w", err)
 	}
-	stream := newDataChannel(
+	stream := newStream(
 		c,
 		dc,
 		rwc,
@@ -179,7 +183,7 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	case <-c.ctx.Done():
 		return nil, os.ErrClosed
 	case accStream := <-c.acceptQueue:
-		stream := newDataChannel(
+		stream := newStream(
 			c,
 			accStream.channel,
 			accStream.stream,
@@ -235,7 +239,7 @@ func (c *connection) Transport() tpt.Transport {
 	return c.transport
 }
 
-func (c *connection) addStream(stream *dataChannel) {
+func (c *connection) addStream(stream *webRTCStream) {
 	c.m.Lock()
 	defer c.m.Unlock()
 	c.streams[stream.id] = stream

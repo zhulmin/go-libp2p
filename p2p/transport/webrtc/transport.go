@@ -321,7 +321,7 @@ func (t *WebRTCTransport) dial(
 	}
 	laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
 
-	channel := newDataChannel(nil, rawHandshakeChannel, detached, laddr, raddr)
+	channel := newStream(nil, rawHandshakeChannel, detached, laddr, raddr)
 	// the local address of the selected candidate pair should be the
 	// local address for the connection, since different datachannels
 	// are multiplexed over the same SCTP connection
@@ -410,7 +410,7 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	return result, nil
 }
 
-func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *dataChannel, peer peer.ID, hash crypto.Hash, inbound bool) (secureConn sec.SecureConn, err error) {
+func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *webRTCStream, peer peer.ID, hash crypto.Hash, inbound bool) (secureConn sec.SecureConn, err error) {
 	prologue, err := t.generateNoisePrologue(pc, hash, inbound)
 	if err != nil {
 		return nil, fmt.Errorf("could not generate prologue: %w", err)

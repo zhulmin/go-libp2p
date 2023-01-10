@@ -57,3 +57,11 @@ func (state channelState) processOutgoingFlag(flag pb.Message_Flag) channelState
 	}
 	return state
 }
+
+func (state channelState) allowRead() bool {
+	return state != stateClosed && state != stateReadClosed
+}
+
+func (state channelState) allowWrite() bool {
+	return state != stateClosed && state != stateWriteClosed
+}

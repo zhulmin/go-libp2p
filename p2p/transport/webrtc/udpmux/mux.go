@@ -152,7 +152,7 @@ func (mux *udpMux) readLoop() {
 
 		n, addr, err := mux.socket.ReadFrom(buf)
 		if err != nil {
-			log.Errorf("error reading from socket: %w", err)
+			log.Errorf("error reading from socket: %v", err)
 			pool.Put(buf)
 			if os.IsTimeout(err) {
 				continue

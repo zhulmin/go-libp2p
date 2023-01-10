@@ -257,7 +257,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		return pc, nil, err
 	}
 
-	handshakeChannel := newDataChannel(nil, rawDatachannel, rwc, l.localAddr, addr.raddr)
+	handshakeChannel := newStream(nil, rawDatachannel, rwc, l.localAddr, addr.raddr)
 	// The connection is instantiated before performing the Noise handshake. This is
 	// to handle the case where the remote is faster and attempts to initiate a stream
 	// before the ondatachannel callback can be set.
