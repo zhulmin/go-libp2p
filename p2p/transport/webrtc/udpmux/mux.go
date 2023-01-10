@@ -89,6 +89,7 @@ func (mux *udpMux) Close() error {
 	default:
 	}
 	mux.cancel()
+	mux.socket.Close()
 	mux.wg.Wait()
 	return nil
 }
@@ -139,6 +140,7 @@ func (mux *udpMux) writeTo(buf []byte, addr net.Addr) (int, error) {
 }
 
 func (mux *udpMux) readLoop() {
+	defer mux.wg.Done()
 	for {
 		select {
 		case <-mux.ctx.Done():

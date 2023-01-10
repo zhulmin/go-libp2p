@@ -129,7 +129,7 @@ func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
 			}
 			atomic.AddUint32(&l.inFlightConnections, 1)
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), candidateSetupTimeout)
+				ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
 				defer cancel()
 				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
@@ -217,76 +217,14 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		return pc, nil, err
 	}
 
-	signalChan := make(chan error)
-	var wrappedChannel *dataChannel
-	var handshakeOnce sync.Once
-	var connectedOnce sync.Once
-
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		switch state {
-		case webrtc.PeerConnectionStateConnected:
-			connectedOnce.Do(func() {
-				select {
-				case signalChan <- nil:
-				default:
-				}
-			})
-		case webrtc.PeerConnectionStateDisconnected:
-			fallthrough
-		case webrtc.PeerConnectionStateFailed:
-			log.Errorf("listener: connection could not be established: ufrag: %s", addr.ufrag)
-			connectedOnce.Do(func() {
-				select {
-				case signalChan <- fmt.Errorf("peerconnection could not connect"):
-				default:
-				}
-			})
-		}
-	})
-
-	handshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
+	errC := awaitPeerConnectionOpen(addr.ufrag, pc)
+	rawDatachannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: func(v bool) *bool { return &v }(true),
 		ID:         func(v uint16) *uint16 { return &v }(0),
 	})
 	if err != nil {
 		return pc, nil, err
 	}
-
-	// handshakeChannel immediately opens since negotiated = true
-	handshakeChannel.OnOpen(func() {
-		rwc, err := handshakeChannel.Detach()
-		if err != nil {
-			select {
-			case signalChan <- fmt.Errorf("could not detach: %w", err):
-			default:
-			}
-			return
-		}
-		wrappedChannel = newDataChannel(
-			nil,
-			handshakeChannel,
-			rwc,
-			pc,
-			l.localAddr,
-			addr.raddr,
-		)
-		handshakeOnce.Do(func() {
-			select {
-			case signalChan <- nil:
-			default:
-			}
-		})
-	})
-
-	handshakeChannel.OnError(func(e error) {
-		handshakeOnce.Do(func() {
-			select {
-			case signalChan <- e:
-			default:
-			}
-
-		})
-	})
 
 	// we infer the client sdp from the incoming STUN connectivity check
 	// by setting the ice-ufrag equal to the incoming check.
@@ -307,23 +245,19 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	select {
 	case <-ctx.Done():
 		return pc, nil, ctx.Err()
-	case err := <-signalChan:
+	case err := <-errC:
 		if err != nil {
 			return pc, nil, fmt.Errorf("peerconnection error: %w", err)
 		}
 
 	}
 
-	// await datachannel moving to open state
-	select {
-	case <-ctx.Done():
-		return pc, nil, ctx.Err()
-	case err := <-signalChan:
-		if err != nil {
-			return pc, nil, fmt.Errorf("datachannel error: %w", err)
-		}
+	rwc, err := getDetachedChannel(ctx, rawDatachannel)
+	if err != nil {
+		return pc, nil, err
 	}
 
+	handshakeChannel := newDataChannel(nil, rawDatachannel, rwc, l.localAddr, addr.raddr)
 	// The connection is instantiated before performing the Noise handshake. This is
 	// to handle the case where the remote is faster and attempts to initiate a stream
 	// before the ondatachannel callback can be set.
@@ -340,7 +274,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	)
 
 	// we do not yet know A's peer ID so accept any inbound
-	secureConn, err := l.transport.noiseHandshake(ctx, pc, wrappedChannel, "", crypto.SHA256, true)
+	secureConn, err := l.transport.noiseHandshake(ctx, pc, handshakeChannel, "", crypto.SHA256, true)
 	if err != nil {
 		return pc, nil, err
 	}

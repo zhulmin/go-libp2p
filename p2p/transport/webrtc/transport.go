@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -271,76 +270,16 @@ func (t *WebRTCTransport) dial(
 		return pc, nil, fmt.Errorf("could not instantiate peerconnection: %w", err)
 	}
 
-	signalChan := make(chan error)
-	dcChannel := make(chan *dataChannel)
-	var connectedOnce sync.Once
-
-	defer func() {
-		close(signalChan)
-		close(dcChannel)
-	}()
-
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		switch state {
-		case webrtc.PeerConnectionStateConnecting:
-			log.Warn("connecting")
-		case webrtc.PeerConnectionStateConnected:
-			connectedOnce.Do(func() {
-				select {
-				case signalChan <- nil:
-				default:
-				}
-			})
-		case webrtc.PeerConnectionStateFailed:
-			fallthrough
-		case webrtc.PeerConnectionStateDisconnected:
-			connectedOnce.Do(func() {
-				select {
-				case signalChan <- fmt.Errorf("peerconnection failed to connect"):
-				default:
-				}
-
-			})
-		}
-	})
-
+	errC := awaitPeerConnectionOpen(ufrag, pc)
 	// We need to set negotiated = true for this channel on both
 	// the client and server to avoid DCEP errors.
-	handshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
+	rawHandshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: func(v bool) *bool { return &v }(true),
 		ID:         func(v uint16) *uint16 { return &v }(0),
 	})
 	if err != nil {
 		return pc, nil, fmt.Errorf("could not create datachannel: %w", err)
 	}
-	// handshakeChannel immediately opens since negotiated = true
-	handshakeChannel.OnOpen(func() {
-		rwc, err := handshakeChannel.Detach()
-		if err != nil {
-			select {
-			case signalChan <- err:
-			default:
-			}
-			return
-		}
-		wrappedChannel := newDataChannel(nil, handshakeChannel, rwc, pc, nil, raddr)
-		cp, err := handshakeChannel.Transport().Transport().ICETransport().GetSelectedCandidatePair()
-		if cp == nil || err != nil {
-			err = fmt.Errorf("could not fetch selected candidate pair: %w", err)
-			select {
-			case signalChan <- err:
-			default:
-			}
-			return
-		}
-
-		laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
-		wrappedChannel.laddr = laddr
-		select {
-		case dcChannel <- wrappedChannel:
-		default:
-		}
-	})
 
 	// do offer-answer exchange
 	offer, err := pc.CreateOffer(nil)
@@ -363,27 +302,26 @@ func (t *WebRTCTransport) dial(
 
 	// await peerconnection opening
 	select {
-	case err := <-signalChan:
+	case err := <-errC:
 		if err != nil {
-			log.Error("peer connection timed out")
 			return pc, nil, err
 		}
 	case <-ctx.Done():
 		return pc, nil, fmt.Errorf("peerconnection opening timed out")
 	}
 
-	// get wrapped data channel from the callback
-	var channel *dataChannel
-	select {
-	case err := <-signalChan:
-		if err != nil {
-			return pc, nil, err
-		}
-	case <-ctx.Done():
-		return pc, nil, fmt.Errorf("datachannel timed out")
-	case channel = <-dcChannel:
+	detached, err := getDetachedChannel(ctx, rawHandshakeChannel)
+	if err != nil {
+		return pc, nil, err
 	}
+	// set the local address from the candidate pair
+	cp, err := rawHandshakeChannel.Transport().Transport().ICETransport().GetSelectedCandidatePair()
+	if cp == nil || err != nil {
+		return pc, nil, fmt.Errorf("ice connection did not have selected candidate pair")
+	}
+	laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
 
+	channel := newDataChannel(nil, rawHandshakeChannel, detached, laddr, raddr)
 	// the local address of the selected candidate pair should be the
 	// local address for the connection, since different datachannels
 	// are multiplexed over the same SCTP connection
@@ -405,9 +343,8 @@ func (t *WebRTCTransport) dial(
 		nil,
 		remoteMultiaddr,
 	)
-	tctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	secConn, err := t.noiseHandshake(tctx, pc, channel, p, remoteHashFunction, false)
+
+	secConn, err := t.noiseHandshake(ctx, pc, channel, p, remoteHashFunction, false)
 	if err != nil {
 		return pc, conn, err
 	}
@@ -429,7 +366,7 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	if err != nil {
 		return nil, err
 	}
-	// guess hash algorithm
+
 	localFp, err := t.getCertificateFingerprint()
 	if err != nil {
 		return nil, err

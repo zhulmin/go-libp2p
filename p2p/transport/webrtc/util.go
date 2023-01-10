@@ -1,13 +1,17 @@
 package libp2pwebrtc
 
 import (
+	"context"
 	"encoding/hex"
+	"fmt"
 	"math/rand"
 	"strings"
+	"sync"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
+	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -74,4 +78,52 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// only use this if the datachannels are detached, since the OnOpen callback
+// will be called immediately. Only use after the peerconnection is open.
+// The context should close if the peerconnection underlying the datachannel
+// is closed.
+func getDetachedChannel(ctx context.Context, dc *webrtc.DataChannel) (rwc datachannel.ReadWriteCloser, err error) {
+	done := make(chan struct{})
+	dc.OnOpen(func() {
+		rwc, err = dc.Detach()
+		close(done)
+	})
+	// this is safe since for detached datachannels, the peerconnection runs the onOpen
+	// callback immediately if the SCTP transport is also connected.
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return
+}
+
+func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan error {
+	errC := make(chan error)
+	var once sync.Once
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateConnected {
+			once.Do(func() { close(errC) })
+			return
+		}
+		if state == webrtc.PeerConnectionStateFailed {
+			once.Do(func() {
+				// this ensures that we don't block this routine if the
+				// listener goes away
+				select {
+				case errC <- fmt.Errorf("peerconnection failed: %s", ufrag):
+					close(errC)
+				default:
+					log.Error("could not signal peerconnection failure")
+				}
+			})
+		}
+		// this is just for logging
+		if state == webrtc.PeerConnectionStateDisconnected {
+			log.Warn("peerconnection disconnected")
+		}
+	})
+	return errC
 }

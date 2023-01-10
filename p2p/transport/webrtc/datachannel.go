@@ -78,7 +78,6 @@ func newDataChannel(
 	connection *connection,
 	channel *webrtc.DataChannel,
 	rwc datachannel.ReadWriteCloser,
-	pc *webrtc.PeerConnection,
 	laddr, raddr net.Addr) *dataChannel {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -124,8 +123,11 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		d.m.Unlock()
 
 		if state := d.getState(); remaining == 0 && (state == stateReadClosed || state == stateClosed) {
-			if d.closeErr != nil {
-				return read, d.closeErr
+			d.m.Lock()
+			defer d.m.Unlock()
+			closeErr := d.closeErr
+			if closeErr != nil {
+				return read, closeErr
 			}
 			return read, io.EOF
 		}
@@ -138,11 +140,14 @@ func (d *dataChannel) Read(b []byte) (int, error) {
 		var msg pb.Message
 		err := d.reader.ReadMsg(&msg)
 		if err != nil {
+			// This case occurs when the remote node goes away
+			// without writing a FIN message
 			if errors.Is(err, io.EOF) {
 				d.remoteClosed()
 				if d.conn != nil {
 					d.conn.removeStream(d.id)
 				}
+				return 0, io.ErrClosedPipe
 			}
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				d.m.Lock()
@@ -174,6 +179,10 @@ func (d *dataChannel) processIncomingFlag(flag pb.Message_Flag) {
 	d.m.Unlock()
 
 	if current != next && next == stateClosed {
+		if flag == pb.Message_RESET {
+			defer d.Reset()
+			return
+		}
 		defer d.Close()
 	}
 }
@@ -194,11 +203,14 @@ func (d *dataChannel) Write(b []byte) (int, error) {
 				// zero the read deadline, so read call only returns
 				// when the underlying datachannel closes or there is
 				// a message on the channel
-				d.SetReadDeadline(time.Time{})
+				d.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
 				var msg pb.Message
 				for {
 					err := d.reader.ReadMsg(&msg)
 					if err != nil {
+						if errors.Is(err, io.EOF) {
+							d.remoteClosed()
+						}
 						return
 					}
 					if msg.Flag != nil {
@@ -263,14 +275,22 @@ func (d *dataChannel) partialWrite(b []byte) (int, error) {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				return len(b), d.writer.WriteMsg(msg)
+				err := d.writer.WriteMsg(msg)
+				if err != nil {
+					return 0, err
+				}
+				return len(b), nil
 			case <-d.ctx.Done():
 				return 0, io.ErrClosedPipe
 			case <-deadlineUpdated:
 
 			}
 		} else {
-			return len(b), d.writer.WriteMsg(msg)
+			err := d.writer.WriteMsg(msg)
+			if err != nil {
+				return 0, err
+			}
+			return len(b), nil
 		}
 	}
 }
@@ -290,6 +310,9 @@ func (d *dataChannel) Close() error {
 		d.conn.removeStream(d.id)
 	}
 
+	// Since this is a valid close, we close the write side
+	// to signal EOF to the remote
+	d.CloseWrite()
 	d.cancel()
 	// This is a hack. A recent commit in pion/datachannel
 	// caused a regression where read blocks indefinitely
@@ -297,7 +320,7 @@ func (d *dataChannel) Close() error {
 	// PR being worked on here: https://github.com/pion/datachannel/pull/161
 	// This method allows any read calls to fail with
 	// deadline exceeded and unblocks them.
-	d.SetReadDeadline(time.Now().Add(-100 * time.Second))
+	d.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Now().Add(-100 * time.Second))
 	err := d.rwc.Close()
 	d.wg.Wait()
 	return err
@@ -324,20 +347,18 @@ func (d *dataChannel) CloseRead() error {
 }
 
 func (d *dataChannel) remoteClosed() {
+	// remove stream
+	defer func() {
+		if d.conn != nil {
+			d.conn.removeStream(d.id)
+		}
+	}()
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.state = stateClosed
-	d.closeErr = io.EOF
+	d.closeErr = io.ErrClosedPipe
+	close(d.writeAvailable)
 	d.cancel()
-
-	// This is a hack. A recent commit in pion/datachannel
-	// caused a regression where read blocks indefinitely
-	// even when then channel is closed.
-	// PR being worked on here: https://github.com/pion/datachannel/pull/161
-	// This method allows any read calls to fail with
-	// deadline exceeded and unblocks them.
-	d.SetReadDeadline(time.Now().Add(-100 * time.Second))
-
 }
 
 func (d *dataChannel) CloseWrite() error {
@@ -347,7 +368,10 @@ func (d *dataChannel) CloseWrite() error {
 		previousState := d.state
 		currentState := d.state.processOutgoingFlag(pb.Message_FIN)
 		d.state = currentState
+		writeAvailable := d.writeAvailable
+		d.writeAvailable = make(chan struct{})
 		d.m.Unlock()
+		close(writeAvailable)
 		if previousState != currentState && currentState == stateClosed {
 			defer d.Close()
 		}
@@ -367,7 +391,7 @@ func (d *dataChannel) RemoteAddr() net.Addr {
 	return d.raddr
 }
 
-func (d *dataChannel) Reset() error {
+func (d *dataChannel) reset() error {
 	var err error
 	d.resetOnce.Do(func() {
 		msg := &pb.Message{Flag: pb.Message_RESET.Enum()}
@@ -375,14 +399,21 @@ func (d *dataChannel) Reset() error {
 		d.m.Lock()
 		d.state = stateClosed
 		d.closeErr = io.ErrClosedPipe
+		writeAvailable := d.writeAvailable
+		d.writeAvailable = make(chan struct{})
 		d.m.Unlock()
-		if d.conn != nil {
-			d.conn.removeStream(d.id)
-		}
+		close(writeAvailable)
 		// hack to force close the read
-		d.SetReadDeadline(time.Now().Add(-100 * time.Millisecond))
+		d.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Now().Add(-100 * time.Millisecond))
 	})
 	return err
+}
+
+func (d *dataChannel) Reset() error {
+	if d.conn != nil {
+		d.conn.removeStream(d.id)
+	}
+	return d.reset()
 }
 
 func (d *dataChannel) SetDeadline(t time.Time) error {
@@ -393,6 +424,11 @@ func (d *dataChannel) SetDeadline(t time.Time) error {
 }
 
 func (d *dataChannel) SetReadDeadline(t time.Time) error {
+	select {
+	case <-d.ctx.Done():
+		return nil
+	default:
+	}
 	return d.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
 }
 
