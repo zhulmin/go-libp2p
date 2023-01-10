@@ -146,7 +146,7 @@ func (mux *udpMux) readLoop() {
 		default:
 		}
 
-		buf := pool.Get(ReceiveMTU)
+		buf := pool.Get(ReceiveMTU + 2048)
 
 		n, addr, err := mux.socket.ReadFrom(buf)
 		if err != nil {

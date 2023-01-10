@@ -127,11 +127,10 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 	// Temporarily skipping this test while looking for the error that causes peerconnections
 	// to not receive packets from the remote.
-	t.SkipNow()
+	// t.SkipNow()
 	count := 500
-	tr, listeningPeer := getTransport(t, WithListenerMaxInFlightConnections(uint32(count)),
-		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
-	)
+	tr, listeningPeer := getTransport(t, WithListenerMaxInFlightConnections(uint32(count))) // WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
 	listener, err := tr.Listen(listenMultiaddr)
@@ -150,7 +149,7 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 		go func() {
 			ctr, _ := getTransport(
 				t,
-				WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+				// WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
 			)
 			for {
 				conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
