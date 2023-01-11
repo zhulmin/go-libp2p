@@ -1,5 +1,9 @@
-on: [push]
 name: Interoperability Testing
+on:
+  pull_request:
+  push:
+    branches:
+      - "master"
 
 jobs:
   build-ping-container:
