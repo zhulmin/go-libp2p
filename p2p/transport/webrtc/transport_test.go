@@ -25,6 +25,7 @@ import (
 )
 
 func getTransport(t *testing.T, opts ...Option) (tpt.Transport, peer.ID) {
+	t.Helper()
 	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	require.NoError(t, err)
 	rcmgr := &network.NullResourceManager{}
@@ -32,6 +33,7 @@ func getTransport(t *testing.T, opts ...Option) (tpt.Transport, peer.ID) {
 	require.NoError(t, err)
 	peerID, err := peer.IDFromPrivateKey(privKey)
 	require.NoError(t, err)
+	t.Cleanup(func() { rcmgr.Close() })
 	return transport, peerID
 }
 
@@ -111,12 +113,15 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 	tr1, connectingPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
+
 	listener, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
 
+	done := make(chan struct{})
 	go func() {
 		_, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		assert.NoError(t, err)
+		close(done)
 	}()
 
 	conn, err := listener.Accept()
@@ -124,6 +129,12 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 	require.NotNil(t, conn)
 
 	require.Equal(t, connectingPeer, conn.RemotePeer())
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.FailNow()
+	}
+
 }
 
 func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
@@ -138,8 +149,9 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		for i := 0; i < count; i++ {
-			_, err := listener.Accept()
+			conn, err := listener.Accept()
 			assert.NoError(t, err)
+			assert.NotNil(t, conn)
 		}
 		close(done)
 	}()
@@ -150,6 +162,7 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 			assert.NoError(t, err)
 			assert.NotNil(t, conn)
+			conn.Close()
 		}()
 	}
 
@@ -175,7 +188,6 @@ func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
 			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 			require.NoError(t, err)
 			require.Equal(t, conn.RemotePeer(), listeningPeer)
-			conn.Close()
 		}
 	}()
 

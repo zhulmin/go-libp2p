@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	pool "github.com/libp2p/go-buffer-pool"
@@ -34,7 +35,7 @@ func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 	return &muxedConnection{
 		ctx:    ctx,
 		cancel: cancel,
-		pq:     &packetQueue{make(chan packet, maxPacketsInQueue)},
+		pq:     newPacketQueue(),
 		ufrag:  ufrag,
 		mux:    mux,
 	}
@@ -103,7 +104,19 @@ var (
 
 // just a convenience wrapper around a channel
 type packetQueue struct {
-	pkts chan packet
+	sync.Mutex
+	pkts   chan packet
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func newPacketQueue() *packetQueue {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &packetQueue{
+		ctx:    ctx,
+		cancel: cancel,
+		pkts:   make(chan packet, maxPacketsInQueue),
+	}
 }
 
 // pop reads a packet from the packetQueue or blocks until
@@ -129,16 +142,33 @@ func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 
 // push adds a packet to the packetQueue
 func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
+	pq.Lock()
+	defer pq.Unlock()
+	// priority select channel closure over sending.
+	// this prevents a send on closed channel panic
 	select {
-	case pq.pkts <- packet{addr, buf}:
-		return nil
+	case <-pq.ctx.Done():
+		return io.ErrClosedPipe
 	default:
-		return errTooManyPackets
+		select {
+		case pq.pkts <- packet{addr, buf}:
+			return nil
+		default:
+			return errTooManyPackets
+		}
 	}
 }
 
 // discard all packets in the queue and return
 // buffers
 func (pq *packetQueue) close() {
+	select {
+	case <-pq.ctx.Done():
+		return
+	default:
+	}
+	pq.cancel()
+	pq.Lock()
+	defer pq.Unlock()
 	close(pq.pkts)
 }

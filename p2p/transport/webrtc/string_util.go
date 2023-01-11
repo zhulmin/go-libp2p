@@ -47,3 +47,15 @@ func intersperse2(s string, c byte, k int) string {
 	}
 	return string(buf[:n])
 }
+
+func replaceAll(s string, b byte) string {
+	buf := make([]byte, len(s))
+	k := 0
+	for _, c := range []byte(s) {
+		if c != b {
+			buf[k] = c
+			k++
+		}
+	}
+	return string(buf[:k])
+}

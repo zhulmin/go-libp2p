@@ -376,13 +376,13 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	if err != nil {
 		return nil, err
 	}
-	remoteFp = strings.ReplaceAll(strings.ToLower(remoteFp), ":", "")
+	remoteFp = replaceAll(strings.ToLower(remoteFp), byte(':'))
 	remoteFpBytes, err := hex.DecodeString(remoteFp)
 	if err != nil {
 		return nil, err
 	}
 
-	local := strings.ReplaceAll(localFp.Value, ":", "")
+	local := replaceAll(localFp.Value, byte(':'))
 	localBytes, err := hex.DecodeString(local)
 	if err != nil {
 		return nil, err
