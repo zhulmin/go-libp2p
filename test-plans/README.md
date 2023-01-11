@@ -32,7 +32,7 @@ the following:
    to >/libp2p/test-plans/multidim-interop/ && make)`.
 3. Make a folder for the specified extra versions: `mkdir extra-versions && mv ping-versions.json extra-versions`
 4. Run the test:
-    ```
-    GO_LIBP2P_TEST_PLANS="$PWD"; (cd <path to >/libp2p/test-plans/multidim-interop/ && npm run test -- --extra-versions-dir=$GO_LIBP2P_TEST_PLANS/extra-versions --name-filter="go-libp2p-head")
+```
+GO_LIBP2P_TEST_PLANS="$PWD"; (cd <path to >/libp2p/test-plans/multidim-interop/ && npm run test -- --extra-versions-dir=$GO_LIBP2P_TEST_PLANS/extra-versions --name-filter="go-libp2p-head")
 
-    ```
+```

@@ -1,7 +1,7 @@
 [
     {
         "id": "go-libp2p-head",
-        "containerImageID": "FILL THIS IN",
+        "containerImageID": "go-libp2p-head",
         "transports": [
             "tcp",
             "ws",
