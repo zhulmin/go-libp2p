@@ -142,6 +142,10 @@ func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 
 // push adds a packet to the packetQueue
 func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
+	// we acquire a lock when sending on the channel to prevent
+	// closing when a send operation could be happening. This
+	// is caused by send usually being triggered by a different
+	// goroutine
 	pq.Lock()
 	defer pq.Unlock()
 	// priority select channel closure over sending.

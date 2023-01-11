@@ -31,9 +31,10 @@ func (state channelState) handleIncomingFlag(flag pb.Message_Flag) channelState 
 		return stateWriteClosed
 	case pb.Message_RESET:
 		return stateClosed
-
+	default:
+		// ignore values that are invalid for flags
+		return state
 	}
-	return state
 }
 
 func (state channelState) processOutgoingFlag(flag pb.Message_Flag) channelState {
@@ -55,6 +56,7 @@ func (state channelState) processOutgoingFlag(flag pb.Message_Flag) channelState
 	case pb.Message_RESET:
 		return stateClosed
 	default:
+		// ignore values that are invalid for flags
 		return state
 	}
 }

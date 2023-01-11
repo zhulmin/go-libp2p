@@ -42,14 +42,17 @@ type ufragConnKey struct {
 // we add the association to the address map. If not found, it is a previously
 // unseen IP address and the `unknownUfragCallback` callback is invoked.
 type udpMux struct {
-	mu                   sync.Mutex
-	wg                   sync.WaitGroup
-	ctx                  context.Context
-	cancel               context.CancelFunc
 	socket               net.PacketConn
 	unknownUfragCallback func(string, net.Addr)
-	ufragMap             map[ufragConnKey]*muxedConnection
-	addrMap              map[string]*muxedConnection
+
+	m        sync.Mutex
+	ufragMap map[ufragConnKey]*muxedConnection
+	addrMap  map[string]*muxedConnection
+
+	// the context controls the lifecycle of the mux
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr)) ice.UDPMux {
@@ -103,8 +106,8 @@ func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
 	if ufrag == "" {
 		return
 	}
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
+	mux.m.Lock()
+	defer mux.m.Unlock()
 	for _, isIPv6 := range []bool{true, false} {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		if conn, ok := mux.ufragMap[key]; ok {
@@ -125,8 +128,8 @@ func (mux *udpMux) getOrCreateConn(ufrag string, isIPv6 bool) (net.PacketConn, e
 	default:
 	}
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
+	mux.m.Lock()
+	defer mux.m.Unlock()
 	// check if the required connection exists
 	if conn, ok := mux.ufragMap[key]; ok {
 		return conn, nil
@@ -188,9 +191,9 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	// check if the remote address has a connection associated
 	// with it. If yes, we push the received packet to the connection
 	// and loop again.
-	mux.mu.Lock()
+	mux.m.Lock()
 	conn, ok := mux.addrMap[udpAddr.String()]
-	mux.mu.Unlock()
+	mux.m.Unlock()
 	// if address was not found check if ufrag exists
 	if !ok && stun.IsMessage(buf) {
 		msg := &stun.Message{Raw: buf}
@@ -206,7 +209,8 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 		}
 
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-		mux.mu.Lock()
+
+		mux.m.Lock()
 		conn, ok = mux.ufragMap[key]
 		if !ok {
 			conn = newMuxedConnection(mux, ufrag)
@@ -214,7 +218,8 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 		}
 		mux.addrMap[udpAddr.String()] = conn
 		conn.addresses = append(conn.addresses, udpAddr.String())
-		mux.mu.Unlock()
+		mux.m.Unlock()
+
 		if !ok && mux.unknownUfragCallback != nil {
 			mux.unknownUfragCallback(ufrag, udpAddr)
 		}

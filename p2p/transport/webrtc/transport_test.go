@@ -162,7 +162,6 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 			assert.NoError(t, err)
 			assert.NotNil(t, conn)
-			conn.Close()
 		}()
 	}
 
