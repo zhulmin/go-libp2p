@@ -22,14 +22,10 @@ func maFingerprintToSdp(fp string) string {
 // length k
 func intersperse(s string, c rune, k int) string {
 	builder := &strings.Builder{}
-	first := true
+	builder.Grow(len(s) + len(s)/k)
 	for pos, ch := range s {
-		if pos%k == 0 {
-			if first {
-				first = false
-			} else {
-				builder.WriteRune(c)
-			}
+		if pos%k == 0 && pos > 0 {
+			builder.WriteRune(c)
 		}
 		builder.WriteRune(ch)
 	}
