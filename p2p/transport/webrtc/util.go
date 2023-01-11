@@ -18,28 +18,12 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func maFingerprintToSdp(fp string) string {
-	result := ""
-	first := true
-	for pos, char := range fp {
-		if pos%2 == 0 {
-			if first {
-				first = false
-			} else {
-				result += ":"
-			}
-		}
-		result += string(char)
-	}
-	return result
-}
-
 func fingerprintToSDP(fp *mh.DecodedMultihash) string {
 	if fp == nil {
 		return ""
 	}
-	fpDigest := maFingerprintToSdp(hex.EncodeToString(fp.Digest))
-	return getSupportdSDPString(fp.Code) + " " + fpDigest
+	fpDigest := intersperse2(hex.EncodeToString(fp.Digest), ':', 2)
+	return getSupportedSDPString(fp.Code) + " " + fpDigest
 }
 
 func decodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {

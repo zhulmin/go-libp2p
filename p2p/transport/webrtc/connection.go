@@ -21,7 +21,7 @@ import (
 var _ tpt.CapableConn = &connection{}
 
 const (
-	maxAcceptQueueLen int = 10
+	maxAcceptQueueLen = 10
 )
 
 type acceptStream struct {

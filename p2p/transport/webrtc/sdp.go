@@ -4,10 +4,15 @@ import (
 	"crypto"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/multiformats/go-multihash"
 )
 
+// clientSDP describes an SDP format string which can be used
+// to infer a client's SDP offer from the incoming STUN message.
+// Note: ice-trickle is enabled by default on Pion, but in this
+// case it does not matter since we cannot exchange SDP or candidates.
 const clientSDP string = `
 v=0
 o=- 0 0 IN %s %s
@@ -42,6 +47,9 @@ func renderClientSdp(addr *net.UDPAddr, ufrag string) string {
 	)
 }
 
+// serverSDP defines an SDP format string used by a dialer
+// to infer the SDP answer of a server based on the provided
+// multiaddr, and the locally set ICE credentials.
 const serverSDP string = `
 v=0
 o=- 0 0 IN %s %s
@@ -82,6 +90,9 @@ func renderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.Dec
 	)
 }
 
+// getSupportedSDPHash converts a multihash code to the
+// corresponding crypto.Hash for supported protocols. If a
+// crypto.Hash cannot be found, it returns `(crypto.SHA256, false)`
 func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	switch code {
 	case multihash.MD5:
@@ -96,26 +107,18 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 		return crypto.SHA3_384, true
 	case multihash.SHA2_512:
 		return crypto.SHA512, true
+	default:
+		return crypto.SHA256, false
 	}
-	// default to sha256 but the dialer will fail
-	// the multiaddr first
-	return crypto.SHA256, false
 }
 
-func getSupportdSDPString(code uint64) string {
-	switch code {
-	case multihash.MD5:
-		return "md5"
-	case multihash.SHA1:
-		return "sha-1"
-	case multihash.SHA3_224:
-		return "sha-224"
-	case multihash.SHA2_256:
-		return "sha-256"
-	case multihash.SHA3_384:
-		return "sha-384"
-	case multihash.SHA2_512:
-		return "sha-512"
+// getSupportedSDPString converts a multihash code
+// to a string format recognised by pion for fingerprint
+// algorithms
+func getSupportedSDPString(code uint64) string {
+	hash, ok := getSupportedSDPHash(code)
+	if ok {
+		return strings.ToLower(hash.String())
 	}
 	return ""
 }
