@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -28,11 +29,11 @@ func main() {
 		muxer         = os.Getenv("muxer")
 		isDialerStr   = os.Getenv("is_dialer")
 		ip            = os.Getenv("ip")
-		redis_addr    = os.Getenv("REDIS_ADDR")
+		redisAddr     = os.Getenv("REDIS_ADDR")
 	)
 
-	if redis_addr == "" {
-		redis_addr = "redis:6379"
+	if redisAddr == "" {
+		redisAddr = "redis:6379"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -41,7 +42,7 @@ func main() {
 	// Get peer information via redis
 	rClient := redis.NewClient(&redis.Options{
 		DialTimeout: 10 * time.Second,
-		Addr:        redis_addr,
+		Addr:        redisAddr,
 		Password:    "",
 		DB:          0,
 	})
@@ -50,8 +51,7 @@ func main() {
 	// Make sure redis is ready
 	_, err := rClient.Ping(ctx).Result()
 	if err != nil {
-		fmt.Println(err)
-		panic("Failed to connect to redis")
+		log.Fatalf("Failed to connect to redis: %s", err)
 	}
 
 	is_dialer := isDialerStr == "true"
@@ -76,7 +76,7 @@ func main() {
 		options = append(options, libp2p.Transport(libp2pwebtransport.New))
 		listenAddr = fmt.Sprintf("/ip4/%s/udp/0/quic-v1/webtransport", ip)
 	default:
-		panic("Unsupported transport")
+		log.Fatalf("Unsupported transport: %s", transport)
 	}
 	options = append(options, libp2p.ListenAddrStrings(listenAddr))
 
@@ -87,7 +87,7 @@ func main() {
 		options = append(options, libp2p.Security(noise.ID, noise.New))
 	case "quic":
 	default:
-		panic("Unsupported secure channel")
+		log.Fatalf("Unsupported secure channel: %s", secureChannel)
 	}
 
 	switch muxer {
@@ -97,13 +97,13 @@ func main() {
 		options = append(options, libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport))
 	case "quic":
 	default:
-		panic("Unsupported muxer")
+		log.Fatalf("Unsupported muxer: %s", muxer)
 	}
 
 	host, err := libp2p.New(options...)
 
 	if err != nil {
-		panic(fmt.Sprintf("failed to instantiate libp2p instance: %s", err))
+		log.Fatalf("failed to instantiate libp2p instance: %s", err)
 	}
 	defer host.Close()
 
@@ -112,28 +112,28 @@ func main() {
 	if is_dialer {
 		val, err := rClient.BLPop(ctx, 20*time.Second, "listenerAddr").Result()
 		if err != nil {
-			panic("Failed to wait for listener to be ready")
+			log.Fatal("Failed to wait for listener to be ready")
 		}
 		otherMa := ma.StringCast(val[1])
 		fmt.Println("Other peer multiaddr is: ", otherMa)
 		otherMa, p2pComponent := ma.SplitLast(otherMa)
 		otherPeerId, err := peer.Decode(p2pComponent.Value())
 		if err != nil {
-			panic("Failed to get peer id from multiaddr")
+			log.Fatal("Failed to get peer id from multiaddr")
 		}
 		err = host.Connect(ctx, peer.AddrInfo{
 			ID:    otherPeerId,
 			Addrs: []ma.Multiaddr{otherMa},
 		})
 		if err != nil {
-			panic("Failed to connect to other peer")
+			log.Fatal("Failed to connect to other peer")
 		}
 
 		ping := ping.NewPingService(host)
 
 		res := <-ping.Ping(ctx, otherPeerId)
 		if res.Error != nil {
-			panic(res.Error)
+			log.Fatal(res.Error)
 		}
 
 		fmt.Println("Ping successful: ", res.RTT)
@@ -142,11 +142,11 @@ func main() {
 	} else {
 		_, err := rClient.RPush(ctx, "listenerAddr", host.Addrs()[0].Encapsulate(ma.StringCast("/p2p/"+host.ID().String())).String()).Result()
 		if err != nil {
-			panic("Failed to send listener address")
+			log.Fatal("Failed to send listener address")
 		}
 		_, err = rClient.BLPop(ctx, 20*time.Second, "dialerDone").Result()
 		if err != nil {
-			panic("Failed to wait for dialer conclusion")
+			log.Fatal("Failed to wait for dialer conclusion")
 		}
 	}
 }
