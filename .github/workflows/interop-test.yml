@@ -9,9 +9,6 @@ jobs:
   build-ping-container:
     name: Build Ping interop container
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v3
         with:
