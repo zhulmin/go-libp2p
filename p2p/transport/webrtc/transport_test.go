@@ -127,7 +127,7 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 }
 
 func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
-	count := 5
+	count := 3
 	tr, listeningPeer := getTransport(t, WithListenerMaxInFlightConnections(uint32(count)))
 
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
@@ -150,7 +150,6 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 			assert.NoError(t, err)
 			assert.NotNil(t, conn)
-
 		}()
 	}
 

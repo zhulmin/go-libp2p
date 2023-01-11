@@ -3,15 +3,14 @@ package libp2pwebrtc
 import (
 	"bufio"
 	"context"
-	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"sync"
 	"time"
 
-	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-msgio/protoio"
 	"github.com/pion/datachannel"
@@ -272,14 +271,14 @@ func (d *webRTCStream) partialWrite(b []byte) (int, error) {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				return d.writeMessage(msg)
+				return writeMessage(d.rwc, msg)
 			case <-d.ctx.Done():
 				return 0, io.ErrClosedPipe
 			case <-deadlineUpdated:
 
 			}
 		} else {
-			return d.writeMessage(msg)
+			return writeMessage(d.rwc, msg)
 		}
 	}
 }
@@ -289,13 +288,17 @@ func (d *webRTCStream) Close() error {
 }
 
 func (d *webRTCStream) CloseRead() error {
-	// test closure
-	select {
-	case <-d.ctx.Done():
-	default:
+	if d.isClosed() {
+		return nil
 	}
+	var err error
 	d.closeReadOnce.Do(func() {
-		d.writeMessage(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		_, err = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		if err != nil {
+			log.Debug("could not write STOP_SENDING message")
+			err = fmt.Errorf("could not close stream for reading: %w", err)
+			return
+		}
 		d.m.Lock()
 		current := d.state
 		next := d.state.processOutgoingFlag(pb.Message_STOP_SENDING)
@@ -307,16 +310,22 @@ func (d *webRTCStream) CloseRead() error {
 			d.close(false, true)
 		}
 	})
-	return nil
+	return err
 }
 
 func (d *webRTCStream) CloseWrite() error {
-	select {
-	case <-d.ctx.Done():
-	default:
+	if d.isClosed() {
+		return nil
 	}
+	var err error
 	d.closeWriteOnce.Do(func() {
-		d.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
+		_, err = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_FIN.Enum()})
+		if err != nil {
+			log.Debug("could not write FIN message")
+			err = fmt.Errorf("could not close stream for writing: %w", err)
+			return
+		}
+		// if successfully written, process the outgoing flag
 		d.m.Lock()
 		current := d.state
 		next := d.state.processOutgoingFlag(pb.Message_FIN)
@@ -330,7 +339,7 @@ func (d *webRTCStream) CloseWrite() error {
 			d.close(false, true)
 		}
 	})
-	return nil
+	return err
 }
 
 func (d *webRTCStream) LocalAddr() net.Addr {
@@ -353,10 +362,8 @@ func (d *webRTCStream) SetDeadline(t time.Time) error {
 }
 
 func (d *webRTCStream) SetReadDeadline(t time.Time) error {
-	select {
-	case <-d.ctx.Done():
+	if d.isClosed() {
 		return nil
-	default:
 	}
 	return d.setReadDeadline(t)
 }
@@ -370,10 +377,6 @@ func (d *webRTCStream) SetWriteDeadline(t time.Time) error {
 }
 
 func (d *webRTCStream) setReadDeadline(t time.Time) error {
-	select {
-	case <-d.ctx.Done():
-	default:
-	}
 	d.m.Lock()
 	defer d.m.Unlock()
 	d.readDeadline = t
@@ -392,20 +395,6 @@ func (d *webRTCStream) getCloseErr() error {
 	return d.closeErr
 }
 
-// we avoid using a protoio.Writer
-func (d *webRTCStream) writeMessage(msg *pb.Message) (int, error) {
-	size := msg.Size()
-	// 5 extra bytes since this wont be bigger than a uint64 ever
-	buf := pool.Get(size + 5)
-	defer pool.Put(buf[:cap(buf)])
-	varintLen := binary.PutUvarint(buf, uint64(size))
-	n, err := msg.MarshalTo(buf[varintLen:])
-	if err != nil {
-		return 0, err
-	}
-	return d.rwc.Write(buf[:(n + varintLen)])
-}
-
 // datachannelClosed is called when the remote closes
 // the datachannel, or disconnects.
 func (d *webRTCStream) datachannelClosed() {
@@ -414,6 +403,10 @@ func (d *webRTCStream) datachannelClosed() {
 
 // this is used to force reset a stream
 func (d *webRTCStream) close(isReset bool, notifyConnection bool) error {
+	if d.isClosed() {
+		return nil
+	}
+	var err error
 	d.closeOnce.Do(func() {
 		d.m.Lock()
 		d.state = stateClosed
@@ -428,28 +421,32 @@ func (d *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		// force close reads
 		d.setReadDeadline(time.Now().Add(-100 * time.Millisecond))
 		if isReset {
-			// write the reset message
-			_, _ = d.writeMessage(&pb.Message{Flag: pb.Message_RESET.Enum()})
+			// write the RESET message. The error is explicitly ignored
+			// because we do not know if the remote is still connected
+			_, _ = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_RESET.Enum()})
 		} else {
-			// write a close write
-			_, _ = d.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
+			// write a FIN message for standard stream closure
+			_, _ = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_FIN.Enum()})
 		}
+		// unblock any writes
+		// d.writeAvailable.signal()
 		// close the context
 		d.cancel()
-		// unblock any writes
-		d.writeAvailable.signal()
 		// close the channel. We do not care about the error message in
 		// this case
-		_ = d.rwc.Close()
+		err = d.rwc.Close()
 		if notifyConnection && d.conn != nil {
 			d.conn.removeStream(d.id)
 		}
 	})
 
-	return nil
+	return err
 }
 
 func (d *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
+	if d.isClosed() {
+		return
+	}
 	d.m.Lock()
 	current := d.state
 	next := d.state.handleIncomingFlag(flag)
@@ -458,6 +455,15 @@ func (d *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
 
 	if current != next && next == stateClosed {
 		defer d.close(flag == pb.Message_RESET, true)
+	}
+}
+
+func (d *webRTCStream) isClosed() bool {
+	select {
+	case <-d.ctx.Done():
+		return true
+	default:
+		return false
 	}
 }
 

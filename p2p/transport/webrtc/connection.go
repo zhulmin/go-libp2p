@@ -133,8 +133,8 @@ func (c *connection) ConnState() network.ConnectionState {
 	}
 }
 
-// Implement network.MuxedConn
-
+/* Close closes the underlying peerconnection.
+ */
 func (c *connection) Close() error {
 	if c.IsClosed() {
 		return nil
@@ -259,7 +259,7 @@ func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
 		c.cancel()
 		// is done safe to call twice?
 		c.scope.Done()
-		return
+		c.pc.Close()
 	}
 }
 

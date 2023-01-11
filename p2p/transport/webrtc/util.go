@@ -2,12 +2,15 @@ package libp2pwebrtc
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"strings"
 	"sync"
 
+	pool "github.com/libp2p/go-buffer-pool"
+	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
@@ -120,10 +123,25 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 				}
 			})
 		}
-		// this is just for logging
 		if state == webrtc.PeerConnectionStateDisconnected {
 			log.Warn("peerconnection disconnected")
 		}
 	})
 	return errC
+}
+
+// writeMessage writes a length-prefixed protobuf message to the datachannel. It
+// is preferred over protoio DelimitedWriter because it is thread safe, and the
+// buffer is only allocated from the global pool when writing.
+func writeMessage(rwc datachannel.ReadWriteCloser, msg *pb.Message) (int, error) {
+	size := msg.Size()
+	// 5 extra bytes since this wont be bigger than a uint64 ever
+	buf := pool.Get(size + 5)
+	defer pool.Put(buf[:cap(buf)])
+	varintLen := binary.PutUvarint(buf, uint64(size))
+	n, err := msg.MarshalTo(buf[varintLen:])
+	if err != nil {
+		return 0, err
+	}
+	return rwc.Write(buf[:(n + varintLen)])
 }

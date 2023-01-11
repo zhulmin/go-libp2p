@@ -54,8 +54,9 @@ func (state channelState) processOutgoingFlag(flag pb.Message_Flag) channelState
 		return stateReadClosed
 	case pb.Message_RESET:
 		return stateClosed
+	default:
+		return state
 	}
-	return state
 }
 
 func (state channelState) allowRead() bool {
