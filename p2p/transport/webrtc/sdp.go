@@ -8,7 +8,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/multiformats/go-multihash"
+	multihash "github.com/multiformats/go-multihash"
 )
 
 var clientTpl *template.Template
@@ -140,7 +140,7 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	case multihash.SHA2_512:
 		return crypto.SHA512, true
 	default:
-		return crypto.SHA256, false
+		return crypto.Hash(0), false
 	}
 }
 
