@@ -9,13 +9,13 @@ import (
 	"strings"
 	"sync"
 
-	pool "github.com/libp2p/go-buffer-pool"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
+	"google.golang.org/protobuf/proto"
 )
 
 func fingerprintToSDP(fp *mh.DecodedMultihash) string {
@@ -118,14 +118,19 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 // is preferred over protoio DelimitedWriter because it is thread safe, and the
 // buffer is only allocated from the global pool when writing.
 func writeMessage(rwc datachannel.ReadWriteCloser, msg *pb.Message) (int, error) {
-	size := msg.Size()
-	// 5 extra bytes since this wont be bigger than a uint64 ever
-	buf := pool.Get(size + 5)
-	defer pool.Put(buf[:cap(buf)])
-	varintLen := binary.PutUvarint(buf, uint64(size))
-	n, err := msg.MarshalTo(buf[varintLen:])
+	buf := make([]byte, 5)
+	varintLen := binary.PutUvarint(buf, uint64(proto.Size(msg)))
+	data, err := proto.Marshal(msg)
 	if err != nil {
 		return 0, err
 	}
-	return rwc.Write(buf[:(n + varintLen)])
+	_, err = rwc.Write(buf[:varintLen])
+	if err != nil {
+		return 0, err
+	}
+	_, err = rwc.Write(data)
+	if err != nil {
+		return 0, err
+	}
+	return len(msg.Message), nil
 }

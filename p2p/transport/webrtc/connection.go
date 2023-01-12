@@ -12,7 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"github.com/libp2p/go-msgio/protoio"
+	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
@@ -105,7 +105,7 @@ func newConnection(
 			select {
 			case conn.acceptQueue <- acceptStream{rwc, dc}:
 			default:
-				protoio.NewDelimitedWriter(rwc).WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()})
+				pbio.NewDelimitedWriter(rwc).WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()})
 				rwc.Close()
 			}
 		})

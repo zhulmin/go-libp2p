@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-msgio/protoio"
+	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
 
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"google.golang.org/protobuf/proto"
 )
 
 var _ network.MuxedStream = &webRTCStream{}
@@ -37,6 +38,7 @@ const (
 	// sized message.
 	bufferedAmountLowThreshold uint64 = uint64(maxBufferedAmount) / 2
 
+	// Proto overhead assumption is 5 bytes
 	protoOverhead int = 5
 	// Varint overhead is assumed to be 2 bytes. This is safe since
 	// 1. This is only used and when writing message, and
@@ -63,7 +65,7 @@ type webRTCStream struct {
 
 	state channelState
 
-	reader protoio.Reader
+	reader pbio.Reader
 
 	m             sync.Mutex
 	readBuf       []byte
@@ -102,7 +104,7 @@ func newStream(
 		cancel:          cancel,
 		writeAvailable:  &signal{c: make(chan struct{})},
 		deadlineUpdated: &signal{c: make(chan struct{})},
-		reader:          protoio.NewDelimitedReader(reader, maxMessageSize),
+		reader:          pbio.NewDelimitedReader(reader, maxMessageSize),
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
@@ -265,7 +267,7 @@ func (d *webRTCStream) partialWrite(b []byte) (int, error) {
 
 		msg := &pb.Message{Message: b}
 		bufferedAmount := int(d.rwc.(*datachannel.DataChannel).BufferedAmount())
-		addedBuffer := bufferedAmount + varintOverhead + msg.Size()
+		addedBuffer := bufferedAmount + varintOverhead + proto.Size(msg)
 		if addedBuffer > maxBufferedAmount {
 			select {
 			case <-timeout:
