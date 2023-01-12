@@ -91,6 +91,9 @@ func newConnection(
 
 	pc.OnConnectionStateChange(conn.onConnectionStateChange)
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
+		if conn.IsClosed() {
+			return
+		}
 		// TODO: This seems to block on OnOpen if moved
 		// to a separate function.
 		dc.OnOpen(func() {
@@ -150,8 +153,8 @@ func (c *connection) IsClosed() bool {
 	case <-c.ctx.Done():
 		return true
 	default:
+		return false
 	}
-	return false
 }
 
 func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error) {
