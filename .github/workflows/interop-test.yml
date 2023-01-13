@@ -28,10 +28,9 @@ jobs:
           path: ./test-plans/ping-image.tar
   run-multidim-interop:
     needs: build-ping-container
-    uses: "libp2p/test-plans/.github/workflows/run-testplans.yml@marco/wo-testground-opts"
+    uses: "libp2p/test-plans/.github/workflows/run-testplans.yml"
     with:
       dir: "multidim-interop"
       extra-versions: ping-versions
       image-tar: ping-image
-      test-plans_ref: "marco/wo-testground-opts"
       test-filter: "go-libp2p-head"

@@ -54,7 +54,7 @@ func main() {
 		log.Fatalf("Failed to connect to redis: %s", err)
 	}
 
-	is_dialer := isDialerStr == "true"
+	isDialer := isDialerStr == "true"
 
 	options := []libp2p.Option{}
 
@@ -109,7 +109,7 @@ func main() {
 
 	fmt.Println("My multiaddr is: ", host.Addrs())
 
-	if is_dialer {
+	if isDialer {
 		val, err := rClient.BLPop(ctx, 20*time.Second, "listenerAddr").Result()
 		if err != nil {
 			log.Fatal("Failed to wait for listener to be ready")
