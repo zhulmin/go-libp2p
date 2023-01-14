@@ -39,6 +39,9 @@ func init() {
 // to infer a client's SDP offer from the incoming STUN message.
 // Note: ice-trickle is enabled by default on Pion, but in this
 // case it does not matter since we cannot exchange SDP or candidates.
+// The fingerprint used to render a client SDP is arbitrary since
+// it fingerprint verification is disabled in favour of a noise
+// handshake. The max message size is fixed to 16384 bytes.
 const clientSDP string = `
 v=0
 o=- 0 0 IN %[1]s %[2]s
@@ -86,7 +89,8 @@ func renderClientSdp2(addr *net.UDPAddr, ufrag string) string {
 
 // serverSDP defines an SDP format string used by a dialer
 // to infer the SDP answer of a server based on the provided
-// multiaddr, and the locally set ICE credentials.
+// multiaddr, and the locally set ICE credentials. The max
+// message size is fixed to 16384 bytes.
 const serverSDP string = `
 v=0
 o=- 0 0 IN %[1]s %[2]s

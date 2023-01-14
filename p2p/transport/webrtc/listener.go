@@ -22,14 +22,15 @@ import (
 	"github.com/multiformats/go-multihash"
 
 	"github.com/pion/ice/v2"
+	pionlogger "github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
 )
 
 var _ tpt.Listener = &listener{}
 
 const (
-	candidateSetupTimeout                = 20 * time.Second
-	DefaultMaxInFlightConnections uint32 = 10
+	candidateSetupTimeout         = 20 * time.Second
+	DefaultMaxInFlightConnections = 10
 )
 
 type candidateAddr struct {
@@ -200,6 +201,12 @@ func (l *listener) handleCandidate(ctx context.Context, addr candidateAddr) (tpt
 
 func (l *listener) setupConnection(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
 	settingEngine := webrtc.SettingEngine{}
+
+	// suppress pion logs
+	loggerFactory := pionlogger.NewDefaultLoggerFactory()
+	loggerFactory.DefaultLogLevel = pionlogger.LogLevelDisabled
+	settingEngine.LoggerFactory = loggerFactory
+
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
 	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
 	settingEngine.SetLite(true)
@@ -208,7 +215,6 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	settingEngine.DisableCertificateFingerprintVerification(true)
 	settingEngine.SetICETimeouts(l.transport.peerConnectionDisconnectedTimeout, l.transport.peerConnectionFailedTimeout, l.transport.peerConnectionKeepaliveTimeout)
 	settingEngine.DetachDataChannels()
-	settingEngine.SetReceiveMTU(udpmux.ReceiveMTU)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 
@@ -217,15 +223,16 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		return pc, nil, err
 	}
 
-	errC := awaitPeerConnectionOpen(addr.ufrag, pc)
+	negotiated, id := hansdhakeChannelNegotiated, handshakeChannelId
 	rawDatachannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
-		Negotiated: func(v bool) *bool { return &v }(true),
-		ID:         func(v uint16) *uint16 { return &v }(0),
+		Negotiated: &negotiated,
+		ID:         &id,
 	})
 	if err != nil {
 		return pc, nil, err
 	}
 
+	errC := awaitPeerConnectionOpen(addr.ufrag, pc)
 	// we infer the client sdp from the incoming STUN connectivity check
 	// by setting the ice-ufrag equal to the incoming check.
 	clientSdpString := renderClientSdp(addr.raddr, addr.ufrag)
@@ -261,7 +268,8 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	// The connection is instantiated before performing the Noise handshake. This is
 	// to handle the case where the remote is faster and attempts to initiate a stream
 	// before the ondatachannel callback can be set.
-	conn := newConnection(
+	conn, err := newConnection(
+		network.DirInbound,
 		pc,
 		l.transport,
 		scope,
@@ -272,6 +280,9 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		nil,
 		remoteMultiaddr,
 	)
+	if err != nil {
+		return pc, nil, err
+	}
 
 	// we do not yet know A's peer ID so accept any inbound
 	secureConn, err := l.transport.noiseHandshake(ctx, pc, handshakeChannel, "", crypto.SHA256, true)

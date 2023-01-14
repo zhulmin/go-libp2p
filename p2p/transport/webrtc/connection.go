@@ -3,9 +3,11 @@ package libp2pwebrtc
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -48,12 +50,14 @@ type connection struct {
 	streams map[uint16]*webRTCStream
 
 	acceptQueue chan acceptStream
+	idAllocator *sidAllocator
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 func newConnection(
+	direction network.Direction,
 	pc *webrtc.PeerConnection,
 	transport *WebRTCTransport,
 	scope network.ConnManagementScope,
@@ -65,9 +69,14 @@ func newConnection(
 	remotePeer peer.ID,
 	remoteKey ic.PubKey,
 	remoteMultiaddr ma.Multiaddr,
-) *connection {
+) (*connection, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// this will be incremented before use
+	idAllocator, err := newSidAllocator(direction)
+	if err != nil {
+		return nil, err
+	}
 
 	conn := &connection{
 		dbgId:     rand.Intn(65536),
@@ -85,6 +94,7 @@ func newConnection(
 		ctx:             ctx,
 		cancel:          cancel,
 		streams:         make(map[uint16]*webRTCStream),
+		idAllocator:     idAllocator,
 
 		acceptQueue: make(chan acceptStream, maxAcceptQueueLen),
 	}
@@ -105,13 +115,14 @@ func newConnection(
 			select {
 			case conn.acceptQueue <- acceptStream{rwc, dc}:
 			default:
+				log.Warnf("connection busy, rejecting stream")
 				pbio.NewDelimitedWriter(rwc).WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()})
 				rwc.Close()
 			}
 		})
 	})
 
-	return conn
+	return conn, nil
 }
 
 func (c *connection) resetStreams() {
@@ -136,8 +147,7 @@ func (c *connection) ConnState() network.ConnectionState {
 	}
 }
 
-/* Close closes the underlying peerconnection.
- */
+// Close closes the underlying peerconnection.
 func (c *connection) Close() error {
 	if c.IsClosed() {
 		return nil
@@ -162,7 +172,11 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 		return nil, os.ErrClosed
 	}
 
-	dc, err := c.pc.CreateDataChannel("", nil)
+	streamID, err := c.idAllocator.nextID()
+	if err != nil {
+		return nil, err
+	}
+	dc, err := c.pc.CreateDataChannel("", &webrtc.DataChannelInit{ID: streamID})
 	if err != nil {
 		return nil, err
 	}
@@ -201,15 +215,6 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 // implement network.ConnSecurity
 func (c *connection) LocalPeer() peer.ID {
 	return c.localPeer
-}
-
-// only used during setup
-func (c *connection) setRemotePeer(id peer.ID) {
-	c.remotePeer = id
-}
-
-func (c *connection) setRemotePublicKey(key ic.PubKey) {
-	c.remoteKey = key
 }
 
 func (c *connection) LocalPrivateKey() ic.PrivKey {
@@ -289,4 +294,47 @@ func (c *connection) detachChannel(ctx context.Context, dc *webrtc.DataChannel) 
 	case <-done:
 	}
 	return
+}
+
+// only used during connection setup
+func (c *connection) setRemotePeer(id peer.ID) {
+	c.remotePeer = id
+}
+
+// only used during connection setup
+func (c *connection) setRemotePublicKey(key ic.PubKey) {
+	c.remoteKey = key
+}
+
+// sidAllocator is a helper struct to allocate stream IDs for datachannels. ID
+// reuse is not currently implemented. This prevents streams in pion from hanging
+// with `invalid DCEP message` errors.
+// The id is picked using the scheme described in:
+// https://datatracker.ietf.org/doc/html/draft-ietf-rtcweb-data-channel-08#section-6.5
+// By definition, the DTLS role for inbound connections is set to DTLS Server,
+// and outbound connections are DTLS Client.
+type sidAllocator struct {
+	n uint32
+}
+
+func newSidAllocator(direction network.Direction) (*sidAllocator, error) {
+	switch direction {
+	case network.DirInbound:
+		// server will use odd values
+		return &sidAllocator{n: 1}, nil
+	case network.DirOutbound:
+		// client will use even values
+		return &sidAllocator{n: 0}, nil
+	default:
+		return nil, fmt.Errorf("could not create SID allocator for direction: %s", direction)
+	}
+}
+
+func (a *sidAllocator) nextID() (*uint16, error) {
+	nxt := atomic.AddUint32(&a.n, 2)
+	if nxt > math.MaxUint32 {
+		return nil, fmt.Errorf("sid exhausted")
+	}
+	result := uint16(nxt)
+	return &result, nil
 }

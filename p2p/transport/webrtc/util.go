@@ -124,11 +124,9 @@ func writeMessage(rwc datachannel.ReadWriteCloser, msg *pb.Message) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	_, err = rwc.Write(buf[:varintLen])
-	if err != nil {
-		return 0, err
-	}
-	_, err = rwc.Write(data)
+	buf = buf[:varintLen]
+	buf = append(buf, data...)
+	_, err = rwc.Write(buf)
 	if err != nil {
 		return 0, err
 	}

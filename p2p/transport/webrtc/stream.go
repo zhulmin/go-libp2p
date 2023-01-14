@@ -49,6 +49,17 @@ const (
 	varintOverhead int = 2
 )
 
+type protectedWriter struct {
+	sync.Mutex
+	w pbio.Writer
+}
+
+func (w *protectedWriter) Write(msg proto.Message) error {
+	w.Lock()
+	defer w.Unlock()
+	return w.w.WriteMsg(msg)
+}
+
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type webRTCStream struct {
@@ -63,22 +74,21 @@ type webRTCStream struct {
 	closeOnce      sync.Once
 	readLoopOnce   sync.Once
 
-	state channelState
-
 	reader pbio.Reader
+	writer *protectedWriter
 
 	m             sync.Mutex
 	readBuf       []byte
 	writeDeadline time.Time
 	readDeadline  time.Time
+	state         channelState
+	// hack for closing the Read side using a deadline
+	// in case `Read` does not return.
+	closeErr error
 
 	// simplifies signaling deadline updated and write available
 	writeAvailable  *signal
 	deadlineUpdated *signal
-
-	// hack for closing the Read side using a deadline
-	// in case `Read` does not return.
-	closeErr error
 
 	wg     sync.WaitGroup
 	ctx    context.Context
@@ -89,7 +99,8 @@ func newStream(
 	connection *connection,
 	channel *webrtc.DataChannel,
 	rwc datachannel.ReadWriteCloser,
-	laddr, raddr net.Addr) *webRTCStream {
+	laddr, raddr net.Addr,
+) *webRTCStream {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	reader := bufio.NewReaderSize(rwc, maxMessageSize)
@@ -105,6 +116,7 @@ func newStream(
 		writeAvailable:  &signal{c: make(chan struct{})},
 		deadlineUpdated: &signal{c: make(chan struct{})},
 		reader:          pbio.NewDelimitedReader(reader, maxMessageSize),
+		writer:          &protectedWriter{w: pbio.NewDelimitedWriter(rwc)},
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
@@ -122,9 +134,13 @@ func newStream(
 // io.EOF.
 func (d *webRTCStream) Read(b []byte) (int, error) {
 	for {
+		if d.isClosed() {
+			return 0, io.ErrClosedPipe
+		}
 		d.m.Lock()
 		if !d.readDeadline.IsZero() && d.readDeadline.Before(time.Now()) {
 			d.m.Unlock()
+			log.Debugf("[1] deadline exceeded: closeErr: %v", d.getCloseErr())
 			return 0, os.ErrDeadlineExceeded
 		}
 		read := copy(b, d.readBuf)
@@ -134,6 +150,7 @@ func (d *webRTCStream) Read(b []byte) (int, error) {
 
 		if state := d.getState(); remaining == 0 && (state == stateReadClosed || state == stateClosed) {
 			closeErr := d.getCloseErr()
+			log.Debugf("[2] stream closed or empty: closeErr: %v", closeErr)
 			if closeErr != nil {
 				return read, closeErr
 			}
@@ -158,6 +175,7 @@ func (d *webRTCStream) Read(b []byte) (int, error) {
 				// if the stream has been force closed or force reset
 				// using SetReadDeadline, we check if closeErr was set.
 				closeErr := d.getCloseErr()
+				log.Debugf("closing stream, checking error: %v closeErr: %v", err, closeErr)
 				if closeErr != nil {
 					return 0, closeErr
 				}
@@ -273,14 +291,22 @@ func (d *webRTCStream) partialWrite(b []byte) (int, error) {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				return writeMessage(d.rwc, msg)
+				err := d.writer.Write(msg)
+				if err != nil {
+					return 0, err
+				}
+				return len(b), nil
 			case <-d.ctx.Done():
 				return 0, io.ErrClosedPipe
 			case <-deadlineUpdated:
 
 			}
 		} else {
-			return writeMessage(d.rwc, msg)
+			err := d.writer.Write(msg)
+			if err != nil {
+				return 0, err
+			}
+			return len(b), nil
 		}
 	}
 }
@@ -295,7 +321,7 @@ func (d *webRTCStream) CloseRead() error {
 	}
 	var err error
 	d.closeReadOnce.Do(func() {
-		_, err = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		err = d.writer.Write(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
 		if err != nil {
 			log.Debug("could not write STOP_SENDING message")
 			err = fmt.Errorf("could not close stream for reading: %w", err)
@@ -321,7 +347,7 @@ func (d *webRTCStream) CloseWrite() error {
 	}
 	var err error
 	d.closeWriteOnce.Do(func() {
-		_, err = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_FIN.Enum()})
+		err = d.writer.Write(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		if err != nil {
 			log.Debug("could not write FIN message")
 			err = fmt.Errorf("could not close stream for writing: %w", err)
@@ -410,6 +436,7 @@ func (d *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	}
 	var err error
 	d.closeOnce.Do(func() {
+		log.Debug("closing: reset: %v, notify: %v", isReset, notifyConnection)
 		d.m.Lock()
 		d.state = stateClosed
 		if d.closeErr == nil {
@@ -425,10 +452,10 @@ func (d *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		if isReset {
 			// write the RESET message. The error is explicitly ignored
 			// because we do not know if the remote is still connected
-			_, _ = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_RESET.Enum()})
+			_ = d.writer.Write(&pb.Message{Flag: pb.Message_RESET.Enum()})
 		} else {
 			// write a FIN message for standard stream closure
-			_, _ = writeMessage(d.rwc, &pb.Message{Flag: pb.Message_FIN.Enum()})
+			_ = d.writer.Write(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		}
 		// unblock any writes
 		// d.writeAvailable.signal()
@@ -456,6 +483,7 @@ func (d *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
 	d.m.Unlock()
 
 	if current != next && next == stateClosed {
+		log.Debug("closing: received flag: %v", flag)
 		defer d.close(flag == pb.Message_RESET, true)
 	}
 }

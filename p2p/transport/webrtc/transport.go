@@ -21,13 +21,15 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
+
+	// "github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multihash"
+	pionlogger "github.com/pion/logging"
 
 	"github.com/pion/dtls/v2/pkg/crypto/fingerprint"
 	"github.com/pion/webrtc/v3"
@@ -36,6 +38,20 @@ import (
 var log = logging.Logger("webrtc-transport")
 
 var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_WEBRTC), mafmt.Base(ma.P_CERTHASH))
+
+const (
+	// hansdhakeChannelNegotiated is used to specify that the
+	// handshake data channel does not need negotiation via DCEP.
+	// A constant is used since the `DataChannelInit` struct takes
+	// references instead of values.
+	hansdhakeChannelNegotiated = true
+	// handshakeChannelId is the agreed ID for the handshake data
+	// channel.
+	// A constant is used since the `DataChannelInit` struct takes
+	// references instead of values. We specify the type here as this
+	// value is only ever copied and passed by reference
+	handshakeChannelId = uint16(0)
+)
 
 // timeout values for the peerconnection
 // https://github.com/pion/webrtc/blob/v3.1.50/settingengine.go#L102-L109
@@ -257,10 +273,15 @@ func (t *WebRTCTransport) dial(
 	ufrag := "libp2p+webrtc+v1/" + genUfrag(32)
 
 	settingEngine := webrtc.SettingEngine{}
+	// suppress pion logs
+	loggerFactory := pionlogger.NewDefaultLoggerFactory()
+	loggerFactory.DefaultLogLevel = pionlogger.LogLevelDisabled
+	settingEngine.LoggerFactory = loggerFactory
+
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.DetachDataChannels()
+	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleClient)
 	settingEngine.SetIncludeLoopbackCandidate(true)
-	settingEngine.SetReceiveMTU(udpmux.ReceiveMTU)
 	settingEngine.SetICETimeouts(t.peerConnectionDisconnectedTimeout, t.peerConnectionFailedTimeout, t.peerConnectionKeepaliveTimeout)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
@@ -273,9 +294,10 @@ func (t *WebRTCTransport) dial(
 	errC := awaitPeerConnectionOpen(ufrag, pc)
 	// We need to set negotiated = true for this channel on both
 	// the client and server to avoid DCEP errors.
+	negotiated, id := hansdhakeChannelNegotiated, handshakeChannelId
 	rawHandshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
-		Negotiated: func(v bool) *bool { return &v }(true),
-		ID:         func(v uint16) *uint16 { return &v }(0),
+		Negotiated: &negotiated,
+		ID:         &id,
 	})
 	if err != nil {
 		return pc, nil, fmt.Errorf("could not create datachannel: %w", err)
@@ -332,7 +354,8 @@ func (t *WebRTCTransport) dial(
 
 	// we can only know the remote public key after the noise handshake,
 	// but need to set up the callbacks on the peerconnection
-	conn := newConnection(
+	conn, err := newConnection(
+		network.DirOutbound,
 		pc,
 		t,
 		scope,
@@ -343,6 +366,9 @@ func (t *WebRTCTransport) dial(
 		nil,
 		remoteMultiaddr,
 	)
+	if err != nil {
+		return pc, nil, err
+	}
 
 	secConn, err := t.noiseHandshake(ctx, pc, channel, p, remoteHashFunction, false)
 	if err != nil {
