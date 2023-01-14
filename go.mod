@@ -48,6 +48,7 @@ require (
 	github.com/pion/datachannel v1.5.5
 	github.com/pion/dtls/v2 v2.1.5
 	github.com/pion/ice/v2 v2.2.13
+	github.com/pion/logging v0.2.2
 	github.com/pion/stun v0.3.5
 	github.com/pion/webrtc/v3 v3.1.50
 	github.com/prometheus/client_golang v1.14.0
@@ -103,7 +104,6 @@ require (
 	github.com/onsi/ginkgo/v2 v2.5.1 // indirect
 	github.com/opencontainers/runtime-spec v1.0.2 // indirect
 	github.com/pion/interceptor v0.1.12 // indirect
-	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/mdns v0.0.5 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.10 // indirect
