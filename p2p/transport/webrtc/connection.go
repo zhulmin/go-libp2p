@@ -14,7 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
@@ -75,6 +74,7 @@ func newConnection(
 	// this will be incremented before use
 	idAllocator, err := newSidAllocator(direction)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -116,7 +116,8 @@ func newConnection(
 			case conn.acceptQueue <- acceptStream{rwc, dc}:
 			default:
 				log.Warnf("connection busy, rejecting stream")
-				pbio.NewDelimitedWriter(rwc).WriteMsg(&pb.Message{Flag: pb.Message_RESET.Enum()})
+				// reject stream without instantiating a delimited writer
+				_, _ = writeMessage(rwc, &pb.Message{Flag: pb.Message_RESET.Enum()})
 				rwc.Close()
 			}
 		})
@@ -332,7 +333,7 @@ func newSidAllocator(direction network.Direction) (*sidAllocator, error) {
 
 func (a *sidAllocator) nextID() (*uint16, error) {
 	nxt := atomic.AddUint32(&a.n, 2)
-	if nxt > math.MaxUint32 {
+	if nxt > math.MaxUint16 {
 		return nil, fmt.Errorf("sid exhausted")
 	}
 	result := uint16(nxt)
