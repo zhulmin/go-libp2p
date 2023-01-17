@@ -7,10 +7,12 @@ import (
 type channelState uint8
 
 const (
-	stateOpen channelState = iota
-	stateReadClosed
+	stateOpen channelState = 0
+
+	stateReadClosed channelState = 1 << iota
 	stateWriteClosed
-	stateClosed
+
+	stateClosed = stateReadClosed | stateWriteClosed
 )
 
 func (state channelState) handleIncomingFlag(flag pb.Message_Flag) channelState {
@@ -19,16 +21,10 @@ func (state channelState) handleIncomingFlag(flag pb.Message_Flag) channelState 
 	}
 	switch flag {
 	case pb.Message_FIN:
-		if state == stateWriteClosed {
-			return stateClosed
-		}
-		return stateReadClosed
+		return state | stateReadClosed
 
 	case pb.Message_STOP_SENDING:
-		if state == stateReadClosed {
-			return stateClosed
-		}
-		return stateWriteClosed
+		return state | stateWriteClosed
 	case pb.Message_RESET:
 		return stateClosed
 	default:
@@ -44,15 +40,9 @@ func (state channelState) processOutgoingFlag(flag pb.Message_Flag) channelState
 
 	switch flag {
 	case pb.Message_FIN:
-		if state == stateReadClosed {
-			return stateClosed
-		}
-		return stateWriteClosed
+		return state | stateWriteClosed
 	case pb.Message_STOP_SENDING:
-		if state == stateWriteClosed {
-			return stateClosed
-		}
-		return stateReadClosed
+		return state | stateReadClosed
 	case pb.Message_RESET:
 		return stateClosed
 	default:
@@ -62,9 +52,9 @@ func (state channelState) processOutgoingFlag(flag pb.Message_Flag) channelState
 }
 
 func (state channelState) allowRead() bool {
-	return state != stateClosed && state != stateReadClosed
+	return state&stateReadClosed == 0
 }
 
 func (state channelState) allowWrite() bool {
-	return state != stateClosed && state != stateWriteClosed
+	return state&stateWriteClosed == 0
 }
