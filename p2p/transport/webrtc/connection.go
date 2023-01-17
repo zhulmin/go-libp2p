@@ -183,7 +183,7 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 	}
 	rwc, err := c.detachChannel(ctx, dc)
 	if err != nil {
-		return nil, fmt.Errorf("could not open stream: %w", err)
+		return nil, fmt.Errorf("open stream: %w", err)
 	}
 	stream := newStream(
 		c,
@@ -327,7 +327,7 @@ func newSidAllocator(direction network.Direction) (*sidAllocator, error) {
 		// client will use even values
 		return &sidAllocator{n: 0}, nil
 	default:
-		return nil, fmt.Errorf("could not create SID allocator for direction: %s", direction)
+		return nil, fmt.Errorf("create SID allocator for direction: %s", direction)
 	}
 }
 

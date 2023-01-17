@@ -148,7 +148,7 @@ func (d *webRTCStream) Read(b []byte) (int, error) {
 		remaining := len(d.readBuf)
 		d.m.Unlock()
 
-		if state := d.getState(); remaining == 0 && (state == stateReadClosed || state == stateClosed) {
+		if remaining == 0 && !d.getState().allowRead() {
 			closeErr := d.getCloseErr()
 			log.Debugf("[2] stream closed or empty: closeErr: %v", closeErr)
 			if closeErr != nil {
@@ -324,7 +324,7 @@ func (d *webRTCStream) CloseRead() error {
 		err = d.writer.Write(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
 		if err != nil {
 			log.Debug("could not write STOP_SENDING message")
-			err = fmt.Errorf("could not close stream for reading: %w", err)
+			err = fmt.Errorf("close stream for reading: %w", err)
 			return
 		}
 		d.m.Lock()
@@ -350,7 +350,7 @@ func (d *webRTCStream) CloseWrite() error {
 		err = d.writer.Write(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		if err != nil {
 			log.Debug("could not write FIN message")
-			err = fmt.Errorf("could not close stream for writing: %w", err)
+			err = fmt.Errorf("close stream for writing: %w", err)
 			return
 		}
 		// if successfully written, process the outgoing flag

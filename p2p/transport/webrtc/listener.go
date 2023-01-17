@@ -204,6 +204,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 
 	// suppress pion logs
 	loggerFactory := pionlogger.NewDefaultLoggerFactory()
+	// NOTE: in future we might want to enable this in a verbose-log only mode
 	loggerFactory.DefaultLogLevel = pionlogger.LogLevelDisabled
 	settingEngine.LoggerFactory = loggerFactory
 

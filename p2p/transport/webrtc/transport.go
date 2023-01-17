@@ -7,10 +7,9 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -111,17 +110,20 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 	}
 	localPeerId, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
-		return nil, fmt.Errorf("could not get local peer ID: %w", err)
+		return nil, fmt.Errorf("get local peer ID: %w", err)
 	}
 	// We use elliptic P-256 since it is widely supported by browsers.
-	// See: https://github.com/libp2p/specs/pull/412#discussion_r968294244
+	//
+	// Implementation note: Testing with the browser,
+	// it seems like Chromium only supports ECDSA P-256 or RSA key signatures in the webrtc TLS certificate.
+	// We tried using P-228 and P-384 which caused the DTLS handshake to fail with Illegal Parameter
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, fmt.Errorf("could not generate key for cert: %w", err)
+		return nil, fmt.Errorf("generate key for cert: %w", err)
 	}
 	cert, err := webrtc.GenerateCertificate(pk)
 	if err != nil {
-		return nil, fmt.Errorf("could not generate certificate: %w", err)
+		return nil, fmt.Errorf("generate certificate: %w", err)
 	}
 	config := webrtc.Configuration{
 		Certificates: []webrtc.Certificate{*cert},
@@ -180,7 +182,7 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 
 	socket, err := net.ListenUDP(nw, udpAddr)
 	if err != nil {
-		return nil, fmt.Errorf("could not listen on udp: %w", err)
+		return nil, fmt.Errorf("listen on udp: %w", err)
 	}
 
 	// construct multiaddr
@@ -210,12 +212,17 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 
 	listenerMultiaddr = listenerMultiaddr.Encapsulate(certMultiaddress)
 
-	return newListener(
+	listener, err := newListener(
 		t,
 		listenerMultiaddr,
 		socket,
 		t.webrtcConfig,
 	)
+	if err != nil {
+		_ = socket.Close()
+		return nil, err
+	}
+	return listener, nil
 }
 
 func (t *WebRTCTransport) Dial(ctx context.Context, remoteMultiaddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
@@ -248,7 +255,7 @@ func (t *WebRTCTransport) dial(
 
 	remoteMultihash, err := decodeRemoteFingerprint(remoteMultiaddr)
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not decode fingerprint: %w", err)
+		return pc, nil, fmt.Errorf("decode fingerprint: %w", err)
 	}
 	remoteHashFunction, ok := getSupportedSDPHash(remoteMultihash.Code)
 	if !ok {
@@ -257,12 +264,12 @@ func (t *WebRTCTransport) dial(
 
 	rnw, rhost, err := manet.DialArgs(remoteMultiaddr)
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not generate dial args: %w", err)
+		return pc, nil, fmt.Errorf("generate dial args: %w", err)
 	}
 
 	raddr, err := net.ResolveUDPAddr(rnw, rhost)
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not resolve udp address: %w", err)
+		return pc, nil, fmt.Errorf("resolve udp address: %w", err)
 	}
 
 	// Instead of encoding the local fingerprint we
@@ -270,7 +277,7 @@ func (t *WebRTCTransport) dial(
 	// The only requirement here is that the ufrag and password
 	// must be equal, which will allow the server to determine
 	// the password using the STUN message.
-	ufrag := "libp2p+webrtc+v1/" + genUfrag(32)
+	ufrag := genUfrag(32)
 
 	settingEngine := webrtc.SettingEngine{}
 	// suppress pion logs
@@ -288,7 +295,7 @@ func (t *WebRTCTransport) dial(
 
 	pc, err = api.NewPeerConnection(t.webrtcConfig)
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not instantiate peerconnection: %w", err)
+		return pc, nil, fmt.Errorf("instantiate peerconnection: %w", err)
 	}
 
 	errC := awaitPeerConnectionOpen(ufrag, pc)
@@ -300,26 +307,29 @@ func (t *WebRTCTransport) dial(
 		ID:         &id,
 	})
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not create datachannel: %w", err)
+		return pc, nil, fmt.Errorf("create datachannel: %w", err)
 	}
 
 	// do offer-answer exchange
 	offer, err := pc.CreateOffer(nil)
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not create offer: %w", err)
+		return pc, nil, fmt.Errorf("create offer: %w", err)
 	}
 
 	err = pc.SetLocalDescription(offer)
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not set local description: %w", err)
+		return pc, nil, fmt.Errorf("set local description: %w", err)
 	}
 
-	answerSdpString := renderServerSdp(raddr, ufrag, remoteMultihash)
+	answerSdpString, err := renderServerSdp(raddr, ufrag, remoteMultihash)
+	if err != nil {
+		return pc, nil, fmt.Errorf("render server SDP: %w", err)
+	}
 
 	answer := webrtc.SessionDescription{SDP: answerSdpString, Type: webrtc.SDPTypeAnswer}
 	err = pc.SetRemoteDescription(answer)
 	if err != nil {
-		return pc, nil, fmt.Errorf("could not set remote description: %w", err)
+		return pc, nil, fmt.Errorf("set remote description: %w", err)
 	}
 
 	// await peerconnection opening
@@ -329,7 +339,7 @@ func (t *WebRTCTransport) dial(
 			return pc, nil, err
 		}
 	case <-ctx.Done():
-		return pc, nil, fmt.Errorf("peerconnection opening timed out")
+		return pc, nil, errors.New("peerconnection opening timed out")
 	}
 
 	detached, err := getDetachedChannel(ctx, rawHandshakeChannel)
@@ -338,8 +348,11 @@ func (t *WebRTCTransport) dial(
 	}
 	// set the local address from the candidate pair
 	cp, err := rawHandshakeChannel.Transport().Transport().ICETransport().GetSelectedCandidatePair()
-	if cp == nil || err != nil {
-		return pc, nil, fmt.Errorf("ice connection did not have selected candidate pair")
+	if cp == nil {
+		return pc, nil, errors.New("ice connection did not have selected candidate pair: nil result")
+	}
+	if err != nil {
+		return pc, nil, fmt.Errorf("ice connection did not have selected candidate pair: error: %w", err)
 	}
 	laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
 
@@ -402,19 +415,17 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	if err != nil {
 		return nil, err
 	}
-	remoteFp = replaceAll(strings.ToLower(remoteFp), byte(':'))
-	remoteFpBytes, err := hex.DecodeString(remoteFp)
+	remoteFpBytes, err := decodeFingerprintString(remoteFp)
 	if err != nil {
 		return nil, err
 	}
 
-	local := replaceAll(localFp.Value, byte(':'))
-	localBytes, err := hex.DecodeString(local)
+	localFpBytes, err := decodeFingerprintString(localFp.Value)
 	if err != nil {
 		return nil, err
 	}
 
-	localEncoded, err := multihash.Encode(localBytes, multihash.SHA2_256)
+	localEncoded, err := multihash.Encode(localFpBytes, multihash.SHA2_256)
 	if err != nil {
 		log.Debugf("could not encode multihash for local fingerprint")
 		return nil, err
@@ -439,14 +450,14 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *webRTCStream, peer peer.ID, hash crypto.Hash, inbound bool) (secureConn sec.SecureConn, err error) {
 	prologue, err := t.generateNoisePrologue(pc, hash, inbound)
 	if err != nil {
-		return nil, fmt.Errorf("could not generate prologue: %w", err)
+		return nil, fmt.Errorf("generate prologue: %w", err)
 	}
 	sessionTransport, err := t.noiseTpt.WithSessionOptions(
 		noise.Prologue(prologue),
 		noise.DisablePeerIDCheck(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not instantiate transport: %w", err)
+		return nil, fmt.Errorf("instantiate transport: %w", err)
 	}
 	if inbound {
 		secureConn, err = sessionTransport.SecureOutbound(ctx, datachannel, peer)

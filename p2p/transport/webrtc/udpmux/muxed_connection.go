@@ -2,7 +2,7 @@ package udpmux
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -31,6 +31,7 @@ type muxedConnection struct {
 }
 
 func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
+	// TODO: double confirm that we really do not want to link this to a parent context
 	ctx, cancel := context.WithCancel(context.Background())
 	return &muxedConnection{
 		ctx:    ctx,
@@ -64,16 +65,19 @@ func (conn *muxedConnection) ReadFrom(p []byte) (n int, addr net.Addr, err error
 
 // SetDeadline implements net.PacketConn
 func (*muxedConnection) SetDeadline(t time.Time) error {
+	// TODO: document why this is OK
 	return nil
 }
 
 // SetReadDeadline implements net.PacketConn
 func (*muxedConnection) SetReadDeadline(t time.Time) error {
+	// TODO: document why this is OK
 	return nil
 }
 
 // SetWriteDeadline implements net.PacketConn
 func (*muxedConnection) SetWriteDeadline(t time.Time) error {
+	// TODO: document why this is OK
 	return nil
 }
 
@@ -85,7 +89,7 @@ func (conn *muxedConnection) WriteTo(p []byte, addr net.Addr) (n int, err error)
 func (conn *muxedConnection) closeConnection() error {
 	select {
 	case <-conn.ctx.Done():
-		return fmt.Errorf("already closed")
+		return alreadyClosedErr
 	default:
 	}
 	conn.pq.close()
@@ -99,7 +103,7 @@ type packet struct {
 }
 
 var (
-	errTooManyPackets = fmt.Errorf("too many packets in queue; dropping")
+	errTooManyPackets = errors.New("too many packets in queue; dropping")
 )
 
 // just a convenience wrapper around a channel
@@ -122,6 +126,9 @@ func newPacketQueue() *packetQueue {
 // pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the buffer is closed.
 func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
+	// TODO: see if this pattern with all this p and p.buf / pool business cannot
+	// be done cleaner (if it is desired at all), now different logic
+	// layers are mixed a bit...
 	select {
 	case p, ok := <-pq.pkts:
 		if !ok {
@@ -146,6 +153,9 @@ func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
 	// closing when a send operation could be happening. This
 	// is caused by send usually being triggered by a different
 	// goroutine
+	// TODO: see if we can do without, for now the answer is NO
+	// as we've seen it panic, but perhaps there is a way to do it anyway,
+	// as usage of channels should ideally allow us to work mutex free
 	pq.Lock()
 	defer pq.Unlock()
 	// priority select channel closure over sending.

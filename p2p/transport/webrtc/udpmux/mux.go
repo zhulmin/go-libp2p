@@ -45,9 +45,7 @@ type udpMux struct {
 	socket               net.PacketConn
 	unknownUfragCallback func(string, net.Addr)
 
-	m        sync.Mutex
-	ufragMap map[ufragConnKey]*muxedConnection
-	addrMap  map[string]*muxedConnection
+	storage *udpMuxStorage
 
 	// the context controls the lifecycle of the mux
 	wg     sync.WaitGroup
@@ -62,8 +60,7 @@ func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr
 		cancel:               cancel,
 		socket:               socket,
 		unknownUfragCallback: unknownUfragCallback,
-		ufragMap:             make(map[ufragConnKey]*muxedConnection),
-		addrMap:              make(map[string]*muxedConnection),
+		storage:              newUdpMuxStorage(),
 	}
 
 	mux.wg.Add(1)
@@ -103,22 +100,7 @@ func (mux *udpMux) Close() error {
 
 // RemoveConnByUfrag implements ice.UDPMux
 func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
-	if ufrag == "" {
-		return
-	}
-	mux.m.Lock()
-	defer mux.m.Unlock()
-	for _, isIPv6 := range []bool{true, false} {
-		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-		if conn, ok := mux.ufragMap[key]; ok {
-			_ = conn.closeConnection()
-			delete(mux.ufragMap, key)
-			for _, addr := range conn.addresses {
-				// log.Errorf("deleting address : %v %v", ufrag, addr)
-				delete(mux.addrMap, addr)
-			}
-		}
-	}
+	mux.storage.RemoveConnByUfrag(ufrag)
 }
 
 func (mux *udpMux) getOrCreateConn(ufrag string, isIPv6 bool) (net.PacketConn, error) {
@@ -127,16 +109,15 @@ func (mux *udpMux) getOrCreateConn(ufrag string, isIPv6 bool) (net.PacketConn, e
 		return nil, io.ErrClosedPipe
 	default:
 	}
+
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-	mux.m.Lock()
-	defer mux.m.Unlock()
-	// check if the required connection exists
-	if conn, ok := mux.ufragMap[key]; ok {
+
+	if conn, ok := mux.storage.GetConn(key); ok {
 		return conn, nil
 	}
 
 	conn := newMuxedConnection(mux, ufrag)
-	mux.ufragMap[key] = conn
+	mux.storage.AddConn(key, conn)
 
 	return conn, nil
 }
@@ -191,9 +172,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	// check if the remote address has a connection associated
 	// with it. If yes, we push the received packet to the connection
 	// and loop again.
-	mux.m.Lock()
-	conn, ok := mux.addrMap[udpAddr.String()]
-	mux.m.Unlock()
+	conn, ok := mux.storage.GetConnByAddr(addr.String())
 	// if address was not found check if ufrag exists
 	if !ok && stun.IsMessage(buf) {
 		msg := &stun.Message{Raw: buf}
@@ -209,16 +188,9 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 		}
 
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-
-		mux.m.Lock()
-		conn, ok = mux.ufragMap[key]
-		if !ok {
-			conn = newMuxedConnection(mux, ufrag)
-			mux.ufragMap[key] = conn
-		}
-		mux.addrMap[udpAddr.String()] = conn
-		conn.addresses = append(conn.addresses, udpAddr.String())
-		mux.m.Unlock()
+		mux.storage.AddAddr(key, udpAddr.String(), func() *muxedConnection {
+			return newMuxedConnection(mux, ufrag)
+		})
 
 		if !ok && mux.unknownUfragCallback != nil {
 			mux.unknownUfragCallback(ufrag, udpAddr)
@@ -255,4 +227,72 @@ func ufragFromStunMessage(msg *stun.Message) (string, error) {
 		return "", fmt.Errorf("invalid STUN username attribute")
 	}
 	return ufrag[1], nil
+}
+
+type udpMuxStorage struct {
+	sync.RWMutex
+
+	ufragMap map[ufragConnKey]*muxedConnection
+	addrMap  map[string]*muxedConnection
+}
+
+func newUdpMuxStorage() *udpMuxStorage {
+	return &udpMuxStorage{
+		ufragMap: make(map[ufragConnKey]*muxedConnection),
+		addrMap:  make(map[string]*muxedConnection),
+	}
+}
+
+func (storage *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
+	if ufrag == "" {
+		return
+	}
+
+	storage.Lock()
+	defer storage.Unlock()
+
+	for _, isIPv6 := range []bool{true, false} {
+		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
+		if conn, ok := storage.ufragMap[key]; ok {
+			_ = conn.closeConnection()
+			delete(storage.ufragMap, key)
+			for _, addr := range conn.addresses {
+				delete(storage.addrMap, addr)
+			}
+		}
+	}
+}
+
+func (storage *udpMuxStorage) GetConn(key ufragConnKey) (*muxedConnection, bool) {
+	storage.RLock()
+	conn, ok := storage.ufragMap[key]
+	storage.RUnlock()
+	return conn, ok
+}
+
+func (storage *udpMuxStorage) GetConnByAddr(addr string) (*muxedConnection, bool) {
+	storage.RLock()
+	conn, ok := storage.addrMap[addr]
+	storage.RUnlock()
+	return conn, ok
+}
+
+func (storage *udpMuxStorage) AddConn(key ufragConnKey, conn *muxedConnection) {
+	storage.Lock()
+	storage.ufragMap[key] = conn
+	storage.Unlock()
+}
+
+func (storage *udpMuxStorage) AddAddr(key ufragConnKey, addr string, createConnIfNeeded func() *muxedConnection) {
+	storage.Lock()
+	defer storage.Unlock()
+
+	conn, ok := storage.ufragMap[key]
+	if !ok {
+		conn = createConnIfNeeded()
+		storage.ufragMap[key] = conn
+	}
+
+	storage.addrMap[addr] = conn
+	conn.addresses = append(conn.addresses, addr)
 }

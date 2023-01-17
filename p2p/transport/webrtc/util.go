@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"strings"
 	"sync"
 
@@ -18,12 +17,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func fingerprintToSDP(fp *mh.DecodedMultihash) string {
+func fingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
 	if fp == nil {
-		return ""
+		return "", fmt.Errorf("fingerprint multihash: %w", nilParamErr)
 	}
 	fpDigest := intersperse2(hex.EncodeToString(fp.Digest), ':', 2)
-	return getSupportedSDPString(fp.Code) + " " + fpDigest
+	sdpString, err := getSupportedSDPString(fp.Code)
+	if err != nil {
+		return "", err
+	}
+	return sdpString + " " + fpDigest, nil
 }
 
 func decodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
@@ -48,16 +51,6 @@ func encodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
 		return "", err
 	}
 	return multibase.Encode(multibase.Base64url, encoded)
-}
-
-const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
-
-func genUfrag(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-	}
-	return string(b)
 }
 
 func min(a, b int) int {

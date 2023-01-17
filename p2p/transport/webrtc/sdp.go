@@ -110,12 +110,15 @@ a=max-message-size:16384
 a=candidate:1 1 UDP 1 %[2]s %[3]d typ host
 `
 
-func renderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.DecodedMultihash) string {
+func renderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.DecodedMultihash) (string, error) {
 	ipVersion := "IP4"
 	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
 	}
-	fp := fingerprintToSDP(fingerprint)
+	fp, err := fingerprintToSDP(fingerprint)
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf(
 		serverSDP,
 		ipVersion,
@@ -123,7 +126,7 @@ func renderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.Dec
 		addr.Port,
 		ufrag,
 		fp,
-	)
+	), nil
 }
 
 // getSupportedSDPHash converts a multihash code to the
@@ -144,17 +147,17 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	case multihash.SHA2_512:
 		return crypto.SHA512, true
 	default:
-		return crypto.Hash(0), false
+		return 0, false
 	}
 }
 
 // getSupportedSDPString converts a multihash code
 // to a string format recognised by pion for fingerprint
 // algorithms
-func getSupportedSDPString(code uint64) string {
+func getSupportedSDPString(code uint64) (string, error) {
 	hash, ok := getSupportedSDPHash(code)
-	if ok {
-		return strings.ToLower(hash.String())
+	if !ok {
+		return "", fmt.Errorf("unsupported hash code (%d) :%w", code, invalidParamErr)
 	}
-	return ""
+	return strings.ToLower(hash.String()), nil
 }
