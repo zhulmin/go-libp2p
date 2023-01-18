@@ -198,8 +198,6 @@ func TestTransportWebRTC_CanCreateSuccessiveConnections(t *testing.T) {
 }
 
 func TestTransportWebRTC_ListenerCanCreateStreams(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	tr, listeningPeer := getTransport(t)
 	tr1, connectingPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
@@ -352,8 +350,8 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 	case <-time.After(100 * time.Second):
 		t.Fatal("timed out")
 	}
-
 }
+
 func TestTransportWebRTC_Deadline(t *testing.T) {
 	t.Skip("TODO: fix this test")
 
@@ -414,8 +412,6 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 }
 
 func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -585,8 +581,6 @@ func TestTransportWebRTC_Close(t *testing.T) {
 }
 
 func TestTransportWebRTC_ReceiveFlagsAfterReadClosed(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -630,8 +624,6 @@ func TestTransportWebRTC_ReceiveFlagsAfterReadClosed(t *testing.T) {
 }
 
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	// test multihash
 	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 	require.NoError(t, err)
@@ -735,8 +727,6 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 }
 
 func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	count := uint32(3)
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),
@@ -777,9 +767,8 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	require.Equal(t, count, atomic.LoadUint32(&success))
 }
 
-func TestWebsocketTransport(t *testing.T) {
+func TestWebrtcTransport(t *testing.T) {
 	t.Skip("This test is failing, TODO: fix it")
-
 	ta, _ := getTransport(t)
 	tb, _ := getTransport(t)
 	ttransport.SubtestTransport(t, ta, tb, fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp), "peerA")
