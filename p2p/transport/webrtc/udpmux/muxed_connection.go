@@ -125,6 +125,22 @@ func newPacketQueue() *packetQueue {
 
 // pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the buffer is closed.
+//
+// NOTE (to move/delete later)
+// Ckousik: For added context, the lifetime of a buffer is as follows:
+// 1. Buffer is fetched from the global pool and passed to socket for reading.
+// 2. If read is successful, mux then decides which connection to pass the buffer.
+//
+//   - if no connection is found, the buffer is returned to the pool.
+//
+//   - if pushing to the connection fails, the buffer is returned to the pool.
+//
+//   - if pushing succeeds, the connection, and by extension the packet queue is
+//     considered as the buffer's owner.
+//
+//     3. Once the pop method is invoked, a buffer is dequeued,
+//     and it's contents are copied to the buffer provided
+//     in the method's argument. The dequeued buffer is then returned to the pool.
 func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
 	// TODO: see if this pattern with all this p and p.buf / pool business cannot
 	// be done cleaner (if it is desired at all), now different logic
