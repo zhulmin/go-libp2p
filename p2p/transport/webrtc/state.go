@@ -61,3 +61,11 @@ func (state channelState) allowRead() bool {
 func (state channelState) allowWrite() bool {
 	return state&stateWriteClosed == 0
 }
+
+func (state *channelState) close() {
+	*state = stateClosed
+}
+
+func (state channelState) closed() bool {
+	return state == stateClosed
+}

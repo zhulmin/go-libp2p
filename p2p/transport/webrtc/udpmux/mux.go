@@ -227,7 +227,7 @@ func ufragFromStunMessage(msg *stun.Message) (string, error) {
 }
 
 type udpMuxStorage struct {
-	sync.RWMutex
+	sync.Mutex
 
 	ufragMap map[ufragConnKey]*muxedConnection
 	addrMap  map[string]*muxedConnection
@@ -261,16 +261,16 @@ func (storage *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
 }
 
 func (storage *udpMuxStorage) GetConn(key ufragConnKey) (*muxedConnection, bool) {
-	storage.RLock()
+	storage.Lock()
 	conn, ok := storage.ufragMap[key]
-	storage.RUnlock()
+	storage.Unlock()
 	return conn, ok
 }
 
 func (storage *udpMuxStorage) GetConnByAddr(addr string) (*muxedConnection, bool) {
-	storage.RLock()
+	storage.Lock()
 	conn, ok := storage.addrMap[addr]
-	storage.RUnlock()
+	storage.Unlock()
 	return conn, ok
 }
 

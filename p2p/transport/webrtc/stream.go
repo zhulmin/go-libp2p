@@ -216,7 +216,7 @@ func (d *webRTCStream) Write(b []byte) (int, error) {
 				d.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
 				var msg pb.Message
 				for {
-					if d.getState() == stateClosed {
+					if d.getState().closed() {
 						return
 					}
 					err := d.reader.ReadMsg(&msg)
@@ -334,7 +334,7 @@ func (d *webRTCStream) CloseRead() error {
 		d.m.Unlock()
 
 		// check if closure required
-		if current != next && next == stateClosed {
+		if current != next && next.closed() {
 			d.close(false, true)
 		}
 	})
@@ -363,7 +363,7 @@ func (d *webRTCStream) CloseWrite() error {
 		d.writeAvailable.signal()
 
 		// check if closure required
-		if current != next && next == stateClosed {
+		if current != next && next.closed() {
 			d.close(false, true)
 		}
 	})
@@ -438,7 +438,7 @@ func (d *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	d.closeOnce.Do(func() {
 		log.Debug("closing: reset: %v, notify: %v", isReset, notifyConnection)
 		d.m.Lock()
-		d.state = stateClosed
+		d.state.close()
 		if d.closeErr == nil {
 			d.closeErr = io.EOF
 			if isReset {
@@ -482,7 +482,7 @@ func (d *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
 	d.state = next
 	d.m.Unlock()
 
-	if current != next && next == stateClosed {
+	if current != next && next.closed() {
 		log.Debug("closing: received flag: %v", flag)
 		defer d.close(flag == pb.Message_RESET, true)
 	}
