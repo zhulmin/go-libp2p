@@ -279,6 +279,8 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(30 * time.Second):
+		// TODO: set back to 10 seconds,
+		// why does it sudenly take 20s while before it took only 1? o.O
 		t.Fatal("timed out")
 	}
 

@@ -81,6 +81,9 @@ func (mux *udpMux) GetListenAddresses() []net.Addr {
 // and peer-reflexive addresses).
 func (mux *udpMux) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) {
 	a, ok := addr.(*net.UDPAddr)
+	if !ok && addr != nil {
+		return nil, fmt.Errorf("unexpected address type: %T", addr)
+	}
 	isIPv6 := ok && a.IP.To4() == nil
 	return mux.getOrCreateConn(ufrag, isIPv6)
 }
