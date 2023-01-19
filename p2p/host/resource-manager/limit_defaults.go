@@ -333,47 +333,12 @@ func resourceLimitsMapFromBaseLimitMapWithDefaults[K comparable](m map[K]BaseLim
 	out := make(map[K]ResourceLimits, len(m))
 	for k, v := range m {
 		if defaultForKey, ok := defaultLimits[k]; ok {
-			out[k] = *resourceLimitsFromBaseLimit(v, defaultForKey)
+			out[k] = *v.ToResourceLimitsWithDefault(defaultForKey)
 		} else {
-			out[k] = *resourceLimitsFromBaseLimit(v, fallbackDefault)
+			out[k] = *v.ToResourceLimitsWithDefault(fallbackDefault)
 		}
 	}
 	return out
-}
-
-func resourceLimitsFromBaseLimit(l BaseLimit, defaultLimit BaseLimit) *ResourceLimits {
-	return &ResourceLimits{
-		Streams:         limitValFromInt(l.Streams, defaultLimit.Streams),
-		StreamsInbound:  limitValFromInt(l.StreamsInbound, defaultLimit.StreamsInbound),
-		StreamsOutbound: limitValFromInt(l.StreamsOutbound, defaultLimit.StreamsOutbound),
-		Conns:           limitValFromInt(l.Conns, defaultLimit.Conns),
-		ConnsInbound:    limitValFromInt(l.ConnsInbound, defaultLimit.ConnsInbound),
-		ConnsOutbound:   limitValFromInt(l.ConnsOutbound, defaultLimit.ConnsOutbound),
-		FD:              limitValFromInt(l.FD, defaultLimit.FD),
-		Memory:          limitValFromInt64(l.Memory, defaultLimit.Memory),
-	}
-}
-
-func limitValFromInt(i int, defaultVal int) LimitVal {
-	if i == defaultVal {
-		return DefaultLimit
-	} else if i == math.MaxInt {
-		return Unlimited
-	} else if i == 0 {
-		return BlockAllLimit
-	}
-	return LimitVal(i)
-}
-
-func limitValFromInt64(i int64, defaultVal int64) LimitVal64 {
-	if i == defaultVal {
-		return DefaultLimit64
-	} else if i == math.MaxInt {
-		return Unlimited64
-	} else if i == 0 {
-		return BlockAllLimit64
-	}
-	return LimitVal64(i)
 }
 
 func (cfg *LimitConfig) MarshalJSON() ([]byte, error) {
@@ -516,29 +481,29 @@ type ReifiedLimitConfig struct {
 func (cfg ReifiedLimitConfig) ToLimitConfigWithDefaults(defaults ReifiedLimitConfig) LimitConfig {
 	out := LimitConfig{}
 
-	out.System = resourceLimitsFromBaseLimit(cfg.system, defaults.system)
-	out.Transient = resourceLimitsFromBaseLimit(cfg.transient, defaults.transient)
+	out.System = cfg.system.ToResourceLimitsWithDefault(defaults.system)
+	out.Transient = cfg.transient.ToResourceLimitsWithDefault(defaults.transient)
 
-	out.AllowlistedSystem = resourceLimitsFromBaseLimit(cfg.allowlistedSystem, defaults.allowlistedSystem)
-	out.AllowlistedTransient = resourceLimitsFromBaseLimit(cfg.allowlistedTransient, defaults.allowlistedTransient)
+	out.AllowlistedSystem = cfg.allowlistedSystem.ToResourceLimitsWithDefault(defaults.allowlistedSystem)
+	out.AllowlistedTransient = cfg.allowlistedTransient.ToResourceLimitsWithDefault(defaults.allowlistedTransient)
 
-	out.ServiceDefault = resourceLimitsFromBaseLimit(cfg.serviceDefault, defaults.serviceDefault)
+	out.ServiceDefault = cfg.serviceDefault.ToResourceLimitsWithDefault(defaults.serviceDefault)
 	out.Service = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.service, defaults.service, defaults.serviceDefault)
 
-	out.ServicePeerDefault = resourceLimitsFromBaseLimit(cfg.servicePeerDefault, defaults.servicePeerDefault)
+	out.ServicePeerDefault = cfg.servicePeerDefault.ToResourceLimitsWithDefault(defaults.servicePeerDefault)
 	out.ServicePeer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.servicePeer, defaults.servicePeer, defaults.servicePeerDefault)
 
-	out.ProtocolDefault = resourceLimitsFromBaseLimit(cfg.protocolDefault, defaults.protocolDefault)
+	out.ProtocolDefault = cfg.protocolDefault.ToResourceLimitsWithDefault(defaults.protocolDefault)
 	out.Protocol = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.protocol, defaults.protocol, defaults.protocolDefault)
 
-	out.ProtocolPeerDefault = resourceLimitsFromBaseLimit(cfg.protocolPeerDefault, defaults.protocolPeerDefault)
+	out.ProtocolPeerDefault = cfg.protocolPeerDefault.ToResourceLimitsWithDefault(defaults.protocolPeerDefault)
 	out.ProtocolPeer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.protocolPeer, defaults.protocolPeer, defaults.protocolPeerDefault)
 
-	out.PeerDefault = resourceLimitsFromBaseLimit(cfg.peerDefault, defaults.peerDefault)
+	out.PeerDefault = cfg.peerDefault.ToResourceLimitsWithDefault(defaults.peerDefault)
 	out.Peer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.peer, defaults.peer, defaults.peerDefault)
 
-	out.Conn = resourceLimitsFromBaseLimit(cfg.conn, defaults.conn)
-	out.Stream = resourceLimitsFromBaseLimit(cfg.stream, defaults.stream)
+	out.Conn = cfg.conn.ToResourceLimitsWithDefault(defaults.conn)
+	out.Stream = cfg.stream.ToResourceLimitsWithDefault(defaults.stream)
 
 	return out
 }
