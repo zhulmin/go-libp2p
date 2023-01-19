@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
 
 	"github.com/stretchr/testify/require"
 )
@@ -291,7 +292,7 @@ func waitForChannel(ready chan struct{}, timeout time.Duration) func() error {
 	}
 }
 
-func TestReadmeLimitConfigSerialization(t *testing.T) {
+func TestReadmeExample(t *testing.T) {
 	// Start with the default scaling limits.
 	scalingLimits := rcmgr.DefaultLimits
 
@@ -331,4 +332,9 @@ func TestReadmeLimitConfigSerialization(t *testing.T) {
 
 	// Create a libp2p host
 	host, err := libp2p.New(libp2p.ResourceManager(rm))
+	if err != nil {
+		panic(err)
+	}
+
+	host.Close()
 }

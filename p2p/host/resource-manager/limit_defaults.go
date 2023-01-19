@@ -279,6 +279,10 @@ func (l *ResourceLimits) Apply(l2 *ResourceLimits) {
 }
 
 func (l *ResourceLimits) Reify(defaults BaseLimit) BaseLimit {
+	if l == nil {
+		return defaults
+	}
+
 	out := defaults
 	out.Streams = l.Streams.Reify(defaults.Streams)
 	out.StreamsInbound = l.StreamsInbound.Reify(defaults.StreamsInbound)
