@@ -8,10 +8,14 @@ type channelState uint8
 
 const (
 	stateOpen channelState = 0
+)
 
+const (
 	stateReadClosed channelState = 1 << iota
 	stateWriteClosed
+)
 
+const (
 	stateClosed = stateReadClosed | stateWriteClosed
 )
 
@@ -22,7 +26,6 @@ func (state channelState) handleIncomingFlag(flag pb.Message_Flag) channelState 
 	switch flag {
 	case pb.Message_FIN:
 		return state | stateReadClosed
-
 	case pb.Message_STOP_SENDING:
 		return state | stateWriteClosed
 	case pb.Message_RESET:

@@ -67,8 +67,8 @@ func min(a, b int) int {
 func getDetachedChannel(ctx context.Context, dc *webrtc.DataChannel) (rwc datachannel.ReadWriteCloser, err error) {
 	done := make(chan struct{})
 	dc.OnOpen(func() {
+		defer close(done)
 		rwc, err = dc.Detach()
-		close(done)
 	})
 	// this is safe since for detached datachannels, the peerconnection runs the onOpen
 	// callback immediately if the SCTP transport is also connected.

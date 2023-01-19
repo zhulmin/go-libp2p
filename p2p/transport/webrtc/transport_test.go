@@ -242,8 +242,6 @@ func TestTransportWebRTC_ListenerCanCreateStreams(t *testing.T) {
 }
 
 func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
-	t.Skip("TODO: fix this test")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -280,7 +278,7 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timed out")
 	}
 

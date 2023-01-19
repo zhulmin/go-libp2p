@@ -205,7 +205,7 @@ func (d *webRTCStream) Write(b []byte) (int, error) {
 
 	// Check if there is any message on the wire. This is used for control
 	// messages only when the read side of the stream is closed
-	if state == stateReadClosed {
+	if !state.allowRead() {
 		d.readLoopOnce.Do(func() {
 			d.wg.Add(1)
 			go func() {
@@ -216,7 +216,7 @@ func (d *webRTCStream) Write(b []byte) (int, error) {
 				d.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
 				var msg pb.Message
 				for {
-					if state := d.getState(); state == stateClosed {
+					if d.getState() == stateClosed {
 						return
 					}
 					err := d.reader.ReadMsg(&msg)
@@ -259,7 +259,7 @@ func (d *webRTCStream) partialWrite(b []byte) (int, error) {
 	timeout := make(chan struct{})
 	var deadlineTimer *time.Timer
 	for {
-		if state := d.getState(); !state.allowWrite() {
+		if !d.getState().allowWrite() {
 			return 0, io.ErrClosedPipe
 		}
 		// prepare waiting for writeAvailable signal

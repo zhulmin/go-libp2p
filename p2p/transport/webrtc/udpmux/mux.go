@@ -187,10 +187,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 			return err
 		}
 
-		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-		mux.storage.AddAddr(key, udpAddr.String(), func() *muxedConnection {
-			return newMuxedConnection(mux, ufrag)
-		})
+		mux.storage.AddAddr(ufrag, udpAddr.String(), isIPv6, mux)
 
 		if !ok && mux.unknownUfragCallback != nil {
 			mux.unknownUfragCallback(ufrag, udpAddr)
@@ -283,13 +280,15 @@ func (storage *udpMuxStorage) AddConn(key ufragConnKey, conn *muxedConnection) {
 	storage.Unlock()
 }
 
-func (storage *udpMuxStorage) AddAddr(key ufragConnKey, addr string, createConnIfNeeded func() *muxedConnection) {
+func (storage *udpMuxStorage) AddAddr(ufrag, addr string, isIPv6 bool, mux *udpMux) {
 	storage.Lock()
 	defer storage.Unlock()
 
+	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
+
 	conn, ok := storage.ufragMap[key]
 	if !ok {
-		conn = createConnIfNeeded()
+		conn = newMuxedConnection(mux, ufrag)
 		storage.ufragMap[key] = conn
 	}
 
