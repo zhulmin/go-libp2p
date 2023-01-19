@@ -64,7 +64,10 @@ func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr
 	}
 
 	mux.wg.Add(1)
-	go mux.readLoop()
+	go func() {
+		defer mux.wg.Done()
+		mux.readLoop()
+	}()
 	return mux
 }
 
@@ -123,7 +126,6 @@ func (mux *udpMux) writeTo(buf []byte, addr net.Addr) (int, error) {
 }
 
 func (mux *udpMux) readLoop() {
-	defer mux.wg.Done()
 	for {
 		select {
 		case <-mux.ctx.Done():
@@ -167,7 +169,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	// check if the remote address has a connection associated
 	// with it. If yes, we push the received packet to the connection
 	// and loop again.
-	conn, ok := mux.storage.GetConnByAddr(addr.String())
+	conn, ok := mux.storage.GetConnByAddr(udpAddr)
 	// if address was not found check if ufrag exists
 	if !ok && stun.IsMessage(buf) {
 		msg := &stun.Message{Raw: buf}
@@ -267,9 +269,9 @@ func (storage *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *ud
 	return conn, nil
 }
 
-func (storage *udpMuxStorage) GetConnByAddr(addr string) (*muxedConnection, bool) {
+func (storage *udpMuxStorage) GetConnByAddr(addr *net.UDPAddr) (*muxedConnection, bool) {
 	storage.Lock()
-	conn, ok := storage.addrMap[addr]
+	conn, ok := storage.addrMap[addr.String()]
 	storage.Unlock()
 	return conn, ok
 }
