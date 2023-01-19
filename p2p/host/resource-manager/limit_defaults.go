@@ -503,7 +503,7 @@ func reifyMapWithDefault[K comparable](definedLimits map[K]ResourceLimits, defau
 
 // ReifiedLimitConfig is similar to LimitConfig, but all values are defined.
 // There is no unset "default" value. Commonly constructed by calling
-// LimitConfig.Reify(DefaultReifiedLimits)
+// LimitConfig.Reify(rcmgr.DefaultLimits.AutoScale())
 type ReifiedLimitConfig struct {
 	system    BaseLimit
 	transient BaseLimit
@@ -618,8 +618,6 @@ func scale(base BaseLimit, inc BaseLimitIncrease, memory int64, numFD int) BaseL
 	}
 	return l
 }
-
-var DefaultReifiedLimits = DefaultLimits.AutoScale()
 
 // DefaultLimits are the limits used by the default limiter constructors.
 var DefaultLimits = ScalingLimitConfig{

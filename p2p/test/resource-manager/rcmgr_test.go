@@ -57,7 +57,7 @@ func TestResourceManagerConnInbound(t *testing.T) {
 			ConnsOutbound: 1,
 			Conns:         1,
 		},
-	}.Reify(rcmgr.DefaultReifiedLimits)
+	}.Reify(rcmgr.DefaultLimits.AutoScale())
 
 	echos := createEchos(t, 5, makeRcmgrOption(t, cfg))
 	defer closeEchos(echos)
@@ -98,7 +98,7 @@ func TestResourceManagerConnOutbound(t *testing.T) {
 			ConnsOutbound: 1,
 			Conns:         1,
 		},
-	}.Reify(rcmgr.DefaultReifiedLimits)
+	}.Reify(rcmgr.DefaultLimits.AutoScale())
 	echos := createEchos(t, 5, makeRcmgrOption(t, cfg))
 	defer closeEchos(echos)
 	defer closeRcmgrs(echos)
@@ -133,7 +133,7 @@ func TestResourceManagerServiceInbound(t *testing.T) {
 			StreamsOutbound: 1024,
 			Streams:         1024,
 		},
-	}.Reify(rcmgr.DefaultReifiedLimits)
+	}.Reify(rcmgr.DefaultLimits.AutoScale())
 	echos := createEchos(t, 5, makeRcmgrOption(t, cfg))
 	defer closeEchos(echos)
 	defer closeRcmgrs(echos)

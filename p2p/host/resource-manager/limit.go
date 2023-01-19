@@ -52,7 +52,7 @@ type Limiter interface {
 // NewDefaultLimiterFromJSON creates a new limiter by parsing a json configuration,
 // using the default limits for fallback.
 func NewDefaultLimiterFromJSON(in io.Reader) (Limiter, error) {
-	return NewLimiterFromJSON(in, DefaultReifiedLimits)
+	return NewLimiterFromJSON(in, DefaultLimits.AutoScale())
 }
 
 // NewLimiterFromJSON creates a new limiter by parsing a json configuration.
