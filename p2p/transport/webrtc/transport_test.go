@@ -278,17 +278,13 @@ func TestTransportWebRTC_DialerCanCreateStreams(t *testing.T) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(30 * time.Second):
-		// TODO: set back to 10 seconds,
-		// why does it sudenly take 20s while before it took only 1? o.O
+	case <-time.After(10 * time.Second):
 		t.Fatal("timed out")
 	}
 
 }
 
 func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	count := 5
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
@@ -353,8 +349,6 @@ func TestTransportWebRTC_DialerCanCreateStreamsMultiple(t *testing.T) {
 }
 
 func TestTransportWebRTC_Deadline(t *testing.T) {
-	t.Skip("TODO: fix this test")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -454,8 +448,6 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 }
 
 func TestTransportWebRTC_Read(t *testing.T) {
-	t.Skip("TODO: fix this test")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -512,8 +504,6 @@ func TestTransportWebRTC_Read(t *testing.T) {
 }
 
 func TestTransportWebRTC_Close(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -669,8 +659,6 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 }
 
 func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
-
 	tr, listeningPeer := getTransport(
 		t,
 		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
@@ -768,7 +756,7 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 }
 
 func TestWebrtcTransport(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it")
+	t.Skip("This test is failing, TODO: fix it (Might require contribution to Pion)")
 	ta, _ := getTransport(t)
 	tb, _ := getTransport(t)
 	ttransport.SubtestTransport(t, ta, tb, fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp), "peerA")

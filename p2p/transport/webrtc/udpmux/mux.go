@@ -184,9 +184,10 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 			return err
 		}
 
-		mux.storage.AddAddr(ufrag, udpAddr, isIPv6, mux)
+		var connCreated bool
+		conn, connCreated = mux.storage.AddAddr(ufrag, udpAddr, isIPv6, mux)
 
-		if !ok && mux.unknownUfragCallback != nil {
+		if connCreated && mux.unknownUfragCallback != nil {
 			mux.unknownUfragCallback(ufrag, udpAddr)
 		}
 	}
@@ -253,6 +254,14 @@ func (storage *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
 	}
 }
 
+func (storage *udpMuxStorage) GetConn(ufrag string, isIPv6 bool) (*muxedConnection, bool) {
+	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
+	storage.Lock()
+	conn, ok := storage.ufragMap[key]
+	storage.Unlock()
+	return conn, ok
+}
+
 func (storage *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *udpMux) (*muxedConnection, error) {
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 
@@ -276,20 +285,14 @@ func (storage *udpMuxStorage) GetConnByAddr(addr *net.UDPAddr) (*muxedConnection
 	return conn, ok
 }
 
-func (storage *udpMuxStorage) AddConn(key ufragConnKey, conn *muxedConnection) {
-	storage.Lock()
-	storage.ufragMap[key] = conn
-	storage.Unlock()
-}
-
-func (storage *udpMuxStorage) AddAddr(ufrag string, addr *net.UDPAddr, isIPv6 bool, mux *udpMux) {
+func (storage *udpMuxStorage) AddAddr(ufrag string, addr *net.UDPAddr, isIPv6 bool, mux *udpMux) (*muxedConnection, bool) {
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 
 	storage.Lock()
 	defer storage.Unlock()
 
-	conn, ok := storage.ufragMap[key]
-	if !ok {
+	conn, connExists := storage.ufragMap[key]
+	if !connExists {
 		conn = newMuxedConnection(mux, ufrag)
 		storage.ufragMap[key] = conn
 	}
@@ -298,4 +301,8 @@ func (storage *udpMuxStorage) AddAddr(ufrag string, addr *net.UDPAddr, isIPv6 bo
 
 	storage.addrMap[addrStr] = conn
 	conn.addresses = append(conn.addresses, addrStr)
+
+	// connection is returned in case it was only now created
+	connCreated := !connExists
+	return conn, connCreated
 }
