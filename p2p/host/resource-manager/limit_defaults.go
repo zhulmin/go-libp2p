@@ -157,7 +157,7 @@ func (l LimitVal) Reify(defaultVal int) int {
 		return defaultVal
 	}
 	if l == Unlimited {
-		return math.MaxInt32
+		return math.MaxInt
 	}
 	if l == BlockAllLimit {
 		return 0
@@ -227,7 +227,7 @@ func (l LimitVal64) Reify(defaultVal int64) int64 {
 		return defaultVal
 	}
 	if l == Unlimited64 {
-		return math.MaxInt32
+		return math.MaxInt64
 	}
 	if l == BlockAllLimit64 {
 		return 0
