@@ -17,6 +17,43 @@ func withMemoryLimit(l BaseLimit, m int64) BaseLimit {
 	return l2
 }
 
+func TestLimitConfigParserBackwardsCompat(t *testing.T) {
+	in, err := os.Open("limit_config_test.json")
+	require.NoError(t, err)
+	defer in.Close()
+
+	DefaultLimits.AddServiceLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	DefaultLimits.AddProtocolPeerLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	defaults := DefaultLimits.AutoScale()
+	cfg, err := readLimiterConfigFromJSON(in, defaults)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(65536), cfg.system.Memory)
+	require.Equal(t, defaults.system.Streams, cfg.system.Streams)
+	require.Equal(t, defaults.system.StreamsInbound, cfg.system.StreamsInbound)
+	require.Equal(t, defaults.system.StreamsOutbound, cfg.system.StreamsOutbound)
+	require.Equal(t, 16, cfg.system.Conns)
+	require.Equal(t, 8, cfg.system.ConnsInbound)
+	require.Equal(t, 16, cfg.system.ConnsOutbound)
+	require.Equal(t, 16, cfg.system.FD)
+
+	require.Equal(t, defaults.transient, cfg.transient)
+	require.Equal(t, int64(8765), cfg.serviceDefault.Memory)
+
+	require.Contains(t, cfg.service, "A")
+	require.Equal(t, withMemoryLimit(cfg.serviceDefault, 8192), cfg.service["A"])
+	require.Contains(t, cfg.service, "B")
+	require.Equal(t, cfg.serviceDefault, cfg.service["B"])
+	require.Contains(t, cfg.service, "C")
+	require.Equal(t, defaults.service["C"], cfg.service["C"])
+
+	require.Equal(t, int64(4096), cfg.peerDefault.Memory)
+	peerID, err := peer.Decode("12D3KooWPFH2Bx2tPfw6RLxN8k2wh47GRXgkt9yrAHU37zFwHWzS")
+	require.NoError(t, err)
+	require.Contains(t, cfg.peer, peerID)
+	require.Equal(t, int64(4097), cfg.peer[peerID].Memory)
+}
+
 func TestLimitConfigParser(t *testing.T) {
 	in, err := os.Open("limit_config_test.json")
 	require.NoError(t, err)
@@ -28,33 +65,34 @@ func TestLimitConfigParser(t *testing.T) {
 	cfg, err := readLimiterConfigFromJSON(in, defaults)
 	require.NoError(t, err)
 
-	require.Equal(t, int64(65536), cfg.System.Memory)
-	require.Equal(t, defaults.System.Streams, cfg.System.Streams)
-	require.Equal(t, defaults.System.StreamsInbound, cfg.System.StreamsInbound)
-	require.Equal(t, defaults.System.StreamsOutbound, cfg.System.StreamsOutbound)
-	require.Equal(t, 16, cfg.System.Conns)
-	require.Equal(t, 8, cfg.System.ConnsInbound)
-	require.Equal(t, 16, cfg.System.ConnsOutbound)
-	require.Equal(t, 16, cfg.System.FD)
+	require.Equal(t, int64(65536), cfg.system.Memory)
+	require.Equal(t, defaults.system.Streams, cfg.system.Streams)
+	require.Equal(t, defaults.system.StreamsInbound, cfg.system.StreamsInbound)
+	require.Equal(t, defaults.system.StreamsOutbound, cfg.system.StreamsOutbound)
+	require.Equal(t, 16, cfg.system.Conns)
+	require.Equal(t, 8, cfg.system.ConnsInbound)
+	require.Equal(t, 16, cfg.system.ConnsOutbound)
+	require.Equal(t, 16, cfg.system.FD)
 
-	require.Equal(t, defaults.Transient, cfg.Transient)
-	require.Equal(t, int64(8765), cfg.ServiceDefault.Memory)
+	require.Equal(t, defaults.transient, cfg.transient)
+	require.Equal(t, int64(8765), cfg.serviceDefault.Memory)
 
-	require.Contains(t, cfg.Service, "A")
-	require.Equal(t, withMemoryLimit(cfg.ServiceDefault, 8192), cfg.Service["A"])
-	require.Contains(t, cfg.Service, "B")
-	require.Equal(t, cfg.ServiceDefault, cfg.Service["B"])
-	require.Contains(t, cfg.Service, "C")
-	require.Equal(t, defaults.Service["C"], cfg.Service["C"])
+	require.Contains(t, cfg.service, "A")
+	require.Equal(t, withMemoryLimit(cfg.serviceDefault, 8192), cfg.service["A"])
+	require.Contains(t, cfg.service, "B")
+	require.Equal(t, cfg.serviceDefault, cfg.service["B"])
+	require.Contains(t, cfg.service, "C")
+	require.Equal(t, defaults.service["C"], cfg.service["C"])
 
-	require.Equal(t, int64(4096), cfg.PeerDefault.Memory)
+	require.Equal(t, int64(4096), cfg.peerDefault.Memory)
 	peerID, err := peer.Decode("12D3KooWPFH2Bx2tPfw6RLxN8k2wh47GRXgkt9yrAHU37zFwHWzS")
 	require.NoError(t, err)
-	require.Contains(t, cfg.Peer, peerID)
-	require.Equal(t, int64(4097), cfg.Peer[peerID].Memory)
+	require.Contains(t, cfg.peer, peerID)
+	require.Equal(t, int64(4097), cfg.peer[peerID].Memory)
 
 	// Roundtrip
-	jsonBytes, err := json.Marshal(&cfg)
+	limitConfig := FromReifiedLimitConfig(cfg, defaults)
+	jsonBytes, err := json.Marshal(&limitConfig)
 	require.NoError(t, err)
 	cfgAfterRoundTrip, err := readLimiterConfigFromJSON(bytes.NewReader(jsonBytes), defaults)
 	require.NoError(t, err)

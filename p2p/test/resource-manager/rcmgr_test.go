@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeRcmgrOption(t *testing.T, cfg rcmgr.LimitConfig) func(int) libp2p.Option {
+func makeRcmgrOption(t *testing.T, cfg rcmgr.ReifiedLimitConfig) func(int) libp2p.Option {
 	return func(i int) libp2p.Option {
 		var opts []rcmgr.Option
 		if os.Getenv("LIBP2P_TEST_RCMGR_TRACE") == "1" {
@@ -46,13 +46,19 @@ func waitForConnection(t *testing.T, src, dest *Echo) {
 func TestResourceManagerConnInbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound conn limit at system level
 	// we specify: 1 conn per peer, 3 conns total, and we try to create 4 conns
-	cfg := rcmgr.DefaultLimits.AutoScale()
-	cfg.System.ConnsInbound = 3
-	cfg.System.ConnsOutbound = 1024
-	cfg.System.Conns = 1024
-	cfg.PeerDefault.Conns = 1
-	cfg.PeerDefault.ConnsInbound = 1
-	cfg.PeerDefault.ConnsOutbound = 1
+	cfg := rcmgr.LimitConfig{
+
+		System: rcmgr.ResourceLimits{
+			ConnsInbound:  3,
+			ConnsOutbound: 1024,
+			Conns:         1024,
+		},
+		PeerDefault: rcmgr.ResourceLimits{
+			ConnsInbound:  1,
+			ConnsOutbound: 1,
+			Conns:         1,
+		},
+	}.Reify(rcmgr.DefaultReifiedLimits)
 
 	echos := createEchos(t, 5, makeRcmgrOption(t, cfg))
 	defer closeEchos(echos)
@@ -82,13 +88,18 @@ func TestResourceManagerConnInbound(t *testing.T) {
 func TestResourceManagerConnOutbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound conn limit at system level
 	// we specify: 1 conn per peer, 3 conns total, and we try to create 4 conns
-	cfg := rcmgr.DefaultLimits.AutoScale()
-	cfg.System.ConnsInbound = 1024
-	cfg.System.ConnsOutbound = 3
-	cfg.System.Conns = 1024
-	cfg.PeerDefault.Conns = 1
-	cfg.PeerDefault.ConnsInbound = 1
-	cfg.PeerDefault.ConnsOutbound = 1
+	cfg := rcmgr.LimitConfig{
+		System: rcmgr.ResourceLimits{
+			ConnsInbound:  1024,
+			ConnsOutbound: 3,
+			Conns:         1024,
+		},
+		PeerDefault: rcmgr.ResourceLimits{
+			ConnsInbound:  1,
+			ConnsOutbound: 1,
+			Conns:         1,
+		},
+	}.Reify(rcmgr.DefaultReifiedLimits)
 	echos := createEchos(t, 5, makeRcmgrOption(t, cfg))
 	defer closeEchos(echos)
 	defer closeRcmgrs(echos)
@@ -117,10 +128,13 @@ func TestResourceManagerConnOutbound(t *testing.T) {
 func TestResourceManagerServiceInbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound stream limit at service level
 	// we specify: 3 streams for the service, and we try to create 4 streams
-	cfg := rcmgr.DefaultLimits.AutoScale()
-	cfg.ServiceDefault.StreamsInbound = 3
-	cfg.ServiceDefault.StreamsOutbound = 1024
-	cfg.ServiceDefault.Streams = 1024
+	cfg := rcmgr.LimitConfig{
+		ServiceDefault: rcmgr.ResourceLimits{
+			StreamsInbound:  3,
+			StreamsOutbound: 1024,
+			Streams:         1024,
+		},
+	}.Reify(rcmgr.DefaultReifiedLimits)
 	echos := createEchos(t, 5, makeRcmgrOption(t, cfg))
 	defer closeEchos(echos)
 	defer closeRcmgrs(echos)

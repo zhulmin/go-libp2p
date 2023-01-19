@@ -52,11 +52,11 @@ type Limiter interface {
 // NewDefaultLimiterFromJSON creates a new limiter by parsing a json configuration,
 // using the default limits for fallback.
 func NewDefaultLimiterFromJSON(in io.Reader) (Limiter, error) {
-	return NewLimiterFromJSON(in, DefaultLimits.AutoScale())
+	return NewLimiterFromJSON(in, DefaultReifiedLimits)
 }
 
 // NewLimiterFromJSON creates a new limiter by parsing a json configuration.
-func NewLimiterFromJSON(in io.Reader, defaults LimitConfig) (Limiter, error) {
+func NewLimiterFromJSON(in io.Reader, defaults ReifiedLimitConfig) (Limiter, error) {
 	cfg, err := readLimiterConfigFromJSON(in, defaults)
 	if err != nil {
 		return nil, err
@@ -64,25 +64,24 @@ func NewLimiterFromJSON(in io.Reader, defaults LimitConfig) (Limiter, error) {
 	return &fixedLimiter{cfg}, nil
 }
 
-func readLimiterConfigFromJSON(in io.Reader, defaults LimitConfig) (LimitConfig, error) {
+func readLimiterConfigFromJSON(in io.Reader, defaults ReifiedLimitConfig) (ReifiedLimitConfig, error) {
 	var cfg LimitConfig
 	if err := json.NewDecoder(in).Decode(&cfg); err != nil {
-		return LimitConfig{}, err
+		return ReifiedLimitConfig{}, err
 	}
-	cfg.Apply(defaults)
-	return cfg, nil
+	return cfg.Reify(defaults), nil
 }
 
 // fixedLimiter is a limiter with fixed limits.
 type fixedLimiter struct {
-	LimitConfig
+	ReifiedLimitConfig
 }
 
 var _ Limiter = (*fixedLimiter)(nil)
 
-func NewFixedLimiter(conf LimitConfig) Limiter {
+func NewFixedLimiter(conf ReifiedLimitConfig) Limiter {
 	log.Debugw("initializing new limiter with config", "limits", conf)
-	return &fixedLimiter{LimitConfig: conf}
+	return &fixedLimiter{conf}
 }
 
 // BaseLimit is a mixin type for basic resource limits.
@@ -95,6 +94,33 @@ type BaseLimit struct {
 	ConnsOutbound   int   `json:",omitempty"`
 	FD              int   `json:",omitempty"`
 	Memory          int64 `json:",omitempty"`
+}
+
+func valueOrBlockAll(n int) LimitVal {
+	if n == 0 {
+		return BlockAllLimit
+	}
+	return LimitVal(n)
+}
+func valueOrBlockAll64(n int64) LimitVal64 {
+	if n == 0 {
+		return BlockAllLimit64
+	}
+	return LimitVal64(n)
+}
+
+// ToResourceLimits converts the BaseLimit to a ResourceLimits
+func (l BaseLimit) ToResourceLimits() ResourceLimits {
+	return ResourceLimits{
+		Streams:         valueOrBlockAll(l.Streams),
+		StreamsInbound:  valueOrBlockAll(l.StreamsInbound),
+		StreamsOutbound: valueOrBlockAll(l.StreamsOutbound),
+		Conns:           valueOrBlockAll(l.Conns),
+		ConnsInbound:    valueOrBlockAll(l.ConnsInbound),
+		ConnsOutbound:   valueOrBlockAll(l.ConnsOutbound),
+		FD:              valueOrBlockAll(l.FD),
+		Memory:          valueOrBlockAll64(l.Memory),
+	}
 }
 
 // Apply overwrites all zero-valued limits with the values of l2
@@ -202,65 +228,65 @@ func (l *BaseLimit) GetMemoryLimit() int64 {
 }
 
 func (l *fixedLimiter) GetSystemLimits() Limit {
-	return &l.System
+	return &l.system
 }
 
 func (l *fixedLimiter) GetTransientLimits() Limit {
-	return &l.Transient
+	return &l.transient
 }
 
 func (l *fixedLimiter) GetAllowlistedSystemLimits() Limit {
-	return &l.AllowlistedSystem
+	return &l.allowlistedSystem
 }
 
 func (l *fixedLimiter) GetAllowlistedTransientLimits() Limit {
-	return &l.AllowlistedTransient
+	return &l.allowlistedTransient
 }
 
 func (l *fixedLimiter) GetServiceLimits(svc string) Limit {
-	sl, ok := l.Service[svc]
+	sl, ok := l.service[svc]
 	if !ok {
-		return &l.ServiceDefault
+		return &l.serviceDefault
 	}
 	return &sl
 }
 
 func (l *fixedLimiter) GetServicePeerLimits(svc string) Limit {
-	pl, ok := l.ServicePeer[svc]
+	pl, ok := l.servicePeer[svc]
 	if !ok {
-		return &l.ServicePeerDefault
+		return &l.servicePeerDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetProtocolLimits(proto protocol.ID) Limit {
-	pl, ok := l.Protocol[proto]
+	pl, ok := l.protocol[proto]
 	if !ok {
-		return &l.ProtocolDefault
+		return &l.protocolDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetProtocolPeerLimits(proto protocol.ID) Limit {
-	pl, ok := l.ProtocolPeer[proto]
+	pl, ok := l.protocolPeer[proto]
 	if !ok {
-		return &l.ProtocolPeerDefault
+		return &l.protocolPeerDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetPeerLimits(p peer.ID) Limit {
-	pl, ok := l.Peer[p]
+	pl, ok := l.peer[p]
 	if !ok {
-		return &l.PeerDefault
+		return &l.peerDefault
 	}
 	return &pl
 }
 
 func (l *fixedLimiter) GetStreamLimits(_ peer.ID) Limit {
-	return &l.Stream
+	return &l.stream
 }
 
 func (l *fixedLimiter) GetConnLimits() Limit {
-	return &l.Conn
+	return &l.conn
 }
