@@ -47,7 +47,6 @@ func TestResourceManagerConnInbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound conn limit at system level
 	// we specify: 1 conn per peer, 3 conns total, and we try to create 4 conns
 	cfg := rcmgr.LimitConfig{
-
 		System: rcmgr.ResourceLimits{
 			ConnsInbound:  3,
 			ConnsOutbound: 1024,

@@ -148,7 +148,7 @@ func TestJSONMarshalling(t *testing.T) {
 	bl := ResourceLimits{
 		Streams:         DefaultLimit,
 		StreamsInbound:  10,
-		StreamsOutbound: 10,
+		StreamsOutbound: BlockAllLimit,
 		Conns:           10,
 		// ConnsInbound:    DefaultLimit,
 		ConnsOutbound: Unlimited,
@@ -157,8 +157,7 @@ func TestJSONMarshalling(t *testing.T) {
 
 	jsonEncoded, err := json.Marshal(bl)
 	require.NoError(t, err)
-
-	require.Equal(t, string(jsonEncoded), `{"StreamsInbound":10,"StreamsOutbound":10,"Conns":10,"ConnsOutbound":"unlimited","Memory":"unlimited"}`)
+	require.Equal(t, string(jsonEncoded), `{"StreamsInbound":10,"StreamsOutbound":"blockAll","Conns":10,"ConnsOutbound":"unlimited","Memory":"unlimited"}`)
 
 	// Roundtrip
 	var blDecoded ResourceLimits
