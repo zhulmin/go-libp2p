@@ -18,13 +18,15 @@ func withMemoryLimit(l BaseLimit, m int64) BaseLimit {
 }
 
 func TestLimitConfigParserBackwardsCompat(t *testing.T) {
-	in, err := os.Open("limit_config_test.json")
+	// Tests that we can parse the old limit config format.
+	in, err := os.Open("limit_config_test.backwards-compat.json")
 	require.NoError(t, err)
 	defer in.Close()
 
-	DefaultLimits.AddServiceLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
-	DefaultLimits.AddProtocolPeerLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
-	defaults := DefaultLimits.AutoScale()
+	defaultScaledLimits := DefaultLimits
+	defaultScaledLimits.AddServiceLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	defaultScaledLimits.AddProtocolPeerLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	defaults := defaultScaledLimits.AutoScale()
 	cfg, err := readLimiterConfigFromJSON(in, defaults)
 	require.NoError(t, err)
 
@@ -59,9 +61,10 @@ func TestLimitConfigParser(t *testing.T) {
 	require.NoError(t, err)
 	defer in.Close()
 
-	DefaultLimits.AddServiceLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
-	DefaultLimits.AddProtocolPeerLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
-	defaults := DefaultLimits.AutoScale()
+	defaultScaledLimits := DefaultLimits
+	defaultScaledLimits.AddServiceLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	defaultScaledLimits.AddProtocolPeerLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	defaults := defaultScaledLimits.AutoScale()
 	cfg, err := readLimiterConfigFromJSON(in, defaults)
 	require.NoError(t, err)
 
@@ -91,10 +94,57 @@ func TestLimitConfigParser(t *testing.T) {
 	require.Equal(t, int64(4097), cfg.peer[peerID].Memory)
 
 	// Roundtrip
-	limitConfig := FromReifiedLimitConfig(cfg, defaults)
+	limitConfig := cfg.ToLimitConfigWithDefaults(defaults)
 	jsonBytes, err := json.Marshal(&limitConfig)
 	require.NoError(t, err)
 	cfgAfterRoundTrip, err := readLimiterConfigFromJSON(bytes.NewReader(jsonBytes), defaults)
 	require.NoError(t, err)
 	require.Equal(t, cfg, cfgAfterRoundTrip)
+}
+
+func TestLimitConfigRoundTrip(t *testing.T) {
+	// Tests that we can roundtrip a LimitConfig to a ReifiedLimitConfig and back.
+	in, err := os.Open("limit_config_test.json")
+	require.NoError(t, err)
+	defer in.Close()
+
+	defaults := DefaultLimits
+	defaults.AddServiceLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	defaults.AddProtocolPeerLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
+	reifiedCfg, err := readLimiterConfigFromJSON(in, defaults.AutoScale())
+	require.NoError(t, err)
+
+	// Roundtrip
+	limitConfig := reifiedCfg.ToLimitConfig()
+	// Using InfiniteLimits because it's different then the defaults used above.
+	// If anything was marked "default" in the round trip, it would show up as a
+	// difference here.
+	reifiedCfgRT := limitConfig.Reify(InfiniteLimits)
+	require.Equal(t, reifiedCfg, reifiedCfgRT)
+}
+
+func TestReadmeLimitConfigSerialization(t *testing.T) {
+	noisyNeighbor, _ := peer.Decode("QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf")
+	cfg := LimitConfig{
+		System: &ResourceLimits{
+			// Allow unlimited outbound streams
+			StreamsOutbound: Unlimited,
+		},
+		Peer: map[peer.ID]ResourceLimits{
+			noisyNeighbor: {
+				// No inbound connections from this peer
+				ConnsInbound: BlockAllLimit,
+				// But let me open connections to them
+				Conns:         DefaultLimit,
+				ConnsOutbound: DefaultLimit,
+				// No inbound streams from this peer
+				StreamsInbound: BlockAllLimit,
+				// And let me open unlimited (by me) outbound streams (the peer may have their own limits on me)
+				StreamsOutbound: Unlimited,
+			},
+		},
+	}
+	jsonBytes, err := json.Marshal(&cfg)
+	require.NoError(t, err)
+	require.Equal(t, `{"System":{"StreamsOutbound":"unlimited"},"Peer":{"QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf":{"StreamsInbound":"blockAll","StreamsOutbound":"unlimited","ConnsInbound":"blockAll"}}}`, string(jsonBytes))
 }

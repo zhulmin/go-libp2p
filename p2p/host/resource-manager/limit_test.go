@@ -187,12 +187,12 @@ func TestJSONRoundTripInt64(t *testing.T) {
 
 func TestRoundTripFromReifyAndBack(t *testing.T) {
 	l := LimitConfig{
-		System: ResourceLimits{
+		System: &ResourceLimits{
 			Conns:  1234,
 			Memory: 54321,
 		},
 
-		ServiceDefault: ResourceLimits{
+		ServiceDefault: &ResourceLimits{
 			Conns: 2,
 		},
 
@@ -206,7 +206,7 @@ func TestRoundTripFromReifyAndBack(t *testing.T) {
 	reified := l.Reify(InfiniteLimits)
 
 	// Roundtrip
-	fromReified := FromReifiedLimitConfig(reified, InfiniteLimits)
+	fromReified := reified.ToLimitConfigWithDefaults(InfiniteLimits)
 	require.Equal(t, l, fromReified)
 }
 

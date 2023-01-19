@@ -248,7 +248,10 @@ type ResourceLimits struct {
 }
 
 // Apply overwrites all default limits with the values of l2
-func (l *ResourceLimits) Apply(l2 ResourceLimits) {
+func (l *ResourceLimits) Apply(l2 *ResourceLimits) {
+	if l2 == nil {
+		return
+	}
 	if l.Streams == DefaultLimit {
 		l.Streams = l2.Streams
 	}
@@ -290,66 +293,35 @@ func (l *ResourceLimits) Reify(defaults BaseLimit) BaseLimit {
 }
 
 type LimitConfig struct {
-	System    ResourceLimits `json:",omitempty"`
-	Transient ResourceLimits `json:",omitempty"`
+	System    *ResourceLimits `json:",omitempty"`
+	Transient *ResourceLimits `json:",omitempty"`
 
 	// Limits that are applied to resources with an allowlisted multiaddr.
 	// These will only be used if the normal System & Transient limits are
 	// reached.
-	AllowlistedSystem    ResourceLimits `json:",omitempty"`
-	AllowlistedTransient ResourceLimits `json:",omitempty"`
+	AllowlistedSystem    *ResourceLimits `json:",omitempty"`
+	AllowlistedTransient *ResourceLimits `json:",omitempty"`
 
-	ServiceDefault ResourceLimits            `json:",omitempty"`
+	ServiceDefault *ResourceLimits           `json:",omitempty"`
 	Service        map[string]ResourceLimits `json:",omitempty"`
 
-	ServicePeerDefault ResourceLimits            `json:",omitempty"`
+	ServicePeerDefault *ResourceLimits           `json:",omitempty"`
 	ServicePeer        map[string]ResourceLimits `json:",omitempty"`
 
-	ProtocolDefault ResourceLimits                 `json:",omitempty"`
+	ProtocolDefault *ResourceLimits                `json:",omitempty"`
 	Protocol        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
-	ProtocolPeerDefault ResourceLimits                 `json:",omitempty"`
+	ProtocolPeerDefault *ResourceLimits                `json:",omitempty"`
 	ProtocolPeer        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
-	PeerDefault ResourceLimits             `json:",omitempty"`
+	PeerDefault *ResourceLimits            `json:",omitempty"`
 	Peer        map[peer.ID]ResourceLimits `json:",omitempty"`
 
-	Conn   ResourceLimits `json:",omitempty"`
-	Stream ResourceLimits `json:",omitempty"`
+	Conn   *ResourceLimits `json:",omitempty"`
+	Stream *ResourceLimits `json:",omitempty"`
 }
 
-// FromReifiedLimitConfig converts a ReifiedLimitConfig to a LimitConfig. Uses the defaults config to know what was specifically set and what was left as default.
-func FromReifiedLimitConfig(cfg ReifiedLimitConfig, defaults ReifiedLimitConfig) LimitConfig {
-	out := LimitConfig{}
-
-	out.System = resourceLimitsFromBaseLimit(cfg.system, defaults.system)
-	out.Transient = resourceLimitsFromBaseLimit(cfg.transient, defaults.transient)
-
-	out.AllowlistedSystem = resourceLimitsFromBaseLimit(cfg.allowlistedSystem, defaults.allowlistedSystem)
-	out.AllowlistedTransient = resourceLimitsFromBaseLimit(cfg.allowlistedTransient, defaults.allowlistedTransient)
-
-	out.ServiceDefault = resourceLimitsFromBaseLimit(cfg.serviceDefault, defaults.serviceDefault)
-	out.Service = resourceLimitsMapFromBaseLimitMap(cfg.service, defaults.service, defaults.serviceDefault)
-
-	out.ServicePeerDefault = resourceLimitsFromBaseLimit(cfg.servicePeerDefault, defaults.servicePeerDefault)
-	out.ServicePeer = resourceLimitsMapFromBaseLimitMap(cfg.servicePeer, defaults.servicePeer, defaults.servicePeerDefault)
-
-	out.ProtocolDefault = resourceLimitsFromBaseLimit(cfg.protocolDefault, defaults.protocolDefault)
-	out.Protocol = resourceLimitsMapFromBaseLimitMap(cfg.protocol, defaults.protocol, defaults.protocolDefault)
-
-	out.ProtocolPeerDefault = resourceLimitsFromBaseLimit(cfg.protocolPeerDefault, defaults.protocolPeerDefault)
-	out.ProtocolPeer = resourceLimitsMapFromBaseLimitMap(cfg.protocolPeer, defaults.protocolPeer, defaults.protocolPeerDefault)
-
-	out.PeerDefault = resourceLimitsFromBaseLimit(cfg.peerDefault, defaults.peerDefault)
-	out.Peer = resourceLimitsMapFromBaseLimitMap(cfg.peer, defaults.peer, defaults.peerDefault)
-
-	out.Conn = resourceLimitsFromBaseLimit(cfg.conn, defaults.conn)
-	out.Stream = resourceLimitsFromBaseLimit(cfg.stream, defaults.stream)
-
-	return out
-}
-
-func resourceLimitsMapFromBaseLimitMap[K comparable](m map[K]BaseLimit, defaultLimits map[K]BaseLimit, fallbackDefault BaseLimit) map[K]ResourceLimits {
+func resourceLimitsMapFromBaseLimitMapWithDefaults[K comparable](m map[K]BaseLimit, defaultLimits map[K]BaseLimit, fallbackDefault BaseLimit) map[K]ResourceLimits {
 	if len(m) == 0 {
 		return nil
 	}
@@ -357,16 +329,16 @@ func resourceLimitsMapFromBaseLimitMap[K comparable](m map[K]BaseLimit, defaultL
 	out := make(map[K]ResourceLimits, len(m))
 	for k, v := range m {
 		if defaultForKey, ok := defaultLimits[k]; ok {
-			out[k] = resourceLimitsFromBaseLimit(v, defaultForKey)
+			out[k] = *resourceLimitsFromBaseLimit(v, defaultForKey)
 		} else {
-			out[k] = resourceLimitsFromBaseLimit(v, fallbackDefault)
+			out[k] = *resourceLimitsFromBaseLimit(v, fallbackDefault)
 		}
 	}
 	return out
 }
 
-func resourceLimitsFromBaseLimit(l BaseLimit, defaultLimit BaseLimit) ResourceLimits {
-	return ResourceLimits{
+func resourceLimitsFromBaseLimit(l BaseLimit, defaultLimit BaseLimit) *ResourceLimits {
+	return &ResourceLimits{
 		Streams:         limitValFromInt(l.Streams, defaultLimit.Streams),
 		StreamsInbound:  limitValFromInt(l.StreamsInbound, defaultLimit.StreamsInbound),
 		StreamsOutbound: limitValFromInt(l.StreamsOutbound, defaultLimit.StreamsOutbound),
@@ -417,11 +389,11 @@ func (cfg *LimitConfig) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func applyResourceLimitsMap[K comparable](this *map[K]ResourceLimits, other map[K]ResourceLimits, fallbackDefault ResourceLimits) {
+func applyResourceLimitsMap[K comparable](this *map[K]ResourceLimits, other map[K]ResourceLimits, fallbackDefault *ResourceLimits) {
 	for k, l := range *this {
 		r := fallbackDefault
 		if l2, ok := other[k]; ok {
-			r = l2
+			r = &l2
 		}
 		l.Apply(r)
 		(*this)[k] = l
@@ -531,6 +503,76 @@ type ReifiedLimitConfig struct {
 
 	conn   BaseLimit
 	stream BaseLimit
+}
+
+// ToLimitConfigWithDefaults converts a ReifiedLimitConfig to a LimitConfig.
+// Uses the defaults config to know what was specifically set and what was left
+// as default. Returns a minimal LimitConfig. Reify the returned LimitConfig
+// with the defaults to get back to the original ReifiedLimitConfig.
+func (cfg ReifiedLimitConfig) ToLimitConfigWithDefaults(defaults ReifiedLimitConfig) LimitConfig {
+	out := LimitConfig{}
+
+	out.System = resourceLimitsFromBaseLimit(cfg.system, defaults.system)
+	out.Transient = resourceLimitsFromBaseLimit(cfg.transient, defaults.transient)
+
+	out.AllowlistedSystem = resourceLimitsFromBaseLimit(cfg.allowlistedSystem, defaults.allowlistedSystem)
+	out.AllowlistedTransient = resourceLimitsFromBaseLimit(cfg.allowlistedTransient, defaults.allowlistedTransient)
+
+	out.ServiceDefault = resourceLimitsFromBaseLimit(cfg.serviceDefault, defaults.serviceDefault)
+	out.Service = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.service, defaults.service, defaults.serviceDefault)
+
+	out.ServicePeerDefault = resourceLimitsFromBaseLimit(cfg.servicePeerDefault, defaults.servicePeerDefault)
+	out.ServicePeer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.servicePeer, defaults.servicePeer, defaults.servicePeerDefault)
+
+	out.ProtocolDefault = resourceLimitsFromBaseLimit(cfg.protocolDefault, defaults.protocolDefault)
+	out.Protocol = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.protocol, defaults.protocol, defaults.protocolDefault)
+
+	out.ProtocolPeerDefault = resourceLimitsFromBaseLimit(cfg.protocolPeerDefault, defaults.protocolPeerDefault)
+	out.ProtocolPeer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.protocolPeer, defaults.protocolPeer, defaults.protocolPeerDefault)
+
+	out.PeerDefault = resourceLimitsFromBaseLimit(cfg.peerDefault, defaults.peerDefault)
+	out.Peer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.peer, defaults.peer, defaults.peerDefault)
+
+	out.Conn = resourceLimitsFromBaseLimit(cfg.conn, defaults.conn)
+	out.Stream = resourceLimitsFromBaseLimit(cfg.stream, defaults.stream)
+
+	return out
+}
+
+func resourceLimitsMapFromBaseLimitMap[K comparable](baseLimitMap map[K]BaseLimit) map[K]ResourceLimits {
+	if baseLimitMap == nil {
+		return nil
+	}
+
+	out := make(map[K]ResourceLimits)
+	for k, l := range baseLimitMap {
+		out[k] = *l.ToResourceLimits()
+	}
+
+	return out
+}
+
+// ToLimitConfig converts a ReifiedLimitConfig to a LimitConfig. The returned
+// LimitConfig will have no default values.
+func (cfg ReifiedLimitConfig) ToLimitConfig() LimitConfig {
+	return LimitConfig{
+		System:               cfg.system.ToResourceLimits(),
+		Transient:            cfg.transient.ToResourceLimits(),
+		AllowlistedSystem:    cfg.allowlistedSystem.ToResourceLimits(),
+		AllowlistedTransient: cfg.allowlistedTransient.ToResourceLimits(),
+		ServiceDefault:       cfg.serviceDefault.ToResourceLimits(),
+		Service:              resourceLimitsMapFromBaseLimitMap(cfg.service),
+		ServicePeerDefault:   cfg.servicePeerDefault.ToResourceLimits(),
+		ServicePeer:          resourceLimitsMapFromBaseLimitMap(cfg.servicePeer),
+		ProtocolDefault:      cfg.protocolDefault.ToResourceLimits(),
+		Protocol:             resourceLimitsMapFromBaseLimitMap(cfg.protocol),
+		ProtocolPeerDefault:  cfg.protocolPeerDefault.ToResourceLimits(),
+		ProtocolPeer:         resourceLimitsMapFromBaseLimitMap(cfg.protocolPeer),
+		PeerDefault:          cfg.peerDefault.ToResourceLimits(),
+		Peer:                 resourceLimitsMapFromBaseLimitMap(cfg.peer),
+		Conn:                 cfg.conn.ToResourceLimits(),
+		Stream:               cfg.stream.ToResourceLimits(),
+	}
 }
 
 // Scale scales up a limit configuration.

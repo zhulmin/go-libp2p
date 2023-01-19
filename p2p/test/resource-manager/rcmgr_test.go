@@ -47,12 +47,13 @@ func TestResourceManagerConnInbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound conn limit at system level
 	// we specify: 1 conn per peer, 3 conns total, and we try to create 4 conns
 	cfg := rcmgr.LimitConfig{
-		System: rcmgr.ResourceLimits{
-			ConnsInbound:  3,
-			ConnsOutbound: 1024,
-			Conns:         1024,
+		System: &rcmgr.ResourceLimits{
+			ConnsInbound:    3,
+			ConnsOutbound:   1024,
+			Conns:           1024,
+			StreamsOutbound: rcmgr.Unlimited,
 		},
-		PeerDefault: rcmgr.ResourceLimits{
+		PeerDefault: &rcmgr.ResourceLimits{
 			ConnsInbound:  1,
 			ConnsOutbound: 1,
 			Conns:         1,
@@ -88,12 +89,12 @@ func TestResourceManagerConnOutbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound conn limit at system level
 	// we specify: 1 conn per peer, 3 conns total, and we try to create 4 conns
 	cfg := rcmgr.LimitConfig{
-		System: rcmgr.ResourceLimits{
+		System: &rcmgr.ResourceLimits{
 			ConnsInbound:  1024,
 			ConnsOutbound: 3,
 			Conns:         1024,
 		},
-		PeerDefault: rcmgr.ResourceLimits{
+		PeerDefault: &rcmgr.ResourceLimits{
 			ConnsInbound:  1,
 			ConnsOutbound: 1,
 			Conns:         1,
@@ -128,7 +129,7 @@ func TestResourceManagerServiceInbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound stream limit at service level
 	// we specify: 3 streams for the service, and we try to create 4 streams
 	cfg := rcmgr.LimitConfig{
-		ServiceDefault: rcmgr.ResourceLimits{
+		ServiceDefault: &rcmgr.ResourceLimits{
 			StreamsInbound:  3,
 			StreamsOutbound: 1024,
 			Streams:         1024,
@@ -288,4 +289,46 @@ func waitForChannel(ready chan struct{}, timeout time.Duration) func() error {
 			return fmt.Errorf("timeout")
 		}
 	}
+}
+
+func TestReadmeLimitConfigSerialization(t *testing.T) {
+	// Start with the default scaling limits.
+	scalingLimits := rcmgr.DefaultLimits
+
+	// Add limits around included libp2p protocols
+	libp2p.SetDefaultServiceLimits(&scalingLimits)
+
+	// Turn the scaling limits into a reified set of limits using `.AutoScale`. This
+	// scales the limits proportional to your system memory.
+	scaledDefaultLimits := scalingLimits.AutoScale()
+
+	// Tweak certain settings
+	cfg := rcmgr.LimitConfig{
+		System: &rcmgr.ResourceLimits{
+			// Allow unlimited outbound streams
+			StreamsOutbound: rcmgr.Unlimited,
+		},
+		// Everything else is default. The exact values will come from `scaledDefaultLimits` above.
+	}
+
+	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
+	limits := cfg.Reify(scaledDefaultLimits)
+
+	// The resource manager expects a limiter, se we create one from our limits.
+	limiter := rcmgr.NewFixedLimiter(limits)
+
+	// (Optional if you want metrics) Construct the OpenCensus metrics reporter.
+	str, err := rcmgrObs.NewStatsTraceReporter()
+	if err != nil {
+		panic(err)
+	}
+
+	// Initialize the resource manager
+	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	if err != nil {
+		panic(err)
+	}
+
+	// Create a libp2p host
+	host, err := libp2p.New(libp2p.ResourceManager(rm))
 }

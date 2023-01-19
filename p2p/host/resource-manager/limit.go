@@ -110,8 +110,8 @@ func valueOrBlockAll64(n int64) LimitVal64 {
 }
 
 // ToResourceLimits converts the BaseLimit to a ResourceLimits
-func (l BaseLimit) ToResourceLimits() ResourceLimits {
-	return ResourceLimits{
+func (l BaseLimit) ToResourceLimits() *ResourceLimits {
+	return &ResourceLimits{
 		Streams:         valueOrBlockAll(l.Streams),
 		StreamsInbound:  valueOrBlockAll(l.StreamsInbound),
 		StreamsOutbound: valueOrBlockAll(l.StreamsOutbound),
