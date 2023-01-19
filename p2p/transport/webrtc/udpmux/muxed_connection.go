@@ -89,7 +89,7 @@ func (conn *muxedConnection) WriteTo(p []byte, addr net.Addr) (n int, err error)
 func (conn *muxedConnection) closeConnection() error {
 	select {
 	case <-conn.ctx.Done():
-		return alreadyClosedErr
+		return errAlreadyClosed
 	default:
 	}
 	conn.pq.close()

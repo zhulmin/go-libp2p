@@ -3,5 +3,5 @@ package udpmux
 import "errors"
 
 var (
-	alreadyClosedErr = errors.New("already closed")
+	errAlreadyClosed = errors.New("already closed")
 )

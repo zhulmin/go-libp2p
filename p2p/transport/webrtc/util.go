@@ -19,7 +19,7 @@ import (
 
 func fingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
 	if fp == nil {
-		return "", fmt.Errorf("fingerprint multihash: %w", nilParamErr)
+		return "", fmt.Errorf("fingerprint multihash: %w", errNilParam)
 	}
 	fpDigest := intersperse2(hex.EncodeToString(fp.Digest), ':', 2)
 	sdpString, err := getSupportedSDPString(fp.Code)

@@ -3,6 +3,6 @@ package libp2pwebrtc
 import "errors"
 
 var (
-	nilParamErr     = errors.New("nil parameter")
-	invalidParamErr = errors.New("invalid parameter")
+	errNilParam     = errors.New("nil parameter")
+	errInvalidParam = errors.New("invalid parameter")
 )

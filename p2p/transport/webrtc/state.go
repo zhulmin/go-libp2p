@@ -4,11 +4,7 @@ import (
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
-type channelState uint8
-
-const (
-	stateOpen channelState = 0
-)
+type channelState uint8 // default state == 0 == stateOpen
 
 const (
 	stateReadClosed channelState = 1 << iota

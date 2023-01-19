@@ -157,7 +157,7 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 func getSupportedSDPString(code uint64) (string, error) {
 	hash, ok := getSupportedSDPHash(code)
 	if !ok {
-		return "", fmt.Errorf("unsupported hash code (%d) :%w", code, invalidParamErr)
+		return "", fmt.Errorf("unsupported hash code (%d) :%w", code, errInvalidParam)
 	}
 	return strings.ToLower(hash.String()), nil
 }
