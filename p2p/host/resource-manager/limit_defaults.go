@@ -332,10 +332,13 @@ func resourceLimitsMapFromBaseLimitMapWithDefaults[K comparable](m map[K]BaseLim
 
 	out := make(map[K]ResourceLimits, len(m))
 	for k, v := range m {
+		def := fallbackDefault
 		if defaultForKey, ok := defaultLimits[k]; ok {
-			out[k] = *v.ToResourceLimitsWithDefault(defaultForKey)
-		} else {
-			out[k] = *v.ToResourceLimitsWithDefault(fallbackDefault)
+			def = defaultForKey
+		}
+		rl := v.ToResourceLimitsWithDefault(def)
+		if rl != nil {
+			out[k] = *rl
 		}
 	}
 	return out
