@@ -158,14 +158,7 @@ func (l BaseLimit) ToResourceLimitsWithDefault(defaultLimit BaseLimit) *Resource
 		Memory:          limitValFromInt64(l.Memory, defaultLimit.Memory),
 	}
 
-	if out.Streams == DefaultLimit &&
-		out.StreamsInbound == DefaultLimit &&
-		out.StreamsOutbound == DefaultLimit &&
-		out.Conns == DefaultLimit &&
-		out.ConnsInbound == DefaultLimit &&
-		out.ConnsOutbound == DefaultLimit &&
-		out.FD == DefaultLimit &&
-		out.Memory == DefaultLimit64 {
+	if out.IsDefault() {
 		return nil
 	}
 

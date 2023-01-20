@@ -247,6 +247,24 @@ type ResourceLimits struct {
 	Memory          LimitVal64 `json:",omitempty"`
 }
 
+func (l *ResourceLimits) IsDefault() bool {
+	if l == nil {
+		return true
+	}
+
+	if l.Streams == DefaultLimit &&
+		l.StreamsInbound == DefaultLimit &&
+		l.StreamsOutbound == DefaultLimit &&
+		l.Conns == DefaultLimit &&
+		l.ConnsInbound == DefaultLimit &&
+		l.ConnsOutbound == DefaultLimit &&
+		l.FD == DefaultLimit &&
+		l.Memory == DefaultLimit64 {
+		return true
+	}
+	return false
+}
+
 // Apply overwrites all default limits with the values of l2
 func (l *ResourceLimits) Apply(l2 *ResourceLimits) {
 	if l2 == nil {
