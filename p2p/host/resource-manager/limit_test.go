@@ -185,8 +185,8 @@ func TestJSONRoundTripInt64(t *testing.T) {
 	require.Equal(t, bl, blDecoded)
 }
 
-func TestRoundTripFromReifyAndBack(t *testing.T) {
-	l := LimitConfig{
+func TestRoundTripFromConcreteAndBack(t *testing.T) {
+	l := PartialLimitConfig{
 		System: &ResourceLimits{
 			Conns:  1234,
 			Memory: 54321,
@@ -203,7 +203,7 @@ func TestRoundTripFromReifyAndBack(t *testing.T) {
 		},
 	}
 
-	reified := l.Reify(InfiniteLimits)
+	reified := l.Build(InfiniteLimits)
 
 	// Roundtrip
 	fromReified := reified.ToLimitConfigWithDefaults(InfiniteLimits)

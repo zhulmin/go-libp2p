@@ -33,7 +33,7 @@ libp2p.SetDefaultServiceLimits(&scalingLimits)
 scaledDefaultLimits := scalingLimits.AutoScale()
 
 // Tweak certain settings
-cfg := rcmgr.LimitConfig{
+cfg := rcmgr.PartialLimitConfig{
   System: &rcmgr.ResourceLimits{
     // Allow unlimited outbound streams
     StreamsOutbound: rcmgr.Unlimited,
@@ -42,7 +42,7 @@ cfg := rcmgr.LimitConfig{
 }
 
 // Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
-limits := cfg.Reify(scaledDefaultLimits)
+limits := cfg.Build(scaledDefaultLimits)
 
 // The resource manager expects a limiter, se we create one from our limits.
 limiter := rcmgr.NewFixedLimiter(limits)
@@ -64,12 +64,12 @@ host, err := libp2p.New(libp2p.ResourceManager(rm))
 ```
 
 ### Saving the limits config
-The easiest way to save the defined limits is to serialize the `LimitConfig`
+The easiest way to save the defined limits is to serialize the `PartialLimitConfig`
 type as JSON.
 
 ```go
 noisyNeighbor, _ := peer.Decode("QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf")
-cfg := rcmgr.LimitConfig{
+cfg := rcmgr.PartialLimitConfig{
   System: &rcmgr.ResourceLimits{
     // Allow unlimited outbound streams
     StreamsOutbound: rcmgr.Unlimited,
@@ -338,7 +338,7 @@ This is done using the `ScalingLimitConfig`. For every scope, this configuration
 struct defines the absolutely bare minimum limits, and an (optional) increase of
 these limits, which will be applied on nodes that have sufficient memory.
 
-A `ScalingLimitConfig` can be converted into a `LimitConfig` (which can then be
+A `ScalingLimitConfig` can be converted into a `ConcreteLimitConfig` (which can then be
 used to initialize a fixed limiter with `NewFixedLimiter`) by calling the `Scale` method.
 The `Scale` method takes two parameters: the amount of memory and the number of file
 descriptors that an application is willing to dedicate to libp2p.
@@ -406,7 +406,7 @@ go-libp2p process. For the default definitions see [`DefaultLimits` and
 
 If the defaults seem mostly okay, but you want to adjust one facet you can
 simply copy the default struct object and update the field you want to change. You can
-apply changes to a `BaseLimit`, `BaseLimitIncrease`, and `LimitConfig` with
+apply changes to a `BaseLimit`, `BaseLimitIncrease`, and `ConcreteLimitConfig` with
 `.Apply`.
 
 Example

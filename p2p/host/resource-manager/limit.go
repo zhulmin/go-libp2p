@@ -57,7 +57,7 @@ func NewDefaultLimiterFromJSON(in io.Reader) (Limiter, error) {
 }
 
 // NewLimiterFromJSON creates a new limiter by parsing a json configuration.
-func NewLimiterFromJSON(in io.Reader, defaults ReifiedLimitConfig) (Limiter, error) {
+func NewLimiterFromJSON(in io.Reader, defaults ConcreteLimitConfig) (Limiter, error) {
 	cfg, err := readLimiterConfigFromJSON(in, defaults)
 	if err != nil {
 		return nil, err
@@ -65,22 +65,22 @@ func NewLimiterFromJSON(in io.Reader, defaults ReifiedLimitConfig) (Limiter, err
 	return &fixedLimiter{cfg}, nil
 }
 
-func readLimiterConfigFromJSON(in io.Reader, defaults ReifiedLimitConfig) (ReifiedLimitConfig, error) {
-	var cfg LimitConfig
+func readLimiterConfigFromJSON(in io.Reader, defaults ConcreteLimitConfig) (ConcreteLimitConfig, error) {
+	var cfg PartialLimitConfig
 	if err := json.NewDecoder(in).Decode(&cfg); err != nil {
-		return ReifiedLimitConfig{}, err
+		return ConcreteLimitConfig{}, err
 	}
-	return cfg.Reify(defaults), nil
+	return cfg.Build(defaults), nil
 }
 
 // fixedLimiter is a limiter with fixed limits.
 type fixedLimiter struct {
-	ReifiedLimitConfig
+	ConcreteLimitConfig
 }
 
 var _ Limiter = (*fixedLimiter)(nil)
 
-func NewFixedLimiter(conf ReifiedLimitConfig) Limiter {
+func NewFixedLimiter(conf ConcreteLimitConfig) Limiter {
 	log.Debugw("initializing new limiter with config", "limits", conf)
 	return &fixedLimiter{conf}
 }

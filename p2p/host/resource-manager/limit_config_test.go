@@ -103,7 +103,7 @@ func TestLimitConfigParser(t *testing.T) {
 }
 
 func TestLimitConfigRoundTrip(t *testing.T) {
-	// Tests that we can roundtrip a LimitConfig to a ReifiedLimitConfig and back.
+	// Tests that we can roundtrip a PartialLimitConfig to a ConcreteLimitConfig and back.
 	in, err := os.Open("limit_config_test.json")
 	require.NoError(t, err)
 	defer in.Close()
@@ -119,13 +119,13 @@ func TestLimitConfigRoundTrip(t *testing.T) {
 	// Using InfiniteLimits because it's different then the defaults used above.
 	// If anything was marked "default" in the round trip, it would show up as a
 	// difference here.
-	reifiedCfgRT := limitConfig.Reify(InfiniteLimits)
+	reifiedCfgRT := limitConfig.Build(InfiniteLimits)
 	require.Equal(t, reifiedCfg, reifiedCfgRT)
 }
 
 func TestReadmeLimitConfigSerialization(t *testing.T) {
 	noisyNeighbor, _ := peer.Decode("QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf")
-	cfg := LimitConfig{
+	cfg := PartialLimitConfig{
 		System: &ResourceLimits{
 			// Allow unlimited outbound streams
 			StreamsOutbound: Unlimited,

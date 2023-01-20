@@ -21,7 +21,7 @@ func TestResourceManager(t *testing.T) {
 	svcA := "A.svc"
 	svcB := "B.svc"
 	nmgr, err := NewResourceManager(
-		NewFixedLimiter(ReifiedLimitConfig{
+		NewFixedLimiter(ConcreteLimitConfig{
 			system: BaseLimit{
 				Memory:          16384,
 				StreamsInbound:  3,
