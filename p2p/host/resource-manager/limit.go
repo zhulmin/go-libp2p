@@ -147,7 +147,7 @@ func (l BaseLimit) ToResourceLimits() *ResourceLimits {
 }
 
 func (l BaseLimit) ToResourceLimitsWithDefault(defaultLimit BaseLimit) *ResourceLimits {
-	return &ResourceLimits{
+	out := ResourceLimits{
 		Streams:         limitValFromInt(l.Streams, defaultLimit.Streams),
 		StreamsInbound:  limitValFromInt(l.StreamsInbound, defaultLimit.StreamsInbound),
 		StreamsOutbound: limitValFromInt(l.StreamsOutbound, defaultLimit.StreamsOutbound),
@@ -157,6 +157,19 @@ func (l BaseLimit) ToResourceLimitsWithDefault(defaultLimit BaseLimit) *Resource
 		FD:              limitValFromInt(l.FD, defaultLimit.FD),
 		Memory:          limitValFromInt64(l.Memory, defaultLimit.Memory),
 	}
+
+	if out.Streams == DefaultLimit &&
+		out.StreamsInbound == DefaultLimit &&
+		out.StreamsOutbound == DefaultLimit &&
+		out.Conns == DefaultLimit &&
+		out.ConnsInbound == DefaultLimit &&
+		out.ConnsOutbound == DefaultLimit &&
+		out.FD == DefaultLimit &&
+		out.Memory == DefaultLimit64 {
+		return nil
+	}
+
+	return &out
 }
 
 // Apply overwrites all zero-valued limits with the values of l2
