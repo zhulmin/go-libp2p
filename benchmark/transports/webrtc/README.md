@@ -17,7 +17,7 @@ In this section we'll show you how to run this benchmarking tool on your local (
 Run:
 
 ```
-go run ./benchmark/transports/webrtc/main.go listen -t webrtc
+go run ./benchmark/transports/webrtc listen
 ```
 
 This should output a multiaddr which can be used by the client to connect.
@@ -30,7 +30,7 @@ The listener will continue to run until you kill it.
 Run:
 
 ```
-go run ./benchmark/transports/webrtc/main.go dial <multiaddr>
+go run ./benchmark/transports/webrtc dial <multiaddr>
 ```
 
 You can configure the number of streams and connections opened by the dialer using opt-in flags.

@@ -13,7 +13,6 @@ import (
 	"net/http/pprof"
 	_ "net/http/pprof"
 	"strings"
-	"sync/atomic"
 
 	"sync"
 	"time"
@@ -31,10 +30,6 @@ import (
 	golog "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 )
-
-// a global counter for the number of incoming streams
-// processed
-var incomingStreams uint32 = 0
 
 const (
 	connectionOpenInterval = 1 * time.Second
@@ -59,6 +54,8 @@ func main() {
 	// flags used for both cmds
 	tcpF := flag.String("t", "webrtc", "use quic instead of webrtc")
 	profPortF := flag.Int("profile", 0, "enable Golang pprof over http on the given port (disabled by default)")
+	metricIntervalF := flag.Duration("interval", time.Second, "interval at which to track/trace a metric point")
+	metricOutputF := flag.String("metrics", "", "wrote metrics to CSV or use 'stdout' for stdout")
 
 	// used for dial cmd only
 	streamF := flag.Int("s", 1, "set number of streams")
@@ -66,6 +63,18 @@ func main() {
 
 	// parse all flags
 	flag.Parse()
+
+	var metrics MetricTracker
+	log.Printf("log metrics to: %s\n", *metricOutputF)
+	if metricsOutput := *metricOutputF; metricsOutput != "" {
+		if strings.ToLower(strings.TrimSpace(metricsOutput)) == "stdout" {
+			metrics = NewStdoutMetricTracker(ctx, *metricIntervalF)
+		} else {
+			metrics = NewCSVMetricTracker(ctx, *metricIntervalF, metricsOutput)
+		}
+	} else {
+		metrics = NewNoopMetricTracker(ctx, *metricIntervalF)
+	}
 
 	if profilePort := *profPortF; profilePort > 0 {
 		go func() {
@@ -91,7 +100,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		startListener(ctx, ha, *listenPort, *insecureF)
+		startListener(ctx, ha, *listenPort, *insecureF, metrics)
 		// Run until canceled.
 		<-ctx.Done()
 
@@ -103,7 +112,7 @@ func main() {
 
 		var wg sync.WaitGroup
 		for i := 0; i < *connF; i++ {
-			go runSender(ctx, targetAddr, *tcpF, *streamF, &wg)
+			go runSender(ctx, targetAddr, *tcpF, *streamF, &wg, metrics)
 			time.Sleep(connectionOpenInterval)
 		}
 		wg.Wait()
@@ -189,14 +198,14 @@ func getHostAddress(ha host.Host) string {
 	return addr.Encapsulate(hostAddr).String()
 }
 
-func startListener(ctx context.Context, ha host.Host, listenPort int, insecure bool) {
+func startListener(ctx context.Context, ha host.Host, listenPort int, insecure bool, metrics MetricTracker) {
 	fullAddr := getHostAddress(ha)
 	log.Printf("listener: my address: %s\n", fullAddr)
 
 	// Set a stream handler on host A. /echo/1.0.0 is
 	// a user-defined protocol name.
 	ha.SetStreamHandler("/echo/1.0.0", func(s network.Stream) {
-		if err := doEcho(s); err != nil {
+		if err := doEcho(s, metrics); err != nil {
 			log.Println("reset stream, echo error: ", err)
 			log.Println("calling reset")
 			s.Reset()
@@ -209,7 +218,7 @@ func startListener(ctx context.Context, ha host.Host, listenPort int, insecure b
 
 }
 
-func runSender(ctx context.Context, targetPeer string, tpt string, streamCount int, wg *sync.WaitGroup) {
+func runSender(ctx context.Context, targetPeer string, tpt string, streamCount int, wg *sync.WaitGroup, metrics MetricTracker) {
 	ha, err := makeBasicHost(0, tpt, false, 1)
 	if err != nil {
 		panic(err)
@@ -221,7 +230,7 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 	// a user-defined protocol name.
 	ha.SetStreamHandler("/echo/1.0.0", func(s network.Stream) {
 		log.Println("sender received new stream")
-		if err := doEcho(s); err != nil {
+		if err := doEcho(s, metrics); err != nil {
 			log.Println("error echo: ", err)
 			s.Reset()
 		} else {
@@ -293,8 +302,8 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 }
 
 // doEcho reads a line of data a stream and writes it back
-func doEcho(s network.Stream) error {
-	sn := atomic.AddUint32(&incomingStreams, 1)
+func doEcho(s network.Stream, metrics MetricTracker) error {
+	sn := metrics.AddIncomingStream()
 	log.Printf("processing incoming stream number: %d\n", sn)
 	buf := bufio.NewReader(s)
 	for {
