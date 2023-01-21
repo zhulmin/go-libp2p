@@ -10,6 +10,7 @@ import (
 	"log"
 	mrand "math/rand"
 	"net/http"
+	"net/http/pprof"
 	_ "net/http/pprof"
 	"strings"
 	"sync/atomic"
@@ -27,8 +28,6 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	wrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 
-	// "github.com/pkg/profile"
-
 	golog "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -44,14 +43,6 @@ const (
 )
 
 func main() {
-	// TODO: replace datadog
-	// tracer.Start(tracer.WithRuntimeMetrics())
-	// defer tracer.Stop()
-	test()
-}
-
-func test() {
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -60,47 +51,65 @@ func test() {
 	// all loggers with:
 	golog.SetAllLoggers(golog.LevelInfo) // Change to INFO for extra info
 
-	// Parse options from the command line
-	listenF := flag.Int("l", 0, "wait for incoming connections")
-	targetF := flag.String("d", "", "target peer to dial")
-	insecureF := flag.Bool("insecure", false, "use an unencrypted connection")
+	// flags used only for listen cmd
+	listenPort := flag.Int("l", 9999, "port to listen too (default 9999), used for listen cmd")
+	insecureF := flag.Bool("insecure", false, "use an unencrypted connection, used for listen cmd")
+	seedF := flag.Int64("seed", 0, "set random seed for id generation, used for listen cmd")
+
+	// flags used for both cmds
 	tcpF := flag.String("t", "webrtc", "use quic instead of webrtc")
-	seedF := flag.Int64("seed", 0, "set random seed for id generation")
+	profPortF := flag.Int("profile", 0, "enable Golang pprof over http on the given port (disabled by default)")
+
+	// used for dial cmd only
 	streamF := flag.Int("s", 1, "set number of streams")
-	profF := flag.Bool("f", false, "enable/disable cpu profile")
 	connF := flag.Int("c", 1, "total connections to open")
+
+	// parse all flags
 	flag.Parse()
 
-	if *profF {
+	if profilePort := *profPortF; profilePort > 0 {
 		go func() {
-			http.ListenAndServe(":8081", nil)
+			mux := http.NewServeMux()
+			mux.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
+			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+			mux.Handle("/debug/pprof/{cmd}", http.HandlerFunc(pprof.Index))
+			if err := http.ListenAndServe(fmt.Sprintf(":%d", profilePort), mux); err != nil {
+				log.Printf("profile server exited with error: %v", err)
+			}
 		}()
-
-		// TODO: replace this (if we want this at all)
-		// defer profile.Start(profile.ProfilePath(".")).Stop()
 	}
 
-	if *listenF == 0 && *targetF == "" {
-		log.Fatal("Please provide a port to bind on with -l")
-	}
-
-	if *targetF == "" {
+	cmd := strings.ToLower(strings.TrimSpace(flag.Arg(0)))
+	switch cmd {
+	case "listen":
 		// Make a host that listens on the given multiaddress
-		ha, err := makeBasicHost(*listenF, *tcpF, *insecureF, *seedF)
+		ha, err := makeBasicHost(*listenPort, *tcpF, *insecureF, *seedF)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		startListener(ctx, ha, *listenF, *insecureF)
+		startListener(ctx, ha, *listenPort, *insecureF)
 		// Run until canceled.
 		<-ctx.Done()
-	} else {
+
+	case "dial":
+		targetAddr := flag.Arg(1)
+		if targetAddr == "" {
+			panic("target address missing")
+		}
+
 		var wg sync.WaitGroup
 		for i := 0; i < *connF; i++ {
-			go runSender(ctx, *targetF, *tcpF, *streamF, &wg)
+			go runSender(ctx, targetAddr, *tcpF, *streamF, &wg)
 			time.Sleep(connectionOpenInterval)
 		}
 		wg.Wait()
+
+	default:
+		panic(fmt.Sprintf("unexpected command: %s", cmd))
 	}
 }
 
@@ -166,7 +175,10 @@ func makeBasicHost(listenPort int, tpt string, insecure bool, randseed int64, op
 
 func getHostAddress(ha host.Host) string {
 	// Build host multiaddress
-	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
+	hostAddr, err := ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", ha.ID().Pretty()))
+	if err != nil {
+		log.Fatalf("invalid host address: %v", err)
+	}
 
 	// Now we can build a full multiaddress to reach this host
 	// by encapsulating both addresses:
@@ -179,7 +191,7 @@ func getHostAddress(ha host.Host) string {
 
 func startListener(ctx context.Context, ha host.Host, listenPort int, insecure bool) {
 	fullAddr := getHostAddress(ha)
-	log.Printf("I am %s\n", fullAddr)
+	log.Printf("listener: my address: %s\n", fullAddr)
 
 	// Set a stream handler on host A. /echo/1.0.0 is
 	// a user-defined protocol name.
@@ -198,13 +210,12 @@ func startListener(ctx context.Context, ha host.Host, listenPort int, insecure b
 }
 
 func runSender(ctx context.Context, targetPeer string, tpt string, streamCount int, wg *sync.WaitGroup) {
-
 	ha, err := makeBasicHost(0, tpt, false, 1)
 	if err != nil {
 		panic(err)
 	}
 	fullAddr := getHostAddress(ha)
-	log.Printf("I am %s\n", fullAddr)
+	log.Printf("sender: my address: %s\n", fullAddr)
 
 	// Set a stream handler on host A. /echo/1.0.0 is
 	// a user-defined protocol name.
@@ -229,11 +240,11 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 	// Extract the peer ID from the multiaddr.
 	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
-		log.Println(err)
+		log.Printf("sender:  peer.AddrInfoFromP2pAddr: %v\n", err)
 		return
 	}
 
-	log.Println(info)
+	log.Printf("sender: %v\n", info)
 
 	// We have a peer ID and a targetAddr so we add it to the peerstore
 	// so LibP2P knows how to contact it
@@ -269,7 +280,7 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 					log.Printf("[%d] error writing to remote: %v\n", idx, err)
 					return
 				}
-				_, err = reader.ReadString('\n')
+				_, err := reader.ReadString('\n')
 				if err != nil {
 					log.Printf("[%d] error reading from remote: %v\n", idx, err)
 					return
@@ -278,7 +289,6 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 			}
 		}()
 		time.Sleep(streamOpenInterval)
-
 	}
 }
 

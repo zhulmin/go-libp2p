@@ -17,21 +17,25 @@ In this section we'll show you how to run this benchmarking tool on your local (
 Run:
 
 ```
-go ./benchmark/transports/webrtc/main.go -l 9999 -t webrtc
+go run ./benchmark/transports/webrtc/main.go listen -t webrtc
 ```
 
 This should output a multiaddr which can be used by the client to connect.
 Other transport values supported instead of `webrtc` are: `tcp`, `quic`, `websocket` and `webtransport`.
+
+The listener will continue to run until you kill it.
 
 ### Client
 
 Run:
 
 ```
-go ./benchmark/transports/webrtc/main.go -d <multiaddr> -c <number of conns> -s <number of streams>
+go run ./benchmark/transports/webrtc/main.go dial <multiaddr>
 ```
 
-> TODO: why does it not exit by itself?! On what is it stuck?
+You can configure the number of streams and connections opened by the dialer using opt-in flags.
+
+The client will continue to run until you kill it.
 
 > TODO: how to pprof this?!
 
