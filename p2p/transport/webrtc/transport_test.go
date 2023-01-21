@@ -755,8 +755,16 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	require.Equal(t, count, atomic.LoadUint32(&success))
 }
 
+// TestWebrtcTransport implements the standard go-libp2p transport test.
+// It's a test that however not works for many transports, and neither does it for WebRTC.
+//
+// Reason it doens't work for WebRTC is that it opens too many streams too rapidly, which
+// in a regular environment would be seen as an attack that we wish to block/stop.
+//
+// Leaving it here for now only for documentation purposes,
+// and to make it explicitly clear this test doesn't work for WebRTC.
 func TestWebrtcTransport(t *testing.T) {
-	t.Skip("This test is failing, TODO: fix it (Might require contribution to Pion)")
+	t.Skip("This test does not work for WebRTC due to the way it is setup, see comments for more explanation")
 	ta, _ := getTransport(t)
 	tb, _ := getTransport(t)
 	ttransport.SubtestTransport(t, ta, tb, fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp), "peerA")
