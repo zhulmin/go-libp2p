@@ -11,7 +11,6 @@ import (
 	mrand "math/rand"
 	"net/http"
 	"net/http/pprof"
-	_ "net/http/pprof"
 	"strings"
 
 	"sync"
