@@ -46,7 +46,10 @@ type addrSegment struct {
 }
 
 func (segments *addrSegments) get(p peer.ID) *addrSegment {
-	return segments[byte(p[len(p)-1])]
+	if len(p) == 0 { // it's not terribly useful to use an empty peer ID, but at least we should not panic
+		return segments[0]
+	}
+	return segments[uint8(p[len(p)-1])]
 }
 
 type clock interface {

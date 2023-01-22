@@ -135,6 +135,12 @@ func testAddAddress(ab pstore.AddrBook, clk *mockClock.Mock) func(*testing.T) {
 			ab.UpdateAddrs(id, 4*time.Second, 0)
 			AssertAddressesEqual(t, nil, ab.Addrs(id))
 		})
+
+		t.Run("accessing an empty peer ID", func(t *testing.T) {
+			addrs := GenerateAddrs(5)
+			ab.AddAddrs("", addrs, time.Hour)
+			AssertAddressesEqual(t, addrs, ab.Addrs(""))
+		})
 	}
 }
 
