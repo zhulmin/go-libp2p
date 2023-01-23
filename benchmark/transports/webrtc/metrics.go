@@ -16,8 +16,8 @@ import (
 func NewStdoutMetricTracker(ctx context.Context, interval time.Duration) MetricTracker {
 	return CollectMetrics(ctx, interval, func(m Metric) {
 		log.Printf(
-			"[metric] %d stream(s) | %d%% (CPU) | %d byte(s) (HEAP)\n",
-			m.IncomingStreams, m.CpuPercentage, m.MemoryHeapBytes,
+			"[metric] %s | %d stream(s) | %d%% (CPU) | %d byte(s) (HEAP)\n",
+			time.UnixMilli(m.Timestamp), m.ActiveStreams, m.CpuPercentage, m.MemoryHeapBytes,
 		)
 	})
 }
@@ -33,7 +33,8 @@ func NewCSVMetricTracker(ctx context.Context, interval time.Duration, filepath s
 
 	return CollectMetrics(ctx, interval, func(m Metric) {
 		writer.Write([]string{
-			strconv.FormatUint(uint64(m.IncomingStreams), 10),
+			strconv.FormatInt(m.Timestamp, 10),
+			strconv.FormatUint(uint64(m.ActiveStreams), 10),
 			strconv.FormatUint(uint64(m.CpuPercentage), 10),
 			strconv.FormatUint(uint64(m.MemoryHeapBytes), 10),
 		})
@@ -57,25 +58,30 @@ type (
 	// - Incoming streams are collected manually
 	// - CPU / Memory is collected using https://github.com/shirou/gopsutil
 	MetricCollector struct {
-		started                     bool
-		lastIncomingStreamsSnapshot uint32
-		currentIncomingStreams      uint32
+		started       bool
+		activeStreams uint32
 	}
 
 	// Metric is a single metric collected by the MetricCollector.
 	Metric struct {
-		IncomingStreams uint32
+		Timestamp       int64
+		ActiveStreams   uint32
 		CpuPercentage   uint
 		MemoryHeapBytes uint64
 	}
 
 	MetricTracker interface {
 		AddIncomingStream() uint32
+		SubIncomingStream() uint32
 	}
 )
 
 func (c *MetricCollector) AddIncomingStream() uint32 {
-	return atomic.AddUint32(&c.currentIncomingStreams, 1)
+	return atomic.AddUint32(&c.activeStreams, 1)
+}
+
+func (c *MetricCollector) SubIncomingStream() uint32 {
+	return atomic.AddUint32(&c.activeStreams, ^uint32(0))
 }
 
 func (c *MetricCollector) Start(ctx context.Context, interval time.Duration, cb func(Metric)) {
@@ -98,10 +104,11 @@ func (c *MetricCollector) Start(ctx context.Context, interval time.Duration, cb 
 }
 
 func (c *MetricCollector) collect(interval time.Duration, pid, cpu int) Metric {
+	// metric timestamp in ms
+	ts := time.Now().UnixMilli()
+
 	// track current incoming streams
-	current := atomic.LoadUint32(&c.currentIncomingStreams)
-	incomingStreams := current - c.lastIncomingStreamsSnapshot
-	c.lastIncomingStreamsSnapshot = current
+	activeStreams := atomic.LoadUint32(&c.activeStreams)
 
 	// track CPU usage
 	sysInfo, err := pidusage.GetStat(pid)
@@ -117,7 +124,8 @@ func (c *MetricCollector) collect(interval time.Duration, pid, cpu int) Metric {
 
 	// return all metrics
 	return Metric{
-		IncomingStreams: incomingStreams,
+		Timestamp:       ts,
+		ActiveStreams:   activeStreams,
 		CpuPercentage:   cpuPercentage,
 		MemoryHeapBytes: memUsage,
 	}
@@ -126,3 +134,4 @@ func (c *MetricCollector) collect(interval time.Duration, pid, cpu int) Metric {
 type DummyMetricTracker struct{}
 
 func (DummyMetricTracker) AddIncomingStream() uint32 { return 0 }
+func (DummyMetricTracker) SubIncomingStream() uint32 { return 0 }

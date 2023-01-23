@@ -17,7 +17,7 @@ In this section we'll show you how to run this benchmarking tool on your local (
 Run:
 
 ```
-go run ./benchmark/transports/webrtc listen
+go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv listen
 ```
 
 This should output a multiaddr which can be used by the client to connect.

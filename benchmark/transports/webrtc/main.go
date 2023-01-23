@@ -303,6 +303,7 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 // doEcho reads a line of data a stream and writes it back
 func doEcho(s network.Stream, metrics MetricTracker) error {
 	sn := metrics.AddIncomingStream()
+	defer metrics.SubIncomingStream()
 	log.Printf("processing incoming stream number: %d\n", sn)
 	buf := bufio.NewReader(s)
 	for {
