@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/csv"
+	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -40,6 +41,119 @@ func NewCSVMetricTracker(ctx context.Context, interval time.Duration, filepath s
 		})
 		writer.Flush()
 	})
+}
+
+func ReadCsvMetrics(filepath string) ([]Metric, error) {
+	f, err := os.Open(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("open csv metrics file %q: %w", filepath, err)
+	}
+	defer f.Close()
+
+	records, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("read csv metrics file %q: %w", filepath, err)
+	}
+
+	metrics := make([]Metric, 0, len(records))
+	for n, record := range records {
+		metric, err := parseCsvMetric(record)
+		if err != nil {
+			return nil, fmt.Errorf("parse metric from csv file %q record #%d: %w", filepath, n, err)
+		}
+		metrics = append(metrics, metric)
+	}
+	return metrics, nil
+}
+
+func PrintMetricStats(metrics []Metric, activeStreams uint32) {
+	var (
+		minCpuPercentage uint
+		maxCpuPercentage uint
+		avgCpuPercentage uint
+
+		minMemoryHeapBytes uint64
+		maxMemoryHeapBytes uint64
+		avgMemoryHeapBytes uint64
+	)
+
+	var started bool
+	for _, metric := range metrics {
+		if metric.ActiveStreams != activeStreams {
+			continue
+		}
+
+		if !started {
+			minCpuPercentage = metric.CpuPercentage
+			maxCpuPercentage = metric.CpuPercentage
+			avgCpuPercentage = metric.CpuPercentage
+
+			minMemoryHeapBytes = metric.MemoryHeapBytes
+			maxMemoryHeapBytes = metric.MemoryHeapBytes
+			avgMemoryHeapBytes = metric.MemoryHeapBytes
+
+			started = true
+			continue
+		}
+
+		avgCpuPercentage += metric.CpuPercentage
+		if metric.CpuPercentage < minCpuPercentage {
+			minCpuPercentage = metric.CpuPercentage
+		}
+		if metric.CpuPercentage > maxCpuPercentage {
+			maxCpuPercentage = metric.CpuPercentage
+		}
+
+		avgMemoryHeapBytes += metric.MemoryHeapBytes
+		if metric.MemoryHeapBytes < minMemoryHeapBytes {
+			minMemoryHeapBytes = metric.MemoryHeapBytes
+		}
+		if metric.MemoryHeapBytes > maxMemoryHeapBytes {
+			maxMemoryHeapBytes = metric.MemoryHeapBytes
+		}
+	}
+
+	avgCpuPercentage /= uint(len(metrics))
+	avgMemoryHeapBytes /= uint64(len(metrics))
+
+	// print above metrics to stdout
+	fmt.Printf(`Active Streams: %d
+	
+CPU Percentage:
+	- Min: %d
+	- Max: %d
+	- Avg: %d
+
+Memory Heap Bytes:
+	- Min: %d
+	- Max: %d
+	- Avg: %d
+`, activeStreams, minCpuPercentage, maxCpuPercentage, avgCpuPercentage, minMemoryHeapBytes, maxMemoryHeapBytes, avgMemoryHeapBytes)
+}
+
+func parseCsvMetric(record []string) (Metric, error) {
+	timestamp, err := strconv.ParseInt(record[0], 10, 64)
+	if err != nil {
+		return Metric{}, fmt.Errorf("parse timestamp: %w", err)
+	}
+	activeStreams, err := strconv.ParseUint(record[1], 10, 64)
+	if err != nil {
+		return Metric{}, fmt.Errorf("parse active streams: %w", err)
+	}
+	cpuPercentage, err := strconv.ParseUint(record[2], 10, 64)
+	if err != nil {
+		return Metric{}, fmt.Errorf("parse cpu percentage: %w", err)
+	}
+	memoryHeapBytes, err := strconv.ParseUint(record[3], 10, 64)
+	if err != nil {
+		return Metric{}, fmt.Errorf("parse memory heap bytes: %w", err)
+	}
+	return Metric{
+		Timestamp:       timestamp,
+		ActiveStreams:   uint32(activeStreams),
+		CpuPercentage:   uint(cpuPercentage),
+		MemoryHeapBytes: memoryHeapBytes,
+	}, nil
 }
 
 func NewNoopMetricTracker(context.Context, time.Duration) MetricTracker {

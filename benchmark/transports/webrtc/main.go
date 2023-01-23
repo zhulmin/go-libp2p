@@ -57,8 +57,10 @@ func main() {
 	metricOutputF := flag.String("metrics", "", "wrote metrics to CSV or use 'stdout' for stdout")
 
 	// used for dial cmd only
-	streamF := flag.Int("s", 1, "set number of streams")
 	connF := flag.Int("c", 1, "total connections to open")
+
+	// used for dial and report cmd only
+	streamF := flag.Int("s", 1, "set number of streams")
 
 	// parse all flags
 	flag.Parse()
@@ -115,6 +117,17 @@ func main() {
 			time.Sleep(connectionOpenInterval)
 		}
 		wg.Wait()
+
+	case "report":
+		csvFilePath := flag.Arg(1)
+		if csvFilePath == "" {
+			panic("csv file path missing")
+		}
+		metrics, err := ReadCsvMetrics(csvFilePath)
+		if err != nil {
+			panic(err)
+		}
+		PrintMetricStats(metrics, uint32(*streamF))
 
 	default:
 		panic(fmt.Sprintf("unexpected command: %s", cmd))
