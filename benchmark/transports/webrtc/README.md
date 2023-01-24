@@ -10,7 +10,13 @@ In this section we'll show you how to run this benchmarking tool on your local (
 1. Run a listener
 2. Run a client
 
-... And then?!
+What you do next to this depends on what you're after.
+
+- Are you using it to get metrics from a standard and well defined cloud run?
+- Are you using it to get metrics from your local machine?
+- Are you using it to (Go) profile one or multiple things?
+
+With that in mind, we'll show you how to do all of the above.
 
 ### Listener
 
