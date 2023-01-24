@@ -82,7 +82,7 @@ func makeUpgrader(t *testing.T, n *Swarm) transport.Upgrader {
 	pk := n.Peerstore().PrivKey(id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
 
-	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: "/yamux/1.0.0", Muxer: yamux.DefaultTransport}}, nil, nil, nil)
+	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: yamux.ID, Muxer: yamux.DefaultTransport}}, nil, nil, nil)
 	require.NoError(t, err)
 	return u
 }

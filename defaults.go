@@ -34,7 +34,7 @@ var DefaultSecurity = ChainOptions(
 //
 // Use this option when you want to *extend* the set of multiplexers used by
 // libp2p instead of replacing them.
-var DefaultMuxers = Muxer("/yamux/1.0.0", yamux.DefaultTransport)
+var DefaultMuxers = Muxer(yamux.ID, yamux.DefaultTransport)
 
 // DefaultTransports are the default libp2p transports.
 //

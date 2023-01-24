@@ -105,7 +105,7 @@ func GenUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater
 	pk := n.Peerstore().PrivKey(id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
 
-	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: "/yamux/1.0.0", Muxer: yamux.DefaultTransport}}, nil, nil, connGater, opts...)
+	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: yamux.ID, Muxer: yamux.DefaultTransport}}, nil, nil, connGater, opts...)
 	require.NoError(t, err)
 	return u
 }
