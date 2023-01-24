@@ -54,6 +54,37 @@ You can configure the number of streams and connections opened by the dialer usi
 
 The client will continue to run until you kill it.
 
-> TODO: how to pprof this?!
+> Tip:
+> 
+> similar to the `listen` command you can also use the `-metrics <path>.csv` flag to output the metrics to a file.
 
-> TODO: how to get some decent graphs that could be investigated easily?
+### Profile
+
+Profiling the benchmark tool is supported using the Golang std pprof tool.
+
+E.g. you can start your listener (or client) with the `-profile 6060` flag to enable profiling over http.
+
+With your listener/client running you can then profile using te std golang tool, e.g.:
+
+```
+# get cpu profile
+go tool pprof http://localhost:6060/debug/pprof/profile
+
+# get memory (heap) profile
+go tool pprof http://localhost:6060/debug/pprof/heap
+
+# check contended mutexes
+go tool pprof http://localhost:6060/debug/pprof/mutex
+
+# check why threads block
+go tool pprof http://localhost:6060/debug/pprof/block
+
+# check the amount of created goroutines
+go tool pprof http://localhost:6060/debug/pprof/goroutine
+```
+
+It will open an interactive window allowing you to inspect the heap/cpu profile, e.g. to see te top offenders
+of your own code by focussing on the relevant module (e.g. `top github.com/libp2p/go-libp2p/p2p/transport/webrtc`).
+
+And of course you can also use the `-pdf` flag to output it to a file instead that you can view in your browser or
+any other capable pdf viewer.
