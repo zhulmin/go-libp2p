@@ -119,16 +119,20 @@ func PrintMetricStats(metrics []Metric, activeStreams uint32) {
 	// print above metrics to stdout
 	fmt.Printf(`Active Streams: %d
 	
-CPU Percentage:
+CPU (%%):
 	- Min: %d
 	- Max: %d
 	- Avg: %d
 
-Memory Heap Bytes:
-	- Min: %d
-	- Max: %d
-	- Avg: %d
-`, activeStreams, minCpuPercentage, maxCpuPercentage, avgCpuPercentage, minMemoryHeapBytes, maxMemoryHeapBytes, avgMemoryHeapBytes)
+Memory Heap (MiB):
+	- Min: %.3f
+	- Max: %.3f
+	- Avg: %.3f
+`, activeStreams, minCpuPercentage, maxCpuPercentage, avgCpuPercentage, mib(minMemoryHeapBytes), mib(maxMemoryHeapBytes), mib(avgMemoryHeapBytes))
+}
+
+func mib(bytes uint64) float64 {
+	return float64(bytes) / 1024 / 1024
 }
 
 func parseCsvMetric(record []string) (Metric, error) {
