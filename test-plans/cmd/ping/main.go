@@ -94,7 +94,7 @@ func main() {
 	case "yamux":
 		options = append(options, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
 	case "mplex":
-		options = append(options, libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport))
+		options = append(options, libp2p.Muxer(mplex.ID, mplex.DefaultTransport))
 	case "quic":
 	default:
 		log.Fatalf("Unsupported muxer: %s", muxer)
