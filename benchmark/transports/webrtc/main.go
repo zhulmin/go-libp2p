@@ -285,6 +285,13 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 		idx := i
 		go func() {
 			defer wg.Done()
+			defer func() {
+				log.Printf("exiting stream number: %d\n", idx)
+				metrics.SubIncomingStream()
+			}()
+			metrics.AddIncomingStream()
+			log.Printf("processing stream number: %d\n", idx)
+
 			// make a new stream from host B to host A
 			// it should be handled on host A by the handler we set above because
 			// we use the same /echo/1.0.0 protocol
@@ -297,16 +304,19 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 			reader := bufio.NewReader(s)
 			for {
 				s.SetDeadline(time.Now().Add(5 * time.Second))
-				_, err = s.Write([]byte(sendStr.String()))
+				n, err := s.Write([]byte(sendStr.String()))
 				if err != nil {
 					log.Printf("[%d] error writing to remote: %v\n", idx, err)
 					return
 				}
-				_, err := reader.ReadString('\n')
+				metrics.AddBytesWritten(uint64(n))
+
+				str, err := reader.ReadString('\n')
 				if err != nil {
 					log.Printf("[%d] error reading from remote: %v\n", idx, err)
 					return
 				}
+				metrics.AddBytesRead(uint64(len(str)))
 				time.Sleep(writeInterval)
 			}
 		}()
@@ -317,8 +327,12 @@ func runSender(ctx context.Context, targetPeer string, tpt string, streamCount i
 // doEcho reads a line of data a stream and writes it back
 func doEcho(s network.Stream, metrics MetricTracker) error {
 	sn := metrics.AddIncomingStream()
-	defer metrics.SubIncomingStream()
-	log.Printf("processing incoming stream number: %d\n", sn)
+	defer func() {
+		log.Printf("exiting stream number: %d\n", sn)
+		metrics.SubIncomingStream()
+	}()
+
+	log.Printf("processing stream number: %d\n", sn)
 	buf := bufio.NewReader(s)
 	for {
 		s.SetDeadline(time.Now().Add(5 * time.Second))
@@ -333,7 +347,7 @@ func doEcho(s network.Stream, metrics MetricTracker) error {
 
 		n, err := s.Write([]byte(str))
 		if err != nil {
-			fmt.Println("error sending: %w", err)
+			log.Printf("error sending: %v", err)
 			return err
 		}
 		metrics.AddBytesWritten(uint64(n))

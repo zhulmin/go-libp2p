@@ -308,7 +308,7 @@ func (c *MetricCollector) collect(interval time.Duration, pid, cpu int) Metric {
 
 	// track bytes read / written
 	bytesRead := atomic.SwapUint64(&c.bytesRead, 0)
-	bytesWritten := atomic.SwapUint64(&c.bytesRead, 0)
+	bytesWritten := atomic.SwapUint64(&c.bytesWritten, 0)
 
 	// return all metrics
 	return Metric{
