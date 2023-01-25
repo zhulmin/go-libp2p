@@ -65,9 +65,11 @@ func main() {
 	// parse all flags
 	flag.Parse()
 
+	cmd := strings.ToLower(strings.TrimSpace(flag.Arg(0)))
+
 	var metrics MetricTracker
-	log.Printf("log metrics to: %s\n", *metricOutputF)
-	if metricsOutput := *metricOutputF; metricsOutput != "" {
+	if metricsOutput := *metricOutputF; (cmd == "listen" || cmd == "dial") && metricsOutput != "" {
+		log.Printf("log metrics to: %s\n", *metricOutputF)
 		if strings.ToLower(strings.TrimSpace(metricsOutput)) == "stdout" {
 			metrics = NewStdoutMetricTracker(ctx, *metricIntervalF)
 		} else {
@@ -92,7 +94,6 @@ func main() {
 		}()
 	}
 
-	cmd := strings.ToLower(strings.TrimSpace(flag.Arg(0)))
 	switch cmd {
 	case "listen":
 		// Make a host that listens on the given multiaddress
@@ -328,11 +329,13 @@ func doEcho(s network.Stream, metrics MetricTracker) error {
 			}
 			return err
 		}
+		metrics.AddBytesRead(uint64(len(str)))
 
-		_, err = s.Write([]byte(str))
+		n, err := s.Write([]byte(str))
 		if err != nil {
 			fmt.Println("error sending: %w", err)
 			return err
 		}
+		metrics.AddBytesWritten(uint64(n))
 	}
 }

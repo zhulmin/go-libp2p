@@ -38,6 +38,8 @@ func NewCSVMetricTracker(ctx context.Context, interval time.Duration, filepath s
 			strconv.FormatUint(uint64(m.ActiveStreams), 10),
 			strconv.FormatUint(uint64(m.CpuPercentage), 10),
 			strconv.FormatUint(uint64(m.MemoryHeapBytes), 10),
+			strconv.FormatUint(uint64(m.BytesRead), 10),
+			strconv.FormatUint(uint64(m.BytesWritten), 10),
 		})
 		writer.Flush()
 	})
@@ -66,55 +68,76 @@ func ReadCsvMetrics(filepath string) ([]Metric, error) {
 	return metrics, nil
 }
 
+type (
+	metricValue interface {
+		uint | uint64
+	}
+
+	metricAggregator[T metricValue] struct {
+		n int
+
+		min, max, avg T
+	}
+
+	aggregatedMetrics[T metricValue] struct {
+		Min T
+		Max T
+		Avg T
+	}
+)
+
+func (a *metricAggregator[T]) Add(v T) {
+	if a.n += 1; a.n == 1 {
+		a.min = v
+		a.max = v
+		a.avg = v
+		return
+	}
+
+	a.avg += v
+	if v < a.min {
+		a.min = v
+	}
+	if v > a.max {
+		a.max = v
+	}
+}
+
+func (a *metricAggregator[T]) Metrics() aggregatedMetrics[T] {
+	var avg T
+	if a.n > 0 {
+		avg = a.avg / T(a.n)
+	}
+	return aggregatedMetrics[T]{
+		Min: a.min,
+		Max: a.max,
+		Avg: avg,
+	}
+}
+
 func PrintMetricStats(metrics []Metric, activeStreams uint32) {
 	var (
-		minCpuPercentage uint
-		maxCpuPercentage uint
-		avgCpuPercentage uint
-
-		minMemoryHeapBytes uint64
-		maxMemoryHeapBytes uint64
-		avgMemoryHeapBytes uint64
+		cpuPercentageAgg   metricAggregator[uint]
+		memoryHeapBytesAgg metricAggregator[uint64]
+		bytesReadAgg       metricAggregator[uint64]
+		bytesWrittenAgg    metricAggregator[uint64]
 	)
 
-	var started bool
 	for _, metric := range metrics {
 		if metric.ActiveStreams != activeStreams {
 			continue
 		}
 
-		if !started {
-			minCpuPercentage = metric.CpuPercentage
-			maxCpuPercentage = metric.CpuPercentage
-			avgCpuPercentage = metric.CpuPercentage
-
-			minMemoryHeapBytes = metric.MemoryHeapBytes
-			maxMemoryHeapBytes = metric.MemoryHeapBytes
-			avgMemoryHeapBytes = metric.MemoryHeapBytes
-
-			started = true
-			continue
-		}
-
-		avgCpuPercentage += metric.CpuPercentage
-		if metric.CpuPercentage < minCpuPercentage {
-			minCpuPercentage = metric.CpuPercentage
-		}
-		if metric.CpuPercentage > maxCpuPercentage {
-			maxCpuPercentage = metric.CpuPercentage
-		}
-
-		avgMemoryHeapBytes += metric.MemoryHeapBytes
-		if metric.MemoryHeapBytes < minMemoryHeapBytes {
-			minMemoryHeapBytes = metric.MemoryHeapBytes
-		}
-		if metric.MemoryHeapBytes > maxMemoryHeapBytes {
-			maxMemoryHeapBytes = metric.MemoryHeapBytes
-		}
+		cpuPercentageAgg.Add(metric.CpuPercentage)
+		memoryHeapBytesAgg.Add(metric.MemoryHeapBytes)
+		bytesReadAgg.Add(metric.BytesRead)
+		bytesWrittenAgg.Add(metric.BytesWritten)
 	}
 
-	avgCpuPercentage /= uint(len(metrics))
-	avgMemoryHeapBytes /= uint64(len(metrics))
+	cpuPercentageMetrics := cpuPercentageAgg.Metrics()
+	memoryHeapBytesMetrics := memoryHeapBytesAgg.Metrics()
+	bytesReadMetrics := bytesReadAgg.Metrics()
+	bytesWrittenMetrics := bytesWrittenAgg.Metrics()
 
 	// print above metrics to stdout
 	fmt.Printf(`Active Streams: %d
@@ -128,7 +151,35 @@ Memory Heap (MiB):
 	- Min: %.3f
 	- Max: %.3f
 	- Avg: %.3f
-`, activeStreams, minCpuPercentage, maxCpuPercentage, avgCpuPercentage, mib(minMemoryHeapBytes), mib(maxMemoryHeapBytes), mib(avgMemoryHeapBytes))
+
+Bytes Read (KiB):
+	- Min: %.3f
+	- Max: %.3f
+	- Avg: %.3f
+
+Bytes Written (KiB):
+	- Min: %.3f
+	- Max: %.3f
+	- Avg: %.3f
+`,
+		activeStreams,
+		cpuPercentageMetrics.Min,
+		cpuPercentageMetrics.Max,
+		cpuPercentageMetrics.Avg,
+		mib(memoryHeapBytesMetrics.Min),
+		mib(memoryHeapBytesMetrics.Max),
+		mib(memoryHeapBytesMetrics.Avg),
+		kib(bytesReadMetrics.Min),
+		kib(bytesReadMetrics.Max),
+		kib(bytesReadMetrics.Avg),
+		kib(bytesWrittenMetrics.Min),
+		kib(bytesWrittenMetrics.Max),
+		kib(bytesWrittenMetrics.Avg),
+	)
+}
+
+func kib(bytes uint64) float64 {
+	return float64(bytes) / 1024
 }
 
 func mib(bytes uint64) float64 {
@@ -178,12 +229,16 @@ type (
 	MetricCollector struct {
 		started       bool
 		activeStreams uint32
+		bytesRead     uint64
+		bytesWritten  uint64
 	}
 
 	// Metric is a single metric collected by the MetricCollector.
 	Metric struct {
 		Timestamp       int64
 		ActiveStreams   uint32
+		BytesRead       uint64
+		BytesWritten    uint64
 		CpuPercentage   uint
 		MemoryHeapBytes uint64
 	}
@@ -191,6 +246,9 @@ type (
 	MetricTracker interface {
 		AddIncomingStream() uint32
 		SubIncomingStream() uint32
+
+		AddBytesRead(uint64) uint64
+		AddBytesWritten(uint64) uint64
 	}
 )
 
@@ -200,6 +258,14 @@ func (c *MetricCollector) AddIncomingStream() uint32 {
 
 func (c *MetricCollector) SubIncomingStream() uint32 {
 	return atomic.AddUint32(&c.activeStreams, ^uint32(0))
+}
+
+func (c *MetricCollector) AddBytesRead(n uint64) uint64 {
+	return atomic.AddUint64(&c.bytesRead, n)
+}
+
+func (c *MetricCollector) AddBytesWritten(n uint64) uint64 {
+	return atomic.AddUint64(&c.bytesWritten, n)
 }
 
 func (c *MetricCollector) Start(ctx context.Context, interval time.Duration, cb func(Metric)) {
@@ -240,16 +306,24 @@ func (c *MetricCollector) collect(interval time.Duration, pid, cpu int) Metric {
 	runtime.ReadMemStats(&m)
 	memUsage := m.HeapAlloc
 
+	// track bytes read / written
+	bytesRead := atomic.SwapUint64(&c.bytesRead, 0)
+	bytesWritten := atomic.SwapUint64(&c.bytesRead, 0)
+
 	// return all metrics
 	return Metric{
 		Timestamp:       ts,
 		ActiveStreams:   activeStreams,
 		CpuPercentage:   cpuPercentage,
 		MemoryHeapBytes: memUsage,
+		BytesRead:       bytesRead,
+		BytesWritten:    bytesWritten,
 	}
 }
 
 type DummyMetricTracker struct{}
 
-func (DummyMetricTracker) AddIncomingStream() uint32 { return 0 }
-func (DummyMetricTracker) SubIncomingStream() uint32 { return 0 }
+func (DummyMetricTracker) AddIncomingStream() uint32     { return 0 }
+func (DummyMetricTracker) SubIncomingStream() uint32     { return 0 }
+func (DummyMetricTracker) AddBytesRead(uint64) uint64    { return 0 }
+func (DummyMetricTracker) AddBytesWritten(uint64) uint64 { return 0 }
