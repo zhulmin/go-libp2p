@@ -3,7 +3,18 @@
 This directory contains a benchmarking tool and instructions how to use it,
 to measure the performance of the WebRTC transport.
 
-## Instructions
+- [1. Instructions](#1-instructions)
+  - [1.1. Listener](#11-listener)
+    - [1.1.1. Metrics](#111-metrics)
+  - [1.2. Client](#12-client)
+  - [1.3. Profile](#13-profile)
+- [2. Benchmarks](#2-benchmarks)
+    - [2.1. Scenario 1](#21-scenario-1)
+        - [2.1.1. Results](#211-results)
+    - [2.2. Scenario 2](#22-scenario-2)
+        - [2.2.1. Results](#221-results)
+
+## 1. Instructions
 
 In this section we'll show you how to run this benchmarking tool on your local (development) machine.
 
@@ -18,7 +29,7 @@ What you do next to this depends on what you're after.
 
 With that in mind, we'll show you how to do all of the above.
 
-### Listener
+### 1.1. Listener
 
 Run:
 
@@ -31,7 +42,7 @@ Other transport values supported instead of `webrtc` are: `tcp`, `quic`, `websoc
 
 The listener will continue to run until you kill it.
 
-#### Metrics
+#### 1.1.1. Metrics
 
 The metrics can be summarized using the `report` command:
 
@@ -48,7 +59,7 @@ Or you can visualize them using the bundled python script:
 
 Which will open a new window with your graph in it.
 
-### Client
+### 1.2. Client
 
 Run:
 
@@ -64,7 +75,7 @@ The client will continue to run until you kill it.
 > 
 > similar to the `listen` command you can also use the `-metrics <path>.csv` flag to output the metrics to a file.
 
-### Profile
+### 1.3. Profile
 
 Profiling the benchmark tool is supported using the Golang std pprof tool.
 
@@ -94,3 +105,88 @@ of your own code by focussing on the relevant module (e.g. `top github.com/libp2
 
 And of course you can also use the `-pdf` flag to output it to a file instead that you can view in your browser or
 any other capable pdf viewer.
+
+## 2. Benchmarks
+
+The goal of this tooling was to be able to benchmark how the WebRTC transport performs on its own
+as well as compared to other transports such as QUIC and WebTransport. Not all scenarios which are benchmarked
+are compatible with the different transports, but WebRTC is tested on all benchmarked scenarios.
+
+The scenarios described below and the results you'll find at the end are ran on / come from two c5 large EC2 instances.
+Each instance has 8 vCPUs and 16GB RAM. More information can be found at:
+https://aws.amazon.com/ec2/instance-types/c5/
+
+**Scenario 1:**
+
+1. Server, on EC2 instance A, listens on a generated multi address.
+2. Client, on EC2 instance B, dials 10 connections, with 1000 streams per connection to the server.
+
+**Scenario 2:**
+
+1. Server, on EC2 instance A, listens on a generated multi address.
+2. Client, on EC2 instance B, dials 100 connections, with 100 streams per connection to the server.
+
+For both scenarios the following holds true:
+
+- Connections are ramped up at the rate of 1 connection/sec. 
+- Streams are created at the rate of 10 streams/sec.
+- This is done to ensure the webrtc transport's inflight request limiting does not start rejecting connections.
+- The client opens streams to the server and runs the echo protocol writing 2KiB/s per stream (1 KiB every 500ms).
+
+The instances are running each scenario variation one by one, as such there at any given moment only one benchmark script running.
+
+### 2.1. Scenario 1
+
+Server:
+
+```
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp listen
+# copy addressA
+
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c listen
+# copy addressB
+```
+
+Client:
+
+```
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp -c 10 -s 1000 dial <addressA>
+
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c 10 -s 1000 dial <addressB>
+```
+
+#### 2.1.1. Results
+
+TODO
+
+### 2.2. Scenario 2
+
+Server:
+
+```
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp listen
+# copy addressA
+
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c listen
+# copy addressB
+```
+
+Client:
+
+```
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp -c 10 -s 1000 dial <addressA>
+
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c 10 -s 1000 dial <addressB>
+```
+
+#### 2.2.1. Results
+
+TODO
