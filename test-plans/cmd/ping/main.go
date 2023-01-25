@@ -34,7 +34,7 @@ func main() {
 		redisAddr      = os.Getenv("REDIS_ADDR")
 	)
 
-	var testTimeout = 10 * time.Second
+	testTimeout := 10 * time.Second
 	if testTimeoutStr != "" {
 		secs, err := strconv.ParseInt(testTimeoutStr, 10, 32)
 		if err == nil {
