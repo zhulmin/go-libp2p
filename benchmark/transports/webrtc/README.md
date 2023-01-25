@@ -140,23 +140,30 @@ The instances are running each scenario variation one by one, as such there at a
 Server:
 
 ```
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp listen
+# TCP
+go run ./benchmark/transports/webrtc -metrics metrics_s1_tcp_server.csv -t tcp listen
 # copy addressA
 
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c listen
+# WebSocket
+go run ./benchmark/transports/webrtc -metrics metrics_s1_ws_server.csv -t websocket listen
 # copy addressB
+
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_s1_webrtc_server.csv -c listen
+# copy addressC
 ```
 
 Client:
 
 ```
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp -c 10 -s 1000 dial <addressA>
+# TCP
+go run ./benchmark/transports/webrtc -metrics metrics_s1_tcp_client.csv -t tcp -c 10 -s 1000 dial <addressA>
+
+# WebSocket
+go run ./benchmark/transports/webrtc -metrics metrics_s1_ws_client.csv -t websocket -c 10 -s 1000 dial <addressB>
 
 # WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c 10 -s 1000 dial <addressB>
+go run ./benchmark/transports/webrtc -metrics metrics_s1_webrtc_client.csv -c 10 -s 1000 dial <addressC>
 ```
 
 #### 2.1.1. Results
@@ -168,23 +175,44 @@ TODO
 Server:
 
 ```
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp listen
+# TCP
+go run ./benchmark/transports/webrtc -metrics metrics_s2_tcp_server.csv -t tcp listen
 # copy addressA
 
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c listen
+# WebSocket
+go run ./benchmark/transports/webrtc -metrics metrics_s2_ws_server.csv -t websocket listen
 # copy addressB
+
+# WebRTC
+go run ./benchmark/transports/webrtc -metrics metrics_s2_webrtc_server.csv -c listen
+# copy addressC
+
+# QUIC
+go run ./benchmark/transports/webrtc -metrics metrics_s2_quic_server.csv -c listen
+# copy addressD
+
+# WebTransport
+go run ./benchmark/transports/webrtc -metrics metrics_s2_webtransport_server.csv -c listen
+# copy addressE
 ```
 
 Client:
 
 ```
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_tcp.csv -t tcp -c 10 -s 1000 dial <addressA>
+# TCP
+go run ./benchmark/transports/webrtc -metrics metrics_s2_tcp_client.csv -t tcp -c 100 -s 100 dial <addressA>
+
+# WebSocket
+go run ./benchmark/transports/webrtc -metrics metrics_s2_ws_client.csv -t websocket -c 100 -s 100 dial <addressB>
 
 # WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv -c 10 -s 1000 dial <addressB>
+go run ./benchmark/transports/webrtc -metrics metrics_s2_webrtc_client.csv -c 100 -s 100 dial <addressC>
+
+# QUIC
+go run ./benchmark/transports/webrtc -metrics metrics_s2_quic_client.csv -t quic -c 100 -s 100 dial <addressD>
+
+# WebTransport
+go run ./benchmark/transports/webrtc -metrics metrics_s2_webtransport_client.csv -t webtransport -c 100 -s 100 dial <addressE>
 ```
 
 #### 2.2.1. Results
