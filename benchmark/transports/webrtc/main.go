@@ -1,3 +1,6 @@
+// forked from
+// https://github.com/libp2p/go-libp2p/blob/d5a280e6f6ca48eb99ba9140707c4fad54207c76/examples/echo/main.go
+
 package main
 
 import (
@@ -50,7 +53,7 @@ func main() {
 	golog.SetAllLoggers(golog.LevelInfo) // Change to INFO for extra info
 
 	// flags used only for listen cmd
-	listenPort := flag.Int("l", 9999, "port to listen too (default 9999), used for listen cmd")
+	listenPort := flag.Int("l", 0, "port to listen to, used for listen cmd")
 	insecureF := flag.Bool("insecure", false, "use an unencrypted connection, used for listen cmd")
 	seedF := flag.Int64("seed", 0, "set random seed for id generation, used for listen cmd")
 
