@@ -70,9 +70,21 @@ func main() {
 	var metrics MetricTracker
 	if metricsOutput := *metricOutputF; (cmd == "listen" || cmd == "dial") && metricsOutput != "" {
 		log.Printf("log metrics to: %s\n", *metricOutputF)
-		if strings.ToLower(strings.TrimSpace(metricsOutput)) == "stdout" {
+		metricsOutput = strings.TrimSpace(metricsOutput)
+		if strings.ToLower(metricsOutput) == "stdout" {
 			metrics = NewStdoutMetricTracker(ctx, *metricIntervalF)
 		} else {
+			if strings.ToLower(metricsOutput) == "csv" {
+				metricsOutput = fmt.Sprintf(
+					"metrics_%s_%s_c%d_s%d_e%d_p%d.csv",
+					cmd,
+					*tcpF,
+					*connF,
+					*streamF,
+					bti(!*insecureF),
+					bti(*profPortF > 0),
+				)
+			}
 			metrics = NewCSVMetricTracker(ctx, *metricIntervalF, metricsOutput)
 		}
 	} else {
@@ -133,6 +145,13 @@ func main() {
 	default:
 		panic(fmt.Sprintf("unexpected command: %s", cmd))
 	}
+}
+
+func bti(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // makeBasicHost creates a LibP2P host with a random peer ID listening on the

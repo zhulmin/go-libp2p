@@ -34,7 +34,7 @@ With that in mind, we'll show you how to do all of the above.
 Run:
 
 ```
-go run ./benchmark/transports/webrtc -metrics metrics_webrtc.csv listen
+go run ./benchmark/transports/webrtc -c 2 -s 8 -metrics csv listen
 ```
 
 This should output a multiaddr which can be used by the client to connect.
@@ -47,14 +47,14 @@ The listener will continue to run until you kill it.
 The metrics can be summarized using the `report` command:
 
 ```
-go run ./benchmark/transports/webrtc report -s 16 metrics_webrtc.csv
+go run ./benchmark/transports/webrtc report -s 16 metrics_listen_webrtc_c2_s8_e1_p0.csv
 ```
 
 Which will print the result to the stdout of your terminal.
 Or you can visualize them using the bundled python script:
 
 ```
-./benchmark/transports/webrtc/scripts/visualise.py metrics_webrtc.csv -s 16
+./benchmark/transports/webrtc/scripts/visualise/visualise.py metrics_listen_webrtc_c2_s8_e1_p0.csv -s 16
 ```
 
 Which will open a new window with your graph in it.
@@ -145,11 +145,11 @@ go run ./benchmark/transports/webrtc -metrics metrics_s1_tcp_server.csv -t tcp l
 # copy addressA
 
 # WebSocket
-go run ./benchmark/transports/webrtc -metrics metrics_s1_ws_server.csv -t websocket listen
+go run ./benchmark/transports/webrtc -metrics csv -t websocket listen
 # copy addressB
 
 # WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_s1_webrtc_server.csv -c listen
+go run ./benchmark/transports/webrtc -metrics csv -c listen
 # copy addressC
 ```
 
@@ -157,13 +157,13 @@ Client:
 
 ```
 # TCP
-go run ./benchmark/transports/webrtc -metrics metrics_s1_tcp_client.csv -t tcp -c 10 -s 1000 dial <addressA>
+go run ./benchmark/transports/webrtc -metrics csv -t tcp -c 10 -s 1000 dial <addressA>
 
 # WebSocket
-go run ./benchmark/transports/webrtc -metrics metrics_s1_ws_client.csv -t websocket -c 10 -s 1000 dial <addressB>
+go run ./benchmark/transports/webrtc -metrics csv -t websocket -c 10 -s 1000 dial <addressB>
 
 # WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_s1_webrtc_client.csv -c 10 -s 1000 dial <addressC>
+go run ./benchmark/transports/webrtc -metrics csv -c 10 -s 1000 dial <addressC>
 ```
 
 #### 2.1.1. Results
@@ -176,23 +176,23 @@ Server:
 
 ```
 # TCP
-go run ./benchmark/transports/webrtc -metrics metrics_s2_tcp_server.csv -t tcp listen
+go run ./benchmark/transports/webrtc -metrics csv -t tcp listen
 # copy addressA
 
 # WebSocket
-go run ./benchmark/transports/webrtc -metrics metrics_s2_ws_server.csv -t websocket listen
+go run ./benchmark/transports/webrtc -metrics csv -t websocket listen
 # copy addressB
 
 # WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_s2_webrtc_server.csv -c listen
+go run ./benchmark/transports/webrtc -metrics csv -c listen
 # copy addressC
 
 # QUIC
-go run ./benchmark/transports/webrtc -metrics metrics_s2_quic_server.csv -c listen
+go run ./benchmark/transports/webrtc -metrics csv -c listen
 # copy addressD
 
 # WebTransport
-go run ./benchmark/transports/webrtc -metrics metrics_s2_webtransport_server.csv -c listen
+go run ./benchmark/transports/webrtc -metrics csv -c listen
 # copy addressE
 ```
 
@@ -200,19 +200,19 @@ Client:
 
 ```
 # TCP
-go run ./benchmark/transports/webrtc -metrics metrics_s2_tcp_client.csv -t tcp -c 100 -s 100 dial <addressA>
+go run ./benchmark/transports/webrtc -metrics csv -t tcp -c 100 -s 100 dial <addressA>
 
 # WebSocket
-go run ./benchmark/transports/webrtc -metrics metrics_s2_ws_client.csv -t websocket -c 100 -s 100 dial <addressB>
+go run ./benchmark/transports/webrtc -metrics csv -t websocket -c 100 -s 100 dial <addressB>
 
 # WebRTC
-go run ./benchmark/transports/webrtc -metrics metrics_s2_webrtc_client.csv -c 100 -s 100 dial <addressC>
+go run ./benchmark/transports/webrtc -metrics csv -c 100 -s 100 dial <addressC>
 
 # QUIC
-go run ./benchmark/transports/webrtc -metrics metrics_s2_quic_client.csv -t quic -c 100 -s 100 dial <addressD>
+go run ./benchmark/transports/webrtc -metrics csv -t quic -c 100 -s 100 dial <addressD>
 
 # WebTransport
-go run ./benchmark/transports/webrtc -metrics metrics_s2_webtransport_client.csv -t webtransport -c 100 -s 100 dial <addressE>
+go run ./benchmark/transports/webrtc -metrics csv -t webtransport -c 100 -s 100 dial <addressE>
 ```
 
 #### 2.2.1. Results
