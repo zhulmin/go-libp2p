@@ -16,50 +16,56 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const metricNamespace = "libp2p_swarm_"
+const metricNamespace = "libp2p_swarm"
 
 var (
 	connsOpened = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: metricNamespace + "connections_opened_total",
-			Help: "Connections Opened",
+			Namespace: metricNamespace,
+			Name:      "connections_opened_total",
+			Help:      "Connections Opened",
 		},
 		[]string{"dir", "transport", "security", "muxer"},
 	)
 	keyTypes = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: metricNamespace + "key_types_total",
-			Help: "key type",
+			Namespace: metricNamespace,
+			Name:      "key_types_total",
+			Help:      "key type",
 		},
 		[]string{"dir", "key_type"},
 	)
 	connsClosed = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: metricNamespace + "connections_closed_total",
-			Help: "Connections Closed",
+			Namespace: metricNamespace,
+			Name:      "connections_closed_total",
+			Help:      "Connections Closed",
 		},
 		[]string{"dir", "transport", "security", "muxer"},
 	)
 	dialError = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: metricNamespace + "dial_errors_total",
-			Help: "Dial Error",
+			Namespace: metricNamespace,
+			Name:      "dial_errors_total",
+			Help:      "Dial Error",
 		},
 		[]string{"transport", "error"},
 	)
 	connDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    metricNamespace + "connection_duration_seconds",
-			Help:    "Duration of a Connection",
-			Buckets: prometheus.ExponentialBuckets(1.0/16, 2, 25), // up to 24 days
+			Namespace: metricNamespace,
+			Name:      "connection_duration_seconds",
+			Help:      "Duration of a Connection",
+			Buckets:   prometheus.ExponentialBuckets(1.0/16, 2, 25), // up to 24 days
 		},
 		[]string{"dir", "transport", "security", "muxer"},
 	)
 	connHandshakeLatency = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    metricNamespace + "handshake_latency_seconds",
-			Help:    "Duration of the libp2p Handshake",
-			Buckets: prometheus.ExponentialBuckets(0.001, 1.3, 35),
+			Namespace: metricNamespace,
+			Name:      "handshake_latency_seconds",
+			Help:      "Duration of the libp2p Handshake",
+			Buckets:   prometheus.ExponentialBuckets(0.001, 1.3, 35),
 		},
 		[]string{"transport", "security", "muxer"},
 	)
