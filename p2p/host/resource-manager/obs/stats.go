@@ -61,24 +61,84 @@ var (
 		Help:      "Number of Streams",
 	}, []string{"dir", "scope", "protocol"})
 
+	peerStreams = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricNamespace,
+		Name:      "peer_streams",
+		Buckets:   oneTenThenExpDistributionBuckets,
+		Help:      "Number of streams this peer has",
+	}, []string{"dir"})
+	peerStreamsInbound  = peerStreams.With(prometheus.Labels{"dir": "inbound"})
+	peerStreamsOutbound = peerStreams.With(prometheus.Labels{"dir": "outbound"})
+
+	previousPeerStreams = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: metricNamespace,
+		Name:      "peer_streams_previously",
+		Buckets:   oneTenThenExpDistributionBuckets,
+		Help:      "Number of streams this peer has",
+	}, []string{"dir"})
+	previousPeerStreamsInbound  = previousPeerStreams.With(prometheus.Labels{"dir": "inbound"})
+	previousPeerStreamsOutbound = previousPeerStreams.With(prometheus.Labels{"dir": "outbound"})
+
+	// Memory
+
+	memory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricNamespace,
+		Name:      "memory",
+		Help:      "Amount of memory reserved as reported to the Resource Manager",
+	}, []string{"dir", "scope"})
+	memoryInboundSystem     = memory.With(prometheus.Labels{"dir": "inbound", "scope": "system"})
+	memoryInboundTransient  = memory.With(prometheus.Labels{"dir": "inbound", "scope": "transient"})
+	memoryOutboundSystem    = memory.With(prometheus.Labels{"dir": "outbound", "scope": "system"})
+	memoryOutboundTransient = memory.With(prometheus.Labels{"dir": "outbound", "scope": "transient"})
+
+	// PeerMemory
+	peerMemory = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: metricNamespace,
+		Name:      "peer_memory",
+		Buckets:   memDistribution,
+		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+	})
+	previousPeerMemory = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: metricNamespace,
+		Name:      "previous_peer_memory",
+		Buckets:   memDistribution,
+		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+	})
+
+	// ConnMemory
+	connMemory = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: metricNamespace,
+		Name:      "conn_memory",
+		Buckets:   memDistribution,
+		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+	})
+	previousConnMemory = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: metricNamespace,
+		Name:      "conn_peer_memory",
+		Buckets:   memDistribution,
+		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+	})
+
+	// Old
+
 	peerConnsOld         = stats.Int64(metricNamespaceOld+"peer/connections", "Number of connections this peer has", stats.UnitDimensionless)
 	peerConnsNegativeOld = stats.Int64(metricNamespaceOld+"peer/connections_negative", "Number of connections this peer had. This is used to get the current connection number per peer histogram by subtracting this from the peer/connections histogram", stats.UnitDimensionless)
 
 	streamsOld = stats.Int64(metricNamespaceOld+"streams", "Number of Streams", stats.UnitDimensionless)
 
-	peerStreams         = stats.Int64(metricNamespaceOld+"peer/streams", "Number of streams this peer has", stats.UnitDimensionless)
+	peerStreamsOld      = stats.Int64(metricNamespaceOld+"peer/streams", "Number of streams this peer has", stats.UnitDimensionless)
 	peerStreamsNegative = stats.Int64(metricNamespaceOld+"peer/streams_negative", "Number of streams this peer had. This is used to get the current streams number per peer histogram by subtracting this from the peer/streams histogram", stats.UnitDimensionless)
 
-	memory             = stats.Int64(metricNamespaceOld+"memory", "Amount of memory reserved as reported to the Resource Manager", stats.UnitDimensionless)
-	peerMemory         = stats.Int64(metricNamespaceOld+"peer/memory", "Amount of memory currently reseved for peer", stats.UnitDimensionless)
+	memoryOld          = stats.Int64(metricNamespaceOld+"memory", "Amount of memory reserved as reported to the Resource Manager", stats.UnitDimensionless)
+	peerMemoryOld      = stats.Int64(metricNamespaceOld+"peer/memory", "Amount of memory currently reseved for peer", stats.UnitDimensionless)
 	peerMemoryNegative = stats.Int64(metricNamespaceOld+"peer/memory_negative", "Amount of memory previously reseved for peer. This is used to get the current memory per peer histogram by subtracting this from the peer/memory histogram", stats.UnitDimensionless)
 
-	connMemory         = stats.Int64(metricNamespaceOld+"conn/memory", "Amount of memory currently reseved for the connection", stats.UnitDimensionless)
+	connMemoryOld      = stats.Int64(metricNamespaceOld+"conn/memory", "Amount of memory currently reseved for the connection", stats.UnitDimensionless)
 	connMemoryNegative = stats.Int64(metricNamespaceOld+"conn/memory_negative", "Amount of memory previously reseved for the connection.  This is used to get the current memory per connection histogram by subtracting this from the conn/memory histogram", stats.UnitDimensionless)
 
-	fds = stats.Int64(metricNamespaceOld+"fds", "Number of fds as reported to the Resource Manager", stats.UnitDimensionless)
+	fdsOld = stats.Int64(metricNamespaceOld+"fds", "Number of fds as reported to the Resource Manager", stats.UnitDimensionless)
 
-	blockedResources = stats.Int64(metricNamespaceOld+"blocked_resources", "Number of resource requests blocked", stats.UnitDimensionless)
+	blockedResourcesOld = stats.Int64(metricNamespaceOld+"blocked_resources", "Number of resource requests blocked", stats.UnitDimensionless)
 )
 
 var (
@@ -108,10 +168,10 @@ var (
 	}
 
 	StreamView             = &view.View{Measure: streamsOld, Aggregation: view.Sum(), TagKeys: []tag.Key{directionTag, scopeTag, serviceTag, protocolTag}}
-	PeerStreamsView        = &view.View{Measure: peerStreams, Aggregation: view.Distribution(oneTenThenExpDistribution...), TagKeys: []tag.Key{directionTag}}
+	PeerStreamsView        = &view.View{Measure: peerStreamsOld, Aggregation: view.Distribution(oneTenThenExpDistribution...), TagKeys: []tag.Key{directionTag}}
 	PeerStreamNegativeView = &view.View{Measure: peerStreamsNegative, Aggregation: view.Distribution(oneTenThenExpDistribution...), TagKeys: []tag.Key{directionTag}}
 
-	MemoryView = &view.View{Measure: memory, Aggregation: view.Sum(), TagKeys: []tag.Key{scopeTag, serviceTag, protocolTag}}
+	MemoryView = &view.View{Measure: memoryOld, Aggregation: view.Sum(), TagKeys: []tag.Key{scopeTag, serviceTag, protocolTag}}
 
 	memDistribution = []float64{
 		1 << 10,   // 1KB
@@ -126,7 +186,7 @@ var (
 		4 << 30,   // 4GB
 	}
 	PeerMemoryView = &view.View{
-		Measure:     peerMemory,
+		Measure:     peerMemoryOld,
 		Aggregation: view.Distribution(memDistribution...),
 	}
 	PeerMemoryNegativeView = &view.View{
@@ -136,7 +196,7 @@ var (
 
 	// Not setup yet. Memory isn't attached to a given connection.
 	ConnMemoryView = &view.View{
-		Measure:     connMemory,
+		Measure:     connMemoryOld,
 		Aggregation: view.Distribution(memDistribution...),
 	}
 	ConnMemoryNegativeView = &view.View{
@@ -144,10 +204,10 @@ var (
 		Aggregation: view.Distribution(memDistribution...),
 	}
 
-	FDsView = &view.View{Measure: fds, Aggregation: view.Sum(), TagKeys: []tag.Key{scopeTag}}
+	FDsView = &view.View{Measure: fdsOld, Aggregation: view.Sum(), TagKeys: []tag.Key{scopeTag}}
 
 	BlockedResourcesView = &view.View{
-		Measure:     blockedResources,
+		Measure:     blockedResourcesOld,
 		Aggregation: view.Sum(),
 		TagKeys:     []tag.Key{scopeTag, resourceTag},
 	}
@@ -218,7 +278,7 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "outbound")}, peerStreamsNegative.M(oldStreamsOut))
 				}
 				if peerStreamsOut != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "outbound")}, peerStreams.M(peerStreamsOut))
+					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "outbound")}, peerStreamsOld.M(peerStreamsOut))
 				}
 			}
 
@@ -229,7 +289,7 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "inbound")}, peerStreamsNegative.M(oldStreamsIn))
 				}
 				if peerStreamsIn != 0 {
-					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "inbound")}, peerStreams.M(peerStreamsIn))
+					stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(directionTag, "inbound")}, peerStreamsOld.M(peerStreamsIn))
 				}
 			}
 		} else {
@@ -360,7 +420,7 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 				stats.RecordWithTags(
 					ctx,
 					tags,
-					fds.M(int64(evt.Delta)),
+					fdsOld.M(int64(evt.Delta)),
 				)
 			}
 		}
@@ -372,7 +432,7 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 					stats.Record(ctx, peerMemoryNegative.M(oldMem))
 				}
 				if evt.Memory != 0 {
-					stats.Record(ctx, peerMemory.M(evt.Memory))
+					stats.Record(ctx, peerMemoryOld.M(evt.Memory))
 				}
 			}
 		} else if rcmgr.IsConnScope(evt.Name) {
@@ -382,7 +442,7 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 					stats.Record(ctx, connMemoryNegative.M(oldMem))
 				}
 				if evt.Memory != 0 {
-					stats.Record(ctx, connMemory.M(evt.Memory))
+					stats.Record(ctx, connMemoryOld.M(evt.Memory))
 				}
 			}
 		} else {
@@ -401,7 +461,7 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			}
 
 			if evt.Delta != 0 {
-				stats.RecordWithTags(ctx, tags, memory.M(int64(evt.Delta)))
+				stats.RecordWithTags(ctx, tags, memoryOld.M(int64(evt.Delta)))
 			}
 		}
 
@@ -428,18 +488,18 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 			tagsWithDir := make([]tag.Mutator, 0, 3)
 			tagsWithDir = append(tagsWithDir, tag.Insert(directionTag, "inbound"))
 			tagsWithDir = append(tagsWithDir, tags...)
-			stats.RecordWithTags(ctx, tagsWithDir[0:], blockedResources.M(int64(1)))
+			stats.RecordWithTags(ctx, tagsWithDir[0:], blockedResourcesOld.M(int64(1)))
 		}
 
 		if evt.DeltaOut != 0 {
 			tagsWithDir := make([]tag.Mutator, 0, 3)
 			tagsWithDir = append(tagsWithDir, tag.Insert(directionTag, "outbound"))
 			tagsWithDir = append(tagsWithDir, tags...)
-			stats.RecordWithTags(ctx, tagsWithDir, blockedResources.M(int64(1)))
+			stats.RecordWithTags(ctx, tagsWithDir, blockedResourcesOld.M(int64(1)))
 		}
 
 		if evt.Delta != 0 {
-			stats.RecordWithTags(ctx, tags, blockedResources.M(1))
+			stats.RecordWithTags(ctx, tags, blockedResourcesOld.M(1))
 		}
 	}
 }
