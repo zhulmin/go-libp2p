@@ -66,7 +66,8 @@ we might for example use the following command:
  ./benchmark/transports/webrtc/scripts/visualise/visualise.py \
     -s 10000 \
     -o ./benchmark/transports/webrtc/images/s1_webrtc.png \
-    metrics_s1_webrtc_client.csv metrics_s1_webrtc_server.csv
+    ./benchmark/transports/webrtc/results/metrics_dial_webrtc_c10_s100_e1_p0.csv \
+    ./benchmark/transports/webrtc/results/metrics_listen_webrtc_c10_s100_e1_p0.csv
 ```
 
 ### 1.2. Client
