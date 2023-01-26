@@ -75,15 +75,24 @@ func main() {
 			metrics = NewStdoutMetricTracker(ctx, *metricIntervalF)
 		} else {
 			if strings.ToLower(metricsOutput) == "csv" {
-				metricsOutput = fmt.Sprintf(
-					"metrics_%s_%s_c%d_s%d_e%d_p%d.csv",
-					cmd,
-					*tcpF,
-					*connF,
-					*streamF,
-					bti(!*insecureF),
-					bti(*profPortF > 0),
-				)
+				if cmd == "dial" {
+					metricsOutput = fmt.Sprintf(
+						"metrics_%s_%s_c%d_s%d_p%d.csv",
+						cmd,
+						*tcpF,
+						*connF,
+						*streamF,
+						bti(*profPortF > 0),
+					)
+				} else {
+					metricsOutput = fmt.Sprintf(
+						"metrics_%s_%s_e%d_p%d.csv",
+						cmd,
+						*tcpF,
+						bti(!*insecureF),
+						bti(*profPortF > 0),
+					)
+				}
 			}
 			metrics = NewCSVMetricTracker(ctx, *metricIntervalF, metricsOutput)
 		}
@@ -187,25 +196,23 @@ func makeBasicHost(listenPort int, tpt string, insecure bool, randseed int64, op
 
 	options = append(options, opts...)
 
-	if listenPort != 0 {
-		fmtStr := "/ip4/0.0.0.0/udp/%d/webrtc"
-		switch tpt {
-		case "webrtc":
-			break
-		case "quic":
-			fmtStr = "/ip4/0.0.0.0/udp/%d/quic"
-		case "webtransport":
-			fmtStr = "/ip4/0.0.0.0/udp/%d/quic-v1/webtransport"
-		case "tcp":
-			fmtStr = "/ip4/0.0.0.0/tcp/%d"
-		case "websocket":
-			fmtStr = "/ip4/0.0.0.0/tcp/%d/ws"
-		default:
-			panic("bad transport: " + tpt)
-		}
-		options = append(options,
-			libp2p.ListenAddrStrings(fmt.Sprintf(fmtStr, listenPort)))
+	fmtStr := "/ip4/0.0.0.0/udp/%d/webrtc"
+	switch tpt {
+	case "webrtc":
+		break
+	case "quic":
+		fmtStr = "/ip4/0.0.0.0/udp/%d/quic"
+	case "webtransport":
+		fmtStr = "/ip4/0.0.0.0/udp/%d/quic-v1/webtransport"
+	case "tcp":
+		fmtStr = "/ip4/0.0.0.0/tcp/%d"
+	case "websocket":
+		fmtStr = "/ip4/0.0.0.0/tcp/%d/ws"
+	default:
+		panic("bad transport: " + tpt)
 	}
+	options = append(options,
+		libp2p.ListenAddrStrings(fmt.Sprintf(fmtStr, listenPort)))
 
 	if insecure {
 		options = append(options, libp2p.NoSecurity)

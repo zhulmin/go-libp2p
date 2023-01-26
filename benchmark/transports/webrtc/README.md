@@ -66,8 +66,8 @@ we might for example use the following command:
  ./benchmark/transports/webrtc/scripts/visualise/visualise.py \
     -s 10000 \
     -o ./benchmark/transports/webrtc/images/s1_webrtc.png \
-    ./benchmark/transports/webrtc/results/metrics_dial_webrtc_c10_s100_e1_p0.csv \
-    ./benchmark/transports/webrtc/results/metrics_listen_webrtc_c10_s100_e1_p0.csv
+    ./benchmark/transports/webrtc/results/metrics_dial_webrtc_c10_s100_p0.csv \
+    ./benchmark/transports/webrtc/results/metrics_listen_webrtc_e1_p0.csv
 ```
 
 ### 1.2. Client
@@ -153,7 +153,7 @@ Server:
 
 ```
 # TCP
-go run ./benchmark/transports/webrtc -metrics metrics_s1_tcp_server.csv -t tcp listen
+go run ./benchmark/transports/webrtc -metrics csv -t tcp listen
 # copy addressA
 
 # WebSocket

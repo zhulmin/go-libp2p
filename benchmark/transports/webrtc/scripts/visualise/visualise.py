@@ -58,13 +58,18 @@ for row, filepath in enumerate(args.filepath):
     else:
         axes[row, 0].set_title(filepath)
 
-    df['cpu'].plot(color="red", ax=axes[row, 0])
-    df['mem'].plot(color="blue", secondary_y=True, ax=axes[row, 0])
+    ax1 = axes[row, 0]
+    ax1.set_ylabel("CPU (%)")
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("Memory (MiB)")
+    df['cpu'].plot(color="red", ax=ax1)
+    df['mem'].plot(color="blue", ax=ax2)
 
     axes[row, 0].set_xlabel("")
     axes[row, 0].grid()
     plt.xticks([])
 
+    axes[row, 1].set_ylabel('KiB')
     df['br'].plot(color="green", ax=axes[row, 1])
     df['bw'].plot(color="yellow", ax=axes[row, 1])
 
