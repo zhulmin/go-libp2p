@@ -85,13 +85,6 @@ func TestRenderClientSDP(t *testing.T) {
 	require.Equal(t, expectedClientSDP, sdp)
 }
 
-func TestRenderClientSDP2(t *testing.T) {
-	addr := &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826}
-	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
-	sdp := renderClientSdp2(addr, ufrag)
-	require.Equal(t, expectedClientSDP, sdp)
-}
-
 func BenchmarkMaFingerprintToSdpIntersperse(b *testing.B) {
 	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
 	for i := 0; i < b.N; i++ {
@@ -119,15 +112,6 @@ func BenchmarkRenderClientSDP(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		renderClientSdp(addr, ufrag)
-	}
-}
-
-func BenchmarkRenderClientSDPTemplate(b *testing.B) {
-	addr := &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826}
-	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
-
-	for i := 0; i < b.N; i++ {
-		renderClientSdp2(addr, ufrag)
 	}
 }
 

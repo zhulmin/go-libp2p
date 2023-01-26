@@ -1,39 +1,13 @@
 package libp2pwebrtc
 
 import (
-	"bytes"
 	"crypto"
 	"fmt"
-	"html/template"
 	"net"
 	"strings"
 
 	multihash "github.com/multiformats/go-multihash"
 )
-
-var clientTpl *template.Template
-
-const clientTplStr = `
-v=0
-o=- 0 0 IN {{.IpVersion}} {{.Addr.IP}}
-s=-
-c=IN {{.IpVersion}} {{.Addr.IP}}
-t=0 0
-m=application {{.Addr.Port}} UDP/DTLS/SCTP webrtc-datachannel
-a=mid:0
-a=ice-options:trickle
-a=ice-ufrag:{{.Ufrag}}
-a=ice-pwd:{{.Ufrag}}
-a=fingerprint:sha-256 ba:78:16:bf:8f:01:cf:ea:41:41:40:de:5d:ae:22:23:b0:03:61:a3:96:17:7a:9c:b4:10:ff:61:f2:00:15:ad
-a=setup:actpass
-a=sctp-port:5000
-a=max-message-size:16384
-`
-
-func init() {
-
-	clientTpl = template.Must(template.New("client").Parse(clientTplStr))
-}
 
 // clientSDP describes an SDP format string which can be used
 // to infer a client's SDP offer from the incoming STUN message.
@@ -71,20 +45,6 @@ func renderClientSdp(addr *net.UDPAddr, ufrag string) string {
 		addr.Port,
 		ufrag,
 	)
-}
-
-func renderClientSdp2(addr *net.UDPAddr, ufrag string) string {
-	ipVersion := "IP4"
-	if addr.IP.To4() == nil {
-		ipVersion = "IP6"
-	}
-	var tpl bytes.Buffer
-	clientTpl.Execute(&tpl, struct {
-		IpVersion string
-		Addr      net.Addr
-		Ufrag     string
-	}{ipVersion, addr, ufrag})
-	return tpl.String()
 }
 
 // serverSDP defines an SDP format string used by a dialer
