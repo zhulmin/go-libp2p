@@ -203,11 +203,21 @@ func parseCsvMetric(record []string) (Metric, error) {
 	if err != nil {
 		return Metric{}, fmt.Errorf("parse memory heap bytes: %w", err)
 	}
+	bytesRead, err := strconv.ParseUint(record[4], 10, 64)
+	if err != nil {
+		return Metric{}, fmt.Errorf("parse memory heap bytes: %w", err)
+	}
+	bytesWritten, err := strconv.ParseUint(record[5], 10, 64)
+	if err != nil {
+		return Metric{}, fmt.Errorf("parse memory heap bytes: %w", err)
+	}
 	return Metric{
 		Timestamp:       timestamp,
 		ActiveStreams:   uint32(activeStreams),
 		CpuPercentage:   uint(cpuPercentage),
 		MemoryHeapBytes: memoryHeapBytes,
+		BytesRead:       bytesRead,
+		BytesWritten:    bytesWritten,
 	}, nil
 }
 

@@ -59,6 +59,16 @@ Or you can visualize them using the bundled python script:
 
 Which will open a new window with your graph in it.
 
+More useful is however to save it to a file so we can share it. For the WebRTC results of Scenario 1
+we might for example use the following command:
+
+```
+ ./benchmark/transports/webrtc/scripts/visualise/visualise.py \
+    -s 10000 \
+    -o ./benchmark/transports/webrtc/images/s1_webrtc.png \
+    metrics_s1_webrtc_client.csv metrics_s1_webrtc_server.csv
+```
+
 ### 1.2. Client
 
 Run:
@@ -132,6 +142,7 @@ For both scenarios the following holds true:
 - Streams are created at the rate of 10 streams/sec.
 - This is done to ensure the webrtc transport's inflight request limiting does not start rejecting connections.
 - The client opens streams to the server and runs the echo protocol writing 2KiB/s per stream (1 KiB every 500ms).
+- We let the tests run for about 5 minute each.
 
 The instances are running each scenario variation one by one, as such there at any given moment only one benchmark script running.
 
@@ -168,7 +179,17 @@ go run ./benchmark/transports/webrtc -metrics csv -c 10 -s 1000 dial <addressC>
 
 #### 2.1.1. Results
 
-TODO
+**TCP**
+
+![Scenario 1 — TCP](./images/s1_tcp.png)
+
+**WebSocket (WS)**
+
+![Scenario 1 — WebSocket](./images/s1_WebSocket.png)
+
+**WebRTC**
+
+![Scenario 1 — WebRTC](./images/s1_webrtc.png)
 
 ### 2.2. Scenario 2
 
@@ -217,4 +238,22 @@ go run ./benchmark/transports/webrtc -metrics csv -t webtransport -c 100 -s 100 
 
 #### 2.2.1. Results
 
-TODO
+**TCP**
+
+![Scenario 2 — TCP](./images/s2_tcp.png)
+
+**WebSocket (WS)**
+
+![Scenario 2 — WebSocket](./images/s2_WebSocket.png)
+
+**WebRTC**
+
+![Scenario 2 — WebRTC](./images/s2_webrtc.png)
+
+**QUIC**
+
+![Scenario 2 — QUIC](./images/s2_quic.png)
+
+**WebTransport**
+
+![Scenario 2 — WebTransport](./images/s2_webtransport.png)
