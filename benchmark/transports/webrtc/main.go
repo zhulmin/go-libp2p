@@ -24,7 +24,11 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	tcp "github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	wrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	wtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
 	golog "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -187,8 +191,6 @@ func makeBasicHost(listenPort int, tpt string, insecure bool, randseed int64, op
 	}
 
 	options := []libp2p.Option{
-		libp2p.DefaultTransports,
-		libp2p.Transport(wrtc.New),
 		libp2p.Identity(priv),
 		libp2p.DisableRelay(),
 		libp2p.ResourceManager(mgr),
@@ -196,23 +198,35 @@ func makeBasicHost(listenPort int, tpt string, insecure bool, randseed int64, op
 
 	options = append(options, opts...)
 
-	fmtStr := "/ip4/0.0.0.0/udp/%d/webrtc"
+	var (
+		fmtStr    string
+		transport libp2p.Option
+	)
+
 	switch tpt {
 	case "webrtc":
-		break
+		fmtStr = "/ip4/0.0.0.0/udp/%d/webrtc"
+		transport = libp2p.Transport(wrtc.New)
 	case "quic":
 		fmtStr = "/ip4/0.0.0.0/udp/%d/quic"
+		transport = libp2p.Transport(quic.NewTransport)
 	case "webtransport":
 		fmtStr = "/ip4/0.0.0.0/udp/%d/quic-v1/webtransport"
+		transport = libp2p.Transport(wtransport.New)
 	case "tcp":
 		fmtStr = "/ip4/0.0.0.0/tcp/%d"
+		transport = libp2p.Transport(tcp.NewTCPTransport)
 	case "websocket":
 		fmtStr = "/ip4/0.0.0.0/tcp/%d/ws"
+		transport = libp2p.Transport(ws.New)
 	default:
 		panic("bad transport: " + tpt)
 	}
+
 	options = append(options,
-		libp2p.ListenAddrStrings(fmt.Sprintf(fmtStr, listenPort)))
+		transport,
+		libp2p.ListenAddrStrings(fmt.Sprintf(fmtStr, listenPort)),
+	)
 
 	if insecure {
 		options = append(options, libp2p.NoSecurity)
