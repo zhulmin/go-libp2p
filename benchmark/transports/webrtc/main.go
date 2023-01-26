@@ -53,7 +53,7 @@ func main() {
 	golog.SetAllLoggers(golog.LevelInfo) // Change to INFO for extra info
 
 	// flags used only for listen cmd
-	listenPort := flag.Int("l", 0, "port to listen to, used for listen cmd")
+	listenPort := flag.Int("l", 9999, "port to listen to, used for listen cmd")
 	insecureF := flag.Bool("insecure", false, "use an unencrypted connection, used for listen cmd")
 	seedF := flag.Int64("seed", 0, "set random seed for id generation, used for listen cmd")
 
