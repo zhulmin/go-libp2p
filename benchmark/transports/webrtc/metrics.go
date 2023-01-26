@@ -284,7 +284,7 @@ func (c *MetricCollector) Start(ctx context.Context, interval time.Duration, cb 
 	}
 	c.started = true
 	pid := os.Getpid()
-	cpu := runtime.NumCPU()
+	cpu := uint(runtime.NumCPU())
 	go func() {
 		for {
 			select {
@@ -297,7 +297,7 @@ func (c *MetricCollector) Start(ctx context.Context, interval time.Duration, cb 
 	}()
 }
 
-func (c *MetricCollector) collect(interval time.Duration, pid, cpu int) Metric {
+func (c *MetricCollector) collect(interval time.Duration, pid int, cpu uint) Metric {
 	// metric timestamp in ms
 	ts := time.Now().UnixMilli()
 
@@ -309,7 +309,7 @@ func (c *MetricCollector) collect(interval time.Duration, pid, cpu int) Metric {
 	if err != nil {
 		sysInfo = new(pidusage.SysInfo)
 	}
-	cpuPercentage := uint(sysInfo.CPU)
+	cpuPercentage := uint(sysInfo.CPU) / cpu
 
 	// track Memory usage (percentage + bytes)
 	var m runtime.MemStats
