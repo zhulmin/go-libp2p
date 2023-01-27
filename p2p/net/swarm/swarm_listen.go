@@ -130,6 +130,8 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 				return
 			}
 			canonicallog.LogPeerStatus(100, c.RemotePeer(), c.RemoteMultiaddr(), "connection_status", "established", "dir", "inbound")
+			// Token memory reservation for debugging
+			c.Scope().ReserveMemory(1, 255)
 			if s.metricsTracer != nil {
 				s.metricsTracer.OpenedConnection(network.DirInbound, c.RemotePublicKey(), c.ConnState())
 			}

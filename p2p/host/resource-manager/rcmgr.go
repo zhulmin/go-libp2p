@@ -291,6 +291,21 @@ func (r *resourceManager) OpenConnection(dir network.Direction, usefd bool, endp
 	var conn *connectionScope
 	conn = newConnectionScope(dir, usefd, r.limits.GetConnLimits(), r, endpoint)
 
+	go func() {
+		now := time.Now()
+		for {
+			if time.Now().After(now.Add(600 * time.Second)) {
+				return
+			}
+			time.Sleep(20 * time.Second)
+			stat := conn.Stat()
+			if !conn.done && stat.Memory == 0 {
+				// We've always reserved a token amount of memory in swarm. So if we're here. that means we're leaking connection reservations.
+				fmt.Println("Conn stat for", endpoint, ":\n", "streams inbound:", stat.NumStreamsInbound, "streams outbound:", stat.NumStreamsOutbound, "memory:", stat.Memory, "conns in/out", stat.NumConnsInbound, "/", stat.NumConnsOutbound)
+			}
+		}
+	}()
+
 	err := conn.AddConn(dir, usefd)
 	if err != nil {
 		// Try again if this is an allowlisted connection

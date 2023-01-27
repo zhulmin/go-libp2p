@@ -1,12 +1,14 @@
 package rcmgr
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/test"
+	"github.com/stretchr/testify/require"
 
 	"github.com/multiformats/go-multiaddr"
 )
@@ -1050,4 +1052,33 @@ func TestResourceManagerWithAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestCleanupConns(t *testing.T) {
+	rcmgr, err := NewResourceManager(NewFixedLimiter(DefaultLimits.AutoScale()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rcmgr.Close()
+
+	// A connection comes in from a non-allowlisted ip address
+	conns := make([]network.ConnManagementScope, 0, 100)
+	for i := 0; i < 100; i++ {
+		conn, err := rcmgr.OpenConnection(network.DirInbound, true, multiaddr.StringCast("/ip4/1.2.3.5"))
+		require.NoError(t, err)
+		conns = append(conns, conn)
+	}
+	rcmgr.ViewSystem(func(rs network.ResourceScope) error {
+		fmt.Println(rs.Stat())
+		return nil
+	})
+
+	for _, conn := range conns {
+		conn.Done()
+	}
+
+	rcmgr.ViewSystem(func(rs network.ResourceScope) error {
+		fmt.Println(rs.Stat())
+		return nil
+	})
 }

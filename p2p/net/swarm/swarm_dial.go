@@ -499,6 +499,8 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 		return nil, err
 	}
 	canonicallog.LogPeerStatus(100, connC.RemotePeer(), connC.RemoteMultiaddr(), "connection_status", "established", "dir", "outbound")
+	// Token memory reservation for debugging
+	connC.Scope().ReserveMemory(1, 255)
 	if s.metricsTracer != nil {
 		connState := connC.ConnState()
 		s.metricsTracer.OpenedConnection(network.DirOutbound, connC.RemotePublicKey(), connState)
