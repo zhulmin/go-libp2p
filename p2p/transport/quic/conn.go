@@ -32,8 +32,12 @@ var _ tpt.CapableConn = &conn{}
 // It must be called even if the peer closed the connection in order for
 // garbage collection to properly work in this package.
 func (c *conn) Close() error {
+	return c.closeWithError(0, "")
+}
+
+func (c *conn) closeWithError(errCode quic.ApplicationErrorCode, errString string) error {
 	c.transport.removeConn(c.quicConn)
-	err := c.quicConn.CloseWithError(0, "")
+	err := c.quicConn.CloseWithError(errCode, errString)
 	c.scope.Done()
 	return err
 }
