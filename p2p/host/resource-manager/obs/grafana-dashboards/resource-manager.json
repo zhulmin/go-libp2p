@@ -626,7 +626,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.50, (rcmgr_peer_streams_bucket - rcmgr_peer_streams_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.50, (rcmgr_peer_streams_bucket - rcmgr_previous_peer_streams_bucket)) - 0.1",
           "interval": "",
           "legendFormat": "p50 {{dir}} streams per peer – {{instance}}",
           "refId": "A"
@@ -637,7 +637,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, (rcmgr_peer_streams_bucket - rcmgr_peer_streams_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.90, (rcmgr_peer_streams_bucket - rcmgr_previous_peer_streams_bucket)) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p90 {{dir}} streams per peer – {{instance}}",
@@ -649,7 +649,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(1, (rcmgr_peer_streams_bucket - rcmgr_peer_streams_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(1, (rcmgr_peer_streams_bucket - rcmgr_previous_peer_streams_bucket)) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "max {{dir}} streams per peer – {{instance}}",
@@ -713,7 +713,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (rcmgr_peer_streams_bucket{dir=\"inbound\"}-rcmgr_peer_streams_negative_bucket{dir=\"inbound\"})",
+          "expr": "sum without (instance) (rcmgr_peer_streams_bucket{dir=\"inbound\"}-rcmgr_previous_peer_streams_bucket{dir=\"inbound\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -778,7 +778,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (rcmgr_peer_streams_bucket{dir=\"outbound\"}-rcmgr_peer_streams_negative_bucket{dir=\"outbound\"})",
+          "expr": "sum without (instance) (rcmgr_peer_streams_bucket{dir=\"outbound\"}-rcmgr_previous_peer_streams_bucket{dir=\"outbound\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -1098,7 +1098,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.50, (rcmgr_peer_connections_bucket - rcmgr_peer_connections_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.50, (rcmgr_peer_connections_bucket - rcmgr_previous_peer_connections_bucket)) - 0.1",
           "interval": "",
           "legendFormat": "p50 {{dir}} connections per peer – {{instance}}",
           "refId": "A"
@@ -1109,7 +1109,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, (rcmgr_peer_connections_bucket - rcmgr_peer_connections_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.90, (rcmgr_peer_connections_bucket - rcmgr_previous_peer_connections_bucket)) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p90 {{dir}} connections per peer – {{instance}}",
@@ -1121,7 +1121,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(1, (rcmgr_peer_connections_bucket - rcmgr_peer_connections_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(1, (rcmgr_peer_connections_bucket - rcmgr_previous_peer_connections_bucket)) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "max {{dir}} connections per peer – {{instance}}",
@@ -1185,7 +1185,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (rcmgr_peer_connections_bucket{dir=\"inbound\"}-rcmgr_peer_connections_negative_bucket{dir=\"inbound\"})",
+          "expr": "sum without (instance) (rcmgr_peer_connections_bucket{dir=\"inbound\"}-rcmgr_previous_peer_connections_bucket{dir=\"inbound\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -1250,7 +1250,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": false,
-          "expr": "sum without (instance) (rcmgr_peer_connections_bucket{dir=\"outbound\"}-rcmgr_peer_connections_negative_bucket{dir=\"outbound\"})",
+          "expr": "sum without (instance) (rcmgr_peer_connections_bucket{dir=\"outbound\"}-rcmgr_previous_peer_connections_bucket{dir=\"outbound\"})",
           "format": "heatmap",
           "hide": false,
           "interval": "",
@@ -1646,7 +1646,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.50, sum by (le) (rcmgr_peer_memory_bucket - rcmgr_peer_memory_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.50, sum by (le) (rcmgr_peer_memory_bucket - rcmgr_previous_peer_memory_bucket)) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p50 memory usage per peer",
@@ -1658,7 +1658,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum by (le) (rcmgr_peer_memory_bucket - rcmgr_peer_memory_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(0.90, sum by (le) (rcmgr_peer_memory_bucket - rcmgr_previous_peer_memory_bucket)) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "p90 memory usage per peer",
@@ -1670,7 +1670,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "histogram_quantile(1, sum by (le) (rcmgr_peer_memory_bucket - rcmgr_peer_memory_negative_bucket)) - 0.1",
+          "expr": "histogram_quantile(1, sum by (le) (rcmgr_peer_memory_bucket - rcmgr_previous_peer_memory_bucket)) - 0.1",
           "hide": false,
           "interval": "",
           "legendFormat": "max memory usage per peer",
@@ -1683,7 +1683,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rcmgr_peer_memory_count-rcmgr_peer_memory_negative_count)",
+          "expr": "sum(rcmgr_peer_memory_count-rcmgr_previous_peer_memory_count)",
           "hide": false,
           "instant": false,
           "interval": "",

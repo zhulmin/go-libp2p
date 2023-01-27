@@ -35,10 +35,7 @@ func SetupResourceManager() (network.ResourceManager, error) {
 	reg := prometheus.NewRegistry()
 
 	// Create new metrics and register them using the custom registry.
-	err = rcmgrObs.RegisterWith(reg)
-	if err != nil {
-		panic(err)
-	}
+	rcmgrObs.MustRegisterWith(reg)
 
 	go func() {
 		mux := http.NewServeMux()
@@ -84,5 +81,5 @@ func main() {
 	h.Connect(context.Background(), h3.Peerstore().PeerInfo(h3.ID()))
 
 	// Wait for ctrl-c.
-	time.Sleep(30 * time.Second)
+	time.Sleep(30 * time.Minute)
 }
