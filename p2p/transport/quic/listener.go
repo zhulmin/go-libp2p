@@ -56,15 +56,13 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 		}
 		c, err := l.setupConn(qconn)
 		if err != nil {
-			qconn.CloseWithError(1, err.Error())
-			continue
-		}
-		if l.transport.gater != nil && !(l.transport.gater.InterceptAccept(c) && l.transport.gater.InterceptSecured(network.DirInbound, c.remotePeerID, c)) {
-			c.scope.Done()
-			qconn.CloseWithError(errorCodeConnectionGating, "connection gated")
 			continue
 		}
 		l.transport.addConn(qconn, c)
+		if l.transport.gater != nil && !(l.transport.gater.InterceptAccept(c) && l.transport.gater.InterceptSecured(network.DirInbound, c.remotePeerID, c)) {
+			c.closeWithError(errorCodeConnectionGating, "connection gated")
+			continue
+		}
 
 		// return through active hole punching if any
 		key := holePunchKey{addr: qconn.RemoteAddr().String(), peer: c.remotePeerID}
@@ -84,7 +82,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 	}
 }
 
-func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
+func (l *listener) setupConn(qconn quic.Connection) (_c *conn, _err error) {
 	remoteMultiaddr, err := quicreuse.ToQuicMultiaddr(qconn.RemoteAddr(), qconn.ConnectionState().Version)
 	if err != nil {
 		return nil, err
@@ -95,23 +93,28 @@ func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 		log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
 		return nil, err
 	}
+	// err defer
+	defer func() {
+		if _err != nil {
+			qconn.CloseWithError(1, _err.Error())
+			connScope.Done()
+		}
+	}()
+
 	// The tls.Config used to establish this connection already verified the certificate chain.
 	// Since we don't have any way of knowing which tls.Config was used though,
 	// we have to re-determine the peer's identity here.
 	// Therefore, this is expected to never fail.
 	remotePubKey, err := p2ptls.PubKeyFromCertChain(qconn.ConnectionState().TLS.PeerCertificates)
 	if err != nil {
-		connScope.Done()
 		return nil, err
 	}
 	remotePeerID, err := peer.IDFromPublicKey(remotePubKey)
 	if err != nil {
-		connScope.Done()
 		return nil, err
 	}
 	if err := connScope.SetPeer(remotePeerID); err != nil {
 		log.Debugw("resource manager blocked incoming connection for peer", "peer", remotePeerID, "addr", qconn.RemoteAddr(), "error", err)
-		connScope.Done()
 		return nil, err
 	}
 
