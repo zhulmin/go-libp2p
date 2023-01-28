@@ -172,7 +172,7 @@ func Run(ctx context.Context, cfg RunnerConfig, args ...string) error {
 		PrintMetricStats(metricsMapping, uint32(cfg.DialStreams))
 
 	default:
-		return errors.New(fmt.Sprintf("unexpected command: %s", cmd))
+		return fmt.Errorf("unexpected command: %s", cmd)
 	}
 
 	return nil
