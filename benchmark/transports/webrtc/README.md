@@ -152,30 +152,13 @@ The instances are running each scenario variation one by one, as such there at a
 Server:
 
 ```
-# TCP
-go run ./benchmark/transports/webrtc -metrics csv -t tcp listen
-# copy addressA
-
-# WebSocket
-go run ./benchmark/transports/webrtc -metrics csv -t websocket listen
-# copy addressB
-
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics csv -c listen
-# copy addressC
+go run ./benchmark/transports/webrtc/scripts/multirunner listen
 ```
 
 Client:
 
 ```
-# TCP
-go run ./benchmark/transports/webrtc -metrics csv -t tcp -c 10 -s 1000 dial <addressA>
-
-# WebSocket
-go run ./benchmark/transports/webrtc -metrics csv -t websocket -c 10 -s 1000 dial <addressB>
-
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics csv -c 10 -s 1000 dial <addressC>
+go run ./benchmark/transports/webrtc/scripts/multirunner dial
 ```
 
 #### 2.1.1. Results
@@ -216,44 +199,13 @@ go run ./benchmark/transports/webrtc -metrics csv -c 10 -s 1000 dial <addressC>
 Server:
 
 ```
-# TCP
-go run ./benchmark/transports/webrtc -metrics csv -t tcp listen
-# copy addressA
-
-# WebSocket
-go run ./benchmark/transports/webrtc -metrics csv -t websocket listen
-# copy addressB
-
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics csv -c listen
-# copy addressC
-
-# QUIC
-go run ./benchmark/transports/webrtc -metrics csv -c listen
-# copy addressD
-
-# WebTransport
-go run ./benchmark/transports/webrtc -metrics csv -c listen
-# copy addressE
+go run ./benchmark/transports/webrtc/scripts/multirunner listen
 ```
 
 Client:
 
 ```
-# TCP
-go run ./benchmark/transports/webrtc -metrics csv -t tcp -c 100 -s 100 dial <addressA>
-
-# WebSocket
-go run ./benchmark/transports/webrtc -metrics csv -t websocket -c 100 -s 100 dial <addressB>
-
-# WebRTC
-go run ./benchmark/transports/webrtc -metrics csv -c 100 -s 100 dial <addressC>
-
-# QUIC
-go run ./benchmark/transports/webrtc -metrics csv -t quic -c 100 -s 100 dial <addressD>
-
-# WebTransport
-go run ./benchmark/transports/webrtc -metrics csv -t webtransport -c 100 -s 100 dial <addressE>
+go run ./benchmark/transports/webrtc/scripts/multirunner -s 1 listen
 ```
 
 #### 2.2.1. Results
