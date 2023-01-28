@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p/benchmark/transports/webrtc/benchrunner"
@@ -31,9 +30,7 @@ func main() {
 
 	// parse all flags
 	flag.Parse()
-
-	cmd := strings.ToLower(strings.TrimSpace(flag.Arg(0)))
-	if err := benchrunner.Run(context.Background(), cmd, cfg); err != nil {
+	if err := benchrunner.Run(context.Background(), cfg, flag.Args()...); err != nil {
 		panic(err)
 	}
 }

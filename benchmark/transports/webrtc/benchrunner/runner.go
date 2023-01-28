@@ -18,7 +18,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -74,7 +73,7 @@ type RunnerConfig struct {
 	DialStreams     int
 }
 
-func Run(ctx context.Context, cmd string, cfg RunnerConfig) error {
+func Run(ctx context.Context, cfg RunnerConfig, args ...string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -83,7 +82,7 @@ func Run(ctx context.Context, cmd string, cfg RunnerConfig) error {
 	// all loggers with:
 	golog.SetAllLoggers(golog.LevelInfo) // Change to INFO for extra info
 
-	cmd = strings.ToLower(strings.TrimSpace(cmd))
+	cmd := strings.ToLower(strings.TrimSpace(args[0]))
 
 	var metrics MetricTracker
 	if metricsOutput := cfg.MetricOutput; (cmd == "listen" || cmd == "dial") && metricsOutput != "" {
@@ -146,7 +145,7 @@ func Run(ctx context.Context, cmd string, cfg RunnerConfig) error {
 		<-ctx.Done()
 
 	case RunCmdDial:
-		targetAddr := flag.Arg(1)
+		targetAddr := args[1]
 		if targetAddr == "" {
 			return errors.New("target address missing")
 		}
@@ -160,7 +159,7 @@ func Run(ctx context.Context, cmd string, cfg RunnerConfig) error {
 
 	case RunCmdReport:
 		metricsMapping := make(map[string][]Metric)
-		for _, csvFilePath := range flag.Args()[1:] {
+		for _, csvFilePath := range args[1:] {
 			if csvFilePath == "" {
 				return errors.New("csv file path missing")
 			}
