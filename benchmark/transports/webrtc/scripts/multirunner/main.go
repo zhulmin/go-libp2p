@@ -5,24 +5,28 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os/exec"
 	"strings"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 var (
 	// listen flags
-	flagListenRunDuration time.Duration
-	flagListenPort        int
+	flagListenPort int
 
 	// dial flags
 	flagDialAddress          string
 	flagDialScenario         int
 	flagDialCooldownDuration time.Duration
+	flagDialRunDuration      time.Duration
 )
 
 const (
@@ -52,12 +56,12 @@ var (
 func init() {
 	// listen flags
 	flag.IntVar(&flagListenPort, "l", 9080, "port to listen to, used for listen cmd")
-	flag.DurationVar(&flagListenRunDuration, "d", DEFAULT_RUN_DURATION, "run duration")
 
 	// dial flags
 	flag.StringVar(&flagDialAddress, "a", "127.0.0.1:9080", "address to dial to")
 	flag.IntVar(&flagDialScenario, "s", 0, "scenario to run")
 	flag.DurationVar(&flagDialCooldownDuration, "w", DEFAULT_COOLDOWN_DURATION, "cooldown duration")
+	flag.DurationVar(&flagDialRunDuration, "d", DEFAULT_RUN_DURATION, "run duration")
 
 	flag.Parse()
 }
@@ -76,8 +80,9 @@ func main() {
 
 type (
 	MessageStartListener struct {
-		Transport       *string `json:"t"`
-		MetricsFileName *string `json:"m"`
+		Transport       *string       `json:"t"`
+		MetricsFileName *string       `json:"m"`
+		RunDuration     time.Duration `json:"d"`
 	}
 
 	MessageStartListenerResponse struct {
@@ -102,6 +107,7 @@ func dial() {
 		request, err := json.Marshal(MessageStartListener{
 			Transport:       &transport,
 			MetricsFileName: &serverMetricsFileName,
+			RunDuration:     flagDialRunDuration,
 		})
 		if err != nil {
 			panic(err)
@@ -128,7 +134,10 @@ func dial() {
 }
 
 func runDialProcess(address string, transport string, metricsFileName string, connections int, streams int) {
-	exec.Command(
+	ctx, cancel := context.WithTimeout(context.Background(), flagDialRunDuration)
+	defer cancel()
+	exec.CommandContext(
+		ctx,
 		"go",
 		"run",
 		"./benchmark/transports/webrtc",
@@ -139,7 +148,6 @@ func runDialProcess(address string, transport string, metricsFileName string, co
 		"dial",
 		address,
 	).Run()
-	// above cmd will shutdown with an error when server stopts listening, so no need to stop :)
 }
 
 func listen() {
@@ -165,17 +173,26 @@ func handleIncomingConn(conn net.Conn) {
 
 	buf := bufio.NewReader(conn)
 
-	msg, err := buf.ReadBytes('\n')
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("listener: received msg: %s\n", msg)
+	for {
+		msg, err := buf.ReadBytes('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			panic(err)
+		}
+		log.Printf("listener: received msg: %s\n", msg)
 
-	var msgBody MessageStartListener
-	if err = json.Unmarshal(msg, &msgBody); err != nil {
-		panic(err)
-	}
+		var msgBody MessageStartListener
+		if err = json.Unmarshal(msg, &msgBody); err != nil {
+			panic(err)
+		}
 
+		runServerProcess(conn, msgBody)
+	}
+}
+
+func runServerProcess(conn net.Conn, msgBody MessageStartListener) {
 	transport := "webrtc"
 	if msgBody.Transport != nil {
 		transport = *msgBody.Transport
@@ -186,7 +203,10 @@ func handleIncomingConn(conn net.Conn) {
 		metrics = *msgBody.MetricsFileName
 	}
 
-	osCmd := exec.Command(
+	cmdCtx, cancel := context.WithTimeout(context.Background(), msgBody.RunDuration)
+	defer cancel()
+	osCmd := exec.CommandContext(
+		cmdCtx,
 		"go",
 		"run",
 		"./benchmark/transports/webrtc",
@@ -199,7 +219,6 @@ func handleIncomingConn(conn net.Conn) {
 	if err != nil {
 		panic(err)
 	}
-	defer osCmd.Process.Kill()
 
 	osCmd.Stderr = osCmd.Stdout
 	if err = osCmd.Start(); err != nil {
@@ -227,7 +246,7 @@ func handleIncomingConn(conn net.Conn) {
 	}
 
 	// keep it running until duration finished :)
-	log.Printf("listener: running server: waiting for test to finish (duration: %s)...\n", flagListenRunDuration)
-	<-time.After(flagListenRunDuration)
+	log.Printf("listener: running server: waiting for test to finish (duration: %s)...\n", msgBody.RunDuration)
+	osCmd.Wait()
 	log.Println("listener: test finished")
 }
