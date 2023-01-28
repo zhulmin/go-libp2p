@@ -192,6 +192,25 @@ go run ./benchmark/transports/webrtc -metrics csv -c 10 -s 1000 dial <addressC>
 
 ![Scenario 1 — WebRTC](./images/s1_webrtc.png)
 
+|                          | s1_webrtc_dial.csv | s1_webrtc_listen.csv |
+|----------------------|--------------------|----------------------|
+|              **CPU (%)** |                    |                      |
+|                      min |                  11|                     0|
+|                      max |                 508|                   776|
+|                      avg |                 380|                   509|
+|    **Memory Heap (MiB)** |                    |                      |
+|                      min |              27.101|                24.150|
+|                      max |             624.659|               648.648|
+|                      avg |             406.538|               426.908|
+|     **Bytes Read (KiB)** |                    |                      |
+|                      min |              11.000|                 0.000|
+|                      max |           19836.000|             19949.000|
+|                      avg |           14803.737|             14420.395|
+|  **Bytes Written (KiB)** |                    |                      |
+|                      min |              11.000|                 0.000|
+|                      max |             19953.000|           19905.000|
+|                      avg |           14805.814|             14420.395|
+
 ### 2.2. Scenario 2
 
 Server:

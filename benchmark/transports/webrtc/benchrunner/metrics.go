@@ -1,4 +1,4 @@
-package main
+package benchrunner
 
 import (
 	"context"
@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -115,67 +117,134 @@ func (a *metricAggregator[T]) Metrics() aggregatedMetrics[T] {
 	}
 }
 
-func PrintMetricStats(metrics []Metric, activeStreams uint32) {
-	var (
-		cpuPercentageAgg   metricAggregator[uint]
-		memoryHeapBytesAgg metricAggregator[uint64]
-		bytesReadAgg       metricAggregator[uint64]
-		bytesWrittenAgg    metricAggregator[uint64]
-	)
+type allMetricsAggregator struct {
+	CPU          metricAggregator[uint]
+	Memory       metricAggregator[uint64]
+	BytesRead    metricAggregator[uint64]
+	BytesWritten metricAggregator[uint64]
+}
 
-	for _, metric := range metrics {
-		if metric.ActiveStreams != activeStreams {
-			continue
+type allAggregatedMetrics struct {
+	CPU          aggregatedMetrics[uint]
+	Memory       aggregatedMetrics[uint64]
+	BytesRead    aggregatedMetrics[uint64]
+	BytesWritten aggregatedMetrics[uint64]
+}
+
+func aggregateAllMetrics(metricsMapping map[string][]Metric, activeStreams uint32) map[string]allAggregatedMetrics {
+	aggregatedMetricsMapping := make(map[string]allAggregatedMetrics, len(metricsMapping))
+	for name, metrics := range metricsMapping {
+		var agg allMetricsAggregator
+
+		for _, metric := range metrics {
+			if activeStreams > 1 && metric.ActiveStreams != activeStreams {
+				continue
+			}
+
+			agg.CPU.Add(metric.CpuPercentage)
+			agg.Memory.Add(metric.MemoryHeapBytes)
+			agg.BytesRead.Add(metric.BytesRead)
+			agg.BytesWritten.Add(metric.BytesWritten)
 		}
 
-		cpuPercentageAgg.Add(metric.CpuPercentage)
-		memoryHeapBytesAgg.Add(metric.MemoryHeapBytes)
-		bytesReadAgg.Add(metric.BytesRead)
-		bytesWrittenAgg.Add(metric.BytesWritten)
+		aggregatedMetricsMapping[path.Base(name)] = allAggregatedMetrics{
+			CPU:          agg.CPU.Metrics(),
+			Memory:       agg.Memory.Metrics(),
+			BytesRead:    agg.BytesRead.Metrics(),
+			BytesWritten: agg.BytesWritten.Metrics(),
+		}
+	}
+	return aggregatedMetricsMapping
+}
+
+// print metrics as markdown table
+func PrintMetricStats(metricsMapping map[string][]Metric, activeStreams uint32) {
+	aggregatedMetricsMapping := aggregateAllMetrics(metricsMapping, activeStreams)
+
+	// print header
+	fmt.Printf("| %24s |", "")
+	for name := range aggregatedMetricsMapping {
+		fmt.Printf(" %s |", name)
+	}
+	fmt.Printf("\n|%s|", strings.Repeat("-", 22))
+	for name := range aggregatedMetricsMapping {
+		fmt.Printf("%s|", strings.Repeat("-", len(name)+2))
 	}
 
-	cpuPercentageMetrics := cpuPercentageAgg.Metrics()
-	memoryHeapBytesMetrics := memoryHeapBytesAgg.Metrics()
-	bytesReadMetrics := bytesReadAgg.Metrics()
-	bytesWrittenMetrics := bytesWrittenAgg.Metrics()
+	// print CPU stats
+	fmt.Printf("\n| %24s |", "**CPU (%)**")
+	for name := range aggregatedMetricsMapping {
+		fmt.Printf("%s|", strings.Repeat(" ", len(name)+2))
+	}
+	fmt.Printf("\n| %24s |", "min")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*d|", len(name)+2, metrics.CPU.Min)
+	}
+	fmt.Printf("\n| %24s |", "max")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*d|", len(name)+2, metrics.CPU.Max)
+	}
+	fmt.Printf("\n| %24s |", "avg")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*d|", len(name)+2, metrics.CPU.Avg)
+	}
 
-	// print above metrics to stdout
-	fmt.Printf(`Active Streams: %d
-	
-CPU (%%):
-	- Min: %d
-	- Max: %d
-	- Avg: %d
+	// print Memory stats
+	fmt.Printf("\n| %24s |", "**Memory Heap (MiB)**")
+	for name := range aggregatedMetricsMapping {
+		fmt.Printf("%s|", strings.Repeat(" ", len(name)+2))
+	}
+	fmt.Printf("\n| %24s |", "min")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, mib(metrics.Memory.Min))
+	}
+	fmt.Printf("\n| %24s |", "max")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, mib(metrics.Memory.Max))
+	}
+	fmt.Printf("\n| %24s |", "avg")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, mib(metrics.Memory.Avg))
+	}
 
-Memory Heap (MiB):
-	- Min: %.3f
-	- Max: %.3f
-	- Avg: %.3f
+	// print Throughput stats (read)
+	fmt.Printf("\n| %24s |", "**Bytes Read (KiB)**")
+	for name := range aggregatedMetricsMapping {
+		fmt.Printf("%s|", strings.Repeat(" ", len(name)+2))
+	}
+	fmt.Printf("\n| %24s |", "min")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, kib(metrics.BytesRead.Min))
+	}
+	fmt.Printf("\n| %24s |", "max")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, kib(metrics.BytesRead.Max))
+	}
+	fmt.Printf("\n| %24s |", "avg")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, kib(metrics.BytesRead.Avg))
+	}
 
-Bytes Read (KiB):
-	- Min: %.3f
-	- Max: %.3f
-	- Avg: %.3f
+	// print Throughput stats (written)
+	fmt.Printf("\n| %24s |", "**Bytes Written (KiB)**")
+	for name := range aggregatedMetricsMapping {
+		fmt.Printf("%s|", strings.Repeat(" ", len(name)+2))
+	}
+	fmt.Printf("\n| %24s |", "min")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, kib(metrics.BytesWritten.Min))
+	}
+	fmt.Printf("\n| %24s |", "max")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, kib(metrics.BytesWritten.Max))
+	}
+	fmt.Printf("\n| %24s |", "avg")
+	for name, metrics := range aggregatedMetricsMapping {
+		fmt.Printf("%*.3f|", len(name)+2, kib(metrics.BytesWritten.Avg))
+	}
 
-Bytes Written (KiB):
-	- Min: %.3f
-	- Max: %.3f
-	- Avg: %.3f
-`,
-		activeStreams,
-		cpuPercentageMetrics.Min,
-		cpuPercentageMetrics.Max,
-		cpuPercentageMetrics.Avg,
-		mib(memoryHeapBytesMetrics.Min),
-		mib(memoryHeapBytesMetrics.Max),
-		mib(memoryHeapBytesMetrics.Avg),
-		kib(bytesReadMetrics.Min),
-		kib(bytesReadMetrics.Max),
-		kib(bytesReadMetrics.Avg),
-		kib(bytesWrittenMetrics.Min),
-		kib(bytesWrittenMetrics.Max),
-		kib(bytesWrittenMetrics.Avg),
-	)
+	// end with newline
+	fmt.Printf("\n")
 }
 
 func kib(bytes uint64) float64 {
