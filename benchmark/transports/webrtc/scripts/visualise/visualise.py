@@ -26,6 +26,13 @@ parser.add_argument(
     help="bucket the metrics together in bigger chunks (e.g. 30s instead of 1s)",
 )
 parser.add_argument(
+    "-m",
+    "--merge",
+    type=str,
+    default='',
+    help="merge the given files in a single plot using the given column instead of generating plots for each file",
+)
+parser.add_argument(
     "-o",
     "--output",
     type=str,
@@ -34,54 +41,86 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-fig, axes = plt.subplots(
-    nrows=len(args.filepath),
-    ncols=2,
-    gridspec_kw={'hspace': 0.5, 'wspace': 0.4},
-    figsize=(20, 5 * len(args.filepath) + 1),
-    squeeze=False,
-)
-
-for row, filepath in enumerate(args.filepath):
+dfs = []
+for filepath in args.filepath:
     df = pd.read_csv(filepath, header=0, names=["time", "streams", "cpu", "mem", "br", "bw"])
+
     if args.streams > 0:
         df = df[df.streams == args.streams]
+
+    if args.merge:
+        start = df['time'].iloc[0]
+        df['time'] = df['time'] - start
+
     df['time'] = pd.to_datetime(df['time'], unit='ms')
     df['mem'] = df['mem'] / 1024.0 / 1024.0  # convert to MiB
     df['br'] = df['br'] / 1024.0 # convert to KiB
     df['bw'] = df['bw'] / 1024.0  # convert to KiB
+
     if args.bucket:
         df = df.resample(args.bucket, on='time').mean()
 
-    if args.bucket:
-        axes[row, 0].set_title(f"{filepath} (resampled per {args.bucket} — mean)")
-    else:
-        axes[row, 0].set_title(filepath)
+    dfs.append(df)
 
-    ax1 = axes[row, 0]
-    ax1.set_ylabel("CPU (%)")
-    ax2 = ax1.twinx()
-    ax2.set_ylabel("Memory (MiB)")
-    df['cpu'].plot(color="red", ax=ax1)
-    df['mem'].plot(color="blue", ax=ax2)
+if args.merge:
+    _, axes = plt.subplots(
+        nrows=1,
+        ncols=1,
+        figsize=(20, 6),
+        squeeze=False,
+    )
+    ax = axes[0, 0]
 
-    axes[row, 0].set_xlabel("")
-    axes[row, 0].grid()
+    for df in dfs:
+        df[args.merge].plot(ax=ax)
+
+    ax.legend(args.filepath)
+    ax.grid()
+
     plt.xticks([])
+    plt.title(args.merge)
 
-    axes[row, 1].set_ylabel('KiB')
-    df['br'].plot(color="green", ax=axes[row, 1])
-    df['bw'].plot(color="yellow", ax=axes[row, 1])
+else:
+    fig, axes = plt.subplots(
+        nrows=len(dfs),
+        ncols=2,
+        gridspec_kw={'hspace': 0.5, 'wspace': 0.4},
+        figsize=(20, 5 * len(dfs) + 1),
+        squeeze=False,
+    )
 
-    axes[row, 1].set_xlabel("")
-    axes[row, 1].grid()
-    plt.xticks([])
+    for row, df in enumerate(dfs):
+        filepath = args.filepath[row]
 
-cpu_label = mpatches.Patch(color='red', label='CPU (%)')
-mem_label = mpatches.Patch(color='blue', label="Memory (MiB)")
-br_label = mpatches.Patch(color='green', label="Read Throughput (KiB)")
-bw_label = mpatches.Patch(color='yellow', label="Write Throughput (KiB)")
-fig.legend(handles=[cpu_label, mem_label, br_label, bw_label], ncol=5)
+        if args.bucket:
+            axes[row, 0].set_title(f"{filepath} (resampled per {args.bucket} — mean)")
+        else:
+            axes[row, 0].set_title(filepath)
+
+        ax1 = axes[row, 0]
+        ax1.set_ylabel("CPU (%)")
+        ax2 = ax1.twinx()
+        ax2.set_ylabel("Memory (MiB)")
+        df['cpu'].plot(color="red", ax=ax1)
+        df['mem'].plot(color="blue", ax=ax2)
+
+        axes[row, 0].set_xlabel("")
+        axes[row, 0].grid()
+        plt.xticks([])
+
+        axes[row, 1].set_ylabel('KiB')
+        df['br'].plot(color="green", ax=axes[row, 1])
+        df['bw'].plot(color="yellow", ax=axes[row, 1])
+
+        axes[row, 1].set_xlabel("")
+        axes[row, 1].grid()
+        plt.xticks([])
+
+    cpu_label = mpatches.Patch(color='red', label='CPU (%)')
+    mem_label = mpatches.Patch(color='blue', label="Memory (MiB)")
+    br_label = mpatches.Patch(color='green', label="Read Throughput (KiB)")
+    bw_label = mpatches.Patch(color='yellow', label="Write Throughput (KiB)")
+    fig.legend(handles=[cpu_label, mem_label, br_label, bw_label], ncol=5)
 
 if args.output:
     if args.output.lower() == 'stdout':
