@@ -163,6 +163,12 @@ go run ./benchmark/transports/webrtc/scripts/multirunner dial
 
 #### 2.1.1. Results
 
+**All transports in function of CPU and Memory**
+
+![Scenario 1 — All CPU](./images/s1_all_cpu.png)
+
+![Scenario 1 — All Memory](./images/s1_all_mem.png)
+
 **TCP**
 
 ![Scenario 1 — TCP](./images/s1_tcp.png)
@@ -249,9 +255,11 @@ go run ./benchmark/transports/webrtc/scripts/multirunner -s 1 listen
 
 #### 2.2.1. Results
 
-**All transports in function of CPU**
+**All transports in function of CPU and Memory**
 
 ![Scenario 2 — All CPU](./images/s2_all_cpu.png)
+
+![Scenario 2 — All Memory](./images/s2_all_mem.png)
 
 **TCP**
 
