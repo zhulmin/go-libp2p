@@ -126,7 +126,7 @@ func TestLimitConfigRoundTrip(t *testing.T) {
 func TestReadmeLimitConfigSerialization(t *testing.T) {
 	noisyNeighbor, _ := peer.Decode("QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf")
 	cfg := PartialLimitConfig{
-		System: &ResourceLimits{
+		System: ResourceLimits{
 			// Allow unlimited outbound streams
 			StreamsOutbound: Unlimited,
 		},
@@ -146,5 +146,5 @@ func TestReadmeLimitConfigSerialization(t *testing.T) {
 	}
 	jsonBytes, err := json.Marshal(&cfg)
 	require.NoError(t, err)
-	require.Equal(t, `{"System":{"StreamsOutbound":"unlimited"},"Peer":{"QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf":{"StreamsInbound":"blockAll","StreamsOutbound":"unlimited","ConnsInbound":"blockAll"}}}`, string(jsonBytes))
+	require.Equal(t, `{"Peer":{"QmVvtzcZgCkMnSFf2dnrBPXrWuNFWNM9J3MpZQCvWPuVZf":{"StreamsInbound":"blockAll","StreamsOutbound":"unlimited","ConnsInbound":"blockAll"}},"System":{"StreamsOutbound":"unlimited"}}`, string(jsonBytes))
 }

@@ -48,13 +48,13 @@ func TestResourceManagerConnInbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound conn limit at system level
 	// we specify: 1 conn per peer, 3 conns total, and we try to create 4 conns
 	cfg := rcmgr.PartialLimitConfig{
-		System: &rcmgr.ResourceLimits{
+		System: rcmgr.ResourceLimits{
 			ConnsInbound:    3,
 			ConnsOutbound:   1024,
 			Conns:           1024,
 			StreamsOutbound: rcmgr.Unlimited,
 		},
-		PeerDefault: &rcmgr.ResourceLimits{
+		PeerDefault: rcmgr.ResourceLimits{
 			ConnsInbound:  1,
 			ConnsOutbound: 1,
 			Conns:         1,
@@ -90,12 +90,12 @@ func TestResourceManagerConnOutbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound conn limit at system level
 	// we specify: 1 conn per peer, 3 conns total, and we try to create 4 conns
 	cfg := rcmgr.PartialLimitConfig{
-		System: &rcmgr.ResourceLimits{
+		System: rcmgr.ResourceLimits{
 			ConnsInbound:  1024,
 			ConnsOutbound: 3,
 			Conns:         1024,
 		},
-		PeerDefault: &rcmgr.ResourceLimits{
+		PeerDefault: rcmgr.ResourceLimits{
 			ConnsInbound:  1,
 			ConnsOutbound: 1,
 			Conns:         1,
@@ -130,7 +130,7 @@ func TestResourceManagerServiceInbound(t *testing.T) {
 	// this test checks that we can not exceed the inbound stream limit at service level
 	// we specify: 3 streams for the service, and we try to create 4 streams
 	cfg := rcmgr.PartialLimitConfig{
-		ServiceDefault: &rcmgr.ResourceLimits{
+		ServiceDefault: rcmgr.ResourceLimits{
 			StreamsInbound:  3,
 			StreamsOutbound: 1024,
 			Streams:         1024,
@@ -305,7 +305,7 @@ func TestReadmeExample(t *testing.T) {
 
 	// Tweak certain settings
 	cfg := rcmgr.PartialLimitConfig{
-		System: &rcmgr.ResourceLimits{
+		System: rcmgr.ResourceLimits{
 			// Allow unlimited outbound streams
 			StreamsOutbound: rcmgr.Unlimited,
 		},

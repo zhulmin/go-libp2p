@@ -133,8 +133,8 @@ func limitValFromInt64(i int64, defaultVal int64) LimitVal64 {
 }
 
 // ToResourceLimits converts the BaseLimit to a ResourceLimits
-func (l BaseLimit) ToResourceLimits() *ResourceLimits {
-	return &ResourceLimits{
+func (l BaseLimit) ToResourceLimits() ResourceLimits {
+	return ResourceLimits{
 		Streams:         valueOrBlockAll(l.Streams),
 		StreamsInbound:  valueOrBlockAll(l.StreamsInbound),
 		StreamsOutbound: valueOrBlockAll(l.StreamsOutbound),
@@ -146,8 +146,8 @@ func (l BaseLimit) ToResourceLimits() *ResourceLimits {
 	}
 }
 
-func (l BaseLimit) ToResourceLimitsWithDefault(defaultLimit BaseLimit) *ResourceLimits {
-	out := ResourceLimits{
+func (l BaseLimit) ToResourceLimitsWithDefault(defaultLimit BaseLimit) ResourceLimits {
+	return ResourceLimits{
 		Streams:         limitValFromInt(l.Streams, defaultLimit.Streams),
 		StreamsInbound:  limitValFromInt(l.StreamsInbound, defaultLimit.StreamsInbound),
 		StreamsOutbound: limitValFromInt(l.StreamsOutbound, defaultLimit.StreamsOutbound),
@@ -157,12 +157,6 @@ func (l BaseLimit) ToResourceLimitsWithDefault(defaultLimit BaseLimit) *Resource
 		FD:              limitValFromInt(l.FD, defaultLimit.FD),
 		Memory:          limitValFromInt64(l.Memory, defaultLimit.Memory),
 	}
-
-	if out.IsDefault() {
-		return nil
-	}
-
-	return &out
 }
 
 // Apply overwrites all zero-valued limits with the values of l2

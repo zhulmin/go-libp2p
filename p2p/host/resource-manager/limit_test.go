@@ -187,12 +187,12 @@ func TestJSONRoundTripInt64(t *testing.T) {
 
 func TestRoundTripFromConcreteAndBack(t *testing.T) {
 	l := PartialLimitConfig{
-		System: &ResourceLimits{
+		System: ResourceLimits{
 			Conns:  1234,
 			Memory: 54321,
 		},
 
-		ServiceDefault: &ResourceLimits{
+		ServiceDefault: ResourceLimits{
 			Conns: 2,
 		},
 

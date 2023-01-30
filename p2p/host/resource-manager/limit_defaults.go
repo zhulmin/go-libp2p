@@ -265,11 +265,15 @@ func (l *ResourceLimits) IsDefault() bool {
 	return false
 }
 
-// Apply overwrites all default limits with the values of l2
-func (l *ResourceLimits) Apply(l2 *ResourceLimits) {
-	if l2 == nil {
-		return
+func (l *ResourceLimits) ToMaybeNilPtr() *ResourceLimits {
+	if l.IsDefault() {
+		return nil
 	}
+	return l
+}
+
+// Apply overwrites all default limits with the values of l2
+func (l *ResourceLimits) Apply(l2 ResourceLimits) {
 	if l.Streams == DefaultLimit {
 		l.Streams = l2.Streams
 	}
@@ -315,32 +319,32 @@ func (l *ResourceLimits) Build(defaults BaseLimit) BaseLimit {
 }
 
 type PartialLimitConfig struct {
-	System    *ResourceLimits `json:",omitempty"`
-	Transient *ResourceLimits `json:",omitempty"`
+	System    ResourceLimits `json:",omitempty"`
+	Transient ResourceLimits `json:",omitempty"`
 
 	// Limits that are applied to resources with an allowlisted multiaddr.
 	// These will only be used if the normal System & Transient limits are
 	// reached.
-	AllowlistedSystem    *ResourceLimits `json:",omitempty"`
-	AllowlistedTransient *ResourceLimits `json:",omitempty"`
+	AllowlistedSystem    ResourceLimits `json:",omitempty"`
+	AllowlistedTransient ResourceLimits `json:",omitempty"`
 
-	ServiceDefault *ResourceLimits           `json:",omitempty"`
+	ServiceDefault ResourceLimits            `json:",omitempty"`
 	Service        map[string]ResourceLimits `json:",omitempty"`
 
-	ServicePeerDefault *ResourceLimits           `json:",omitempty"`
+	ServicePeerDefault ResourceLimits            `json:",omitempty"`
 	ServicePeer        map[string]ResourceLimits `json:",omitempty"`
 
-	ProtocolDefault *ResourceLimits                `json:",omitempty"`
+	ProtocolDefault ResourceLimits                 `json:",omitempty"`
 	Protocol        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
-	ProtocolPeerDefault *ResourceLimits                `json:",omitempty"`
+	ProtocolPeerDefault ResourceLimits                 `json:",omitempty"`
 	ProtocolPeer        map[protocol.ID]ResourceLimits `json:",omitempty"`
 
-	PeerDefault *ResourceLimits            `json:",omitempty"`
+	PeerDefault ResourceLimits             `json:",omitempty"`
 	Peer        map[peer.ID]ResourceLimits `json:",omitempty"`
 
-	Conn   *ResourceLimits `json:",omitempty"`
-	Stream *ResourceLimits `json:",omitempty"`
+	Conn   ResourceLimits `json:",omitempty"`
+	Stream ResourceLimits `json:",omitempty"`
 }
 
 func resourceLimitsMapFromBaseLimitMapWithDefaults[K comparable](m map[K]BaseLimit, defaultLimits map[K]BaseLimit, fallbackDefault BaseLimit) map[K]ResourceLimits {
@@ -355,9 +359,7 @@ func resourceLimitsMapFromBaseLimitMapWithDefaults[K comparable](m map[K]BaseLim
 			def = defaultForKey
 		}
 		rl := v.ToResourceLimitsWithDefault(def)
-		if rl != nil {
-			out[k] = *rl
-		}
+		out[k] = rl
 	}
 	return out
 }
@@ -372,18 +374,50 @@ func (cfg *PartialLimitConfig) MarshalJSON() ([]byte, error) {
 	type Alias PartialLimitConfig
 	return json.Marshal(&struct {
 		*Alias
+		// String so we can have the properly marshalled peer id
 		Peer map[string]ResourceLimits `json:",omitempty"`
+
+		// The rest of the fields as pointers so that we omit empty values in the serialized result
+		System               *ResourceLimits `json:",omitempty"`
+		Transient            *ResourceLimits `json:",omitempty"`
+		AllowlistedSystem    *ResourceLimits `json:",omitempty"`
+		AllowlistedTransient *ResourceLimits `json:",omitempty"`
+
+		ServiceDefault *ResourceLimits `json:",omitempty"`
+
+		ServicePeerDefault *ResourceLimits `json:",omitempty"`
+
+		ProtocolDefault *ResourceLimits `json:",omitempty"`
+
+		ProtocolPeerDefault *ResourceLimits `json:",omitempty"`
+
+		PeerDefault *ResourceLimits `json:",omitempty"`
+
+		Conn   *ResourceLimits `json:",omitempty"`
+		Stream *ResourceLimits `json:",omitempty"`
 	}{
 		Alias: (*Alias)(cfg),
 		Peer:  encodedPeerMap,
+
+		System:               cfg.System.ToMaybeNilPtr(),
+		Transient:            cfg.Transient.ToMaybeNilPtr(),
+		AllowlistedSystem:    cfg.AllowlistedSystem.ToMaybeNilPtr(),
+		AllowlistedTransient: cfg.AllowlistedTransient.ToMaybeNilPtr(),
+		ServiceDefault:       cfg.ServiceDefault.ToMaybeNilPtr(),
+		ServicePeerDefault:   cfg.ServicePeerDefault.ToMaybeNilPtr(),
+		ProtocolDefault:      cfg.ProtocolDefault.ToMaybeNilPtr(),
+		ProtocolPeerDefault:  cfg.ProtocolPeerDefault.ToMaybeNilPtr(),
+		PeerDefault:          cfg.PeerDefault.ToMaybeNilPtr(),
+		Conn:                 cfg.Conn.ToMaybeNilPtr(),
+		Stream:               cfg.Stream.ToMaybeNilPtr(),
 	})
 }
 
-func applyResourceLimitsMap[K comparable](this *map[K]ResourceLimits, other map[K]ResourceLimits, fallbackDefault *ResourceLimits) {
+func applyResourceLimitsMap[K comparable](this *map[K]ResourceLimits, other map[K]ResourceLimits, fallbackDefault ResourceLimits) {
 	for k, l := range *this {
 		r := fallbackDefault
 		if l2, ok := other[k]; ok {
-			r = &l2
+			r = l2
 		}
 		l.Apply(r)
 		(*this)[k] = l
@@ -536,7 +570,7 @@ func resourceLimitsMapFromBaseLimitMap[K comparable](baseLimitMap map[K]BaseLimi
 
 	out := make(map[K]ResourceLimits)
 	for k, l := range baseLimitMap {
-		out[k] = *l.ToResourceLimits()
+		out[k] = l.ToResourceLimits()
 	}
 
 	return out
