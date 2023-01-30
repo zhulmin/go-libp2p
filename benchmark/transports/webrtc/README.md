@@ -167,32 +167,71 @@ go run ./benchmark/transports/webrtc/scripts/multirunner dial
 
 ![Scenario 1 — TCP](./images/s1_tcp.png)
 
+|                          | s1_tcp_dial.csv | s1_tcp_listen.csv |
+|----------------------|-----------------|-------------------|
+|              **CPU (%)** |                 |                   |
+|                      min |                1|                  0|
+|                      max |                6|                  5|
+|                      avg |                  1|                1|
+|    **Memory Heap (MiB)** |                 |                   |
+|                      min |           22.621|             23.225|
+|                      max |           97.679|            143.525|
+|                      avg |           67.627|             91.435|
+|     **Bytes Read (KiB)** |                 |                   |
+|                      min |           11.000|              0.000|
+|                      max |         2611.000|           2591.000|
+|                      avg |           2484.010|         2495.871|
+|  **Bytes Written (KiB)** |                 |                   |
+|                      min |           11.000|              0.000|
+|                      max |         2690.000|           2591.000|
+|                      avg |         2525.182|           2484.010|
+
 **WebSocket (WS)**
 
 ![Scenario 1 — WebSocket](./images/s1_WebSocket.png)
+
+|                          | s1_websocket_listen.csv | s1_websocket_dial.csv |
+|----------------------|-----------------------|-------------------------|
+|              **CPU (%)** |                       |                         |
+|                      min |                      1|                        0|
+|                      max |                      5|                        4|
+|                      avg |                      1|                        1|
+|    **Memory Heap (MiB)** |                         |                       |
+|                      min |                 26.053|                   23.293|
+|                      max |                  143.693|                 98.811|
+|                      avg |                   91.029|                 67.741|
+|     **Bytes Read (KiB)** |                       |                         |
+|                      min |                 11.000|                    0.000|
+|                      max |               2598.000|                 2590.000|
+|                      avg |               2493.006|                 2485.318|
+|  **Bytes Written (KiB)** |                       |                         |
+|                      min |                 11.000|                    0.000|
+|                      max |               2690.000|                 2590.000|
+|                      avg |               2522.309|                 2485.318|
+
 
 **WebRTC**
 
 ![Scenario 1 — WebRTC](./images/s1_webrtc.png)
 
-|                          | s1_webrtc_dial.csv | s1_webrtc_listen.csv |
+|                          | s1_webrtc_listen.csv | s1_webrtc_dial.csv |
 |----------------------|--------------------|----------------------|
 |              **CPU (%)** |                    |                      |
-|                      min |                  11|                     0|
-|                      max |                 508|                   776|
-|                      avg |                 380|                   509|
+|                      min |                     0|                   0|
+|                      max |                  11|                    11|
+|                      avg |                   5|                     6|
 |    **Memory Heap (MiB)** |                    |                      |
-|                      min |              27.101|                24.150|
-|                      max |             624.659|               648.648|
-|                      avg |             406.538|               426.908|
+|                      min |              23.444|                22.468|
+|                      max |             560.270|               537.048|
+|                      avg |               327.294|             351.533|
 |     **Bytes Read (KiB)** |                    |                      |
-|                      min |              11.000|                 0.000|
-|                      max |           19836.000|             19949.000|
-|                      avg |           14803.737|             14420.395|
+|                      min |               0.000|                 0.000|
+|                      max |            2580.000|              2580.000|
+|                      avg |            2247.225|              2473.184|
 |  **Bytes Written (KiB)** |                    |                      |
-|                      min |              11.000|                 0.000|
-|                      max |             19953.000|           19905.000|
-|                      avg |           14805.814|             14420.395|
+|                      min |               0.000|                 0.000|
+|                      max |              2580.000|            2685.000|
+|                      avg |            2277.619|              2473.184|
 
 ### 2.2. Scenario 2
 
@@ -210,22 +249,121 @@ go run ./benchmark/transports/webrtc/scripts/multirunner -s 1 listen
 
 #### 2.2.1. Results
 
+**All transports in function of CPU**
+
+![Scenario 2 — All CPU](./images/s2_all_cpu.png)
+
 **TCP**
 
 ![Scenario 2 — TCP](./images/s2_tcp.png)
+
+|                          | s2_tcp_dial.csv | s2_tcp_listen.csv |
+|----------------------|-----------------|-------------------|
+|              **CPU (%)** |                 |                   |
+|                      min |                1|                  0|
+|                      max |                7|                  5|
+|                      avg |                  1|                2|
+|    **Memory Heap (MiB)** |                 |                   |
+|                      min |           23.491|             23.212|
+|                      max |          117.364|            104.624|
+|                      avg |             72.506|           79.907|
+|     **Bytes Read (KiB)** |                 |                   |
+|                      min |              0.000|            9.000|
+|                      max |         2590.000|           2590.000|
+|                      avg |         2492.597|           2484.886|
+|  **Bytes Written (KiB)** |                 |                   |
+|                      min |           10.000|              0.000|
+|                      max |         2692.000|           2590.000|
+|                      avg |         2505.835|           2484.886|
 
 **WebSocket (WS)**
 
 ![Scenario 2 — WebSocket](./images/s2_WebSocket.png)
 
+|                          | s2_websocket_dial.csv | s2_websocket_listen.csv |
+|----------------------|-----------------------|-------------------------|
+|              **CPU (%)** |                       |                         |
+|                      min |                      1|                        0|
+|                      max |                      7|                        8|
+|                      avg |                      2|                        1|
+|    **Memory Heap (MiB)** |                       |                         |
+|                      min |                 26.143|                   23.008|
+|                      max |                129.231|                  148.597|
+|                      avg |                 87.724|                   92.364|
+|     **Bytes Read (KiB)** |                         |                       |
+|                      min |                 13.000|                    0.000|
+|                      max |               2609.000|                 2580.000|
+|                      avg |               2486.373|                 2474.365|
+|  **Bytes Written (KiB)** |                       |                         |
+|                      min |                 13.000|                    0.000|
+|                      max |               2700.000|                 2580.000|
+|                      avg |               2515.700|                 2474.365|
+
 **WebRTC**
 
 ![Scenario 2 — WebRTC](./images/s2_webrtc.png)
+
+|                          | s2_webrtc_dial.csv | s2_webrtc_listen.csv |
+|----------------------|--------------------|----------------------|
+|              **CPU (%)** |                    |                      |
+|                      min |                   0|                     0|
+|                      max |                     6|                  10|
+|                      avg |                   1|                     4|
+|    **Memory Heap (MiB)** |                    |                      |
+|                      min |              26.875|                24.486|
+|                      max |             304.528|               237.174|
+|                      avg |             215.337|               167.975|
+|     **Bytes Read (KiB)** |                    |                      |
+|                      min |               0.000|                 0.000|
+|                      max |              2590.000|            2590.000|
+|                      avg |             786.765|              2484.919|
+|  **Bytes Written (KiB)** |                    |                      |
+|                      min |               0.000|                 0.000|
+|                      max |            2692.000|              2590.000|
+|                      avg |             790.154|              2484.919|
 
 **QUIC**
 
 ![Scenario 2 — QUIC](./images/s2_quic.png)
 
+|                          | s2_quic_dial.csv | s2_quic_listen.csv |
+|----------------------|------------------|--------------------|
+|              **CPU (%)** |                  |                    |
+|                      min |                 0|                   0|
+|                      max |                12|                   7|
+|                      avg |                   1|                 2|
+|    **Memory Heap (MiB)** |                  |                    |
+|                      min |            24.562|              23.292|
+|                      max |           184.649|             174.270|
+|                      avg |            96.161|              80.405|
+|     **Bytes Read (KiB)** |                  |                    |
+|                      min |             0.000|               0.000|
+|                      max |          2590.000|            2592.000|
+|                      avg |          2141.184|            2486.244|
+|  **Bytes Written (KiB)** |                    |                  |
+|                      min |             0.000|               0.000|
+|                      max |          2700.000|            2592.000|
+|                      avg |          2154.440|            2486.244|
+
 **WebTransport**
 
 ![Scenario 2 — WebTransport](./images/s2_webtransport.png)
+
+|                          | s2_webtransport_dial.csv | s2_webtransport_listen.csv |
+|----------------------|--------------------------|----------------------------|
+|              **CPU (%)** |                          |                            |
+|                      min |                         0|                           0|
+|                      max |                         8|                           4|
+|                      avg |                         3|                           1|
+|    **Memory Heap (MiB)** |                          |                            |
+|                      min |                    22.801|                      24.597|
+|                      max |                   156.746|                     162.736|
+|                      avg |                   103.668|                     102.261|
+|     **Bytes Read (KiB)** |                          |                            |
+|                      min |                     0.000|                       0.000|
+|                      max |                  2590.000|                    2598.000|
+|                      avg |                    2486.258|                  2452.049|
+|  **Bytes Written (KiB)** |                          |                            |
+|                      min |                     0.000|                       0.000|
+|                      max |                    2598.000|                  2693.000|
+|                      avg |                  2485.053|                    2486.258|
