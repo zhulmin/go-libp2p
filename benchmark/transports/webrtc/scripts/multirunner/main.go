@@ -53,7 +53,7 @@ var (
 	}
 )
 
-func init() {
+func main() {
 	// listen flags
 	flag.IntVar(&flagListenPort, "l", 9080, "port to listen to, used for listen cmd")
 
@@ -64,9 +64,7 @@ func init() {
 	flag.DurationVar(&flagDialRunDuration, "d", DEFAULT_RUN_DURATION, "run duration")
 
 	flag.Parse()
-}
 
-func main() {
 	cmd := strings.ToLower(strings.TrimSpace(flag.Arg(0)))
 
 	switch cmd {
