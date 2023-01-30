@@ -250,7 +250,7 @@ go run ./benchmark/transports/webrtc/scripts/multirunner listen
 Client:
 
 ```
-go run ./benchmark/transports/webrtc/scripts/multirunner -s 1 listen
+go run ./benchmark/transports/webrtc/scripts/multirunner -s 1 dial
 ```
 
 #### 2.2.1. Results
