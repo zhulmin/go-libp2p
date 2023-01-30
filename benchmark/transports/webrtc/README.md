@@ -194,7 +194,7 @@ go run ./benchmark/transports/webrtc/scripts/multirunner dial
 
 **WebSocket (WS)**
 
-![Scenario 1 — WebSocket](./images/s1_WebSocket.png)
+![Scenario 1 — WebSocket](./images/s1_websocket.png)
 
 |                          | s1_websocket_listen.csv | s1_websocket_dial.csv |
 |----------------------|-----------------------|-------------------------|
@@ -286,7 +286,7 @@ go run ./benchmark/transports/webrtc/scripts/multirunner -s 1 listen
 
 **WebSocket (WS)**
 
-![Scenario 2 — WebSocket](./images/s2_WebSocket.png)
+![Scenario 2 — WebSocket](./images/s2_websocket.png)
 
 |                          | s2_websocket_dial.csv | s2_websocket_listen.csv |
 |----------------------|-----------------------|-------------------------|
