@@ -287,8 +287,6 @@ func (t *WebRTCTransport) dial(
 
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.DetachDataChannels()
-	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleClient)
-	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetICETimeouts(t.peerConnectionDisconnectedTimeout, t.peerConnectionFailedTimeout, t.peerConnectionKeepaliveTimeout)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
