@@ -82,7 +82,7 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 	}
 }
 
-func (l *listener) setupConn(qconn quic.Connection) (_c *conn, _err error) {
+func (l *listener) setupConn(qconn quic.Connection) (*conn, error) {
 	remoteMultiaddr, err := quicreuse.ToQuicMultiaddr(qconn.RemoteAddr(), qconn.ConnectionState().Version)
 	if err != nil {
 		return nil, err
@@ -93,13 +93,17 @@ func (l *listener) setupConn(qconn quic.Connection) (_c *conn, _err error) {
 		log.Debugw("resource manager blocked incoming connection", "addr", qconn.RemoteAddr(), "error", err)
 		return nil, err
 	}
-	// err defer
-	defer func() {
-		if _err != nil {
-			qconn.CloseWithError(1, _err.Error())
-			connScope.Done()
-		}
-	}()
+	c, err := l.setupConnWithScope(qconn, connScope, remoteMultiaddr)
+	if err != nil {
+		connScope.Done()
+		qconn.CloseWithError(1, err.Error())
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func (l *listener) setupConnWithScope(qconn quic.Connection, connScope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr) (*conn, error) {
 
 	// The tls.Config used to establish this connection already verified the certificate chain.
 	// Since we don't have any way of knowing which tls.Config was used though,
