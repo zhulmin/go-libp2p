@@ -148,6 +148,12 @@ func (l *LimitVal) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &val); err != nil {
 		return err
 	}
+
+	if val == 0 {
+		// If there is an explicit 0 in the JSON we should interpret this as block all.
+		*l = BlockAllLimit
+	}
+
 	*l = LimitVal(val)
 	return nil
 }
@@ -576,7 +582,7 @@ func resourceLimitsMapFromBaseLimitMap[K comparable](baseLimitMap map[K]BaseLimi
 	return out
 }
 
-// ToLimitConfig converts a ReifiedLimitConfig to a PartialLimitConfig. The returned
+// ToLimitConfig converts a ConcreteLimitConfig to a PartialLimitConfig. The returned
 // PartialLimitConfig will have no default values.
 func (cfg ConcreteLimitConfig) ToLimitConfig() PartialLimitConfig {
 	return PartialLimitConfig{

@@ -203,11 +203,11 @@ func TestRoundTripFromConcreteAndBack(t *testing.T) {
 		},
 	}
 
-	reified := l.Build(InfiniteLimits)
+	concrete := l.Build(InfiniteLimits)
 
 	// Roundtrip
-	fromReified := reified.ToLimitConfigWithDefaults(InfiniteLimits)
-	require.Equal(t, l, fromReified)
+	fromConcrete := concrete.ToLimitConfigWithDefaults(InfiniteLimits)
+	require.Equal(t, l, fromConcrete)
 }
 
 func TestSerializeJSON(t *testing.T) {

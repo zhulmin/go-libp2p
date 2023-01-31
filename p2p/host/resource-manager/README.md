@@ -28,7 +28,7 @@ scalingLimits := rcmgr.DefaultLimits
 // Add limits around included libp2p protocols
 libp2p.SetDefaultServiceLimits(&scalingLimits)
 
-// Turn the scaling limits into a reified set of limits using `.AutoScale`. This
+// Turn the scaling limits into a concrete set of limits using `.AutoScale`. This
 // scales the limits proportional to your system memory.
 scaledDefaultLimits := scalingLimits.AutoScale()
 

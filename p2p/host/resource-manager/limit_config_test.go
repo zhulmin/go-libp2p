@@ -111,16 +111,16 @@ func TestLimitConfigRoundTrip(t *testing.T) {
 	defaults := DefaultLimits
 	defaults.AddServiceLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
 	defaults.AddProtocolPeerLimit("C", DefaultLimits.ServiceBaseLimit, BaseLimitIncrease{})
-	reifiedCfg, err := readLimiterConfigFromJSON(in, defaults.AutoScale())
+	concreteCfg, err := readLimiterConfigFromJSON(in, defaults.AutoScale())
 	require.NoError(t, err)
 
 	// Roundtrip
-	limitConfig := reifiedCfg.ToLimitConfig()
+	limitConfig := concreteCfg.ToLimitConfig()
 	// Using InfiniteLimits because it's different then the defaults used above.
 	// If anything was marked "default" in the round trip, it would show up as a
 	// difference here.
-	reifiedCfgRT := limitConfig.Build(InfiniteLimits)
-	require.Equal(t, reifiedCfg, reifiedCfgRT)
+	concreteCfgRT := limitConfig.Build(InfiniteLimits)
+	require.Equal(t, concreteCfg, concreteCfgRT)
 }
 
 func TestReadmeLimitConfigSerialization(t *testing.T) {
