@@ -27,6 +27,7 @@ var (
 	flagDialScenario         int
 	flagDialCooldownDuration time.Duration
 	flagDialRunDuration      time.Duration
+	flagDialTransport        string
 )
 
 const (
@@ -62,6 +63,7 @@ func main() {
 	flag.IntVar(&flagDialScenario, "s", 0, "scenario to run")
 	flag.DurationVar(&flagDialCooldownDuration, "w", DEFAULT_COOLDOWN_DURATION, "cooldown duration")
 	flag.DurationVar(&flagDialRunDuration, "d", DEFAULT_RUN_DURATION, "run duration")
+	flag.StringVar(&flagDialTransport, "t", "", "force a single specific transport instead of the predefined ones")
 
 	flag.Parse()
 
@@ -97,7 +99,12 @@ func dial() {
 	buf := bufio.NewReader(conn)
 
 	testScenario := scenarios[flagDialScenario]
-	for _, transport := range testScenario.Transports {
+	transports := testScenario.Transports
+	if flagDialTransport != "" {
+		transports = []string{flagDialTransport}
+	}
+
+	for _, transport := range transports {
 		log.Printf("dialer: starting test for transport %s\n", transport)
 		clientMetricsFileName := fmt.Sprintf("s%d_%s_dial.csv", flagDialScenario+1, transport)
 		serverMetricsFileName := fmt.Sprintf("s%d_%s_listen.csv", flagDialScenario+1, transport)
