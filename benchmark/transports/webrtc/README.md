@@ -34,7 +34,7 @@ With that in mind, we'll show you how to do all of the above.
 Run:
 
 ```
-go run ./benchmark/transports/webrtc -c 2 -s 8 -metrics csv listen
+go run ./benchmark/transports/webrtc -metrics csv listen
 ```
 
 This should output a multiaddr which can be used by the client to connect.
@@ -75,7 +75,7 @@ we might for example use the following command:
 Run:
 
 ```
-go run ./benchmark/transports/webrtc dial <multiaddr>
+go run ./benchmark/transports/webrtc -c 2 -s 8 dial <multiaddr>
 ```
 
 You can configure the number of streams and connections opened by the dialer using opt-in flags.
