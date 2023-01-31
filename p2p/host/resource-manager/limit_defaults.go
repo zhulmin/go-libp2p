@@ -152,6 +152,7 @@ func (l *LimitVal) UnmarshalJSON(b []byte) error {
 	if val == 0 {
 		// If there is an explicit 0 in the JSON we should interpret this as block all.
 		*l = BlockAllLimit
+		return nil
 	}
 
 	*l = LimitVal(val)
@@ -215,6 +216,12 @@ func (l *LimitVal64) UnmarshalJSON(b []byte) error {
 			return fmt.Errorf("failed to unmarshal limit value: %w", err)
 		}
 
+		if val == 0 {
+			// If there is an explicit 0 in the JSON we should interpret this as block all.
+			*l = BlockAllLimit64
+			return nil
+		}
+
 		*l = LimitVal64(val)
 		return nil
 	}
@@ -223,8 +230,14 @@ func (l *LimitVal64) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	*l = LimitVal64(i)
 
+	if i == 0 {
+		// If there is an explicit 0 in the JSON we should interpret this as block all.
+		*l = BlockAllLimit64
+		return nil
+	}
+
+	*l = LimitVal64(i)
 	return nil
 }
 

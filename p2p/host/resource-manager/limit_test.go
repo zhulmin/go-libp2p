@@ -227,3 +227,24 @@ func TestSerializeJSON(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "{\"Streams\":10}", string(out))
 }
+
+func TestWhatIsZeroInResourceLimits(t *testing.T) {
+	l := ResourceLimits{
+		Streams: BlockAllLimit,
+		Memory:  BlockAllLimit64,
+	}
+
+	out, err := json.Marshal(l)
+	require.NoError(t, err)
+	require.Equal(t, `{"Streams":"blockAll","Memory":"blockAll"}`, string(out))
+
+	l2 := ResourceLimits{}
+	err = json.Unmarshal([]byte(`{"Streams":0,"Memory":0}`), &l2)
+	require.NoError(t, err)
+	require.Equal(t, l, l2)
+
+	l3 := ResourceLimits{}
+	err = json.Unmarshal([]byte(`{"Streams":0,"Memory":"0"}`), &l3)
+	require.NoError(t, err)
+	require.Equal(t, l, l3)
+}
