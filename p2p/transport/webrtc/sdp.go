@@ -14,8 +14,7 @@ import (
 // The fingerprint used to render a client SDP is arbitrary since
 // it fingerprint verification is disabled in favour of a noise
 // handshake. The max message size is fixed to 16384 bytes.
-const clientSDP string = `
-v=0
+const clientSDP string = `v=0
 o=- 0 0 IN %[1]s %[2]s
 s=-
 c=IN %[1]s %[2]s
