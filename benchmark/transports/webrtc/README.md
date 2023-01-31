@@ -127,6 +127,13 @@ The scenarios described below and the results you'll find at the end are ran on 
 Each instance has 8 vCPUs and 16GB RAM. More information can be found at:
 https://aws.amazon.com/ec2/instance-types/c5/
 
+Dream goal for WebRTC in terms of performance is to consume 2x or less resources compared to quic. For [Scenario 2](#22-scenario-2) the results are currently as follows when comparing WebRTC to quic:
+
+![Scenario 2 — WebRTC and Quic — CPU](./images/s2_webrtc_quic_cpu.png)
+
+![Scenario 2 — WebRTC and Quic — Memory](./images/s2_webrtc_quic_mem.png)
+
+
 **Scenario 1:**
 
 1. Server, on EC2 instance A, listens on a generated multi address.
