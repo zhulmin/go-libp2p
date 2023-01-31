@@ -100,12 +100,16 @@ type BaseLimit struct {
 func valueOrBlockAll(n int) LimitVal {
 	if n == 0 {
 		return BlockAllLimit
+	} else if n == math.MaxInt {
+		return Unlimited
 	}
 	return LimitVal(n)
 }
 func valueOrBlockAll64(n int64) LimitVal64 {
 	if n == 0 {
 		return BlockAllLimit64
+	} else if n == math.MaxInt {
+		return Unlimited64
 	}
 	return LimitVal64(n)
 }
