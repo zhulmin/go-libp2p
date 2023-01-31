@@ -231,7 +231,7 @@ func (l *BaseLimitIncrease) Apply(l2 BaseLimitIncrease) {
 	}
 }
 
-func (l *BaseLimit) GetStreamLimit(dir network.Direction) int {
+func (l BaseLimit) GetStreamLimit(dir network.Direction) int {
 	if dir == network.DirInbound {
 		return l.StreamsInbound
 	} else {
@@ -239,11 +239,11 @@ func (l *BaseLimit) GetStreamLimit(dir network.Direction) int {
 	}
 }
 
-func (l *BaseLimit) GetStreamTotalLimit() int {
+func (l BaseLimit) GetStreamTotalLimit() int {
 	return l.Streams
 }
 
-func (l *BaseLimit) GetConnLimit(dir network.Direction) int {
+func (l BaseLimit) GetConnLimit(dir network.Direction) int {
 	if dir == network.DirInbound {
 		return l.ConnsInbound
 	} else {
@@ -251,15 +251,15 @@ func (l *BaseLimit) GetConnLimit(dir network.Direction) int {
 	}
 }
 
-func (l *BaseLimit) GetConnTotalLimit() int {
+func (l BaseLimit) GetConnTotalLimit() int {
 	return l.Conns
 }
 
-func (l *BaseLimit) GetFDLimit() int {
+func (l BaseLimit) GetFDLimit() int {
 	return l.FD
 }
 
-func (l *BaseLimit) GetMemoryLimit() int64 {
+func (l BaseLimit) GetMemoryLimit() int64 {
 	return l.Memory
 }
 

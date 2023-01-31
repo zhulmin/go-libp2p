@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
@@ -319,22 +320,30 @@ func (l *ResourceLimits) Apply(l2 ResourceLimits) {
 	}
 }
 
-func (l *ResourceLimits) Build(defaults BaseLimit) BaseLimit {
+func (l *ResourceLimits) Build(defaults Limit) BaseLimit {
 	if l == nil {
-		return defaults
+		return BaseLimit{
+			Streams:         defaults.GetStreamTotalLimit(),
+			StreamsInbound:  defaults.GetStreamLimit(network.DirInbound),
+			StreamsOutbound: defaults.GetStreamLimit(network.DirOutbound),
+			Conns:           defaults.GetConnTotalLimit(),
+			ConnsInbound:    defaults.GetConnLimit(network.DirInbound),
+			ConnsOutbound:   defaults.GetConnLimit(network.DirOutbound),
+			FD:              defaults.GetFDLimit(),
+			Memory:          defaults.GetMemoryLimit(),
+		}
 	}
 
-	out := defaults
-	out.Streams = l.Streams.Build(defaults.Streams)
-	out.StreamsInbound = l.StreamsInbound.Build(defaults.StreamsInbound)
-	out.StreamsOutbound = l.StreamsOutbound.Build(defaults.StreamsOutbound)
-	out.Conns = l.Conns.Build(defaults.Conns)
-	out.ConnsInbound = l.ConnsInbound.Build(defaults.ConnsInbound)
-	out.ConnsOutbound = l.ConnsOutbound.Build(defaults.ConnsOutbound)
-	out.FD = l.FD.Build(defaults.FD)
-	out.Memory = l.Memory.Build(defaults.Memory)
-
-	return out
+	return BaseLimit{
+		Streams:         l.Streams.Build(defaults.GetStreamTotalLimit()),
+		StreamsInbound:  l.StreamsInbound.Build(defaults.GetStreamLimit(network.DirInbound)),
+		StreamsOutbound: l.StreamsOutbound.Build(defaults.GetStreamLimit(network.DirOutbound)),
+		Conns:           l.Conns.Build(defaults.GetConnTotalLimit()),
+		ConnsInbound:    l.ConnsInbound.Build(defaults.GetConnLimit(network.DirInbound)),
+		ConnsOutbound:   l.ConnsOutbound.Build(defaults.GetConnLimit(network.DirOutbound)),
+		FD:              l.FD.Build(defaults.GetFDLimit()),
+		Memory:          l.Memory.Build(defaults.GetMemoryLimit()),
+	}
 }
 
 type PartialLimitConfig struct {
