@@ -9,13 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMaFingerprintToSdp(t *testing.T) {
-	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
-	expected := "49:66:12:17:0D:1C:91:AE:57:4C:C6:36:DD:D5:97:D2:7D:62:C9:9A:7F:B9:A3:F4:70:03:E7:43:91:73:23:5E"
-	result := maFingerprintToSdp(certhash)
-	require.Equal(t, expected, result)
-}
-
 func TestIntersperse2(t *testing.T) {
 	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
 	expected := "49:66:12:17:0D:1C:91:AE:57:4C:C6:36:DD:D5:97:D2:7D:62:C9:9A:7F:B9:A3:F4:70:03:E7:43:91:73:23:5E"
@@ -86,24 +79,10 @@ func TestRenderClientSDP(t *testing.T) {
 	require.Equal(t, expectedClientSDP, sdp)
 }
 
-func BenchmarkMaFingerprintToSdpIntersperse(b *testing.B) {
-	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
-	for i := 0; i < b.N; i++ {
-		maFingerprintToSdp(certhash)
-	}
-}
-
-func BenchmarkIntersperseSDP(b *testing.B) {
-	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
-	for i := 0; i < b.N; i++ {
-		intersperse(certhash, ':', 2)
-	}
-}
-
 func BenchmarkIntersperse2(b *testing.B) {
 	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
 	for i := 0; i < b.N; i++ {
-		intersperse2(certhash, byte(':'), 2)
+		intersperse2(certhash, ':', 2)
 	}
 }
 
