@@ -3,20 +3,12 @@ package libp2pwebrtc
 import (
 	"encoding/hex"
 	"strings"
-	"unsafe"
 )
 
 func encodeInterpersedHex(src []byte) string {
-	dst := make([]byte, len(src)*3)
-	j := 0
-	for _, v := range src {
-		dst[j] = hextable[v>>4]
-		dst[j+1] = hextable[v&0x0f]
-		dst[j+2] = ':'
-		j += 3
-	}
-	dst = dst[:len(dst)-1]
-	return *(*string)(unsafe.Pointer(&dst))
+	var builder strings.Builder
+	encodeInterpersedHexToBuilder(src, &builder)
+	return builder.String()
 }
 
 func encodeInterpersedHexToBuilder(src []byte, builder *strings.Builder) {
