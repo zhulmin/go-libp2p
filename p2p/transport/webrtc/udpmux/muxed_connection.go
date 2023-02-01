@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	pool "github.com/libp2p/go-buffer-pool"
@@ -31,8 +30,7 @@ type muxedConnection struct {
 }
 
 func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
-	// TODO: double confirm that we really do not want to link this to a parent context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(mux.ctx)
 	return &muxedConnection{
 		ctx:    ctx,
 		cancel: cancel,
@@ -65,19 +63,19 @@ func (conn *muxedConnection) ReadFrom(p []byte) (n int, addr net.Addr, err error
 
 // SetDeadline implements net.PacketConn
 func (*muxedConnection) SetDeadline(t time.Time) error {
-	// TODO: document why this is OK
+	// no deadline is desired here
 	return nil
 }
 
 // SetReadDeadline implements net.PacketConn
 func (*muxedConnection) SetReadDeadline(t time.Time) error {
-	// TODO: document why this is OK
+	// no read deadline is desired here
 	return nil
 }
 
 // SetWriteDeadline implements net.PacketConn
 func (*muxedConnection) SetWriteDeadline(t time.Time) error {
-	// TODO: document why this is OK
+	// no write deadline is desired here
 	return nil
 }
 
@@ -108,7 +106,6 @@ var (
 
 // just a convenience wrapper around a channel
 type packetQueue struct {
-	sync.Mutex
 	pkts   chan packet
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -126,8 +123,7 @@ func newPacketQueue() *packetQueue {
 // pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the buffer is closed.
 //
-// NOTE (to move/delete later)
-// Ckousik: For added context, the lifetime of a buffer is as follows:
+// For added context, the lifetime of a buffer is as follows:
 // 1. Buffer is fetched from the global pool and passed to socket for reading.
 // 2. If read is successful, mux then decides which connection to pass the buffer.
 //
@@ -142,9 +138,6 @@ func newPacketQueue() *packetQueue {
 //     and it's contents are copied to the buffer provided
 //     in the method's argument. The dequeued buffer is then returned to the pool.
 func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
-	// TODO: see if this pattern with all this p and p.buf / pool business cannot
-	// be done cleaner (if it is desired at all), now different logic
-	// layers are mixed a bit...
 	select {
 	case p, ok := <-pq.pkts:
 		if !ok {
@@ -165,27 +158,15 @@ func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 
 // push adds a packet to the packetQueue
 func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
-	// we acquire a lock when sending on the channel to prevent
-	// closing when a send operation could be happening. This
-	// is caused by send usually being triggered by a different
-	// goroutine
-	// TODO: see if we can do without, for now the answer is NO
-	// as we've seen it panic, but perhaps there is a way to do it anyway,
-	// as usage of channels should ideally allow us to work mutex free
-	pq.Lock()
-	defer pq.Unlock()
 	// priority select channel closure over sending.
 	// this prevents a send on closed channel panic
 	select {
 	case <-pq.ctx.Done():
 		return io.ErrClosedPipe
+	case pq.pkts <- packet{addr, buf}:
+		return nil
 	default:
-		select {
-		case pq.pkts <- packet{addr, buf}:
-			return nil
-		default:
-			return errTooManyPackets
-		}
+		return errTooManyPackets
 	}
 }
 
@@ -198,7 +179,4 @@ func (pq *packetQueue) close() {
 	default:
 	}
 	pq.cancel()
-	pq.Lock()
-	defer pq.Unlock()
-	close(pq.pkts)
 }

@@ -2,6 +2,7 @@ package libp2pwebrtc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -104,8 +105,6 @@ func newConnection(
 		if conn.IsClosed() {
 			return
 		}
-		// TODO: This seems to block on OnOpen if moved
-		// to a separate function.
 		dc.OnOpen(func() {
 			rwc, err := dc.Detach()
 			if err != nil {
@@ -289,7 +288,7 @@ func (c *connection) detachChannel(ctx context.Context, dc *webrtc.DataChannel) 
 	})
 	select {
 	case <-c.ctx.Done():
-		return nil, fmt.Errorf("connection closed")
+		return nil, errors.New("connection closed")
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-done:
@@ -314,10 +313,6 @@ func (c *connection) setRemotePublicKey(key ic.PubKey) {
 // https://datatracker.ietf.org/doc/html/draft-ietf-rtcweb-data-channel-08#section-6.5
 // By definition, the DTLS role for inbound connections is set to DTLS Server,
 // and outbound connections are DTLS Client.
-//
-// TODO (ckousik): add stream ID reuse.
-// We can know when an ID is available for reuse when
-// the removeStream method is called.
 type sidAllocator struct {
 	n uint32
 }
