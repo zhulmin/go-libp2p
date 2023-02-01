@@ -714,6 +714,8 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 	}
 }
 
+// TODO: this test is flaky, can randomly fail
+// FIX IT!
 func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	count := uint32(3)
 	tr, listeningPeer := getTransport(t,
