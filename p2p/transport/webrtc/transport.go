@@ -445,7 +445,7 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	return result, nil
 }
 
-func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *webRTCStream, peer peer.ID, hash crypto.Hash, inbound bool) (secureConn sec.SecureConn, err error) {
+func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *webRTCStream, peer peer.ID, hash crypto.Hash, inbound bool) (sec.SecureConn, error) {
 	prologue, err := t.generateNoisePrologue(pc, hash, inbound)
 	if err != nil {
 		return nil, fmt.Errorf("generate prologue: %w", err)
@@ -457,17 +457,18 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	if err != nil {
 		return nil, fmt.Errorf("instantiate transport: %w", err)
 	}
+	var secureConn sec.SecureConn
 	if inbound {
 		secureConn, err = sessionTransport.SecureOutbound(ctx, datachannel, peer)
 		if err != nil {
 			err = fmt.Errorf("failed to secure inbound [noise outbound]: %w %v", err, ctx.Value("id"))
-			return
+			return secureConn, err
 		}
 	} else {
 		secureConn, err = sessionTransport.SecureInbound(ctx, datachannel, peer)
 		if err != nil {
 			err = fmt.Errorf("failed to secure outbound [noise inbound]: %w %v", err, ctx.Value("id"))
-			return
+			return secureConn, err
 		}
 	}
 	return secureConn, nil

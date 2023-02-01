@@ -84,11 +84,10 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 	errC := make(chan error)
 	var once sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if state == webrtc.PeerConnectionStateConnected {
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(errC) })
-			return
-		}
-		if state == webrtc.PeerConnectionStateFailed {
+		case webrtc.PeerConnectionStateFailed:
 			once.Do(func() {
 				// this ensures that we don't block this routine if the
 				// listener goes away
@@ -99,8 +98,7 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 					log.Error("could not signal peerconnection failure")
 				}
 			})
-		}
-		if state == webrtc.PeerConnectionStateDisconnected {
+		case webrtc.PeerConnectionStateDisconnected:
 			log.Warn("peerconnection disconnected")
 		}
 	})
