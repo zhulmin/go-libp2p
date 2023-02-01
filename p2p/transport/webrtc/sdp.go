@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"fmt"
 	"net"
-	"strings"
 
 	multihash "github.com/multiformats/go-multihash"
 )
@@ -114,9 +113,21 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 // to a string format recognised by pion for fingerprint
 // algorithms
 func getSupportedSDPString(code uint64) (string, error) {
-	hash, ok := getSupportedSDPHash(code)
-	if !ok {
+	// values based on (cryto.Hash).String()
+	switch code {
+	case multihash.MD5:
+		return "md5", nil
+	case multihash.SHA1:
+		return "sha-1", nil
+	case multihash.SHA3_224:
+		return "sha3-224", nil
+	case multihash.SHA2_256:
+		return "sha-256", nil
+	case multihash.SHA3_384:
+		return "sha3-384", nil
+	case multihash.SHA2_512:
+		return "sha-512", nil
+	default:
 		return "", fmt.Errorf("unsupported hash code (%d) :%w", code, errInvalidParam)
 	}
-	return strings.ToLower(hash.String()), nil
 }

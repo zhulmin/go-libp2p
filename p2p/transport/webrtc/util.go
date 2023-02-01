@@ -3,7 +3,6 @@ package libp2pwebrtc
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -21,12 +20,17 @@ func fingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
 	if fp == nil {
 		return "", fmt.Errorf("fingerprint multihash: %w", errNilParam)
 	}
-	fpDigest := intersperse2(hex.EncodeToString(fp.Digest), ':', 2)
 	sdpString, err := getSupportedSDPString(fp.Code)
 	if err != nil {
 		return "", err
 	}
-	return sdpString + " " + fpDigest, nil
+
+	var builder strings.Builder
+	builder.Grow(len(fp.Digest)*3 + 8)
+	builder.WriteString(sdpString)
+	builder.WriteByte(' ')
+	encodeInterpersedHexToBuilder(fp.Digest, &builder)
+	return builder.String(), nil
 }
 
 func decodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
@@ -42,7 +46,7 @@ func decodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
 }
 
 func encodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
-	digest, err := hex.DecodeString(strings.ReplaceAll(fp.Value, ":", ""))
+	digest, err := decodeInterpersedHexFromASCIIString(fp.Value)
 	if err != nil {
 		return "", err
 	}

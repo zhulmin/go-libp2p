@@ -30,7 +30,6 @@ import (
 	"github.com/multiformats/go-multihash"
 	pionlogger "github.com/pion/logging"
 
-	"github.com/pion/dtls/v2/pkg/crypto/fingerprint"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -409,16 +408,16 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 		return nil, err
 	}
 
-	remoteFp, err := fingerprint.Fingerprint(cert, hash)
+	remoteFp, err := Fingerprint(cert, hash)
 	if err != nil {
 		return nil, err
 	}
-	remoteFpBytes, err := decodeFingerprintString(remoteFp)
+	remoteFpBytes, err := decodeInterpersedHex(remoteFp)
 	if err != nil {
 		return nil, err
 	}
 
-	localFpBytes, err := decodeFingerprintString(localFp.Value)
+	localFpBytes, err := decodeInterpersedHexFromASCIIString(localFp.Value)
 	if err != nil {
 		return nil, err
 	}

@@ -2,19 +2,13 @@ package libp2pwebrtc
 
 import (
 	"encoding/hex"
+	"fmt"
 	"net"
 	"testing"
 
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
-
-func TestIntersperse2(t *testing.T) {
-	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
-	expected := "49:66:12:17:0D:1C:91:AE:57:4C:C6:36:DD:D5:97:D2:7D:62:C9:9A:7F:B9:A3:F4:70:03:E7:43:91:73:23:5E"
-	result := intersperse2(certhash, byte(':'), 2)
-	require.Equal(t, expected, result)
-}
 
 const expectedServerSDP = `v=0
 o=- 0 0 IN IP4 0.0.0.0
@@ -52,6 +46,7 @@ func TestRenderServerSDP(t *testing.T) {
 
 	sdp, err := renderServerSdp(addr, ufrag, fingerprint)
 	require.NoError(t, err)
+	fmt.Println(sdp)
 	require.Equal(t, expectedServerSDP, sdp)
 }
 
@@ -77,13 +72,6 @@ func TestRenderClientSDP(t *testing.T) {
 	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
 	sdp := renderClientSdp(addr, ufrag)
 	require.Equal(t, expectedClientSDP, sdp)
-}
-
-func BenchmarkIntersperse2(b *testing.B) {
-	certhash := "496612170D1C91AE574CC636DDD597D27D62C99A7FB9A3F47003E7439173235E"
-	for i := 0; i < b.N; i++ {
-		intersperse2(certhash, ':', 2)
-	}
 }
 
 func BenchmarkRenderClientSDP(b *testing.B) {
