@@ -46,7 +46,6 @@ require (
 	github.com/multiformats/go-varint v0.0.7
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pion/datachannel v1.5.5
-	github.com/pion/dtls/v2 v2.1.5
 	github.com/pion/ice/v2 v2.2.13
 	github.com/pion/logging v0.2.2
 	github.com/pion/stun v0.4.0
@@ -105,6 +104,7 @@ require (
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.5.1 // indirect
 	github.com/opencontainers/runtime-spec v1.0.2 // indirect
+	github.com/pion/dtls/v2 v2.1.5 // indirect
 	github.com/pion/interceptor v0.1.12 // indirect
 	github.com/pion/mdns v0.0.5 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
