@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"unsafe"
 
 	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
@@ -221,7 +222,7 @@ func ufragFromStunMessage(msg *stun.Message) (string, error) {
 	if len(ufrag) < 2 {
 		return "", fmt.Errorf("invalid STUN username attribute")
 	}
-	return string(ufrag[1]), nil
+	return *(*string)(unsafe.Pointer(&ufrag[1])), nil
 }
 
 type udpMuxStorage struct {

@@ -1,6 +1,9 @@
 package libp2pwebrtc
 
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"unsafe"
+)
 
 const (
 	uFragAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
@@ -17,5 +20,5 @@ func genUfrag(n int) string {
 	for i := uFragIdOffset; i < uFragLength; i++ {
 		b[i] = uFragAlphabet[int(b[i])%len(uFragAlphabet)]
 	}
-	return string(b)
+	return *(*string)(unsafe.Pointer(&b))
 }
