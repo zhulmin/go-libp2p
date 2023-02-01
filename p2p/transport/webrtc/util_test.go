@@ -2,7 +2,6 @@ package libp2pwebrtc
 
 import (
 	"encoding/hex"
-	"fmt"
 	"net"
 	"testing"
 
@@ -46,7 +45,6 @@ func TestRenderServerSDP(t *testing.T) {
 
 	sdp, err := renderServerSdp(addr, ufrag, fingerprint)
 	require.NoError(t, err)
-	fmt.Println(sdp)
 	require.Equal(t, expectedServerSDP, sdp)
 }
 

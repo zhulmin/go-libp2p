@@ -403,16 +403,14 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 		return nil, err
 	}
 
+	// NOTE: should we want we can fork the cert code as well to avoid
+	// all the extra allocations due to unneeded string interpersing (hex)
 	localFp, err := t.getCertificateFingerprint()
 	if err != nil {
 		return nil, err
 	}
 
-	remoteFp, err := Fingerprint(cert, hash)
-	if err != nil {
-		return nil, err
-	}
-	remoteFpBytes, err := decodeInterpersedHex(remoteFp)
+	remoteFpBytes, err := Fingerprint(cert, hash)
 	if err != nil {
 		return nil, err
 	}

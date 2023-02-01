@@ -4,14 +4,13 @@ import (
 	"crypto"
 	"crypto/x509"
 	"errors"
-	"fmt"
 )
 
-// Fingerprint is forked from pion to avoid bytes to string alloc
+// Fingerprint is forked from pion to avoid bytes to string alloc,
+// and to avoid the entire hex interpersing when we do not need it anyway
 
 var (
-	errHashUnavailable          = errors.New("fingerprint: hash algorithm is not linked into the binary")
-	errInvalidFingerprintLength = errors.New("fingerprint: invalid fingerprint length")
+	errHashUnavailable = errors.New("fingerprint: hash algorithm is not linked into the binary")
 )
 
 // Fingerprint creates a fingerprint for a certificate using the specified hash algorithm
@@ -26,26 +25,5 @@ func Fingerprint(cert *x509.Certificate, algo crypto.Hash) ([]byte, error) {
 		// https://golang.org/pkg/hash/#Hash
 		i += n
 	}
-	digest := []byte(fmt.Sprintf("%x", h.Sum(nil)))
-
-	digestlen := len(digest)
-	if digestlen == 0 {
-		return nil, nil
-	}
-	if digestlen%2 != 0 {
-		return nil, errInvalidFingerprintLength
-	}
-	res := make([]byte, digestlen>>1+digestlen-1)
-
-	pos := 0
-	for i, c := range digest {
-		res[pos] = c
-		pos++
-		if (i)%2 != 0 && i < digestlen-1 {
-			res[pos] = byte(':')
-			pos++
-		}
-	}
-
-	return res, nil
+	return h.Sum(nil), nil
 }
