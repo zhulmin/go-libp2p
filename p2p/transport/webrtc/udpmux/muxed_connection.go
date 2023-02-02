@@ -122,23 +122,12 @@ func newPacketQueue() *packetQueue {
 
 // pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the buffer is closed.
-//
-// For added context, the lifetime of a buffer is as follows:
-// 1. Buffer is fetched from the global pool and passed to socket for reading.
-// 2. If read is successful, mux then decides which connection to pass the buffer.
-//
-//   - if no connection is found, the buffer is returned to the pool.
-//
-//   - if pushing to the connection fails, the buffer is returned to the pool.
-//
-//   - if pushing succeeds, the connection, and by extension the packet queue is
-//     considered as the buffer's owner.
-//
-//     3. Once the pop method is invoked, a buffer is dequeued,
-//     and it's contents are copied to the buffer provided
-//     in the method's argument. The dequeued buffer is then returned to the pool.
 func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
 	select {
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
+	// It is desired to allow reads of this channel even
+	// when pq.ctx.Done() is already closed.
 	case p, ok := <-pq.pkts:
 		if !ok {
 			return 0, nil, io.EOF
@@ -151,13 +140,16 @@ func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 		p.buf = p.buf[:cap(p.buf)]
 		pool.Put(p.buf)
 		return n, p.addr, err
-	case <-ctx.Done():
-		return 0, nil, ctx.Err()
 	}
 }
 
 // push adds a packet to the packetQueue
-func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
+func (pq *packetQueue) push(buf []byte, addr net.Addr) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = io.ErrClosedPipe
+		}
+	}()
 	// priority select channel closure over sending.
 	// this prevents a send on closed channel panic
 	select {
@@ -175,8 +167,8 @@ func (pq *packetQueue) push(buf []byte, addr net.Addr) error {
 func (pq *packetQueue) close() {
 	select {
 	case <-pq.ctx.Done():
-		return
 	default:
+		pq.cancel()
+		close(pq.pkts)
 	}
-	pq.cancel()
 }

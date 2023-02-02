@@ -661,7 +661,11 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 	tr, listeningPeer := getTransport(
 		t,
-		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+		WithPeerConnectionIceTimeouts(IceTimeouts{
+			Disconnect: 2 * time.Second,
+			Failed:     3 * time.Second,
+			Keepalive:  time.Second,
+		}),
 	)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -670,7 +674,11 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 
 	tr1, connectingPeer := getTransport(
 		t,
-		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+		WithPeerConnectionIceTimeouts(IceTimeouts{
+			Disconnect: 2 * time.Second,
+			Failed:     3 * time.Second,
+			Keepalive:  time.Second,
+		}),
 	)
 
 	done := make(chan struct{})
@@ -720,7 +728,11 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	count := uint32(3)
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),
-		WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+		WithPeerConnectionIceTimeouts(IceTimeouts{
+			Disconnect: 2 * time.Second,
+			Failed:     3 * time.Second,
+			Keepalive:  time.Second,
+		}),
 	)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -741,7 +753,11 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 			}()
 			dialer, _ := getTransport(
 				t,
-				WithPeerConnectionIceTimeouts(2*time.Second, 3*time.Second, 1*time.Second),
+				WithPeerConnectionIceTimeouts(IceTimeouts{
+					Disconnect: 2 * time.Second,
+					Failed:     3 * time.Second,
+					Keepalive:  time.Second,
+				}),
 			)
 			<-start
 			_, err := dialer.Dial(ctx, listener.Multiaddr(), listeningPeer)

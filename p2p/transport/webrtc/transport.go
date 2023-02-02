@@ -77,18 +77,26 @@ var _ tpt.Transport = &WebRTCTransport{}
 
 type Option func(*WebRTCTransport) error
 
+type IceTimeouts struct {
+	Disconnect time.Duration
+	Failed     time.Duration
+	Keepalive  time.Duration
+}
+
 // WithPeerConnectionIceTimeouts sets the ice disconnect, failure and keepalive timeouts
-func WithPeerConnectionIceTimeouts(disconnect time.Duration, failed time.Duration, keepalive time.Duration) Option {
+func WithPeerConnectionIceTimeouts(timeouts IceTimeouts) Option {
 	return func(t *WebRTCTransport) error {
-		if failed < disconnect {
-			return fmt.Errorf("disconnect timeout cannot be greater than failed timeout")
+		if timeouts.Disconnect != 0 {
+			if timeouts.Failed != 0 && timeouts.Failed < timeouts.Disconnect {
+				return fmt.Errorf("disconnect timeout cannot be greater than failed timeout")
+			}
+			if timeouts.Keepalive != 0 && timeouts.Disconnect <= timeouts.Keepalive {
+				return fmt.Errorf("keepalive timeout cannot be greater than or equal to failed timeout")
+			}
 		}
-		if disconnect <= keepalive {
-			return fmt.Errorf("keepalive timeout cannot be greater than or equal to failed timeout")
-		}
-		t.peerConnectionDisconnectedTimeout = disconnect
-		t.peerConnectionFailedTimeout = failed
-		t.peerConnectionKeepaliveTimeout = keepalive
+		t.peerConnectionDisconnectedTimeout = timeouts.Disconnect
+		t.peerConnectionFailedTimeout = timeouts.Failed
+		t.peerConnectionKeepaliveTimeout = timeouts.Keepalive
 		return nil
 	}
 }
