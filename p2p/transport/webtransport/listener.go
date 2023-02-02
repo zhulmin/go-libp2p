@@ -14,8 +14,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
-	"github.com/marten-seemann/webtransport-go"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/quic-go/webtransport-go"
 )
 
 var errClosed = errors.New("closed")

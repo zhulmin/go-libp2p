@@ -12,8 +12,8 @@ import (
 	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
-	"github.com/lucas-clemente/quic-go"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/quic-go/quic-go"
 )
 
 // A listener listens for QUIC connections.

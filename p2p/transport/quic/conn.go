@@ -8,8 +8,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 
-	"github.com/lucas-clemente/quic-go"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/quic-go/quic-go"
 )
 
 type conn struct {

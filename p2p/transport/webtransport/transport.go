@@ -23,12 +23,12 @@ import (
 
 	"github.com/benbjohnson/clock"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
-	"github.com/marten-seemann/webtransport-go"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multihash"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/webtransport-go"
 )
 
 var log = logging.Logger("webtransport")

@@ -12,11 +12,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
-	"github.com/lucas-clemente/quic-go"
-
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
+	"github.com/quic-go/quic-go"
 )
 
 // The maximum number of address resolution steps we'll perform for a single
