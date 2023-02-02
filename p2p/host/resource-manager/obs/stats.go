@@ -84,13 +84,13 @@ var (
 		Namespace: metricNamespace,
 		Name:      "peer_memory",
 		Buckets:   memDistribution,
-		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+		Help:      "How many peers have reserved this bucket of memory, as reported to the Resource Manager",
 	})
 	previousPeerMemory = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: metricNamespace,
 		Name:      "previous_peer_memory",
 		Buckets:   memDistribution,
-		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+		Help:      "How many peers have previously reserved this bucket of memory, as reported to the Resource Manager",
 	})
 
 	// ConnMemory
@@ -98,13 +98,13 @@ var (
 		Namespace: metricNamespace,
 		Name:      "conn_memory",
 		Buckets:   memDistribution,
-		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+		Help:      "How many conns have reserved this bucket of memory, as reported to the Resource Manager",
 	})
 	previousConnMemory = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: metricNamespace,
 		Name:      "previous_conn_memory",
 		Buckets:   memDistribution,
-		// Help:      "Amount of memory reserved as reported to the Resource Manager",
+		Help:      "How many conns have previously reserved this bucket of memory, as reported to the Resource Manager",
 	})
 
 	// FDs

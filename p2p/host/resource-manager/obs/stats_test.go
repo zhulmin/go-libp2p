@@ -20,7 +20,7 @@ func TestTraceReporterStartAndClose(t *testing.T) {
 	defer rcmgr.Close()
 }
 
-var registerOnce = sync.Once{}
+var registerOnce sync.Once
 
 func TestConsumeEvent(t *testing.T) {
 	evt := rcmgr.TraceEvt{
