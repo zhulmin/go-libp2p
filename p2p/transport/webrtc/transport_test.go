@@ -761,6 +761,8 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 			_, err := dialer.Dial(ctx, listener.Multiaddr(), listeningPeer)
 			if err == nil {
 				atomic.AddUint32(&success, 1)
+			} else {
+				t.Logf("dial error: %v", err)
 			}
 
 		}()
