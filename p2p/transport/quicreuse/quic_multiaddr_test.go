@@ -4,8 +4,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/lucas-clemente/quic-go"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/require"
 )
 

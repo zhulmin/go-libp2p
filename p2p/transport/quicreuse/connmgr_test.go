@@ -14,10 +14,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
-	"github.com/lucas-clemente/quic-go"
-
 	ma "github.com/multiformats/go-multiaddr"
-
+	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/require"
 )
 

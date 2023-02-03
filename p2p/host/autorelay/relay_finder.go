@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	protoIDv1 = string(relayv1.ProtoID)
-	protoIDv2 = string(circuitv2_proto.ProtoIDv2Hop)
+	protoIDv1 = relayv1.ProtoID
+	protoIDv2 = circuitv2_proto.ProtoIDv2Hop
 )
 
 // Terminology:

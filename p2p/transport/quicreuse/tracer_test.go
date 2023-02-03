@@ -7,11 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/klauspost/compress/zstd"
-
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/quic-go/quic-go/logging"
+	"github.com/stretchr/testify/require"
 )
 
 func createLogDir(t *testing.T) string {

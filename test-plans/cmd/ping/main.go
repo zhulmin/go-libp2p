@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -24,24 +25,33 @@ import (
 
 func main() {
 	var (
-		transport     = os.Getenv("transport")
-		secureChannel = os.Getenv("security")
-		muxer         = os.Getenv("muxer")
-		isDialerStr   = os.Getenv("is_dialer")
-		ip            = os.Getenv("ip")
-		redisAddr     = os.Getenv("REDIS_ADDR")
+		transport      = os.Getenv("transport")
+		secureChannel  = os.Getenv("security")
+		muxer          = os.Getenv("muxer")
+		isDialerStr    = os.Getenv("is_dialer")
+		ip             = os.Getenv("ip")
+		testTimeoutStr = os.Getenv("test_timeout")
+		redisAddr      = os.Getenv("REDIS_ADDR")
 	)
+
+	testTimeout := 10 * time.Second
+	if testTimeoutStr != "" {
+		secs, err := strconv.ParseInt(testTimeoutStr, 10, 32)
+		if err == nil {
+			testTimeout = time.Duration(secs) * time.Second
+		}
+	}
 
 	if redisAddr == "" {
 		redisAddr = "redis:6379"
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
 	// Get peer information via redis
 	rClient := redis.NewClient(&redis.Options{
-		DialTimeout: 10 * time.Second,
+		DialTimeout: testTimeout,
 		Addr:        redisAddr,
 		Password:    "",
 		DB:          0,
@@ -92,9 +102,9 @@ func main() {
 
 	switch muxer {
 	case "yamux":
-		options = append(options, libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport))
+		options = append(options, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
 	case "mplex":
-		options = append(options, libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport))
+		options = append(options, libp2p.Muxer(mplex.ID, mplex.DefaultTransport))
 	case "quic":
 	default:
 		log.Fatalf("Unsupported muxer: %s", muxer)
@@ -110,7 +120,7 @@ func main() {
 	fmt.Println("My multiaddr is: ", host.Addrs())
 
 	if isDialer {
-		val, err := rClient.BLPop(ctx, 20*time.Second, "listenerAddr").Result()
+		val, err := rClient.BLPop(ctx, testTimeout, "listenerAddr").Result()
 		if err != nil {
 			log.Fatal("Failed to wait for listener to be ready")
 		}
@@ -144,7 +154,7 @@ func main() {
 		if err != nil {
 			log.Fatal("Failed to send listener address")
 		}
-		_, err = rClient.BLPop(ctx, 20*time.Second, "dialerDone").Result()
+		_, err = rClient.BLPop(ctx, testTimeout, "dialerDone").Result()
 		if err != nil {
 			log.Fatal("Failed to wait for dialer conclusion")
 		}

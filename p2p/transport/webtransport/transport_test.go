@@ -18,26 +18,24 @@ import (
 	"testing/quick"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/http3"
-
-	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
-
-	"github.com/benbjohnson/clock"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
-	"github.com/lucas-clemente/quic-go"
 
+	"github.com/benbjohnson/clock"
 	"github.com/golang/mock/gomock"
-	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	quicproxy "github.com/quic-go/quic-go/integrationtests/tools/proxy"
 	"github.com/stretchr/testify/require"
 )
 

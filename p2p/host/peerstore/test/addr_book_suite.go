@@ -135,6 +135,30 @@ func testAddAddress(ab pstore.AddrBook, clk *mockClock.Mock) func(*testing.T) {
 			ab.UpdateAddrs(id, 4*time.Second, 0)
 			AssertAddressesEqual(t, nil, ab.Addrs(id))
 		})
+
+		t.Run("accessing an empty peer ID", func(t *testing.T) {
+			addrs := GenerateAddrs(5)
+			ab.AddAddrs("", addrs, time.Hour)
+			AssertAddressesEqual(t, addrs, ab.Addrs(""))
+		})
+
+		t.Run("add a /p2p address with valid peerid", func(t *testing.T) {
+			peerId := GeneratePeerIDs(1)[0]
+			addr := GenerateAddrs(1)
+			p2pAddr := addr[0].Encapsulate(Multiaddr("/p2p/" + peerId.String()))
+			ab.AddAddr(peerId, p2pAddr, time.Hour)
+			AssertAddressesEqual(t, addr, ab.Addrs(peerId))
+		})
+
+		t.Run("add a /p2p address with invalid peerid", func(t *testing.T) {
+			pids := GeneratePeerIDs(2)
+			pid1 := pids[0]
+			pid2 := pids[1]
+			addr := GenerateAddrs(1)
+			p2pAddr := addr[0].Encapsulate(Multiaddr("/p2p/" + pid1.String()))
+			ab.AddAddr(pid2, p2pAddr, time.Hour)
+			AssertAddressesEqual(t, nil, ab.Addrs(pid2))
+		})
 	}
 }
 

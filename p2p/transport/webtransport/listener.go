@@ -14,8 +14,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
-	"github.com/marten-seemann/webtransport-go"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/quic-go/webtransport-go"
 )
 
 var errClosed = errors.New("closed")
@@ -103,14 +103,19 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	err = l.httpHandlerWithConnScope(w, r, connScope)
+	if err != nil {
+		connScope.Done()
+	}
+}
 
+func (l *listener) httpHandlerWithConnScope(w http.ResponseWriter, r *http.Request, connScope network.ConnManagementScope) error {
 	sess, err := l.server.Upgrade(w, r)
 	if err != nil {
 		log.Debugw("upgrade failed", "error", err)
 		// TODO: think about the status code to use here
 		w.WriteHeader(500)
-		connScope.Done()
-		return
+		return err
 	}
 	ctx, cancel := context.WithTimeout(l.ctx, handshakeTimeout)
 	sconn, err := l.handshake(ctx, sess)
@@ -118,23 +123,20 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		log.Debugw("handshake failed", "error", err)
 		sess.CloseWithError(1, "")
-		connScope.Done()
-		return
+		return err
 	}
 	cancel()
 
 	if l.transport.gater != nil && !l.transport.gater.InterceptSecured(network.DirInbound, sconn.RemotePeer(), sconn) {
 		// TODO: can we close with a specific error here?
 		sess.CloseWithError(errorCodeConnectionGating, "")
-		connScope.Done()
-		return
+		return errors.New("gater blocked connection")
 	}
 
 	if err := connScope.SetPeer(sconn.RemotePeer()); err != nil {
 		log.Debugw("resource manager blocked incoming connection for peer", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
 		sess.CloseWithError(1, "")
-		connScope.Done()
-		return
+		return err
 	}
 
 	conn := newConn(l.transport, sess, sconn, connScope)
@@ -144,8 +146,10 @@ func (l *listener) httpHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Debugw("accept queue full, dropping incoming connection", "peer", sconn.RemotePeer(), "addr", r.RemoteAddr, "error", err)
 		sess.CloseWithError(1, "")
-		connScope.Done()
+		return errors.New("accept queue full")
 	}
+
+	return nil
 }
 
 func (l *listener) Accept() (tpt.CapableConn, error) {

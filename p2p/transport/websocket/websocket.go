@@ -161,9 +161,17 @@ func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p pee
 	if err != nil {
 		return nil, err
 	}
-	macon, err := t.maDial(ctx, raddr)
+	c, err := t.dialWithScope(ctx, raddr, p, connScope)
 	if err != nil {
 		connScope.Done()
+		return nil, err
+	}
+	return c, nil
+}
+
+func (t *WebsocketTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {
+	macon, err := t.maDial(ctx, raddr)
+	if err != nil {
 		return nil, err
 	}
 	conn, err := t.upgrader.Upgrade(ctx, t, macon, network.DirOutbound, p, connScope)

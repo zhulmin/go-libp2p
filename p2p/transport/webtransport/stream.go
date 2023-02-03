@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net"
 
-	"github.com/marten-seemann/webtransport-go"
-
 	"github.com/libp2p/go-libp2p/core/network"
+
+	"github.com/quic-go/webtransport-go"
 )
 
 const (

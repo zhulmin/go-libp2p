@@ -8,7 +8,6 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -45,7 +44,7 @@ func TestSecurityNegotiation(t *testing.T) {
 			Name:             "no  overlap",
 			ServerPreference: []libp2p.Option{noiseOpt},
 			ClientPreference: []libp2p.Option{tlsOpt},
-			Error:            "failed to negotiate security protocol: protocol not supported",
+			Error:            "failed to negotiate security protocol: protocols not supported",
 		},
 	}
 
@@ -84,7 +83,7 @@ func TestSecurityNegotiation(t *testing.T) {
 			require.NoError(t, err)
 			conns := client.Network().ConnsToPeer(server.ID())
 			require.Len(t, conns, 1, "expected exactly one connection")
-			require.Equal(t, tc.Expected, protocol.ID(conns[0].ConnState().Security))
+			require.Equal(t, tc.Expected, conns[0].ConnState().Security)
 		})
 	}
 }

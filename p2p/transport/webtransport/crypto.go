@@ -15,11 +15,12 @@ import (
 	"math/big"
 	"time"
 
+	"golang.org/x/crypto/hkdf"
+
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 
-	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/multiformats/go-multihash"
-	"golang.org/x/crypto/hkdf"
+	"github.com/quic-go/quic-go/http3"
 )
 
 const deterministicCertInfo = "determinisitic cert"

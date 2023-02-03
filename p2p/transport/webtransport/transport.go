@@ -23,12 +23,12 @@ import (
 
 	"github.com/benbjohnson/clock"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
-	"github.com/marten-seemann/webtransport-go"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multihash"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/webtransport-go"
 )
 
 var log = logging.Logger("webtransport")
@@ -119,6 +119,22 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 }
 
 func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
+	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
+	if err != nil {
+		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
+		return nil, err
+	}
+
+	c, err := t.dialWithScope(ctx, raddr, p, scope)
+	if err != nil {
+		scope.Done()
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
 	_, addr, err := manet.DialArgs(raddr)
 	if err != nil {
 		return nil, err
@@ -135,32 +151,23 @@ func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tp
 
 	sni, _ := extractSNI(raddr)
 
-	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
-	if err != nil {
-		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
-		return nil, err
-	}
 	if err := scope.SetPeer(p); err != nil {
 		log.Debugw("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "error", err)
-		scope.Done()
 		return nil, err
 	}
 
 	maddr, _ := ma.SplitFunc(raddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_WEBTRANSPORT })
 	sess, err := t.dial(ctx, maddr, url, sni, certHashes)
 	if err != nil {
-		scope.Done()
 		return nil, err
 	}
 	sconn, err := t.upgrade(ctx, sess, p, certHashes)
 	if err != nil {
 		sess.CloseWithError(1, "")
-		scope.Done()
 		return nil, err
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, sconn) {
 		sess.CloseWithError(errorCodeConnectionGating, "")
-		scope.Done()
 		return nil, fmt.Errorf("secured connection gated")
 	}
 	conn := newConn(t, sess, sconn, scope)

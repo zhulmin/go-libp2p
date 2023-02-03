@@ -180,7 +180,7 @@ func TestHandshakeSucceeds(t *testing.T) {
 type testcase struct {
 	clientProtos   []protocol.ID
 	serverProtos   []protocol.ID
-	expectedResult string
+	expectedResult protocol.ID
 }
 
 func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
@@ -225,7 +225,7 @@ func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
 	clientID, clientKey := createPeer(t)
 	serverID, serverKey := createPeer(t)
 
-	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport, expectedMuxer string) {
+	handshake := func(t *testing.T, clientTransport *Transport, serverTransport *Transport, expectedMuxer protocol.ID) {
 		clientInsecureConn, serverInsecureConn := connect(t)
 
 		serverConnChan := make(chan sec.SecureConn)
