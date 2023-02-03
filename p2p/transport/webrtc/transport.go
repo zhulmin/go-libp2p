@@ -21,8 +21,6 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 
-	// "github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
-
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
@@ -44,8 +42,7 @@ const (
 	// references instead of values.
 	hansdhakeChannelNegotiated = true
 	// handshakeChannelId is the agreed ID for the handshake data
-	// channel.
-	// A constant is used since the `DataChannelInit` struct takes
+	// channel. A constant is used since the `DataChannelInit` struct takes
 	// references instead of values. We specify the type here as this
 	// value is only ever copied and passed by reference
 	handshakeChannelId = uint16(0)
@@ -53,9 +50,11 @@ const (
 
 // timeout values for the peerconnection
 // https://github.com/pion/webrtc/blob/v3.1.50/settingengine.go#L102-L109
-const DefaultDisconnectedTimeout = 5 * time.Second
-const DefaultFailedTimeout = 25 * time.Second
-const DefaultKeepaliveTimeout = 2 * time.Second
+const (
+	DefaultDisconnectedTimeout = 5 * time.Second
+	DefaultFailedTimeout       = 25 * time.Second
+	DefaultKeepaliveTimeout    = 2 * time.Second
+)
 
 type WebRTCTransport struct {
 	webrtcConfig webrtc.Configuration
@@ -65,9 +64,7 @@ type WebRTCTransport struct {
 	localPeerId  peer.ID
 
 	// timeouts
-	peerConnectionFailedTimeout       time.Duration
-	peerConnectionDisconnectedTimeout time.Duration
-	peerConnectionKeepaliveTimeout    time.Duration
+	peerConnectionTimeouts IceTimeouts
 
 	// in-flight connections
 	maxInFlightConnections uint32
@@ -94,9 +91,7 @@ func WithPeerConnectionIceTimeouts(timeouts IceTimeouts) Option {
 				return fmt.Errorf("keepalive timeout cannot be greater than or equal to failed timeout")
 			}
 		}
-		t.peerConnectionDisconnectedTimeout = timeouts.Disconnect
-		t.peerConnectionFailedTimeout = timeouts.Failed
-		t.peerConnectionKeepaliveTimeout = timeouts.Keepalive
+		t.peerConnectionTimeouts = timeouts
 		return nil
 	}
 }
@@ -146,9 +141,11 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		noiseTpt:     noiseTpt,
 		localPeerId:  localPeerId,
 
-		peerConnectionDisconnectedTimeout: DefaultDisconnectedTimeout,
-		peerConnectionFailedTimeout:       DefaultFailedTimeout,
-		peerConnectionKeepaliveTimeout:    DefaultKeepaliveTimeout,
+		peerConnectionTimeouts: IceTimeouts{
+			Disconnect: DefaultDisconnectedTimeout,
+			Failed:     DefaultFailedTimeout,
+			Keepalive:  DefaultKeepaliveTimeout,
+		},
 
 		maxInFlightConnections: DefaultMaxInFlightConnections,
 	}
@@ -280,7 +277,7 @@ func (t *WebRTCTransport) dial(
 	}
 
 	// Instead of encoding the local fingerprint we
-	// instead generate a random uuid as the connection ufrag.
+	// generate a random UUID as the connection ufrag.
 	// The only requirement here is that the ufrag and password
 	// must be equal, which will allow the server to determine
 	// the password using the STUN message.
@@ -294,7 +291,11 @@ func (t *WebRTCTransport) dial(
 
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.DetachDataChannels()
-	settingEngine.SetICETimeouts(t.peerConnectionDisconnectedTimeout, t.peerConnectionFailedTimeout, t.peerConnectionKeepaliveTimeout)
+	settingEngine.SetICETimeouts(
+		t.peerConnectionTimeouts.Disconnect,
+		t.peerConnectionTimeouts.Failed,
+		t.peerConnectionTimeouts.Keepalive,
+	)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 

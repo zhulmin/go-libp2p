@@ -110,12 +110,14 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	}
 
 	l.wg.Add(1)
-	go l.handleIncomingCandidates(candidateChan)
+	go func() {
+		defer l.wg.Done()
+		l.handleIncomingCandidates(candidateChan)
+	}()
 	return l, err
 }
 
-func (l *listener) handleIncomingCandidates(candidateChan chan candidateAddr) {
-	defer l.wg.Done()
+func (l *listener) handleIncomingCandidates(candidateChan <-chan candidateAddr) {
 	for {
 		select {
 		case <-l.ctx.Done():
@@ -163,11 +165,10 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 func (l *listener) Close() error {
 	select {
 	case <-l.ctx.Done():
-		return nil
 	default:
+		l.cancel()
+		l.wg.Wait()
 	}
-	l.cancel()
-	l.wg.Wait()
 	return nil
 }
 
@@ -214,7 +215,11 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	settingEngine.SetICEUDPMux(l.mux)
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.DisableCertificateFingerprintVerification(true)
-	settingEngine.SetICETimeouts(l.transport.peerConnectionDisconnectedTimeout, l.transport.peerConnectionFailedTimeout, l.transport.peerConnectionKeepaliveTimeout)
+	settingEngine.SetICETimeouts(
+		l.transport.peerConnectionTimeouts.Disconnect,
+		l.transport.peerConnectionTimeouts.Failed,
+		l.transport.peerConnectionTimeouts.Keepalive,
+	)
 	settingEngine.DetachDataChannels()
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))

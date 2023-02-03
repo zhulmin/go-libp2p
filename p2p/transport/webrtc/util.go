@@ -115,12 +115,11 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 func writeMessage(rwc datachannel.ReadWriteCloser, msg *pb.Message) (int, error) {
 	buf := make([]byte, 5)
 	varintLen := binary.PutUvarint(buf, uint64(proto.Size(msg)))
-	data, err := proto.Marshal(msg)
+	buf = buf[:varintLen]
+	_, err := proto.MarshalOptions{}.MarshalAppend(buf, msg)
 	if err != nil {
 		return 0, err
 	}
-	buf = buf[:varintLen]
-	buf = append(buf, data...)
 	_, err = rwc.Write(buf)
 	if err != nil {
 		return 0, err
