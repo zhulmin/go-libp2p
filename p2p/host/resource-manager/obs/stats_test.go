@@ -1,6 +1,7 @@
 package obs_test
 
 import (
+	"fmt"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -126,9 +127,6 @@ func TestNoAllocs(t *testing.T) {
 	})
 
 	evtCount := 10_000
-	small := 100
-	medium := 1_000
-	big := evtCount
 	evts := make([]rcmgr.TraceEvt, evtCount)
 	rng := rand.New(rand.NewSource(1))
 
@@ -136,35 +134,28 @@ func TestNoAllocs(t *testing.T) {
 		evts[i] = randomTraceEvt(rng)
 	}
 
-	// Warm up string pool
-	for i := 0; i < small; i++ {
-		str.ConsumeEvent(evts[i])
-	}
-
 	var m1, m2 runtime.MemStats
 	runtime.GC()
-	runtime.ReadMemStats(&m1)
 
-	for i := 0; i < medium; i++ {
-		str.ConsumeEvent(evts[i])
-	}
+	totalRuns := 10
+	warmupRuns := 3
+	for runIdx := 0; runIdx < totalRuns; runIdx++ {
+		if runIdx > warmupRuns {
+			runtime.ReadMemStats(&m1)
+		}
 
-	runtime.GC()
-	runtime.ReadMemStats(&m2)
-	frees := m2.Frees - m1.Frees
-	if frees > 100 {
-		t.Fatalf("expected less than 100 frees after GC, got %d", frees)
-	}
+		for i := 0; i < evtCount; i++ {
+			str.ConsumeEvent(evts[i])
+		}
 
-	for i := 0; i < big; i++ {
-		str.ConsumeEvent(evts[i])
-	}
-
-	runtime.GC()
-	runtime.ReadMemStats(&m2)
-	frees = m2.Frees - m1.Frees
-	if frees > 100 {
-		t.Fatalf("expected less than 100 frees after GC, got %d", frees)
+		if runIdx > warmupRuns {
+			runtime.ReadMemStats(&m2)
+			heapAllocs := int(m2.HeapAlloc) - int(m1.HeapAlloc)
+			fmt.Println("Allocs ", heapAllocs)
+			if heapAllocs > 10 {
+				t.Fatalf("expected less than 10 heap bytes, got %d", heapAllocs)
+			}
+		}
 	}
 
 	// To prevent the GC from collecting our fake events.
