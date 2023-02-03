@@ -54,19 +54,28 @@ func TestListenAddressNotif(t *testing.T) {
 	require.Equal(t, []ma.Multiaddr{initialAddr}, listenAddrs)
 
 	// now start listening on another address
-	var newAddr ma.Multiaddr
 	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")))
+	var addedAddr ma.Multiaddr
 	select {
 	case e := <-sub.Out():
 		ev := e.(event.EvtLocalAddressesUpdated)
 		require.Empty(t, ev.Removed)
 		require.Len(t, ev.Current, 2)
-		require.Equal(t, ev.Current[0], event.UpdatedAddress{Address: initialAddr, Action: event.Maintained})
-		require.Equal(t, ev.Current[1].Action, event.Added)
-		newAddr = ev.Current[1].Address
-		_, err = newAddr.ValueForProtocol(ma.P_QUIC_V1)
+		var maintainedAddr ma.Multiaddr
+		for _, e := range ev.Current {
+			switch e.Action {
+			case event.Added:
+				addedAddr = e.Address
+			case event.Maintained:
+				maintainedAddr = e.Address
+			default:
+				t.Fatal("unexpected action")
+			}
+		}
+		require.Equal(t, initialAddr, maintainedAddr)
+		_, err = addedAddr.ValueForProtocol(ma.P_QUIC_V1)
 		require.NoError(t, err)
-		portStr, err := newAddr.ValueForProtocol(ma.P_UDP)
+		portStr, err := addedAddr.ValueForProtocol(ma.P_UDP)
 		require.NoError(t, err)
 		require.NotZero(t, portFromString(t, portStr))
 	case <-time.After(500 * time.Millisecond):
@@ -77,5 +86,5 @@ func TestListenAddressNotif(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, listenAddrs, 2)
 	require.Contains(t, listenAddrs, initialAddr)
-	require.Contains(t, listenAddrs, newAddr)
+	require.Contains(t, listenAddrs, addedAddr)
 }
