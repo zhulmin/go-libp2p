@@ -94,9 +94,6 @@ require (
 	github.com/koron/go-ssdp v0.0.3 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
-	github.com/marten-seemann/qpack v0.3.0 // indirect
-	github.com/marten-seemann/qtls-go1-18 v0.1.3 // indirect
-	github.com/marten-seemann/qtls-go1-19 v0.1.1 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.50 // indirect
