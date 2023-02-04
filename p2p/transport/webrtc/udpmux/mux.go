@@ -196,7 +196,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	if conn != nil {
 		err := conn.push(buf, addr)
 		if err != nil {
-			log.Error("could not push packet")
+			log.Errorf("could not push packet: %v", err)
 		}
 		return nil
 	}

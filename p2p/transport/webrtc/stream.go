@@ -90,7 +90,6 @@ type webRTCStream struct {
 	writeAvailable  *signal
 	deadlineUpdated *signal
 
-	wg     sync.WaitGroup
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -207,9 +206,7 @@ func (d *webRTCStream) Write(b []byte) (int, error) {
 	// messages only when the read side of the stream is closed
 	if !state.allowRead() {
 		d.readLoopOnce.Do(func() {
-			d.wg.Add(1)
 			go func() {
-				defer d.wg.Done()
 				// zero the read deadline, so read call only returns
 				// when the underlying datachannel closes or there is
 				// a message on the channel
@@ -457,8 +454,6 @@ func (d *webRTCStream) close(isReset bool, notifyConnection bool) error {
 			// write a FIN message for standard stream closure
 			_ = d.writer.Write(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		}
-		// unblock any writes
-		// d.writeAvailable.signal()
 		// close the context
 		d.cancel()
 		// close the channel. We do not care about the error message in
