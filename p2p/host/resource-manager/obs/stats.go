@@ -192,13 +192,6 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags *[]string) {
 	switch evt.Type {
 	case rcmgr.TraceAddStreamEvt, rcmgr.TraceRemoveStreamEvt:
-	default:
-		return
-	}
-
-	switch evt.Type {
-	case rcmgr.TraceAddStreamEvt, rcmgr.TraceRemoveStreamEvt:
-		return
 		if p := rcmgr.PeerStrInScopeName(evt.Name); p != "" {
 			// Aggregated peer stats. Counts how many peers have N number of streams open.
 			// Uses two buckets aggregations. One to count how many streams the
