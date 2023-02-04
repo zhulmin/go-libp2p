@@ -2,7 +2,6 @@ package obs
 
 import (
 	"math/rand"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -115,48 +114,26 @@ func BenchmarkMetricsRecording(b *testing.B) {
 	}
 }
 
-func noop() {
-	runtime.Gosched()
-}
-
 func TestNoAllocs(t *testing.T) {
 	str, err := NewStatsTraceReporter()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	evtCount := 10_000
-	evts := make([]rcmgr.TraceEvt, evtCount)
+	evts := make([]rcmgr.TraceEvt, 0, evtCount)
 	rng := rand.New(rand.NewSource(1))
 
 	for i := 0; i < evtCount; i++ {
-		evts[i] = randomTraceEvt(rng)
+		evts = append(evts, randomTraceEvt(rng))
 	}
 
-	failures := 0
-
 	tagSlice := make([]string, 0, 10)
-	_ = tagSlice
-	_ = str
-
 	allocs := testing.AllocsPerRun(100, func() {
 		for i := 0; i < evtCount; i++ {
-			noop()
+			str.consumeEventWithLabelSlice(evts[i], &tagSlice)
 		}
 	})
 
 	if allocs > 10 {
-		failures++
+		t.Fatalf("expected less than 10 heap bytes, got %f", allocs)
 	}
-
-	if failures > 0 {
-		t.Fatalf("expected less than 10 heap bytes")
-	}
-
-	// To prevent the GC from collecting our fake events.
-	unused := 0
-	for i := 0; i < evtCount; i++ {
-		unused += int(evts[i].Delta)
-	}
-	require.GreaterOrEqual(t, unused, 0)
 }
