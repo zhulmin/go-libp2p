@@ -145,11 +145,6 @@ func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 
 // push adds a packet to the packetQueue
 func (pq *packetQueue) push(buf []byte, addr net.Addr) (err error) {
-	defer func() {
-		if recover() != nil {
-			err = io.ErrClosedPipe
-		}
-	}()
 	// priority select channel closure over sending.
 	// this prevents a send on closed channel panic
 	select {
@@ -169,6 +164,5 @@ func (pq *packetQueue) close() {
 	case <-pq.ctx.Done():
 	default:
 		pq.cancel()
-		close(pq.pkts)
 	}
 }
