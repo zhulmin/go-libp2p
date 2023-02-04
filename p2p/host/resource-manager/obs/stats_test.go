@@ -1,9 +1,7 @@
 package obs
 
 import (
-	"fmt"
 	"math/rand"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -132,34 +130,20 @@ func TestNoAllocs(t *testing.T) {
 		evts[i] = randomTraceEvt(rng)
 	}
 
-	var m1, m2 runtime.MemStats
-	runtime.GC()
-
-	totalRuns := 10
-	warmupRuns := 3
 	failures := 0
 
 	tagSlice := make([]string, 0, 10)
 	_ = tagSlice
 	_ = str
 
-	for runIdx := 0; runIdx < totalRuns; runIdx++ {
-		runtime.ReadMemStats(&m1)
-
+	allocs := testing.AllocsPerRun(100, func() {
 		for i := 0; i < evtCount; i++ {
 			noop()
 		}
+	})
 
-		runtime.ReadMemStats(&m2)
-		totalAllocs := m2.TotalAlloc - m1.TotalAlloc
-		fmt.Println("Allocs ", totalAllocs)
-		fmt.Println("Go routine", runtime.NumGoroutine())
-
-		if runIdx > warmupRuns {
-			if totalAllocs > 10 {
-				failures++
-			}
-		}
+	if allocs > 10 {
+		failures++
 	}
 
 	if failures > 0 {
