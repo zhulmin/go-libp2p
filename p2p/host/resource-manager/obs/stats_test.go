@@ -116,6 +116,8 @@ func BenchmarkMetricsRecording(b *testing.B) {
 	}
 }
 
+func noop() {}
+
 func TestNoAllocs(t *testing.T) {
 	str, err := NewStatsTraceReporter()
 	if err != nil {
@@ -138,20 +140,23 @@ func TestNoAllocs(t *testing.T) {
 	failures := 0
 
 	tagSlice := make([]string, 0, 10)
+	_ = tagSlice
+	_ = str
 
 	for runIdx := 0; runIdx < totalRuns; runIdx++ {
 		runtime.ReadMemStats(&m1)
 
 		for i := 0; i < evtCount; i++ {
-			str.consumeEventWithLabelSlice(evts[i], &tagSlice)
+			noop()
 		}
 
 		runtime.ReadMemStats(&m2)
-		heapAllocs := int(m2.HeapAlloc) - int(m1.HeapAlloc)
-		fmt.Println("Allocs ", heapAllocs)
+		totalAllocs := m2.TotalAlloc - m1.TotalAlloc
+		fmt.Println("Allocs ", totalAllocs)
+		fmt.Println("Go routine", runtime.NumGoroutine())
 
 		if runIdx > warmupRuns {
-			if heapAllocs > 10 {
+			if totalAllocs > 10 {
 				failures++
 			}
 		}

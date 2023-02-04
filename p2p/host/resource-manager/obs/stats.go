@@ -190,7 +190,6 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 
 // Separate func so that we can test that this function does not allocate. The syncPool may allocate.
 func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags *[]string) {
-	return
 	switch evt.Type {
 	case rcmgr.TraceAddStreamEvt, rcmgr.TraceRemoveStreamEvt:
 		if p := rcmgr.PeerStrInScopeName(evt.Name); p != "" {
