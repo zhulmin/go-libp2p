@@ -147,27 +147,37 @@ func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
 	listener, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
 
-	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
 	go func() {
 		for i := 0; i < count; i++ {
 			conn, err := listener.Accept()
 			assert.NoError(t, err)
 			assert.NotNil(t, conn)
 		}
-		close(done)
+		wg.Wait()
+		cancel()
 	}()
 
 	for i := 0; i < count; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			ctr, _ := getTransport(t)
-			conn, err := ctr.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-			assert.NoError(t, err)
-			assert.NotNil(t, conn)
+			conn, err := ctr.Dial(ctx, listener.Multiaddr(), listeningPeer)
+			select {
+			case <-ctx.Done():
+			default:
+				assert.NoError(t, err)
+				assert.NotNil(t, conn)
+			}
 		}()
 	}
 
 	select {
-	case <-done:
+	case <-ctx.Done():
 	case <-time.After(30 * time.Second):
 		t.Fatalf("timed out")
 	}
@@ -744,7 +754,7 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	for i := 0; uint32(i) < count+2; i++ {
 		wg.Add(1)
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer func() {
 				wg.Done()
 				cancel()

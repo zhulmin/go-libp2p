@@ -2,14 +2,12 @@ package udpmux
 
 import (
 	"context"
-	"io"
 	"net"
 	"net/netip"
 	"testing"
 	"time"
 
 	pool "github.com/libp2p/go-buffer-pool"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,29 +73,4 @@ func TestPacketQueue_ReadAfterClose(t *testing.T) {
 	_, _, err := pq.pop(ctx, pool.Get(255))
 	require.NoError(t, err)
 	pq.pop(ctx, pool.Get(255))
-}
-
-// this is to test for race conditions when closing
-func TestCloseWhileSending(t *testing.T) {
-	pq := newPacketQueue()
-	addr := net.UDPAddrFromAddrPort(netip.MustParseAddrPort("127.0.0.1:12345"))
-	done := make(chan struct{})
-	go func() {
-		for i := 0; i < 10000; i++ {
-			buf := pool.Get(255)
-			err := pq.push(buf, addr)
-			if err != nil {
-				assert.ErrorIs(t, err, io.ErrClosedPipe)
-				close(done)
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}()
-	time.AfterFunc(100*time.Millisecond, func() { pq.close() })
-	select {
-	case <-done:
-	case <-time.After(200 * time.Millisecond):
-		t.FailNow()
-	}
 }

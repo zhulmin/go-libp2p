@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -52,15 +51,6 @@ type listener struct {
 
 	// buffered incoming connections
 	acceptQueue chan tpt.CapableConn
-	// Accepting a connection requires instantiating a peerconnection
-	// and a noise connection which is expensive. We therefore limit
-	// the number of in-flight connection requests. A connection
-	// is considered to be in flight from the instant it is handled
-	// until it is dequed by a call to Accept, or errors out in some
-	// way.
-	//
-	inFlightConnections    uint32
-	maxInFlightConnections uint32
 
 	// used to control the lifecycle of the listener
 	ctx    context.Context
@@ -105,8 +95,6 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
 		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections),
-		inFlightConnections:       0,
-		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
 
 	l.wg.Add(1)
@@ -123,28 +111,18 @@ func (l *listener) handleIncomingCandidates(candidateChan <-chan candidateAddr) 
 		case <-l.ctx.Done():
 			return
 		case addr := <-candidateChan:
-			if atomic.LoadUint32(&l.inFlightConnections) >= l.maxInFlightConnections {
-				// TODO: should we send an error STUN response here? It seems like Pion and browsers will retry
-				// STUN binding requests even when an error response is received.
-				// Refer: https://github.com/pion/ice/blob/master/agent.go#L1045-L1131
-				log.Warnf("server is busy, rejecting incoming connection from: %s", addr.raddr)
-				continue
-			}
-			atomic.AddUint32(&l.inFlightConnections, 1)
 			go func() {
 				ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
 				defer cancel()
 				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
 					log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
-					atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 					return
 				}
 				select {
 				case l.acceptQueue <- conn:
 				default:
 					log.Warnf("could not push connection")
-					atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 					conn.Close()
 				}
 			}()
@@ -157,7 +135,6 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 	case <-l.ctx.Done():
 		return nil, os.ErrClosed
 	case conn := <-l.acceptQueue:
-		atomic.AddUint32(&l.inFlightConnections, ^uint32(0))
 		return conn, nil
 	}
 }
