@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/p2p/metricshelper"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -107,23 +109,43 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 }
 
 func (m *metricsTracer) EventEmitted(typ reflect.Type) {
-	eventsEmitted.WithLabelValues(strings.TrimPrefix(typ.String(), "event.")).Inc()
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, strings.TrimPrefix(typ.String(), "event."))
+	eventsEmitted.WithLabelValues(*tags...).Inc()
 }
 
 func (m *metricsTracer) AddSubscriber(typ reflect.Type) {
-	totalSubscribers.WithLabelValues(strings.TrimPrefix(typ.String(), "event.")).Inc()
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, strings.TrimPrefix(typ.String(), "event."))
+	totalSubscribers.WithLabelValues(*tags...).Inc()
 }
 
 func (m *metricsTracer) RemoveSubscriber(typ reflect.Type) {
-	totalSubscribers.WithLabelValues(strings.TrimPrefix(typ.String(), "event.")).Dec()
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, strings.TrimPrefix(typ.String(), "event."))
+	totalSubscribers.WithLabelValues(*tags...).Dec()
 }
 
 func (m *metricsTracer) SubscriberQueueLength(name string, n int) {
-	subscriberQueueLength.WithLabelValues(name).Set(float64(n))
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, name)
+	subscriberQueueLength.WithLabelValues(*tags...).Set(float64(n))
 }
 
 func (m *metricsTracer) SubscriberQueueFull(name string, isFull bool) {
-	observer := subscriberQueueFull.WithLabelValues(name)
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, name)
+	observer := subscriberQueueFull.WithLabelValues(*tags...)
 	if isFull {
 		observer.Set(1)
 	} else {
@@ -132,5 +154,9 @@ func (m *metricsTracer) SubscriberQueueFull(name string, isFull bool) {
 }
 
 func (m *metricsTracer) SubscriberEventQueued(name string) {
-	subscriberEventQueued.WithLabelValues(name).Inc()
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
+	*tags = append(*tags, name)
+	subscriberEventQueued.WithLabelValues(*tags...).Inc()
 }

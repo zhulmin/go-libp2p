@@ -9,8 +9,11 @@ import (
 
 func BenchmarkEventEmitted(b *testing.B) {
 	b.ReportAllocs()
-	types := []reflect.Type{reflect.TypeOf(new(event.EvtLocalAddressesUpdated)), reflect.TypeOf(new(event.EvtNATDeviceTypeChanged)),
-		reflect.TypeOf(new(event.EvtLocalProtocolsUpdated))}
+	types := []reflect.Type{
+		reflect.TypeOf(new(event.EvtLocalAddressesUpdated)),
+		reflect.TypeOf(new(event.EvtNATDeviceTypeChanged)),
+		reflect.TypeOf(new(event.EvtLocalProtocolsUpdated)),
+	}
 	mt := NewMetricsTracer()
 	for i := 0; i < b.N; i++ {
 		mt.EventEmitted(types[i%len(types)])
