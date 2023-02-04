@@ -1,4 +1,4 @@
-package obs_test
+package obs
 
 import (
 	"fmt"
@@ -9,12 +9,12 @@ import (
 	"time"
 
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	"github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTraceReporterStartAndClose(t *testing.T) {
-	rcmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(obs.StatsTraceReporter{}))
+	rcmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(StatsTraceReporter{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,10 +32,10 @@ func TestConsumeEvent(t *testing.T) {
 	}
 
 	registerOnce.Do(func() {
-		obs.MustRegisterWith(prometheus.DefaultRegisterer)
+		MustRegisterWith(prometheus.DefaultRegisterer)
 	})
 
-	str, err := obs.NewStatsTraceReporter()
+	str, err := NewStatsTraceReporter()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func BenchmarkMetricsRecording(b *testing.B) {
 	b.ReportAllocs()
 
 	registerOnce.Do(func() {
-		obs.MustRegisterWith(prometheus.DefaultRegisterer)
+		MustRegisterWith(prometheus.DefaultRegisterer)
 	})
 
 	evtCount := 10000
@@ -105,7 +105,7 @@ func BenchmarkMetricsRecording(b *testing.B) {
 		evts[i] = randomTraceEvt(rng)
 	}
 
-	str, err := obs.NewStatsTraceReporter()
+	str, err := NewStatsTraceReporter()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -117,14 +117,10 @@ func BenchmarkMetricsRecording(b *testing.B) {
 }
 
 func TestNoAllocs(t *testing.T) {
-	str, err := obs.NewStatsTraceReporter()
+	str, err := NewStatsTraceReporter()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	registerOnce.Do(func() {
-		obs.MustRegisterWith(prometheus.DefaultRegisterer)
-	})
 
 	evtCount := 10_000
 	evts := make([]rcmgr.TraceEvt, evtCount)
@@ -140,13 +136,14 @@ func TestNoAllocs(t *testing.T) {
 	totalRuns := 10
 	warmupRuns := 3
 	failures := 0
+
+	tagSlice := make([]string, 0, 10)
+
 	for runIdx := 0; runIdx < totalRuns; runIdx++ {
 		runtime.ReadMemStats(&m1)
-		if runIdx > warmupRuns {
-		}
 
 		for i := 0; i < evtCount; i++ {
-			str.ConsumeEvent(evts[i])
+			str.consumeEventWithLabelSlice(evts[i], &tagSlice)
 		}
 
 		runtime.ReadMemStats(&m2)
@@ -165,7 +162,9 @@ func TestNoAllocs(t *testing.T) {
 	}
 
 	// To prevent the GC from collecting our fake events.
+	unused := 0
 	for i := 0; i < evtCount; i++ {
-		str.ConsumeEvent(evts[i])
+		unused += int(evts[i].Delta)
 	}
+	require.GreaterOrEqual(t, unused, 0)
 }

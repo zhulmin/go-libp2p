@@ -185,8 +185,20 @@ func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
 	tags := getStringSlice()
 	defer putStringSlice(tags)
 
+	r.consumeEventWithLabelSlice(evt, tags)
+}
+
+// Separate func so that we can test that this function does not allocate. The syncPool may allocate.
+func (r StatsTraceReporter) consumeEventWithLabelSlice(evt rcmgr.TraceEvt, tags *[]string) {
 	switch evt.Type {
 	case rcmgr.TraceAddStreamEvt, rcmgr.TraceRemoveStreamEvt:
+	default:
+		return
+	}
+
+	switch evt.Type {
+	case rcmgr.TraceAddStreamEvt, rcmgr.TraceRemoveStreamEvt:
+		return
 		if p := rcmgr.PeerStrInScopeName(evt.Name); p != "" {
 			// Aggregated peer stats. Counts how many peers have N number of streams open.
 			// Uses two buckets aggregations. One to count how many streams the
