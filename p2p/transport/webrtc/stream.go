@@ -231,21 +231,22 @@ func (d *webRTCStream) Write(b []byte) (int, error) {
 		})
 	}
 
-	var err error
+	const chunkSize = maxMessageSize - protoOverhead - varintOverhead
+
 	var (
-		chunkSize = maxMessageSize - protoOverhead - varintOverhead
-		n         = 0
+		err error
+		n   int
 	)
 
 	for len(b) > 0 {
 		end := min(chunkSize, len(b))
 
 		written, err := d.partialWrite(b[:end])
+		n += written
 		if err != nil {
-			return n + written, err
+			return n, err
 		}
 		b = b[end:]
-		n += written
 	}
 	return n, err
 }
