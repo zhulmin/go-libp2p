@@ -139,23 +139,29 @@ func TestNoAllocs(t *testing.T) {
 
 	totalRuns := 10
 	warmupRuns := 3
+	failures := 0
 	for runIdx := 0; runIdx < totalRuns; runIdx++ {
+		runtime.ReadMemStats(&m1)
 		if runIdx > warmupRuns {
-			runtime.ReadMemStats(&m1)
 		}
 
 		for i := 0; i < evtCount; i++ {
 			str.ConsumeEvent(evts[i])
 		}
 
+		runtime.ReadMemStats(&m2)
+		heapAllocs := int(m2.HeapAlloc) - int(m1.HeapAlloc)
+		fmt.Println("Allocs ", heapAllocs)
+
 		if runIdx > warmupRuns {
-			runtime.ReadMemStats(&m2)
-			heapAllocs := int(m2.HeapAlloc) - int(m1.HeapAlloc)
-			fmt.Println("Allocs ", heapAllocs)
 			if heapAllocs > 10 {
-				t.Fatalf("expected less than 10 heap bytes, got %d", heapAllocs)
+				failures++
 			}
 		}
+	}
+
+	if failures > 0 {
+		t.Fatalf("expected less than 10 heap bytes")
 	}
 
 	// To prevent the GC from collecting our fake events.
