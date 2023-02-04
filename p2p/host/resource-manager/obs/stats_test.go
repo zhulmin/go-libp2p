@@ -2,6 +2,7 @@ package obs
 
 import (
 	"math/rand"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -114,7 +115,9 @@ func BenchmarkMetricsRecording(b *testing.B) {
 	}
 }
 
-func noop() {}
+func noop() {
+	runtime.Gosched()
+}
 
 func TestNoAllocs(t *testing.T) {
 	str, err := NewStatsTraceReporter()
