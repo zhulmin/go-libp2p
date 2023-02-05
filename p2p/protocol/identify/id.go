@@ -328,6 +328,9 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 		go func() {
 			defer close(wait)
 			if err := ids.identifyConn(c); err != nil {
+				if c.ConnState().Transport == "quic" {
+					fmt.Println("identify failed:", err)
+				}
 				log.Warnf("failed to identify %s: %s", c.RemotePeer(), err)
 				ids.emitters.evtPeerIdentificationFailed.Emit(event.EvtPeerIdentificationFailed{Peer: c.RemotePeer(), Reason: err})
 				return
