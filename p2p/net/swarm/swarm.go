@@ -329,7 +329,12 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 	}
 
 	c.streams.m = make(map[*Stream]struct{})
-	isFirstConn := len(s.conns.m[p]) == 0
+	if len(s.conns.m[p]) == 0 { // first connection
+		s.emitter.Emit(event.EvtPeerConnectednessChanged{
+			Peer:          p,
+			Connectedness: network.Connected,
+		})
+	}
 	s.conns.m[p] = append(s.conns.m[p], c)
 
 	// Add two swarm refs:
@@ -346,13 +351,6 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 		f.Connected(s, c)
 	})
 	c.notifyLk.Unlock()
-
-	if isFirstConn {
-		s.emitter.Emit(event.EvtPeerConnectednessChanged{
-			Peer:          p,
-			Connectedness: network.Connected,
-		})
-	}
 
 	c.start()
 	return c, nil
@@ -627,14 +625,18 @@ func (s *Swarm) StopNotify(f network.Notifiee) {
 func (s *Swarm) removeConn(c *Conn) {
 	p := c.RemotePeer()
 
-	var disconnected bool
 	s.conns.Lock()
+	defer s.conns.Unlock()
+
 	cs := s.conns.m[p]
 	for i, ci := range cs {
 		if ci == c {
 			if len(cs) == 1 {
 				delete(s.conns.m, p)
-				disconnected = true
+				s.emitter.Emit(event.EvtPeerConnectednessChanged{
+					Peer:          p,
+					Connectedness: network.NotConnected,
+				})
 			} else {
 				// NOTE: We're intentionally preserving order.
 				// This way, connections to a peer are always
@@ -645,14 +647,6 @@ func (s *Swarm) removeConn(c *Conn) {
 			}
 			break
 		}
-	}
-	s.conns.Unlock()
-
-	if disconnected {
-		s.emitter.Emit(event.EvtPeerConnectednessChanged{
-			Peer:          p,
-			Connectedness: network.NotConnected,
-		})
 	}
 }
 
