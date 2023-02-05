@@ -265,17 +265,17 @@ func (s *webRTCStream) isClosed() bool {
 func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 	// block until we have made our read request
 	select {
+	case r.requestCh <- b:
 	case <-r.stream.ctx.Done():
 		return 0, io.ErrClosedPipe
-	case r.requestCh <- b:
 	}
 	// get our final response back, effectively unblocking this reader
 	// for a new reader
 	select {
-	case <-r.stream.ctx.Done():
-		return 0, io.ErrClosedPipe
 	case resp := <-r.responseCh:
 		return resp.N, resp.Error
+	case <-r.stream.ctx.Done():
+		return 0, io.ErrClosedPipe
 	}
 }
 
@@ -283,8 +283,6 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 func (r webRTCStreamReader) runReadLoop() {
 	for {
 		select {
-		case <-r.stream.ctx.Done():
-			return
 		case b := <-r.requestCh:
 			n, err := r.read(b)
 			select {
@@ -292,6 +290,8 @@ func (r webRTCStreamReader) runReadLoop() {
 			case <-r.stream.ctx.Done():
 				log.Debug("failed to send response: ctx closed")
 			}
+		case <-r.stream.ctx.Done():
+			return
 		}
 	}
 }
@@ -421,17 +421,17 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 	// block until we have made our write request
 	select {
+	case w.requestCh <- msg:
 	case <-w.stream.ctx.Done():
 		return 0, io.ErrClosedPipe
-	case w.requestCh <- msg:
 	}
 	// get our final response back, effectively unblocking this writer
 	// for a new writer
 	select {
-	case <-w.stream.ctx.Done():
-		return 0, io.ErrClosedPipe
 	case resp := <-w.responseCh:
 		return resp.N, resp.Error
+	case <-w.stream.ctx.Done():
+		return 0, io.ErrClosedPipe
 	}
 }
 
@@ -439,8 +439,6 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 func (w *webRTCStreamWriter) runWriteLoop() {
 	for {
 		select {
-		case <-w.stream.ctx.Done():
-			return
 		case msg := <-w.requestCh:
 			n, err := w.write(msg)
 			select {
@@ -448,6 +446,8 @@ func (w *webRTCStreamWriter) runWriteLoop() {
 			case <-w.stream.ctx.Done():
 				log.Debug("failed to send response: ctx closed")
 			}
+		case <-w.stream.ctx.Done():
+			return
 		}
 	}
 }
