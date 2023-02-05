@@ -189,10 +189,11 @@ func (ids *idService) loop() {
 	defer ids.refCount.Done()
 
 	phs := make(map[peer.ID]*peerHandler)
-	sub, err := ids.Host.EventBus().Subscribe([]interface{}{
-		&event.EvtLocalProtocolsUpdated{},
-		&event.EvtLocalAddressesUpdated{},
-	}, eventbus.BufSize(256))
+	sub, err := ids.Host.EventBus().Subscribe(
+		[]any{&event.EvtLocalProtocolsUpdated{}, &event.EvtLocalAddressesUpdated{}},
+		eventbus.BufSize(256),
+		eventbus.Name("identify (loop)"),
+	)
 	if err != nil {
 		log.Errorf("failed to subscribe to events on the bus, err=%s", err)
 		return
