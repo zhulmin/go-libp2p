@@ -65,8 +65,6 @@ type (
 
 		state *channelState
 
-		readControlMessagesOnce sync.Once
-
 		wg sync.WaitGroup
 
 		ctx    context.Context
