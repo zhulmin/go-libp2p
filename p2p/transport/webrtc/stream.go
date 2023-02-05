@@ -287,7 +287,11 @@ func (r webRTCStreamReader) runReadLoop() {
 			return
 		case b := <-r.requestCh:
 			n, err := r.read(b)
-			r.responseCh <- webRTCStreamReadResponse{N: n, Error: err}
+			select {
+			case r.responseCh <- webRTCStreamReadResponse{N: n, Error: err}:
+			case <-r.stream.ctx.Done():
+				log.Debug("failed to send response: ctx closed")
+			}
 		}
 	}
 }
@@ -439,7 +443,11 @@ func (w *webRTCStreamWriter) runWriteLoop() {
 			return
 		case msg := <-w.requestCh:
 			n, err := w.write(msg)
-			w.responseCh <- webRTCStreamWriteResponse{N: n, Error: err}
+			select {
+			case w.responseCh <- webRTCStreamWriteResponse{N: n, Error: err}:
+			case <-w.stream.ctx.Done():
+				log.Debug("failed to send response: ctx closed")
+			}
 		}
 	}
 }
