@@ -1,13 +1,26 @@
 package libp2pwebrtc
 
 import (
+	"sync"
+
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
-type channelState uint8 // default state == 0 == stateOpen
+type (
+	channelState struct {
+		state channelStateValue
+		mu    sync.RWMutex
+	}
+
+	channelStateValue uint8
+)
+
+func newChannelState() *channelState {
+	return &channelState{}
+}
 
 const (
-	stateReadClosed channelState = 1 << iota
+	stateReadClosed channelStateValue = 1 << iota
 	stateWriteClosed
 )
 
@@ -15,53 +28,94 @@ const (
 	stateClosed = stateReadClosed | stateWriteClosed
 )
 
-func (state channelState) handleIncomingFlag(flag pb.Message_Flag) channelState {
-	if state == stateClosed {
-		return state
+func (c *channelState) handleIncomingFlag(flag pb.Message_Flag) (channelStateValue, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.state == stateClosed {
+		return c.state, false
 	}
+
+	currentState := c.state
 	switch flag {
 	case pb.Message_FIN:
-		return state | stateReadClosed
+		c.state |= stateReadClosed
+		return c.state, currentState != c.state
 	case pb.Message_STOP_SENDING:
-		return state | stateWriteClosed
+		c.state |= stateWriteClosed
+		return c.state, currentState != c.state
 	case pb.Message_RESET:
-		return stateClosed
+		c.state = stateClosed
+		return c.state, currentState != c.state
 	default:
 		// ignore values that are invalid for flags
-		return state
+		return c.state, false
 	}
 }
 
-func (state channelState) processOutgoingFlag(flag pb.Message_Flag) channelState {
-	if state == stateClosed {
-		return state
+func (c *channelState) processOutgoingFlag(flag pb.Message_Flag) (channelStateValue, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.state == stateClosed {
+		return c.state, false
 	}
 
+	currentState := c.state
 	switch flag {
 	case pb.Message_FIN:
-		return state | stateWriteClosed
+		c.state |= stateWriteClosed
+		return c.state, currentState != c.state
 	case pb.Message_STOP_SENDING:
-		return state | stateReadClosed
+		c.state |= stateReadClosed
+		return c.state, currentState != c.state
 	case pb.Message_RESET:
-		return stateClosed
+		c.state = stateClosed
+		return c.state, currentState != c.state
 	default:
 		// ignore values that are invalid for flags
-		return state
+		return c.state, false
 	}
 }
 
-func (state channelState) allowRead() bool {
-	return state&stateReadClosed == 0
+func (c *channelState) value() channelStateValue {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state
 }
 
-func (state channelState) allowWrite() bool {
-	return state&stateWriteClosed == 0
+func (c *channelState) allowRead() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state.allowRead()
 }
 
-func (state *channelState) close() {
-	*state = stateClosed
+func (c *channelState) allowWrite() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state.allowWrite()
 }
 
-func (state channelState) closed() bool {
-	return state == stateClosed
+func (c *channelState) closed() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state.closed()
+}
+
+func (c *channelState) close() {
+	c.mu.Lock()
+	c.state = stateClosed
+	c.mu.Unlock()
+}
+
+func (v channelStateValue) allowRead() bool {
+	return v&stateReadClosed == 0
+}
+
+func (v channelStateValue) allowWrite() bool {
+	return v&stateWriteClosed == 0
+}
+
+func (v channelStateValue) closed() bool {
+	return v == stateClosed
 }
