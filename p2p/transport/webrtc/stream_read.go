@@ -56,7 +56,7 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 }
 
 // async reader in background
-func (r webRTCStreamReader) runReadLoop() {
+func (r *webRTCStreamReader) runReadLoop() {
 	for {
 		select {
 		case b := <-r.requestCh:
@@ -72,7 +72,7 @@ func (r webRTCStreamReader) runReadLoop() {
 	}
 }
 
-func (r webRTCStreamReader) read(b []byte) (int, error) {
+func (r *webRTCStreamReader) read(b []byte) (int, error) {
 	var (
 		readDeadlineEpoch = atomic.LoadInt64(&r.deadline)
 		readDeadline      time.Time
