@@ -21,6 +21,7 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/encoding"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -425,7 +426,7 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 		return nil, err
 	}
 
-	localFpBytes, err := internal.DecodeInterpersedHexFromASCIIString(localFp.Value)
+	localFpBytes, err := encoding.DecodeInterpersedHexFromASCIIString(localFp.Value)
 	if err != nil {
 		return nil, err
 	}

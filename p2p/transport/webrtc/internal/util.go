@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/encoding"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
@@ -29,7 +30,7 @@ func FingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
 	builder.Grow(len(fp.Digest)*3 + 8)
 	builder.WriteString(sdpString)
 	builder.WriteByte(' ')
-	EncodeInterpersedHexToBuilder(fp.Digest, &builder)
+	encoding.EncodeInterpersedHexToBuilder(fp.Digest, &builder)
 	return builder.String(), nil
 }
 
@@ -46,7 +47,7 @@ func DecodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
 }
 
 func EncodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
-	digest, err := DecodeInterpersedHexFromASCIIString(fp.Value)
+	digest, err := encoding.DecodeInterpersedHexFromASCIIString(fp.Value)
 	if err != nil {
 		return "", err
 	}

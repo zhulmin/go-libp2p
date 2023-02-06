@@ -24,8 +24,8 @@ type (
 
 		deadline int64
 
-		deadlineUpdated signal
-		writeAvailable  signal
+		deadlineUpdated internal.Signal
+		writeAvailable  internal.Signal
 
 		requestCh  chan *pb.Message
 		responseCh chan webRTCStreamWriteResponse
@@ -120,8 +120,8 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 		}
 		// prepare waiting for writeAvailable signal
 		// if write is blocked
-		deadlineUpdated := w.deadlineUpdated.wait()
-		writeAvailable := w.writeAvailable.wait()
+		deadlineUpdated := w.deadlineUpdated.Wait()
+		writeAvailable := w.writeAvailable.Wait()
 
 		if !writeDeadline.IsZero() {
 			// check if deadline exceeded
@@ -182,7 +182,7 @@ func (w *webRTCStreamWriter) CloseWrite() error {
 		// if successfully written, process the outgoing flag
 		state, stateUpdated := w.stream.state.ProcessOutgoingFlag(pb.Message_FIN)
 		// unblock and fail any ongoing writes
-		w.writeAvailable.signal()
+		w.writeAvailable.Signal()
 		// check if closure required
 		if stateUpdated && state.Closed() {
 			w.stream.close(false, true)

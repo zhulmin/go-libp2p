@@ -106,7 +106,7 @@ func newStream(
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
 	channel.OnBufferedAmountLow(func() {
-		result.writeAvailable.signal()
+		result.writeAvailable.Signal()
 	})
 
 	result.webRTCStreamReader.stream = result
@@ -210,23 +210,4 @@ func (s *webRTCStream) isClosed() bool {
 	default:
 		return false
 	}
-}
-
-type signal struct {
-	sync.Mutex
-	c chan struct{}
-}
-
-func (s *signal) wait() <-chan struct{} {
-	s.Lock()
-	defer s.Unlock()
-	return s.c
-}
-
-func (s *signal) signal() {
-	s.Lock()
-	c := s.c
-	s.c = make(chan struct{})
-	s.Unlock()
-	close(c)
 }
