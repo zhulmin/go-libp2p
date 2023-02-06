@@ -94,7 +94,7 @@ func (r webRTCStreamReader) read(b []byte) (int, error) {
 		r.readBuf = r.readBuf[read:]
 		remaining := len(r.readBuf)
 
-		if remaining == 0 && !r.stream.state.allowRead() {
+		if remaining == 0 && !r.stream.state.AllowRead() {
 			log.Debugf("[2] stream closed or empty: %v", io.EOF)
 			return read, io.EOF
 		}
@@ -117,7 +117,7 @@ func (r webRTCStreamReader) read(b []byte) (int, error) {
 		}
 
 		// append incoming data to read buffer
-		if r.stream.state.allowRead() && msg.Message != nil {
+		if r.stream.state.AllowRead() && msg.Message != nil {
 			r.readBuf = append(r.readBuf, msg.GetMessage()...)
 		}
 
@@ -148,7 +148,7 @@ func (r *webRTCStreamReader) CloseRead() error {
 				default:
 				}
 
-				if r.stream.state.closed() {
+				if r.stream.state.Closed() {
 					return
 				}
 				err := r.reader.ReadMsg(&msg)

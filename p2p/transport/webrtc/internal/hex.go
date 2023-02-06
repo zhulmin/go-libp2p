@@ -1,17 +1,17 @@
-package libp2pwebrtc
+package internal
 
 import (
 	"encoding/hex"
 	"strings"
 )
 
-func encodeInterpersedHex(src []byte) string {
+func EncodeInterpersedHex(src []byte) string {
 	var builder strings.Builder
-	encodeInterpersedHexToBuilder(src, &builder)
+	EncodeInterpersedHexToBuilder(src, &builder)
 	return builder.String()
 }
 
-func encodeInterpersedHexToBuilder(src []byte, builder *strings.Builder) {
+func EncodeInterpersedHexToBuilder(src []byte, builder *strings.Builder) {
 	if src == nil {
 		return
 	}
@@ -26,7 +26,7 @@ func encodeInterpersedHexToBuilder(src []byte, builder *strings.Builder) {
 	}
 }
 
-func decodeInterpersedHex(src []byte) ([]byte, error) {
+func DecodeInterpersedHex(src []byte) ([]byte, error) {
 	dst := make([]byte, (len(src)+1)/3)
 	i, j := 0, 1
 	for ; j < len(src); j += 3 { // jump one extra byte for the separator (:)
@@ -55,7 +55,7 @@ func decodeInterpersedHex(src []byte) ([]byte, error) {
 	return dst[:i], nil
 }
 
-func decodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
+func DecodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
 	dst := make([]byte, (len(src)+1)/3)
 	i, j := 0, 1
 	for ; j < len(src); j += 3 { // jump one extra byte for the separator (:)

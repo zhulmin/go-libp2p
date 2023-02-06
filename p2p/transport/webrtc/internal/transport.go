@@ -1,4 +1,4 @@
-package libp2pwebrtc
+package internal
 
 import (
 	"crypto/rand"
@@ -13,7 +13,7 @@ const (
 	uFragLength   = uFragIdOffset + uFragIdLength
 )
 
-func genUfrag(n int) string {
+func GenUfrag(n int) string {
 	b := make([]byte, uFragLength)
 	copy(b[:], uFragPrefix[:])
 	rand.Read(b[uFragIdOffset:])

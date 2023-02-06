@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
@@ -116,7 +117,7 @@ func newConnection(
 			default:
 				log.Warnf("connection busy, rejecting stream")
 				// reject stream without instantiating a delimited writer
-				_, _ = writeMessage(rwc, &pb.Message{Flag: pb.Message_RESET.Enum()})
+				_, _ = internal.WriteMessage(rwc, &pb.Message{Flag: pb.Message_RESET.Enum()})
 				rwc.Close()
 			}
 		})

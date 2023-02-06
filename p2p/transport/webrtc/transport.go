@@ -20,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
 
 	logging "github.com/ipfs/go-log/v2"
 	ma "github.com/multiformats/go-multiaddr"
@@ -202,7 +203,7 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		return nil, err
 	}
 
-	encodedLocalFingerprint, err := encodeDTLSFingerprint(listenerFingerprint)
+	encodedLocalFingerprint, err := internal.EncodeDTLSFingerprint(listenerFingerprint)
 	if err != nil {
 		_ = socket.Close()
 		return nil, err
@@ -257,11 +258,11 @@ func (t *WebRTCTransport) dial(
 ) (*webrtc.PeerConnection, tpt.CapableConn, error) {
 	var pc *webrtc.PeerConnection
 
-	remoteMultihash, err := decodeRemoteFingerprint(remoteMultiaddr)
+	remoteMultihash, err := internal.DecodeRemoteFingerprint(remoteMultiaddr)
 	if err != nil {
 		return pc, nil, fmt.Errorf("decode fingerprint: %w", err)
 	}
-	remoteHashFunction, ok := getSupportedSDPHash(remoteMultihash.Code)
+	remoteHashFunction, ok := internal.GetSupportedSDPHash(remoteMultihash.Code)
 	if !ok {
 		return pc, nil, fmt.Errorf("unsupported hash function: %w", nil)
 	}
@@ -281,7 +282,7 @@ func (t *WebRTCTransport) dial(
 	// The only requirement here is that the ufrag and password
 	// must be equal, which will allow the server to determine
 	// the password using the STUN message.
-	ufrag := genUfrag(32)
+	ufrag := internal.GenUfrag(32)
 
 	settingEngine := webrtc.SettingEngine{}
 	// suppress pion logs
@@ -304,7 +305,7 @@ func (t *WebRTCTransport) dial(
 		return pc, nil, fmt.Errorf("instantiate peerconnection: %w", err)
 	}
 
-	errC := awaitPeerConnectionOpen(ufrag, pc)
+	errC := internal.AwaitPeerConnectionOpen(ufrag, pc)
 	// We need to set negotiated = true for this channel on both
 	// the client and server to avoid DCEP errors.
 	negotiated, id := hansdhakeChannelNegotiated, handshakeChannelId
@@ -327,7 +328,7 @@ func (t *WebRTCTransport) dial(
 		return pc, nil, fmt.Errorf("set local description: %w", err)
 	}
 
-	answerSdpString, err := renderServerSdp(raddr, ufrag, remoteMultihash)
+	answerSdpString, err := internal.RenderServerSdp(raddr, ufrag, remoteMultihash)
 	if err != nil {
 		return pc, nil, fmt.Errorf("render server SDP: %w", err)
 	}
@@ -348,7 +349,7 @@ func (t *WebRTCTransport) dial(
 		return pc, nil, errors.New("peerconnection opening timed out")
 	}
 
-	detached, err := getDetachedChannel(ctx, rawHandshakeChannel)
+	detached, err := internal.GetDetachedChannel(ctx, rawHandshakeChannel)
 	if err != nil {
 		return pc, nil, err
 	}
@@ -419,12 +420,12 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 		return nil, err
 	}
 
-	remoteFpBytes, err := Fingerprint(cert, hash)
+	remoteFpBytes, err := internal.Fingerprint(cert, hash)
 	if err != nil {
 		return nil, err
 	}
 
-	localFpBytes, err := decodeInterpersedHexFromASCIIString(localFp.Value)
+	localFpBytes, err := internal.DecodeInterpersedHexFromASCIIString(localFp.Value)
 	if err != nil {
 		return nil, err
 	}

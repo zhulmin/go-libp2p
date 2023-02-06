@@ -1,4 +1,4 @@
-package libp2pwebrtc
+package internal
 
 import (
 	"crypto"
@@ -30,7 +30,7 @@ a=sctp-port:5000
 a=max-message-size:16384
 `
 
-func renderClientSdp(addr *net.UDPAddr, ufrag string) string {
+func RenderClientSdp(addr *net.UDPAddr, ufrag string) string {
 	ipVersion := "IP4"
 	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
@@ -68,12 +68,12 @@ a=candidate:1 1 UDP 1 %[2]s %[3]d typ host
 a=end-of-candidates
 `
 
-func renderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.DecodedMultihash) (string, error) {
+func RenderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.DecodedMultihash) (string, error) {
 	ipVersion := "IP4"
 	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
 	}
-	fp, err := fingerprintToSDP(fingerprint)
+	fp, err := FingerprintToSDP(fingerprint)
 	if err != nil {
 		return "", err
 	}
@@ -87,10 +87,10 @@ func renderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.Dec
 	), nil
 }
 
-// getSupportedSDPHash converts a multihash code to the
+// GetSupportedSDPHash converts a multihash code to the
 // corresponding crypto.Hash for supported protocols. If a
 // crypto.Hash cannot be found, it returns `(crypto.SHA256, false)`
-func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
+func GetSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	switch code {
 	case multihash.MD5:
 		return crypto.MD5, true
@@ -109,10 +109,10 @@ func getSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	}
 }
 
-// getSupportedSDPString converts a multihash code
+// GetSupportedSDPString converts a multihash code
 // to a string format recognised by pion for fingerprint
 // algorithms
-func getSupportedSDPString(code uint64) (string, error) {
+func GetSupportedSDPString(code uint64) (string, error) {
 	// values based on (cryto.Hash).String()
 	switch code {
 	case multihash.MD5:
@@ -128,6 +128,6 @@ func getSupportedSDPString(code uint64) (string, error) {
 	case multihash.SHA2_512:
 		return "sha-512", nil
 	default:
-		return "", fmt.Errorf("unsupported hash code (%d) :%w", code, errInvalidParam)
+		return "", fmt.Errorf("unsupported hash code (%d) :%w", code, ErrInvalidParam)
 	}
 }

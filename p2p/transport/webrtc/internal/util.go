@@ -1,4 +1,4 @@
-package libp2pwebrtc
+package internal
 
 import (
 	"context"
@@ -16,11 +16,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func fingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
+func FingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
 	if fp == nil {
-		return "", fmt.Errorf("fingerprint multihash: %w", errNilParam)
+		return "", fmt.Errorf("fingerprint multihash: %w", ErrNilParam)
 	}
-	sdpString, err := getSupportedSDPString(fp.Code)
+	sdpString, err := GetSupportedSDPString(fp.Code)
 	if err != nil {
 		return "", err
 	}
@@ -29,11 +29,11 @@ func fingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
 	builder.Grow(len(fp.Digest)*3 + 8)
 	builder.WriteString(sdpString)
 	builder.WriteByte(' ')
-	encodeInterpersedHexToBuilder(fp.Digest, &builder)
+	EncodeInterpersedHexToBuilder(fp.Digest, &builder)
 	return builder.String(), nil
 }
 
-func decodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
+func DecodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
 	remoteFingerprintMultibase, err := maddr.ValueForProtocol(ma.P_CERTHASH)
 	if err != nil {
 		return nil, err
@@ -45,8 +45,8 @@ func decodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
 	return mh.Decode(data)
 }
 
-func encodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
-	digest, err := decodeInterpersedHexFromASCIIString(fp.Value)
+func EncodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
+	digest, err := DecodeInterpersedHexFromASCIIString(fp.Value)
 	if err != nil {
 		return "", err
 	}
@@ -57,7 +57,7 @@ func encodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
 	return multibase.Encode(multibase.Base64url, encoded)
 }
 
-func min(a, b int) int {
+func Min(a, b int) int {
 	if a < b {
 		return a
 	}
@@ -68,7 +68,7 @@ func min(a, b int) int {
 // will be called immediately. Only use after the peerconnection is open.
 // The context should close if the peerconnection underlying the datachannel
 // is closed.
-func getDetachedChannel(ctx context.Context, dc *webrtc.DataChannel) (rwc datachannel.ReadWriteCloser, err error) {
+func GetDetachedChannel(ctx context.Context, dc *webrtc.DataChannel) (rwc datachannel.ReadWriteCloser, err error) {
 	done := make(chan struct{})
 	dc.OnOpen(func() {
 		defer close(done)
@@ -84,7 +84,7 @@ func getDetachedChannel(ctx context.Context, dc *webrtc.DataChannel) (rwc datach
 	return
 }
 
-func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan error {
+func AwaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan error {
 	errC := make(chan error)
 	var once sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
@@ -112,7 +112,7 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 // writeMessage writes a length-prefixed protobuf message to the datachannel. It
 // is preferred over protoio DelimitedWriter because it is thread safe, and the
 // buffer is only allocated from the global pool when writing.
-func writeMessage(rwc datachannel.ReadWriteCloser, msg *pb.Message) (int, error) {
+func WriteMessage(rwc datachannel.ReadWriteCloser, msg *pb.Message) (int, error) {
 	buf := make([]byte, 5)
 	varintLen := binary.PutUvarint(buf, uint64(proto.Size(msg)))
 	buf = buf[:varintLen]

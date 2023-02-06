@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
@@ -39,9 +40,9 @@ type (
 )
 
 func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
-	state := w.stream.state.value()
+	state := w.stream.state.Value()
 
-	if !state.allowWrite() {
+	if !state.AllowWrite() {
 		return 0, io.ErrClosedPipe
 	}
 
@@ -53,7 +54,7 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 	)
 
 	for len(b) > 0 {
-		end := min(chunkSize, len(b))
+		end := internal.Min(chunkSize, len(b))
 
 		written, err := w.writeMessage(&pb.Message{Message: b[:end]})
 		n += written
@@ -114,7 +115,7 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 	var deadlineTimer *time.Timer
 
 	for {
-		if !w.stream.state.allowWrite() {
+		if !w.stream.state.AllowWrite() {
 			return 0, io.ErrClosedPipe
 		}
 		// prepare waiting for writeAvailable signal
@@ -179,11 +180,11 @@ func (w *webRTCStreamWriter) CloseWrite() error {
 			return
 		}
 		// if successfully written, process the outgoing flag
-		state, stateUpdated := w.stream.state.processOutgoingFlag(pb.Message_FIN)
+		state, stateUpdated := w.stream.state.ProcessOutgoingFlag(pb.Message_FIN)
 		// unblock and fail any ongoing writes
 		w.writeAvailable.signal()
 		// check if closure required
-		if stateUpdated && state.closed() {
+		if stateUpdated && state.Closed() {
 			w.stream.close(false, true)
 		}
 	})

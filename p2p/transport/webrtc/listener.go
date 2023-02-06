@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	tpt "github.com/libp2p/go-libp2p/core/transport"
@@ -215,10 +216,10 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		return pc, nil, err
 	}
 
-	errC := awaitPeerConnectionOpen(addr.ufrag, pc)
+	errC := internal.AwaitPeerConnectionOpen(addr.ufrag, pc)
 	// we infer the client sdp from the incoming STUN connectivity check
 	// by setting the ice-ufrag equal to the incoming check.
-	clientSdpString := renderClientSdp(addr.raddr, addr.ufrag)
+	clientSdpString := internal.RenderClientSdp(addr.raddr, addr.ufrag)
 	clientSdp := webrtc.SessionDescription{SDP: clientSdpString, Type: webrtc.SDPTypeOffer}
 	pc.SetRemoteDescription(clientSdp)
 
@@ -242,7 +243,7 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 
 	}
 
-	rwc, err := getDetachedChannel(ctx, rawDatachannel)
+	rwc, err := internal.GetDetachedChannel(ctx, rawDatachannel)
 	if err != nil {
 		return pc, nil, err
 	}

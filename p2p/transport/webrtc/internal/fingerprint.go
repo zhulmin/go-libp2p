@@ -1,4 +1,4 @@
-package libp2pwebrtc
+package internal
 
 import (
 	"crypto"

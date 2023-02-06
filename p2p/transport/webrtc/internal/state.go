@@ -1,4 +1,4 @@
-package libp2pwebrtc
+package internal
 
 import (
 	"sync"
@@ -7,20 +7,20 @@ import (
 )
 
 type (
-	channelState struct {
-		state channelStateValue
+	ChannelState struct {
+		state ChannelStateValue
 		mu    sync.RWMutex
 	}
 
-	channelStateValue uint8
+	ChannelStateValue uint8
 )
 
-func newChannelState() *channelState {
-	return &channelState{}
+func NewChannelState() *ChannelState {
+	return &ChannelState{}
 }
 
 const (
-	stateReadClosed channelStateValue = 1 << iota
+	stateReadClosed ChannelStateValue = 1 << iota
 	stateWriteClosed
 )
 
@@ -28,7 +28,7 @@ const (
 	stateClosed = stateReadClosed | stateWriteClosed
 )
 
-func (c *channelState) handleIncomingFlag(flag pb.Message_Flag) (channelStateValue, bool) {
+func (c *ChannelState) HandleIncomingFlag(flag pb.Message_Flag) (ChannelStateValue, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -53,7 +53,7 @@ func (c *channelState) handleIncomingFlag(flag pb.Message_Flag) (channelStateVal
 	}
 }
 
-func (c *channelState) processOutgoingFlag(flag pb.Message_Flag) (channelStateValue, bool) {
+func (c *ChannelState) ProcessOutgoingFlag(flag pb.Message_Flag) (ChannelStateValue, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -78,44 +78,44 @@ func (c *channelState) processOutgoingFlag(flag pb.Message_Flag) (channelStateVa
 	}
 }
 
-func (c *channelState) value() channelStateValue {
+func (c *ChannelState) Value() ChannelStateValue {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.state
 }
 
-func (c *channelState) allowRead() bool {
+func (c *ChannelState) AllowRead() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.state.allowRead()
+	return c.state.AllowRead()
 }
 
-func (c *channelState) allowWrite() bool {
+func (c *ChannelState) AllowWrite() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.state.allowWrite()
+	return c.state.AllowWrite()
 }
 
-func (c *channelState) closed() bool {
+func (c *ChannelState) Closed() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.state.closed()
+	return c.state.Closed()
 }
 
-func (c *channelState) close() {
+func (c *ChannelState) Close() {
 	c.mu.Lock()
 	c.state = stateClosed
 	c.mu.Unlock()
 }
 
-func (v channelStateValue) allowRead() bool {
+func (v ChannelStateValue) AllowRead() bool {
 	return v&stateReadClosed == 0
 }
 
-func (v channelStateValue) allowWrite() bool {
+func (v ChannelStateValue) AllowWrite() bool {
 	return v&stateWriteClosed == 0
 }
 
-func (v channelStateValue) closed() bool {
+func (v ChannelStateValue) Closed() bool {
 	return v == stateClosed
 }
