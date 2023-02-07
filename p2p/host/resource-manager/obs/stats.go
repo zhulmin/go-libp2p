@@ -2,9 +2,9 @@ package obs
 
 import (
 	"strings"
-	"sync"
 
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	"github.com/libp2p/go-libp2p/p2p/metricshelper"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -160,19 +160,6 @@ func MustRegisterWith(reg prometheus.Registerer) {
 	)
 }
 
-var stringPool = sync.Pool{New: func() any {
-	s := make([]string, 0, 8)
-	return &s
-}}
-
-func getStringSlice() *[]string {
-	s := stringPool.Get().(*[]string)
-	*s = (*s)[:0]
-	return s
-}
-
-func putStringSlice(s *[]string) { stringPool.Put(s) }
-
 // StatsTraceReporter reports stats on the resource manager using its traces.
 type StatsTraceReporter struct{}
 
@@ -182,8 +169,8 @@ func NewStatsTraceReporter() (StatsTraceReporter, error) {
 }
 
 func (r StatsTraceReporter) ConsumeEvent(evt rcmgr.TraceEvt) {
-	tags := getStringSlice()
-	defer putStringSlice(tags)
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
 
 	r.consumeEventWithLabelSlice(evt, tags)
 }
