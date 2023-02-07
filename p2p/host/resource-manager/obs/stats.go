@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	metricNamespace = "rcmgr"
+	metricNamespace = "libp2p_rcmgr"
 
 	// Conns
 	conns = prometheus.NewGaugeVec(prometheus.GaugeOpts{
