@@ -422,7 +422,23 @@ func (ids *idService) sendIdentifyResp(s network.Stream) error {
 	snapshot := ids.currentSnapshot.snapshot
 	ids.currentSnapshot.Unlock()
 	log.Debugf("%s sending message to %s %s", ID, s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
-	return ids.writeChunkedIdentifyMsg(s, snapshot)
+	if err := ids.writeChunkedIdentifyMsg(s, snapshot); err != nil {
+		return err
+	}
+
+	ids.connsMu.Lock()
+	defer ids.connsMu.Unlock()
+	e, ok := ids.conns[s.Conn()]
+	// The connection might already have been closed.
+	// We *should* receive the Connected notification from the swarm before we're able to accept the peer's
+	// Identify stream, but if that for some reason doesn't work, we also wouldn't have a map entry here.
+	// The only consequence would be that we send a spurious Push to that peer later.
+	if !ok {
+		return nil
+	}
+	e.Timestamp = snapshot.timestamp
+	ids.conns[s.Conn()] = e
+	return nil
 }
 
 func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) error {
