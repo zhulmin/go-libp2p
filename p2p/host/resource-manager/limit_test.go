@@ -206,8 +206,8 @@ func TestRoundTripFromConcreteAndBack(t *testing.T) {
 	concrete := l.Build(InfiniteLimits)
 
 	// Roundtrip
-	fromConcrete := concrete.ToLimitConfigWithDefaults(InfiniteLimits)
-	require.Equal(t, l, fromConcrete)
+	fromConcrete := concrete.ToLimitConfig().Build(InfiniteLimits)
+	require.Equal(t, concrete, fromConcrete)
 }
 
 func TestSerializeJSON(t *testing.T) {

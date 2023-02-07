@@ -94,12 +94,12 @@ func TestLimitConfigParser(t *testing.T) {
 	require.Equal(t, int64(4097), cfg.peer[peerID].Memory)
 
 	// Roundtrip
-	limitConfig := cfg.ToLimitConfigWithDefaults(defaults)
+	limitConfig := cfg.ToLimitConfig()
 	jsonBytes, err := json.Marshal(&limitConfig)
 	require.NoError(t, err)
 	cfgAfterRoundTrip, err := readLimiterConfigFromJSON(bytes.NewReader(jsonBytes), defaults)
 	require.NoError(t, err)
-	require.Equal(t, cfg, cfgAfterRoundTrip)
+	require.Equal(t, limitConfig, cfgAfterRoundTrip.ToLimitConfig())
 }
 
 func TestLimitConfigRoundTrip(t *testing.T) {

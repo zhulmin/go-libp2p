@@ -114,28 +114,6 @@ func valueOrBlockAll64(n int64) LimitVal64 {
 	return LimitVal64(n)
 }
 
-func limitValFromInt(i int, defaultVal int) LimitVal {
-	if i == defaultVal {
-		return DefaultLimit
-	} else if i == math.MaxInt {
-		return Unlimited
-	} else if i == 0 {
-		return BlockAllLimit
-	}
-	return LimitVal(i)
-}
-
-func limitValFromInt64(i int64, defaultVal int64) LimitVal64 {
-	if i == defaultVal {
-		return DefaultLimit64
-	} else if i == math.MaxInt {
-		return Unlimited64
-	} else if i == 0 {
-		return BlockAllLimit64
-	}
-	return LimitVal64(i)
-}
-
 // ToResourceLimits converts the BaseLimit to a ResourceLimits
 func (l BaseLimit) ToResourceLimits() ResourceLimits {
 	return ResourceLimits{
@@ -147,19 +125,6 @@ func (l BaseLimit) ToResourceLimits() ResourceLimits {
 		ConnsOutbound:   valueOrBlockAll(l.ConnsOutbound),
 		FD:              valueOrBlockAll(l.FD),
 		Memory:          valueOrBlockAll64(l.Memory),
-	}
-}
-
-func (l BaseLimit) ToResourceLimitsWithDefault(defaultLimit BaseLimit) ResourceLimits {
-	return ResourceLimits{
-		Streams:         limitValFromInt(l.Streams, defaultLimit.Streams),
-		StreamsInbound:  limitValFromInt(l.StreamsInbound, defaultLimit.StreamsInbound),
-		StreamsOutbound: limitValFromInt(l.StreamsOutbound, defaultLimit.StreamsOutbound),
-		Conns:           limitValFromInt(l.Conns, defaultLimit.Conns),
-		ConnsInbound:    limitValFromInt(l.ConnsInbound, defaultLimit.ConnsInbound),
-		ConnsOutbound:   limitValFromInt(l.ConnsOutbound, defaultLimit.ConnsOutbound),
-		FD:              limitValFromInt(l.FD, defaultLimit.FD),
-		Memory:          limitValFromInt64(l.Memory, defaultLimit.Memory),
 	}
 }
 

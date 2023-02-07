@@ -375,23 +375,6 @@ type PartialLimitConfig struct {
 	Stream ResourceLimits `json:",omitempty"`
 }
 
-func resourceLimitsMapFromBaseLimitMapWithDefaults[K comparable](m map[K]BaseLimit, defaultLimits map[K]BaseLimit, fallbackDefault BaseLimit) map[K]ResourceLimits {
-	if len(m) == 0 {
-		return nil
-	}
-
-	out := make(map[K]ResourceLimits, len(m))
-	for k, v := range m {
-		def := fallbackDefault
-		if defaultForKey, ok := defaultLimits[k]; ok {
-			def = defaultForKey
-		}
-		rl := v.ToResourceLimitsWithDefault(def)
-		out[k] = rl
-	}
-	return out
-}
-
 func (cfg *PartialLimitConfig) MarshalJSON() ([]byte, error) {
 	// we want to marshal the encoded peer id
 	encodedPeerMap := make(map[string]ResourceLimits, len(cfg.Peer))
@@ -555,40 +538,6 @@ type ConcreteLimitConfig struct {
 
 	conn   BaseLimit
 	stream BaseLimit
-}
-
-// ToLimitConfigWithDefaults converts a ConcreteLimitConfig to a PartialLimitConfig.
-// Uses the defaults config to know what was specifically set and what was left
-// as default. Returns a minimal PartialLimitConfig. Build the returned PartialLimitConfig
-// with the defaults to get back to the original ConcreteLimitConfig.
-func (cfg ConcreteLimitConfig) ToLimitConfigWithDefaults(defaults ConcreteLimitConfig) PartialLimitConfig {
-	out := PartialLimitConfig{}
-
-	out.System = cfg.system.ToResourceLimitsWithDefault(defaults.system)
-	out.Transient = cfg.transient.ToResourceLimitsWithDefault(defaults.transient)
-
-	out.AllowlistedSystem = cfg.allowlistedSystem.ToResourceLimitsWithDefault(defaults.allowlistedSystem)
-	out.AllowlistedTransient = cfg.allowlistedTransient.ToResourceLimitsWithDefault(defaults.allowlistedTransient)
-
-	out.ServiceDefault = cfg.serviceDefault.ToResourceLimitsWithDefault(defaults.serviceDefault)
-	out.Service = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.service, defaults.service, defaults.serviceDefault)
-
-	out.ServicePeerDefault = cfg.servicePeerDefault.ToResourceLimitsWithDefault(defaults.servicePeerDefault)
-	out.ServicePeer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.servicePeer, defaults.servicePeer, defaults.servicePeerDefault)
-
-	out.ProtocolDefault = cfg.protocolDefault.ToResourceLimitsWithDefault(defaults.protocolDefault)
-	out.Protocol = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.protocol, defaults.protocol, defaults.protocolDefault)
-
-	out.ProtocolPeerDefault = cfg.protocolPeerDefault.ToResourceLimitsWithDefault(defaults.protocolPeerDefault)
-	out.ProtocolPeer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.protocolPeer, defaults.protocolPeer, defaults.protocolPeerDefault)
-
-	out.PeerDefault = cfg.peerDefault.ToResourceLimitsWithDefault(defaults.peerDefault)
-	out.Peer = resourceLimitsMapFromBaseLimitMapWithDefaults(cfg.peer, defaults.peer, defaults.peerDefault)
-
-	out.Conn = cfg.conn.ToResourceLimitsWithDefault(defaults.conn)
-	out.Stream = cfg.stream.ToResourceLimitsWithDefault(defaults.stream)
-
-	return out
 }
 
 func resourceLimitsMapFromBaseLimitMap[K comparable](baseLimitMap map[K]BaseLimit) map[K]ResourceLimits {
