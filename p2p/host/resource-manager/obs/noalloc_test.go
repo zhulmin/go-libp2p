@@ -29,7 +29,6 @@ func randomTraceEvt(rng *rand.Rand) rcmgr.TraceEvt {
 		rcmgr.TraceBlockAddConnEvt,
 		rcmgr.TraceRemoveConnEvt,
 	}
-	_ = typs
 
 	names := []string{
 		"conn-1",
