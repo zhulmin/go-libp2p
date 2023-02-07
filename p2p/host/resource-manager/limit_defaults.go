@@ -553,9 +553,9 @@ func resourceLimitsMapFromBaseLimitMap[K comparable](baseLimitMap map[K]BaseLimi
 	return out
 }
 
-// ToLimitConfig converts a ConcreteLimitConfig to a PartialLimitConfig. The returned
-// PartialLimitConfig will have no default values.
-func (cfg ConcreteLimitConfig) ToLimitConfig() PartialLimitConfig {
+// ToPartialLimitConfig converts a ConcreteLimitConfig to a PartialLimitConfig.
+// The returned PartialLimitConfig will have no default values.
+func (cfg ConcreteLimitConfig) ToPartialLimitConfig() PartialLimitConfig {
 	return PartialLimitConfig{
 		System:               cfg.system.ToResourceLimits(),
 		Transient:            cfg.transient.ToResourceLimits(),

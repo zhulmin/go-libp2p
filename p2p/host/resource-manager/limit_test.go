@@ -206,7 +206,7 @@ func TestRoundTripFromConcreteAndBack(t *testing.T) {
 	concrete := l.Build(InfiniteLimits)
 
 	// Roundtrip
-	fromConcrete := concrete.ToLimitConfig().Build(InfiniteLimits)
+	fromConcrete := concrete.ToPartialLimitConfig().Build(InfiniteLimits)
 	require.Equal(t, concrete, fromConcrete)
 }
 

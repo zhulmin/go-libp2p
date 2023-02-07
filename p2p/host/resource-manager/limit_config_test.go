@@ -94,12 +94,12 @@ func TestLimitConfigParser(t *testing.T) {
 	require.Equal(t, int64(4097), cfg.peer[peerID].Memory)
 
 	// Roundtrip
-	limitConfig := cfg.ToLimitConfig()
+	limitConfig := cfg.ToPartialLimitConfig()
 	jsonBytes, err := json.Marshal(&limitConfig)
 	require.NoError(t, err)
 	cfgAfterRoundTrip, err := readLimiterConfigFromJSON(bytes.NewReader(jsonBytes), defaults)
 	require.NoError(t, err)
-	require.Equal(t, limitConfig, cfgAfterRoundTrip.ToLimitConfig())
+	require.Equal(t, limitConfig, cfgAfterRoundTrip.ToPartialLimitConfig())
 }
 
 func TestLimitConfigRoundTrip(t *testing.T) {
@@ -115,7 +115,7 @@ func TestLimitConfigRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// Roundtrip
-	limitConfig := concreteCfg.ToLimitConfig()
+	limitConfig := concreteCfg.ToPartialLimitConfig()
 	// Using InfiniteLimits because it's different then the defaults used above.
 	// If anything was marked "default" in the round trip, it would show up as a
 	// difference here.
