@@ -94,17 +94,6 @@ func NewMetricsTracer() *metricsTracer {
 	return &metricsTracer{}
 }
 
-func getDirection(dir network.Direction) string {
-	switch dir {
-	case network.DirOutbound:
-		return "outbound"
-	case network.DirInbound:
-		return "inbound"
-	default:
-		return "unknown"
-	}
-}
-
 func appendConnectionState(tags []string, cs network.ConnectionState) []string {
 	if cs.Transport == "" {
 		// This shouldn't happen, unless the transport doesn't properly set the Transport field in the ConnectionState.
@@ -123,12 +112,12 @@ func (m *metricsTracer) OpenedConnection(dir network.Direction, p crypto.PubKey,
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
-	*tags = append(*tags, getDirection(dir))
+	*tags = append(*tags, metricshelper.GetDirection(dir))
 	*tags = appendConnectionState(*tags, cs)
 	connsOpened.WithLabelValues(*tags...).Inc()
 
 	*tags = (*tags)[:0]
-	*tags = append(*tags, getDirection(dir))
+	*tags = append(*tags, metricshelper.GetDirection(dir))
 	*tags = append(*tags, p.Type().String())
 	keyTypes.WithLabelValues(*tags...).Inc()
 }
@@ -137,12 +126,12 @@ func (m *metricsTracer) ClosedConnection(dir network.Direction, duration time.Du
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
-	*tags = append(*tags, getDirection(dir))
+	*tags = append(*tags, metricshelper.GetDirection(dir))
 	*tags = appendConnectionState(*tags, cs)
 	connsClosed.WithLabelValues(*tags...).Inc()
 
 	*tags = (*tags)[:0]
-	*tags = append(*tags, getDirection(dir))
+	*tags = append(*tags, metricshelper.GetDirection(dir))
 	*tags = appendConnectionState(*tags, cs)
 	connDuration.WithLabelValues(*tags...).Observe(duration.Seconds())
 }
