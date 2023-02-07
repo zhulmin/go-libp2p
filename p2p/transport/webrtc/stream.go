@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
@@ -51,14 +50,14 @@ type (
 		webRTCStreamReader
 		webRTCStreamWriter
 
+		stateHandler webRTCStreamState
+
 		conn *connection
 		id   uint16
 		rwc  datachannel.ReadWriteCloser
 
 		laddr net.Addr
 		raddr net.Addr
-
-		state *internal.ChannelState
 
 		wg sync.WaitGroup
 
@@ -97,8 +96,6 @@ func newStream(
 
 		laddr: laddr,
 		raddr: raddr,
-
-		state: internal.NewChannelState(),
 
 		ctx:    ctx,
 		cancel: cancel,
@@ -150,23 +147,7 @@ func (s *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
 	if s.isClosed() {
 		return
 	}
-	state, stateUpdated := s.state.HandleIncomingFlag(flag)
-	if stateUpdated {
-		if state.Closed() {
-			log.Debug("closing: received flag: %v", flag)
-			err := s.close(flag == pb.Message_RESET, true)
-			if err != nil {
-				log.Debugf("failed to close (reset) stream: %v", err)
-			}
-		}
-		if flag == pb.Message_FIN {
-			// to ensure we keep reading flags, even after closing reader
-			err := s.CloseRead()
-			if err != nil {
-				log.Debugf("failed to close Reader: %v", err)
-			}
-		}
-	}
+	s.stateHandler.HandleInboundFlag(flag)
 }
 
 // this is used to force reset a stream
@@ -178,7 +159,7 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	var err error
 	s.closeOnce.Do(func() {
 		log.Debug("closing: reset: %v, notify: %v", isReset, notifyConnection)
-		s.state.Close()
+		s.stateHandler.Close()
 		// force close reads
 		s.SetReadDeadline(time.Now().Add(-100 * time.Millisecond))
 		if isReset {

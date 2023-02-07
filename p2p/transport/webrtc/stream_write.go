@@ -1,6 +1,7 @@
 package libp2pwebrtc
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,7 +31,8 @@ type (
 		requestCh  chan *pb.Message
 		responseCh chan webRTCStreamWriteResponse
 
-		closeOnce sync.Once
+		readLoopOnce sync.Once
+		closeOnce    sync.Once
 	}
 
 	webRTCStreamWriteResponse struct {
@@ -40,10 +42,39 @@ type (
 )
 
 func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
-	state := w.stream.state.Value()
-
-	if !state.AllowWrite() {
+	if !w.stream.stateHandler.AllowWrite() {
 		return 0, io.ErrClosedPipe
+	}
+
+	// Check if there is any message on the wire. This is used for control
+	// messages only when the read side of the stream is closed
+	if w.stream.stateHandler.State() == stateReadClosed {
+		w.readLoopOnce.Do(func() {
+			w.stream.wg.Add(1)
+			go func() {
+				defer w.stream.wg.Done()
+				// zero the read deadline, so read call only returns
+				// when the underlying datachannel closes or there is
+				// a message on the channel
+				w.stream.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
+				var msg pb.Message
+				for {
+					if w.stream.stateHandler.Closed() {
+						return
+					}
+					err := w.stream.reader.ReadMsg(&msg)
+					if err != nil {
+						if errors.Is(err, io.EOF) {
+							w.stream.close(true, true)
+						}
+						return
+					}
+					if msg.Flag != nil {
+						w.stream.stateHandler.HandleInboundFlag(msg.GetFlag())
+					}
+				}
+			}()
+		})
 	}
 
 	const chunkSize = maxMessageSize - protoOverhead - varintOverhead
@@ -115,7 +146,7 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 	var deadlineTimer *time.Timer
 
 	for {
-		if !w.stream.state.AllowWrite() {
+		if !w.stream.stateHandler.AllowWrite() {
 			return 0, io.ErrClosedPipe
 		}
 		// prepare waiting for writeAvailable signal
@@ -180,13 +211,9 @@ func (w *webRTCStreamWriter) CloseWrite() error {
 			return
 		}
 		// if successfully written, process the outgoing flag
-		state, stateUpdated := w.stream.state.ProcessOutgoingFlag(pb.Message_FIN)
+		w.stream.stateHandler.CloseRead()
 		// unblock and fail any ongoing writes
 		w.writeAvailable.Signal()
-		// check if closure required
-		if stateUpdated && state.Closed() {
-			w.stream.close(false, true)
-		}
 	})
 	return err
 }
