@@ -8,8 +8,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const metricNamespace = "libp2p_rcmgr"
+
 var (
-	metricNamespace = "libp2p_rcmgr"
 
 	// Conns
 	conns = prometheus.NewGaugeVec(prometheus.GaugeOpts{

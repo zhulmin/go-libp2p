@@ -114,10 +114,11 @@ type idService struct {
 	UserAgent       string
 	ProtocolVersion string
 
-	setupCompleted chan struct{} // is closed when Start has finished setting up
+	metricsTracer MetricsTracer
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	setupCompleted chan struct{} // is closed when Start has finished setting up
+	ctx            context.Context
+	ctxCancel      context.CancelFunc
 	// track resources that need to be shut down before we shut down
 	refCount sync.WaitGroup
 
@@ -176,6 +177,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		conns:                   make(map[network.Conn]entry),
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
 		setupCompleted:          make(chan struct{}),
+		metricsTracer:           cfg.metricsTracer,
 	}
 
 	observedAddrs, err := NewObservedAddrManager(h)
@@ -245,7 +247,13 @@ func (ids *idService) loop(ctx context.Context) {
 
 	for {
 		select {
-		case <-sub.Out():
+		case e, ok := <-sub.Out():
+			if !ok {
+				return
+			}
+			if ids.metricsTracer != nil {
+				ids.metricsTracer.TriggeredPushes(e)
+			}
 			ids.updateSnapshot()
 			select {
 			case triggerPush <- struct{}{}:
@@ -298,6 +306,9 @@ func (ids *idService) sendPushes(ctx context.Context) {
 			str, err := ids.Host.NewStream(ctx, c.RemotePeer(), IDPush)
 			if err != nil { // connection might have been closed recently
 				return
+			}
+			if ids.metricsTracer != nil {
+				ids.metricsTracer.IdentifyPush(network.DirOutbound)
 			}
 			// TODO: find out if the peer supports push if we didn't have any information about push support
 			if err := ids.sendIdentifyResp(str); err != nil {
@@ -390,15 +401,24 @@ func (ids *idService) identifyConn(c network.Conn) error {
 		return err
 	}
 
+	if ids.metricsTracer != nil {
+		ids.metricsTracer.Identify(network.DirInbound)
+	}
 	return ids.handleIdentifyResponse(s, false)
 }
 
 // handlePush handles incoming identify push streams
 func (ids *idService) handlePush(s network.Stream) {
 	ids.handleIdentifyResponse(s, true)
+	if ids.metricsTracer != nil {
+		ids.metricsTracer.IdentifyPush(network.DirInbound)
+	}
 }
 
 func (ids *idService) handleIdentifyRequest(s network.Stream) {
+	if ids.metricsTracer != nil {
+		ids.metricsTracer.Identify(network.DirOutbound)
+	}
 	_ = ids.sendIdentifyResp(s)
 }
 

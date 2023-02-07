@@ -230,12 +230,14 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 			identify.UserAgent(opts.UserAgent),
 			identify.ProtocolVersion(opts.ProtocolVersion),
 			identify.DisableSignedPeerRecord(),
+			identify.WithMetricsTracer(identify.NewMetricsTracer()),
 		)
 	} else {
 		h.ids, err = identify.NewIDService(
 			h,
 			identify.UserAgent(opts.UserAgent),
 			identify.ProtocolVersion(opts.ProtocolVersion),
+			identify.WithMetricsTracer(identify.NewMetricsTracer()),
 		)
 	}
 	if err != nil {
