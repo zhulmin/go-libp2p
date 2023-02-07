@@ -145,9 +145,7 @@ type idService struct {
 		snapshot *identifySnapshot
 	}
 
-	triggerPush chan struct{}
-	// pushSemaphore limits the push concurrency
-	pushSemaphore chan struct{}
+	pushSemaphore chan struct{} // makes sure that only a single push task is running at a time
 }
 
 // NewIDService constructs a new *idService and activates it by
@@ -177,7 +175,6 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		ctxCancel:               cancel,
 		conns:                   make(map[network.Conn]entry),
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
-		triggerPush:             make(chan struct{}, 1),
 		pushSemaphore:           make(chan struct{}, 1),
 	}
 
@@ -228,26 +225,32 @@ func (ids *idService) loop(ctx context.Context) {
 	}
 	defer sub.Close()
 
+	// Send pushes from a separate Go routine.
+	// That way, we can end up with
+	// * this Go routine busy looping over all peers in sendPushes
+	// * another push being queued in the triggerPush channel
+	triggerPush := make(chan struct{}, 1)
+	ids.refCount.Add(1)
+	go func() {
+		defer ids.refCount.Done()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-triggerPush:
+				ids.sendPushes(ctx)
+			}
+		}
+	}()
+
 	for {
 		select {
-		case <-ids.triggerPush:
-			ids.refCount.Add(1)
-			go func() {
-				defer ids.refCount.Done()
-				ids.sendPushes(ctx)
-			}()
-		case e, more := <-sub.Out():
-			if !more {
-				return
-			}
+		case <-sub.Out():
 			ids.updateSnapshot()
-			switch e.(type) {
-			case event.EvtLocalAddressesUpdated, event.EvtLocalProtocolsUpdated:
-				// trigger a push
-				select {
-				case ids.triggerPush <- struct{}{}:
-				default: // another push is already queued
-				}
+			select {
+			case triggerPush <- struct{}{}:
+			default: // we already have one more push queued, no need to queue another one
 			}
 		case <-ctx.Done():
 			return
@@ -276,6 +279,7 @@ func (ids *idService) sendPushes(ctx context.Context) {
 	ids.connsMu.RUnlock()
 
 	sem := make(chan struct{}, maxPushConcurrency)
+	var wg sync.WaitGroup
 	for _, c := range conns {
 		// check if the connection is still alive
 		ids.connsMu.RLock()
@@ -294,7 +298,9 @@ func (ids *idService) sendPushes(ctx context.Context) {
 		}
 		// we haven't, send it now
 		sem <- struct{}{}
+		wg.Add(1)
 		go func(c network.Conn) {
+			defer wg.Done()
 			defer func() { <-sem }()
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
@@ -309,6 +315,7 @@ func (ids *idService) sendPushes(ctx context.Context) {
 			}
 		}(c)
 	}
+	wg.Wait()
 }
 
 // Close shuts down the idService
