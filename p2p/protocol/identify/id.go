@@ -144,8 +144,6 @@ type idService struct {
 		sync.Mutex
 		snapshot *identifySnapshot
 	}
-
-	pushSemaphore chan struct{} // makes sure that only a single push task is running at a time
 }
 
 // NewIDService constructs a new *idService and activates it by
@@ -175,7 +173,6 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		ctxCancel:               cancel,
 		conns:                   make(map[network.Conn]entry),
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
-		pushSemaphore:           make(chan struct{}, 1),
 	}
 
 	observedAddrs, err := NewObservedAddrManager(h)
@@ -259,14 +256,6 @@ func (ids *idService) loop(ctx context.Context) {
 }
 
 func (ids *idService) sendPushes(ctx context.Context) {
-	select {
-	case ids.pushSemaphore <- struct{}{}:
-	default:
-		// another sendPushes call is currently running
-		return
-	}
-	defer func() { <-ids.pushSemaphore }()
-
 	ids.connsMu.RLock()
 	conns := make([]network.Conn, 0, len(ids.conns))
 	for c, e := range ids.conns {
