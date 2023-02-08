@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	basic "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	relayv1 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv1/relay"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
@@ -23,13 +22,10 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-const (
-	protoIDv1 = relayv1.ProtoID
-	protoIDv2 = circuitv2_proto.ProtoIDv2Hop
-)
+const protoIDv2 = circuitv2_proto.ProtoIDv2Hop
 
 // Terminology:
-// Candidate: Once we connect to a node and it supports (v1 / v2) relay protocol,
+// Candidate: Once we connect to a node and it supports relay protocol,
 // we call it a candidate, and consider using it as a relay.
 // Relay: Out of the list of candidates, we select a relay to connect to.
 // Currently, we just randomly select a candidate, but we can employ more sophisticated
@@ -77,7 +73,7 @@ type relayFinder struct {
 	relayUpdated chan struct{}
 
 	relayMx sync.Mutex
-	relays  map[peer.ID]*circuitv2.Reservation // rsvp will be nil if it is a v1 relay
+	relays  map[peer.ID]*circuitv2.Reservation
 
 	cachedAddrs       []ma.Multiaddr
 	cachedAddrsExpiry time.Time
@@ -288,7 +284,7 @@ func (rf *relayFinder) notifyNewCandidate() {
 	}
 }
 
-// handleNewNode tests if a peer supports circuit v1 or v2.
+// handleNewNode tests if a peer supports circuit v2.
 // This method is only run on private nodes.
 // If a peer does, it is added to the candidates map.
 // Note that just supporting the protocol doesn't guarantee that we can also obtain a reservation.
@@ -322,7 +318,7 @@ func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) (add
 	return true
 }
 
-// tryNode checks if a peer actually supports either circuit v1 or circuit v2.
+// tryNode checks if a peer actually supports either circuit v2.
 // It does not modify any internal state.
 func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsRelayV2 bool, err error) {
 	if err := rf.host.Connect(ctx, pi); err != nil {
@@ -357,42 +353,14 @@ func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsR
 		return false, ctx.Err()
 	}
 
-	protos, err := rf.host.Peerstore().SupportsProtocols(pi.ID, protoIDv1, protoIDv2)
+	protos, err := rf.host.Peerstore().SupportsProtocols(pi.ID, protoIDv2)
 	if err != nil {
 		return false, fmt.Errorf("error checking relay protocol support for peer %s: %w", pi.ID, err)
 	}
-
-	// If the node speaks both, prefer circuit v2
-	var maybeSupportsV1, supportsV2 bool
-	for _, proto := range protos {
-		switch proto {
-		case protoIDv1:
-			maybeSupportsV1 = true
-		case protoIDv2:
-			supportsV2 = true
-		}
-	}
-
-	if supportsV2 {
-		return true, nil
-	}
-
-	if !rf.conf.enableCircuitV1 && !supportsV2 {
+	if len(protos) == 0 {
 		return false, errors.New("doesn't speak circuit v2")
 	}
-	if !maybeSupportsV1 && !supportsV2 {
-		return false, errors.New("doesn't speak circuit v1 or v2")
-	}
-
-	// The node *may* support circuit v1.
-	supportsV1, err := relayv1.CanHop(ctx, rf.host, pi.ID)
-	if err != nil {
-		return false, fmt.Errorf("CanHop failed: %w", err)
-	}
-	if !supportsV1 {
-		return false, errors.New("doesn't speak circuit v1 or v2")
-	}
-	return false, nil
+	return true, nil
 }
 
 // When a new node that could be a relay is found, we receive a notification on the maybeConnectToRelayTrigger chan.
@@ -520,9 +488,6 @@ func (rf *relayFinder) refreshReservations(ctx context.Context, now time.Time) b
 	// find reservations about to expire and refresh them in parallel
 	g := new(errgroup.Group)
 	for p, rsvp := range rf.relays {
-		if rsvp == nil { // this is a circuit v1 relay, there is no reservation
-			continue
-		}
 		if now.Add(rsvpExpirationSlack).Before(rsvp.Expiration) {
 			continue
 		}
