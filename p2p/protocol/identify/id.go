@@ -514,7 +514,7 @@ func (ids *idService) updateSnapshot() {
 
 func (ids *idService) writeChunkedIdentifyMsg(s network.Stream, snapshot *identifySnapshot) error {
 	c := s.Conn()
-	log.Debugw("sending snapshot with protocols", "protos", snapshot.protocols)
+	log.Debugw("sending snapshot", "timestamp", snapshot.timestamp, "protocols", snapshot.protocols, "addrs", snapshot.addrs)
 
 	mes := ids.createBaseIdentifyResponse(c, snapshot)
 	sr := ids.getSignedRecord(snapshot)
