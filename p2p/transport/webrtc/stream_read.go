@@ -73,19 +73,12 @@ func (r *webRTCStreamReader) runReadLoop() {
 }
 
 func (r *webRTCStreamReader) read(b []byte) (int, error) {
-	var (
-		readDeadlineEpoch = atomic.LoadInt64(&r.deadline)
-		readDeadline      time.Time
-	)
-	if readDeadlineEpoch > 0 {
-		readDeadline = time.UnixMicro(int64(readDeadlineEpoch))
-	}
-
 	for {
 		if r.stream.isClosed() {
 			return 0, io.ErrClosedPipe
 		}
-		if !readDeadline.IsZero() && readDeadline.Before(time.Now()) {
+		readDeadline, hasReadDeadline := r.getReadDeadline()
+		if hasReadDeadline && readDeadline.Before(time.Now()) {
 			log.Debug("[1] deadline exceeded: abort read")
 			return 0, os.ErrDeadlineExceeded
 		}
@@ -113,6 +106,13 @@ func (r *webRTCStreamReader) read(b []byte) (int, error) {
 				r.stream.Reset()
 				return 0, io.ErrClosedPipe
 			}
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				if r.stream.stateHandler.Resetted() {
+					return 0, io.ErrClosedPipe
+				} else {
+					return 0, io.EOF
+				}
+			}
 			return 0, err
 		}
 
@@ -131,6 +131,14 @@ func (r *webRTCStreamReader) read(b []byte) (int, error) {
 func (r *webRTCStreamReader) SetReadDeadline(t time.Time) error {
 	atomic.StoreInt64(&r.deadline, t.UnixMicro())
 	return nil
+}
+
+func (r *webRTCStreamReader) getReadDeadline() (time.Time, bool) {
+	n := atomic.LoadInt64(&r.deadline)
+	if n == 0 {
+		return time.Time{}, false
+	}
+	return time.UnixMicro(n), true
 }
 
 func (r *webRTCStreamReader) CloseRead() error {

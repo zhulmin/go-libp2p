@@ -132,14 +132,6 @@ func (w *webRTCStreamWriter) runWriteLoop() {
 }
 
 func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
-	var (
-		writeDeadlineEpoch = atomic.LoadInt64(&w.deadline)
-		writeDeadline      time.Time
-	)
-	if writeDeadlineEpoch > 0 {
-		writeDeadline = time.UnixMicro(int64(writeDeadlineEpoch))
-	}
-
 	// if the next message will add more data than we are willing to buffer,
 	// block until we have sent enough bytes to reduce the amount of data buffered.
 	timeout := make(chan struct{})
@@ -154,7 +146,8 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 		deadlineUpdated := w.deadlineUpdated.Wait()
 		writeAvailable := w.writeAvailable.Wait()
 
-		if !writeDeadline.IsZero() {
+		writeDeadline, hasWriteDeadline := w.getWriteDeadline()
+		if hasWriteDeadline {
 			// check if deadline exceeded
 			if writeDeadline.Before(time.Now()) {
 				return 0, os.ErrDeadlineExceeded
@@ -196,6 +189,14 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 func (w *webRTCStreamWriter) SetWriteDeadline(t time.Time) error {
 	atomic.StoreInt64(&w.deadline, t.UnixMicro())
 	return nil
+}
+
+func (w *webRTCStreamWriter) getWriteDeadline() (time.Time, bool) {
+	n := atomic.LoadInt64(&w.deadline)
+	if n == 0 {
+		return time.Time{}, false
+	}
+	return time.UnixMicro(n), true
 }
 
 func (w *webRTCStreamWriter) CloseWrite() error {

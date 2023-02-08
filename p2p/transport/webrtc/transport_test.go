@@ -139,8 +139,6 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 }
 
 func TestTransportWebRTC_CanListenMultiple(t *testing.T) {
-	t.Skip("TODO: FIX! Times out!!!")
-
 	count := 3
 	tr, listeningPeer := getTransport(t, WithListenerMaxInFlightConnections(uint32(count)))
 

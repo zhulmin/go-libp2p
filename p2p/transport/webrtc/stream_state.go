@@ -21,6 +21,7 @@ type (
 
 		mu    sync.RWMutex
 		state channelState
+		reset bool
 	}
 )
 
@@ -109,15 +110,23 @@ func (ss *webRTCStreamState) Closed() bool {
 	return ss.state == stateClosed
 }
 
+func (ss *webRTCStreamState) Resetted() bool {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	return ss.reset
+}
+
 func (ss *webRTCStreamState) Close() {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	ss.state = stateClosed
+	ss.reset = false
 }
 
 func (ss *webRTCStreamState) closeInner(reset bool) {
 	if ss.state != stateClosed {
 		ss.state = stateClosed
+		ss.reset = reset
 		if err := ss.stream.close(reset, true); err != nil {
 			log.Debugf("failed to close (reset: %v) stream: %v", reset, err)
 		}
