@@ -506,6 +506,7 @@ func (ids *idService) updateSnapshot() {
 			snapshot.record = cab.GetPeerRecord(ids.Host.ID())
 		}
 	}
+	log.Debugw("updating snapshot", "timestamp", snapshot.timestamp, "addrs", snapshot.addrs)
 
 	ids.currentSnapshot.Lock()
 	defer ids.currentSnapshot.Unlock()

@@ -447,6 +447,8 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 
 	h1p := h1.ID()
 	h2p := h2.ID()
+	fmt.Println("h1:", h1p)
+	fmt.Println("h2:", h2p)
 
 	ids1, err := identify.NewIDService(h1)
 	require.NoError(t, err)
@@ -494,6 +496,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	require.NoError(t, h2.Network().Listen(lad))
 	require.Contains(t, h2.Addrs(), lad)
 	h1AddrStream := h1.Peerstore().AddrStream(ctx, h2p)
+	fmt.Println("adding address to h2", lad)
 	emitAddrChangeEvt(t, h2)
 
 	// Wait for h1 to process the new addr
@@ -506,6 +509,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	lad2 := ma.StringCast("/ip4/127.0.0.1/tcp/1236")
 	require.NoError(t, h2.Network().Listen(lad2))
 	require.Contains(t, h2.Addrs(), lad2)
+	fmt.Println("adding address to h2", lad2)
 	emitAddrChangeEvt(t, h2)
 
 	// Wait for h1 to process the new addr
