@@ -114,6 +114,8 @@ type idService struct {
 	UserAgent       string
 	ProtocolVersion string
 
+	setupCompleted chan struct{} // is closed when Start has finished setting up
+
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	// track resources that need to be shut down before we shut down
@@ -173,6 +175,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		ctxCancel:               cancel,
 		conns:                   make(map[network.Conn]entry),
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
+		setupCompleted:          make(chan struct{}),
 	}
 
 	observedAddrs, err := NewObservedAddrManager(h)
@@ -193,17 +196,16 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 	if err != nil {
 		log.Warnf("identify service not emitting identification failed events; err: %s", err)
 	}
-
-	// register protocols that do not depend on peer records.
-	h.SetStreamHandler(ID, s.handleIdentifyRequest)
-	h.SetStreamHandler(IDPush, s.handlePush)
-
 	return s, nil
 }
 
 func (ids *idService) Start() {
-	ids.updateSnapshot()
 	ids.Host.Network().Notify((*netNotifiee)(ids))
+	ids.Host.SetStreamHandler(ID, ids.handleIdentifyRequest)
+	ids.Host.SetStreamHandler(IDPush, ids.handlePush)
+	ids.updateSnapshot()
+	close(ids.setupCompleted)
+
 	ids.refCount.Add(1)
 	go ids.loop(ids.ctx)
 }
@@ -857,6 +859,9 @@ func (nn *netNotifiee) Connected(_ network.Network, c network.Conn) {
 	// We rely on this notification being received before we receive any incoming streams on the connection.
 	// The swarm implementation guarantees this.
 	ids := nn.IDService()
+
+	<-ids.setupCompleted
+
 	ids.connsMu.Lock()
 	ids.conns[c] = entry{}
 	ids.connsMu.Unlock()
