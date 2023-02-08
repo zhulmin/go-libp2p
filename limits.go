@@ -101,7 +101,7 @@ func SetDefaultServiceLimits(config *rcmgr.ScalingLimitConfig) {
 	)
 
 	// circuit protocols, both client and service
-	for _, proto := range [...]protocol.ID{circuit.ProtoIDv1, circuit.ProtoIDv2Hop, circuit.ProtoIDv2Stop} {
+	for _, proto := range [...]protocol.ID{circuit.ProtoIDv2Hop, circuit.ProtoIDv2Stop} {
 		config.AddProtocolLimit(
 			proto,
 			rcmgr.BaseLimit{StreamsInbound: 640, StreamsOutbound: 640, Streams: 640, Memory: 16 << 20},
