@@ -56,7 +56,7 @@ const (
 var defaultUserAgent = "github.com/libp2p/go-libp2p"
 
 type identifySnapshot struct {
-	timestamp time.Time
+	seq       uint64
 	protocols []protocol.ID
 	addrs     []ma.Multiaddr
 	record    *record.Envelope
@@ -97,8 +97,8 @@ type entry struct {
 	// PushSupport saves our knowledge about the peer's support of the Identify Push protocol.
 	// Before the identify request returns, we don't know yet if the peer supports Identify Push.
 	PushSupport identifyPushSupport
-	// Timestamp is the time of the last snapshot we sent to this peer.
-	Timestamp time.Time
+	// Sequence is the sequence number of the last snapshot we sent to this peer.
+	Sequence uint64
 }
 
 // idService is a structure that implements ProtocolIdentify.
@@ -281,8 +281,8 @@ func (ids *idService) sendPushes(ctx context.Context) {
 		ids.currentSnapshot.Lock()
 		snapshot := ids.currentSnapshot.snapshot
 		ids.currentSnapshot.Unlock()
-		if !e.Timestamp.Before(snapshot.timestamp) {
-			log.Debugw("already sent this snapshot to peer", "peer", c.RemotePeer(), "timestamp", snapshot.timestamp)
+		if e.Sequence >= snapshot.seq {
+			log.Debugw("already sent this snapshot to peer", "peer", c.RemotePeer(), "seq", snapshot.seq)
 			continue
 		}
 		// we haven't, send it now
@@ -425,7 +425,7 @@ func (ids *idService) sendIdentifyResp(s network.Stream) error {
 	if !ok {
 		return nil
 	}
-	e.Timestamp = snapshot.timestamp
+	e.Sequence = snapshot.seq
 	ids.conns[s.Conn()] = e
 	return nil
 }
@@ -497,7 +497,6 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 
 func (ids *idService) updateSnapshot() {
 	snapshot := &identifySnapshot{
-		timestamp: time.Now(),
 		addrs:     ids.Host.Addrs(),
 		protocols: ids.Host.Mux().Protocols(),
 	}
@@ -508,13 +507,18 @@ func (ids *idService) updateSnapshot() {
 	}
 
 	ids.currentSnapshot.Lock()
-	defer ids.currentSnapshot.Unlock()
+	if ids.currentSnapshot.snapshot != nil {
+		snapshot.seq = ids.currentSnapshot.snapshot.seq + 1
+	}
 	ids.currentSnapshot.snapshot = snapshot
+	ids.currentSnapshot.Unlock()
+
+	log.Debugw("updating snapshot", "seq", snapshot.seq, "addrs", snapshot.addrs)
 }
 
 func (ids *idService) writeChunkedIdentifyMsg(s network.Stream, snapshot *identifySnapshot) error {
 	c := s.Conn()
-	log.Debugw("sending snapshot", "timestamp", snapshot.timestamp, "protocols", snapshot.protocols, "addrs", snapshot.addrs)
+	log.Debugw("sending snapshot", "seq", snapshot.seq, "protocols", snapshot.protocols, "addrs", snapshot.addrs)
 
 	mes := ids.createBaseIdentifyResponse(c, snapshot)
 	sr := ids.getSignedRecord(snapshot)
