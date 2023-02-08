@@ -383,6 +383,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 }
 
 func (ids *idService) identifyConn(c network.Conn) error {
+	fmt.Println("identifyConn to", c.RemoteMultiaddr())
 	s, err := c.NewStream(network.WithUseTransient(context.TODO(), "identify"))
 	if err != nil {
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
@@ -401,6 +402,7 @@ func (ids *idService) identifyConn(c network.Conn) error {
 		return err
 	}
 
+	fmt.Println("recording")
 	if ids.metricsTracer != nil {
 		ids.metricsTracer.Identify(network.DirInbound)
 	}
