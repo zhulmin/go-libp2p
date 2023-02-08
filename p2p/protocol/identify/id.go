@@ -142,7 +142,7 @@ type idService struct {
 
 	currentSnapshot struct {
 		sync.Mutex
-		snapshot *identifySnapshot
+		snapshot identifySnapshot
 	}
 }
 
@@ -411,7 +411,7 @@ func (ids *idService) sendIdentifyResp(s network.Stream) error {
 	snapshot := ids.currentSnapshot.snapshot
 	ids.currentSnapshot.Unlock()
 	log.Debugf("%s sending message to %s %s", ID, s.Conn().RemotePeer(), s.Conn().RemoteMultiaddr())
-	if err := ids.writeChunkedIdentifyMsg(s, snapshot); err != nil {
+	if err := ids.writeChunkedIdentifyMsg(s, &snapshot); err != nil {
 		return err
 	}
 
@@ -496,7 +496,7 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 }
 
 func (ids *idService) updateSnapshot() {
-	snapshot := &identifySnapshot{
+	snapshot := identifySnapshot{
 		addrs:     ids.Host.Addrs(),
 		protocols: ids.Host.Mux().Protocols(),
 	}
@@ -507,9 +507,7 @@ func (ids *idService) updateSnapshot() {
 	}
 
 	ids.currentSnapshot.Lock()
-	if ids.currentSnapshot.snapshot != nil {
-		snapshot.seq = ids.currentSnapshot.snapshot.seq + 1
-	}
+	snapshot.seq = ids.currentSnapshot.snapshot.seq + 1
 	ids.currentSnapshot.snapshot = snapshot
 	ids.currentSnapshot.Unlock()
 
