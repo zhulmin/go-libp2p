@@ -111,13 +111,6 @@ func (ss *webRTCStreamState) Closed() bool {
 	defer ss.mu.RUnlock()
 	return ss.state == stateClosed
 }
-
-func (ss *webRTCStreamState) Resetted() bool {
-	ss.mu.RLock()
-	defer ss.mu.RUnlock()
-	return ss.reset
-}
-
 func (ss *webRTCStreamState) Close() {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()

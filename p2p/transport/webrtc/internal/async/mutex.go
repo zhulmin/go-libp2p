@@ -41,6 +41,12 @@ func (m *MutexGetterSetter[T]) Set(value T) (T, bool) {
 	return oldValue, wasSet
 }
 
+func (m *MutexGetterSetter[T]) SetFn(fn func(*T)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	fn(&m.value)
+}
+
 func (m *MutexGetterSetter[T]) SetWithCond(value T, cv *CondVar) (T, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

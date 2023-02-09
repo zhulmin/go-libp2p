@@ -3,6 +3,7 @@ package libp2pwebrtc
 import (
 	"bufio"
 	"context"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -52,6 +53,10 @@ type (
 		writer webRTCStreamWriter
 
 		stateHandler webRTCStreamState
+
+		// hack for closing the Read side using a deadline
+		// in case `Read` does not return.
+		closeErr async.MutexGetterSetter[error]
 
 		conn *connection
 		id   uint16
@@ -176,6 +181,14 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	s.closeOnce.Do(func() {
 		log.Debug("closing: reset: %v, notify: %v", isReset, notifyConnection)
 		s.stateHandler.Close()
+		s.closeErr.SetFn(func(err *error) {
+			if *err == nil {
+				*err = io.EOF
+				if isReset {
+					*err = io.ErrClosedPipe
+				}
+			}
+		})
 		// force close reads
 		s.reader.SetReadDeadline(time.Now().Add(-100 * time.Millisecond))
 		if isReset {

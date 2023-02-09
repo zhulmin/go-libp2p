@@ -45,10 +45,17 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 		if r.stream.isClosed() {
 			return 0, io.ErrClosedPipe
 		}
+
 		readDeadline, hasReadDeadline := r.getReadDeadline()
-		if hasReadDeadline && readDeadline.Before(time.Now()) {
-			log.Debug("[1] deadline exceeded: abort read")
-			return 0, os.ErrDeadlineExceeded
+		if hasReadDeadline {
+			if readDeadline.Before(time.Now()) {
+				if err, found := r.stream.closeErr.Get(); found {
+					log.Debugf("[1] deadline exceeded: closeErr: %v", err)
+				} else {
+					log.Debug("[1] deadline exceeded: no closeErr")
+				}
+				return 0, os.ErrDeadlineExceeded
+			}
 		}
 
 		readErr = r.state.Exec(func(state *webRTCStreamReaderState) error {
@@ -57,7 +64,12 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 			remaining := len(state.Buffer)
 
 			if remaining == 0 && !r.stream.stateHandler.AllowRead() {
-				log.Debugf("[2] stream closed or empty: %v", io.EOF)
+				closeErr, _ := r.stream.closeErr.Get()
+				if closeErr != nil {
+					log.Debugf("[2] stream closed: %v", closeErr)
+					return closeErr
+				}
+				log.Debug("[2] stream empty")
 				return io.EOF
 			}
 
@@ -77,10 +89,12 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 					return io.ErrClosedPipe
 				}
 				if errors.Is(err, os.ErrDeadlineExceeded) {
-					if r.stream.stateHandler.Resetted() {
-						return io.ErrClosedPipe
-					} else {
-						return io.EOF
+					// if the stream has been force closed or force reset
+					// using SetReadDeadline, we check if closeErr was set.
+					closeErr, _ := r.stream.closeErr.Get()
+					log.Debugf("closing stream, checking error: %v closeErr: %v", err, closeErr)
+					if closeErr != nil {
+						return closeErr
 					}
 				}
 				return err

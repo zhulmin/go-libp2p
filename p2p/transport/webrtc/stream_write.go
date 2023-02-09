@@ -67,7 +67,11 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 						return
 					}
 					if msg.Flag != nil {
-						w.stream.stateHandler.HandleInboundFlag(msg.GetFlag())
+						state, reset := w.stream.stateHandler.HandleInboundFlag(msg.GetFlag())
+						if state == stateClosed {
+							log.Debug("closing: after handle inbound flag")
+							w.stream.close(reset, true)
+						}
 					}
 				}
 			}()
