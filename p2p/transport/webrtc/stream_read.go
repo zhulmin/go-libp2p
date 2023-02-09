@@ -1,7 +1,6 @@
 package libp2pwebrtc
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
+	"github.com/pion/datachannel"
 )
 
 type (
@@ -48,7 +48,6 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 		}
 
 		readDeadline, hasReadDeadline := r.getReadDeadline()
-		readCtx := r.stream.ctx
 		if hasReadDeadline {
 			// check if deadline exceeded
 			if readDeadline.Before(time.Now()) {
@@ -59,9 +58,6 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 				}
 				return 0, os.ErrDeadlineExceeded
 			}
-			var cancel context.CancelFunc
-			readCtx, cancel = context.WithDeadline(readCtx, readDeadline)
-			defer cancel()
 		}
 
 		readErr = r.state.Exec(func(state *webRTCStreamReaderState) error {
@@ -85,30 +81,8 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 			}
 
 			// read from datachannel
-			type readResult struct {
-				Msg *pb.Message
-				Err error
-			}
-			ch := make(chan readResult)
-			go func() {
-				var msg pb.Message
-				err := state.Reader.ReadMsg(&msg)
-				select {
-				case ch <- readResult{Msg: &msg, Err: err}:
-				case <-readCtx.Done():
-				}
-			}()
-			var (
-				readErr error
-				msg     *pb.Message
-			)
-			select {
-			case <-readCtx.Done():
-				readErr = os.ErrDeadlineExceeded
-			case result := <-ch:
-				msg = result.Msg
-				readErr = result.Err
-			}
+			var msg pb.Message
+			readErr = state.Reader.ReadMsg(&msg)
 			if readErr != nil {
 				// This case occurs when the remote node goes away
 				// without writing a FIN message
@@ -146,7 +120,7 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 
 func (r *webRTCStreamReader) SetReadDeadline(t time.Time) error {
 	r.deadline.Set(t)
-	return nil
+	return r.stream.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
 }
 
 func (r *webRTCStreamReader) getReadDeadline() (time.Time, bool) {
