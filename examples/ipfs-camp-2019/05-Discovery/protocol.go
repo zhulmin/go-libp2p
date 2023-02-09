@@ -9,10 +9,9 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
-const chatProtocol = protocol.ID("/libp2p/chat/1.0.0")
+const chatProtocol = "/libp2p/chat/1.0.0"
 
 func chatHandler(s network.Stream) {
 	data, err := io.ReadAll(s)
@@ -51,7 +50,7 @@ func chatInputLoop(ctx context.Context, h host.Host, donec chan struct{}) {
 	for scanner.Scan() {
 		msg := scanner.Text()
 		for _, peer := range h.Network().Peers() {
-			if _, err := h.Peerstore().SupportsProtocols(peer, string(chatProtocol)); err == nil {
+			if _, err := h.Peerstore().SupportsProtocols(peer, chatProtocol); err == nil {
 				s, err := h.NewStream(ctx, peer, chatProtocol)
 				defer func() {
 					if err != nil {
