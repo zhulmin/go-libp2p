@@ -17,8 +17,6 @@ const (
 
 type (
 	webRTCStreamState struct {
-		stream *webRTCStream
-
 		mu    sync.RWMutex
 		state channelState
 		reset bool
@@ -127,8 +125,5 @@ func (ss *webRTCStreamState) closeInner(reset bool) {
 	if ss.state != stateClosed {
 		ss.state = stateClosed
 		ss.reset = reset
-		if err := ss.stream.close(reset, true); err != nil {
-			log.Debugf("failed to close (reset: %v) stream: %v", reset, err)
-		}
 	}
 }

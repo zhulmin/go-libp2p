@@ -60,7 +60,12 @@ type listener struct {
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
-	candidateChan := make(chan candidateAddr, transport.maxInFlightConnections)
+	maxInFlightConnections := transport.maxInFlightConnections
+	if maxInFlightConnections == 0 {
+		maxInFlightConnections = DefaultMaxInFlightConnections
+	}
+
+	candidateChan := make(chan candidateAddr, maxInFlightConnections-1)
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -95,7 +100,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections),
+		acceptQueue:               make(chan tpt.CapableConn, maxInFlightConnections-1),
 	}
 
 	l.wg.Add(1)
