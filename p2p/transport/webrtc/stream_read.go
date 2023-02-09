@@ -21,20 +21,12 @@ type (
 
 		deadline async.MutexGetterSetter[time.Time]
 
-		requestCh  chan []byte
-		responseCh chan webRTCStreamReadResponse
-
 		closeOnce sync.Once
 	}
 
 	webRTCStreamReaderState struct {
 		Reader pbio.Reader
 		Buffer []byte
-	}
-
-	webRTCStreamReadResponse struct {
-		N     int
-		Error error
 	}
 )
 

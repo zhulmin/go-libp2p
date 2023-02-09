@@ -31,11 +31,6 @@ type (
 		readLoopOnce sync.Once
 		closeOnce    sync.Once
 	}
-
-	webRTCStreamWriteResponse struct {
-		N     int
-		Error error
-	}
 )
 
 func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
