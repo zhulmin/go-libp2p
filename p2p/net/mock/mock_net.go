@@ -122,6 +122,7 @@ func (mn *mocknet) AddPeerWithPeerstore(p peer.ID, ps peerstore.Peerstore) (host
 	if err != nil {
 		return nil, err
 	}
+	h.Start()
 
 	mn.Lock()
 	mn.nets[n.peer] = n
