@@ -6,10 +6,10 @@ import (
 	"io"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
@@ -21,15 +21,12 @@ import (
 type (
 	webRTCStreamWriter struct {
 		stream *webRTCStream
-		writer pbio.Writer
 
-		deadline int64
+		writer   *async.MutexExec[pbio.Writer]
+		deadline async.MutexGetterSetter[time.Time]
 
-		deadlineUpdated internal.Signal
-		writeAvailable  internal.Signal
-
-		requestCh  chan *pb.Message
-		responseCh chan webRTCStreamWriteResponse
+		deadlineUpdated async.CondVar
+		writeAvailable  async.CondVar
 
 		readLoopOnce sync.Once
 		closeOnce    sync.Once
@@ -42,6 +39,9 @@ type (
 )
 
 func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
+	w.stream.wg.Add(1)
+	defer w.stream.wg.Done()
+
 	if !w.stream.stateHandler.AllowWrite() {
 		return 0, io.ErrClosedPipe
 	}
@@ -62,7 +62,9 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 					if w.stream.stateHandler.Closed() {
 						return
 					}
-					err := w.stream.reader.ReadMsg(&msg)
+					err := w.stream.reader.state.Exec(func(state *webRTCStreamReaderState) error {
+						return state.Reader.ReadMsg(&msg)
+					})
 					if err != nil {
 						if errors.Is(err, io.EOF) {
 							w.stream.close(true, true)
@@ -98,40 +100,9 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 }
 
 func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
-	// block until we have made our write request
-	select {
-	case w.requestCh <- msg:
-	case <-w.stream.ctx.Done():
-		return 0, io.ErrClosedPipe
-	}
-	// get our final response back, effectively unblocking this writer
-	// for a new writer
-	select {
-	case resp := <-w.responseCh:
-		return resp.N, resp.Error
-	case <-w.stream.ctx.Done():
-		return 0, io.ErrClosedPipe
-	}
-}
+	w.stream.wg.Add(1)
+	defer w.stream.wg.Done()
 
-// async writer in background
-func (w *webRTCStreamWriter) runWriteLoop() {
-	for {
-		select {
-		case msg := <-w.requestCh:
-			n, err := w.write(msg)
-			select {
-			case w.responseCh <- webRTCStreamWriteResponse{N: n, Error: err}:
-			case <-w.stream.ctx.Done():
-				log.Debug("failed to send response: ctx closed")
-			}
-		case <-w.stream.ctx.Done():
-			return
-		}
-	}
-}
-
-func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 	// if the next message will add more data than we are willing to buffer,
 	// block until we have sent enough bytes to reduce the amount of data buffered.
 	timeout := make(chan struct{})
@@ -167,7 +138,9 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				err := w.writer.WriteMsg(msg)
+				err := w.writer.Exec(func(writer pbio.Writer) error {
+					return writer.WriteMsg(msg)
+				})
 				if err != nil {
 					return 0, err
 				}
@@ -177,7 +150,9 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 			case <-deadlineUpdated:
 			}
 		} else {
-			err := w.writer.WriteMsg(msg)
+			err := w.writer.Exec(func(writer pbio.Writer) error {
+				return writer.WriteMsg(msg)
+			})
 			if err != nil {
 				return 0, err
 			}
@@ -187,16 +162,12 @@ func (w *webRTCStreamWriter) write(msg *pb.Message) (int, error) {
 }
 
 func (w *webRTCStreamWriter) SetWriteDeadline(t time.Time) error {
-	atomic.StoreInt64(&w.deadline, t.UnixMicro())
+	w.deadline.SetWithCond(t, &w.deadlineUpdated)
 	return nil
 }
 
 func (w *webRTCStreamWriter) getWriteDeadline() (time.Time, bool) {
-	n := atomic.LoadInt64(&w.deadline)
-	if n == 0 {
-		return time.Time{}, false
-	}
-	return time.UnixMicro(n), true
+	return w.deadline.Get()
 }
 
 func (w *webRTCStreamWriter) CloseWrite() error {
