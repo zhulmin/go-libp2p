@@ -2,6 +2,7 @@ package libp2pwebrtc
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -10,7 +11,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
-	"github.com/pion/datachannel"
 )
 
 type (
@@ -112,37 +112,22 @@ func (r *webRTCStreamReader) getReadDeadline() (time.Time, bool) {
 }
 
 func (r *webRTCStreamReader) CloseRead() error {
+	if r.stream.isClosed() {
+		return nil
+	}
+	var err error
 	r.closeOnce.Do(func() {
-		go func() {
-			// zero the read deadline, so read call only returns
-			// when the underlying datachannel closes or there is
-			// a message on the channel
-			r.stream.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
-			var msg pb.Message
-			for {
-				select {
-				case <-r.stream.ctx.Done():
-					return
-				default:
-				}
-
-				if r.stream.stateHandler.Closed() {
-					return
-				}
-				err := r.state.Exec(func(state *webRTCStreamReaderState) error {
-					return state.Reader.ReadMsg(&msg)
-				})
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						r.stream.Reset()
-					}
-					return
-				}
-				if msg.Flag != nil {
-					r.stream.processIncomingFlag(msg.GetFlag())
-				}
-			}
-		}()
+		err = r.stream.writer.writer.Exec(func(writer pbio.Writer) error {
+			return writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		})
+		if err != nil {
+			log.Debug("could not write STOP_SENDING message")
+			err = fmt.Errorf("could not close stream for reading: %w", err)
+			return
+		}
+		if r.stream.stateHandler.CloseRead() == stateClosed {
+			r.stream.close(false, true)
+		}
 	})
-	return nil
+	return err
 }

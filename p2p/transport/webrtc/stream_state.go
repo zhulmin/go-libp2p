@@ -23,12 +23,12 @@ type (
 	}
 )
 
-func (ss *webRTCStreamState) HandleInboundFlag(flag pb.Message_Flag) {
+func (ss *webRTCStreamState) HandleInboundFlag(flag pb.Message_Flag) (channelState, bool) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
 	if ss.state == stateClosed {
-		return
+		return ss.state, ss.reset
 	}
 
 	switch flag {
@@ -44,6 +44,8 @@ func (ss *webRTCStreamState) HandleInboundFlag(flag pb.Message_Flag) {
 	default:
 		// ignore values that are invalid for flags
 	}
+
+	return ss.state, ss.reset
 }
 
 func (ss *webRTCStreamState) State() channelState {
@@ -58,15 +60,16 @@ func (ss *webRTCStreamState) AllowRead() bool {
 	return ss.state == stateOpen || ss.state == stateWriteClosed
 }
 
-func (ss *webRTCStreamState) CloseRead() {
+func (ss *webRTCStreamState) CloseRead() channelState {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
 	if ss.state == stateClosed {
-		return
+		return ss.state
 	}
 
 	ss.closeReadInner()
+	return ss.state
 }
 
 func (ss *webRTCStreamState) closeReadInner() {
@@ -83,15 +86,16 @@ func (ss *webRTCStreamState) AllowWrite() bool {
 	return ss.state == stateOpen || ss.state == stateReadClosed
 }
 
-func (ss *webRTCStreamState) CloseWrite() {
+func (ss *webRTCStreamState) CloseWrite() channelState {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
 	if ss.state == stateClosed {
-		return
+		return ss.state
 	}
 
 	ss.closeWriteInner()
+	return ss.state
 }
 
 func (ss *webRTCStreamState) closeWriteInner() {

@@ -159,7 +159,11 @@ func (s *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
 	if s.isClosed() {
 		return
 	}
-	s.stateHandler.HandleInboundFlag(flag)
+	state, reset := s.stateHandler.HandleInboundFlag(flag)
+	if state == stateClosed {
+		log.Debug("closing: after handle inbound flag")
+		s.close(reset, true)
+	}
 }
 
 // this is used to force reset a stream
@@ -182,9 +186,10 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 			// write a FIN message for standard stream closure
 			s.writer.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		}
-		s.wg.Wait()
 		// close the context
 		s.cancel()
+		// wait for all processes to be finished
+		s.wg.Wait()
 		// close the channel. We do not care about the error message in
 		// this case
 		err = s.rwc.Close()

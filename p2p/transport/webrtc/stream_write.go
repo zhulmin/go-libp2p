@@ -178,9 +178,13 @@ func (w *webRTCStreamWriter) CloseWrite() error {
 			return
 		}
 		// if successfully written, process the outgoing flag
-		w.stream.stateHandler.CloseRead()
+		state := w.stream.stateHandler.CloseRead()
 		// unblock and fail any ongoing writes
 		w.writeAvailable.Signal()
+		// check if closure required
+		if state == stateClosed {
+			w.stream.close(false, true)
+		}
 	})
 	return err
 }
