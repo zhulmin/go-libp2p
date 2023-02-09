@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -26,20 +27,24 @@ import (
 func main() {
 	var (
 		transport      = os.Getenv("transport")
-		secureChannel  = os.Getenv("security")
 		muxer          = os.Getenv("muxer")
+		secureChannel  = os.Getenv("security")
 		isDialerStr    = os.Getenv("is_dialer")
 		ip             = os.Getenv("ip")
-		testTimeoutStr = os.Getenv("test_timeout")
-		redisAddr      = os.Getenv("REDIS_ADDR")
+		redisAddr      = os.Getenv("redis_addr")
+		testTimeoutStr = os.Getenv("test_timeout_seconds")
 	)
 
-	testTimeout := 10 * time.Second
+	testTimeout := 3 * time.Minute
 	if testTimeoutStr != "" {
 		secs, err := strconv.ParseInt(testTimeoutStr, 10, 32)
 		if err == nil {
 			testTimeout = time.Duration(secs) * time.Second
 		}
+	}
+
+	if ip == "" {
+		ip = "0.0.0.0"
 	}
 
 	if redisAddr == "" {
@@ -58,10 +63,17 @@ func main() {
 	})
 	defer rClient.Close()
 
-	// Make sure redis is ready
-	_, err := rClient.Ping(ctx).Result()
-	if err != nil {
-		log.Fatalf("Failed to connect to redis: %s", err)
+	for {
+		if ctx.Err() != nil {
+			log.Fatal("timeout waiting for redis")
+		}
+
+		// Wait for redis to be ready
+		_, err := rClient.Ping(ctx).Result()
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	isDialer := isDialerStr == "true"
@@ -90,24 +102,41 @@ func main() {
 	}
 	options = append(options, libp2p.ListenAddrStrings(listenAddr))
 
-	switch secureChannel {
-	case "tls":
-		options = append(options, libp2p.Security(libp2ptls.ID, libp2ptls.New))
-	case "noise":
-		options = append(options, libp2p.Security(noise.ID, noise.New))
+	// Skipped for certain transports
+	var skipMuxer bool
+	var skipSecureChannel bool
+	switch transport {
 	case "quic":
-	default:
-		log.Fatalf("Unsupported secure channel: %s", secureChannel)
+		fallthrough
+	case "quic-v1":
+		fallthrough
+	case "webtransport":
+		fallthrough
+	case "webrtc":
+		skipMuxer = true
+		skipSecureChannel = true
 	}
 
-	switch muxer {
-	case "yamux":
-		options = append(options, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
-	case "mplex":
-		options = append(options, libp2p.Muxer(mplex.ID, mplex.DefaultTransport))
-	case "quic":
-	default:
-		log.Fatalf("Unsupported muxer: %s", muxer)
+	if !skipSecureChannel {
+		switch secureChannel {
+		case "tls":
+			options = append(options, libp2p.Security(libp2ptls.ID, libp2ptls.New))
+		case "noise":
+			options = append(options, libp2p.Security(noise.ID, noise.New))
+		default:
+			log.Fatalf("Unsupported secure channel: %s", secureChannel)
+		}
+	}
+
+	if !skipMuxer {
+		switch muxer {
+		case "yamux":
+			options = append(options, libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport))
+		case "mplex":
+			options = append(options, libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport))
+		default:
+			log.Fatalf("Unsupported muxer: %s", muxer)
+		}
 	}
 
 	host, err := libp2p.New(options...)
@@ -117,7 +146,7 @@ func main() {
 	}
 	defer host.Close()
 
-	fmt.Println("My multiaddr is: ", host.Addrs())
+	log.Println("My multiaddr is: ", host.Addrs())
 
 	if isDialer {
 		val, err := rClient.BLPop(ctx, testTimeout, "listenerAddr").Result()
@@ -125,12 +154,14 @@ func main() {
 			log.Fatal("Failed to wait for listener to be ready")
 		}
 		otherMa := ma.StringCast(val[1])
-		fmt.Println("Other peer multiaddr is: ", otherMa)
+		log.Println("Other peer multiaddr is: ", otherMa)
 		otherMa, p2pComponent := ma.SplitLast(otherMa)
 		otherPeerId, err := peer.Decode(p2pComponent.Value())
 		if err != nil {
 			log.Fatal("Failed to get peer id from multiaddr")
 		}
+
+		handshakeStartInstant := time.Now()
 		err = host.Connect(ctx, peer.AddrInfo{
 			ID:    otherPeerId,
 			Addrs: []ma.Multiaddr{otherMa},
@@ -145,18 +176,27 @@ func main() {
 		if res.Error != nil {
 			log.Fatal(res.Error)
 		}
+		handshakePlusOneRTT := time.Since(handshakeStartInstant)
 
-		fmt.Println("Ping successful: ", res.RTT)
+		testResult := struct {
+			HandshakePlusOneRTTMillis float32 `json:"handshakePlusOneRTTMillis"`
+			PingRTTMilllis            float32 `json:"pingRTTMilllis"`
+		}{
+			HandshakePlusOneRTTMillis: float32(handshakePlusOneRTT.Microseconds()) / 1000,
+			PingRTTMilllis:            float32(res.RTT.Microseconds()) / 1000,
+		}
 
-		rClient.RPush(ctx, "dialerDone", "").Result()
+		testResultJSON, err := json.Marshal(testResult)
+		if err != nil {
+			log.Fatalf("Failed to marshal test result: %v", err)
+		}
+		fmt.Println(string(testResultJSON))
 	} else {
 		_, err := rClient.RPush(ctx, "listenerAddr", host.Addrs()[0].Encapsulate(ma.StringCast("/p2p/"+host.ID().String())).String()).Result()
 		if err != nil {
 			log.Fatal("Failed to send listener address")
 		}
-		_, err = rClient.BLPop(ctx, testTimeout, "dialerDone").Result()
-		if err != nil {
-			log.Fatal("Failed to wait for dialer conclusion")
-		}
+		time.Sleep(testTimeout)
+		os.Exit(1)
 	}
 }

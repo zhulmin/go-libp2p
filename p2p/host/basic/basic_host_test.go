@@ -176,7 +176,7 @@ func TestHostAddrsFactory(t *testing.T) {
 
 	addrs := h.Addrs()
 	if len(addrs) != 1 {
-		t.Fatalf("expected 1 addr, got %d", len(addrs))
+		t.Fatalf("expected 1 addr, got %+v", addrs)
 	}
 	if !addrs[0].Equal(maddr) {
 		t.Fatalf("expected %s, got %s", maddr.String(), addrs[0].String())
@@ -245,8 +245,10 @@ func getHostPair(t *testing.T) (host.Host, host.Host) {
 
 	h1, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	h1.Start()
 	h2, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	h2.Start()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -342,14 +344,12 @@ func TestHostProtoMismatch(t *testing.T) {
 }
 
 func TestHostProtoPreknowledge(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	h1, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	defer h1.Close()
+
 	h2, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
-	defer h1.Close()
 	defer h2.Close()
 
 	conn := make(chan protocol.ID)
@@ -362,8 +362,11 @@ func TestHostProtoPreknowledge(t *testing.T) {
 	// Prevent pushing identify information so this test actually _uses_ the super protocol.
 	h1.RemoveStreamHandler(identify.IDPush)
 
+	h1.Start()
+	h2.Start()
+
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
-	require.NoError(t, h1.Connect(ctx, h2pi))
+	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	// wait for identify handshake to finish completely
 	select {
@@ -380,12 +383,12 @@ func TestHostProtoPreknowledge(t *testing.T) {
 
 	h2.SetStreamHandler("/foo", handler)
 
-	s, err := h1.NewStream(ctx, h2.ID(), "/foo", "/bar", "/super")
+	s, err := h1.NewStream(context.Background(), h2.ID(), "/foo", "/bar", "/super")
 	require.NoError(t, err)
 
 	select {
 	case p := <-conn:
-		t.Fatal("shouldnt have gotten connection yet, we should have a lazy stream: ", p)
+		t.Fatal("shouldn't have gotten connection yet, we should have a lazy stream: ", p)
 	case <-time.After(time.Millisecond * 50):
 	}
 
@@ -532,7 +535,6 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 		return taddrs
 	}})
 	require.NoError(t, err)
-	h.Start()
 	defer h.Close()
 
 	sub, err := h.EventBus().Subscribe(&event.EvtLocalAddressesUpdated{})
@@ -541,6 +543,7 @@ func TestAddrChangeImmediatelyIfAddressNonEmpty(t *testing.T) {
 		t.Error(err)
 	}
 	defer sub.Close()
+	h.Start()
 
 	expected := event.EvtLocalAddressesUpdated{
 		Diffs: true,

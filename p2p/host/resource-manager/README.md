@@ -35,7 +35,8 @@ limits := scalingLimits.AutoScale()
 // The resource manager expects a limiter, se we create one from our limits.
 limiter := rcmgr.NewFixedLimiter(limits)
 
-// (Optional if you want metrics) Construct the OpenCensus metrics reporter.
+// (Optional if you want metrics)
+rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)
 str, err := rcmgrObs.NewStatsTraceReporter()
 if err != nil {
   panic(err)
@@ -427,10 +428,10 @@ your limits often. This could be a sign that you need to raise your limits
 (your process is more intensive than you originally thought) or that you need
 to fix something in your application (surely you don't need over 1000 streams?).
 
-There are OpenCensus metrics that can be hooked up to the resource manager. See
+There are Prometheus metrics that can be hooked up to the resource manager. See
 `obs/stats_test.go` for an example on how to enable this, and `DefaultViews` in
 `stats.go` for recommended views. These metrics can be hooked up to Prometheus
-or any other OpenCensus supported platform.
+or any other platform that can scrape a prometheus endpoint.
 
 There is also an included Grafana dashboard to help kickstart your
 observability into the resource manager. Find more information about it at

@@ -9,7 +9,6 @@ require (
 	github.com/flynn/noise v1.0.0
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.19
-	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru/v2 v2.0.1
 	github.com/ipfs/go-cid v0.3.2
 	github.com/ipfs/go-datastore v0.6.0
@@ -50,11 +49,10 @@ require (
 	github.com/pion/webrtc/v3 v3.1.51
 	github.com/prometheus/client_golang v1.14.0
 	github.com/quic-go/quic-go v0.32.0
-	github.com/quic-go/webtransport-go v0.5.0
+	github.com/quic-go/webtransport-go v0.5.1
 	github.com/raulk/go-watchdog v1.3.0
 	github.com/stretchr/testify v1.8.1
 	github.com/struCoder/pidusage v0.2.1
-	go.opencensus.io v0.24.0
 	go.uber.org/fx v1.18.2
 	go.uber.org/goleak v1.1.12
 	golang.org/x/crypto v0.5.0
@@ -63,6 +61,7 @@ require (
 	golang.org/x/sys v0.4.0
 	golang.org/x/tools v0.3.0
 	google.golang.org/protobuf v1.28.1
+	nhooyr.io/websocket v1.8.7
 )
 
 require (

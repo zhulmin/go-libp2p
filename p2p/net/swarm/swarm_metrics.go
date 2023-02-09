@@ -10,6 +10,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/p2p/metricshelper"
 
 	ma "github.com/multiformats/go-multiaddr"
 
@@ -93,19 +94,6 @@ func NewMetricsTracer() *metricsTracer {
 	return &metricsTracer{}
 }
 
-var stringPool = sync.Pool{New: func() any {
-	s := make([]string, 0, 8)
-	return &s
-}}
-
-func getStringSlice() *[]string {
-	s := stringPool.Get().(*[]string)
-	*s = (*s)[:0]
-	return s
-}
-
-func putStringSlice(s *[]string) { stringPool.Put(s) }
-
 func getDirection(dir network.Direction) string {
 	switch dir {
 	case network.DirOutbound:
@@ -132,8 +120,8 @@ func appendConnectionState(tags []string, cs network.ConnectionState) []string {
 }
 
 func (m *metricsTracer) OpenedConnection(dir network.Direction, p crypto.PubKey, cs network.ConnectionState) {
-	tags := getStringSlice()
-	defer putStringSlice(tags)
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
 
 	*tags = append(*tags, getDirection(dir))
 	*tags = appendConnectionState(*tags, cs)
@@ -146,8 +134,9 @@ func (m *metricsTracer) OpenedConnection(dir network.Direction, p crypto.PubKey,
 }
 
 func (m *metricsTracer) ClosedConnection(dir network.Direction, duration time.Duration, cs network.ConnectionState) {
-	tags := getStringSlice()
-	defer putStringSlice(tags)
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
 	*tags = append(*tags, getDirection(dir))
 	*tags = appendConnectionState(*tags, cs)
 	connsClosed.WithLabelValues(*tags...).Inc()
@@ -159,8 +148,9 @@ func (m *metricsTracer) ClosedConnection(dir network.Direction, duration time.Du
 }
 
 func (m *metricsTracer) CompletedHandshake(t time.Duration, cs network.ConnectionState) {
-	tags := getStringSlice()
-	defer putStringSlice(tags)
+	tags := metricshelper.GetStringSlice()
+	defer metricshelper.PutStringSlice(tags)
+
 	*tags = appendConnectionState(*tags, cs)
 	connHandshakeLatency.WithLabelValues(*tags...).Observe(t.Seconds())
 }

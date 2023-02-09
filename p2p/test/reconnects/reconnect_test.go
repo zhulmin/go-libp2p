@@ -11,7 +11,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
@@ -60,17 +59,11 @@ func TestReconnect5(t *testing.T) {
 }
 
 func runRound(t *testing.T, hosts []host.Host) {
-	for _, h := range hosts {
-		h.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
-	}
-
-	// connect all hosts
 	for _, h1 := range hosts {
+		h1.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
+
 		for _, h2 := range hosts {
-			if h1.ID() >= h2.ID() {
-				continue
-			}
-			require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Peerstore().Addrs(h2.ID())}))
+			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
 		}
 	}
 
@@ -107,9 +100,6 @@ func runRound(t *testing.T, hosts []host.Host) {
 		// close connection
 		cs := h1.Network().Conns()
 		for _, c := range cs {
-			if c.LocalPeer() > c.RemotePeer() {
-				continue
-			}
 			c.Close()
 		}
 	}

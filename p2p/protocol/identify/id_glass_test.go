@@ -25,6 +25,7 @@ func TestFastDisconnect(t *testing.T) {
 	ids, err := NewIDService(target)
 	require.NoError(t, err)
 	defer ids.Close()
+	ids.Start()
 
 	sync := make(chan struct{})
 	target.SetStreamHandler(ID, func(s network.Stream) {
@@ -50,7 +51,7 @@ func TestFastDisconnect(t *testing.T) {
 		// This should not block indefinitely, or panic, or anything like that.
 		//
 		// However, if we have a bug, that _could_ happen.
-		ids.sendIdentifyResp(s)
+		ids.handleIdentifyRequest(s)
 
 		// Ok, allow the outer test to continue.
 		select {

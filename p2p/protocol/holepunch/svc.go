@@ -13,9 +13,11 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-msgio/pbio"
+
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -122,7 +124,7 @@ func (s *Service) watchForPublicAddr() {
 	}
 
 	// Only start the holePuncher if we're behind a NAT / firewall.
-	sub, err := s.host.EventBus().Subscribe(&event.EvtLocalReachabilityChanged{})
+	sub, err := s.host.EventBus().Subscribe(&event.EvtLocalReachabilityChanged{}, eventbus.Name("holepunch"))
 	if err != nil {
 		log.Debugf("failed to subscripe to Reachability event: %s", err)
 		return

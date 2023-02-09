@@ -1,14 +1,16 @@
 package obs_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
-
-	"go.opencensus.io/stats/view"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var registerOnce sync.Once
 
 func TestTraceReporterStartAndClose(t *testing.T) {
 	rcmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(obs.StatsTraceReporter{}))
@@ -26,10 +28,9 @@ func TestConsumeEvent(t *testing.T) {
 		Time:     time.Now().Format(time.RFC3339Nano),
 	}
 
-	err := view.Register(obs.DefaultViews...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	registerOnce.Do(func() {
+		obs.MustRegisterWith(prometheus.DefaultRegisterer)
+	})
 
 	str, err := obs.NewStatsTraceReporter()
 	if err != nil {

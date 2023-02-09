@@ -3,6 +3,7 @@ package quic_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -99,9 +100,13 @@ func TestDisableQUICDraft29(t *testing.T) {
 	)
 	require.NoError(t, err)
 	defer h2.Close()
-	require.ErrorContains(t,
-		h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/udp/12346/quic")}}),
-		"no compatible QUIC version found",
+	// We disabled QUIC Version Negotiation, so we will _not_ receive a Version Negotiation packet.
+	// Instead, the connection will run into the context timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Microsecond)
+	defer cancel()
+	require.ErrorIs(t,
+		h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/udp/12346/quic")}}),
+		context.DeadlineExceeded,
 	)
 	// make sure that dialing QUIC v1 works
 	require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{addrs[0]}}))
