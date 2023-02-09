@@ -1,6 +1,7 @@
 package libp2pwebrtc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -47,7 +48,9 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 		}
 
 		readDeadline, hasReadDeadline := r.getReadDeadline()
+		readCtx := r.stream.ctx
 		if hasReadDeadline {
+			// check if deadline exceeded
 			if readDeadline.Before(time.Now()) {
 				if err, found := r.stream.closeErr.Get(); found {
 					log.Debugf("[1] deadline exceeded: closeErr: %v", err)
@@ -56,6 +59,9 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 				}
 				return 0, os.ErrDeadlineExceeded
 			}
+			var cancel context.CancelFunc
+			readCtx, cancel = context.WithDeadline(readCtx, readDeadline)
+			defer cancel()
 		}
 
 		readErr = r.state.Exec(func(state *webRTCStreamReaderState) error {
@@ -79,25 +85,47 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 			}
 
 			// read from datachannel
-			var msg pb.Message
-			err := state.Reader.ReadMsg(&msg)
-			if err != nil {
+			type readResult struct {
+				Msg *pb.Message
+				Err error
+			}
+			ch := make(chan readResult)
+			go func() {
+				var msg pb.Message
+				err := state.Reader.ReadMsg(&msg)
+				select {
+				case ch <- readResult{Msg: &msg, Err: err}:
+				case <-readCtx.Done():
+				}
+			}()
+			var (
+				readErr error
+				msg     *pb.Message
+			)
+			select {
+			case <-readCtx.Done():
+				readErr = os.ErrDeadlineExceeded
+			case result := <-ch:
+				msg = result.Msg
+				readErr = result.Err
+			}
+			if readErr != nil {
 				// This case occurs when the remote node goes away
 				// without writing a FIN message
-				if errors.Is(err, io.EOF) {
+				if errors.Is(readErr, io.EOF) {
 					r.stream.Reset()
 					return io.ErrClosedPipe
 				}
-				if errors.Is(err, os.ErrDeadlineExceeded) {
+				if errors.Is(readErr, os.ErrDeadlineExceeded) {
 					// if the stream has been force closed or force reset
 					// using SetReadDeadline, we check if closeErr was set.
 					closeErr, _ := r.stream.closeErr.Get()
-					log.Debugf("closing stream, checking error: %v closeErr: %v", err, closeErr)
+					log.Debugf("closing stream, checking error: %v closeErr: %v", readErr, closeErr)
 					if closeErr != nil {
 						return closeErr
 					}
 				}
-				return err
+				return readErr
 			}
 
 			// append incoming data to read buffer
