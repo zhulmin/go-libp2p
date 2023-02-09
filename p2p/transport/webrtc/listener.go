@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	tpt "github.com/libp2p/go-libp2p/core/transport"
@@ -53,6 +55,16 @@ type listener struct {
 	// buffered incoming connections
 	acceptQueue chan tpt.CapableConn
 
+	// Accepting a connection requires instantiating a peerconnection
+	// and a noise connection which is expensive. We therefore limit
+	// the number of in-flight connection requests. A connection
+	// is considered to be in flight from the instant it is handled
+	// until it is dequed by a call to Accept, or errors out in some
+	// way.
+	//
+	inFlightConnections    *async.MutexExec[*uint32]
+	maxInFlightConnections uint32
+
 	// used to control the lifecycle of the listener
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -60,12 +72,7 @@ type listener struct {
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
-	maxInFlightConnections := transport.maxInFlightConnections
-	if maxInFlightConnections == 0 {
-		maxInFlightConnections = DefaultMaxInFlightConnections
-	}
-
-	candidateChan := make(chan candidateAddr, maxInFlightConnections-1)
+	candidateChan := make(chan candidateAddr, transport.maxInFlightConnections)
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -100,7 +107,9 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		acceptQueue:               make(chan tpt.CapableConn, maxInFlightConnections-1),
+		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections),
+		inFlightConnections:       async.NewMutexExec(new(uint32)),
+		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
 
 	l.wg.Add(1)
@@ -117,18 +126,52 @@ func (l *listener) handleIncomingCandidates(candidateChan <-chan candidateAddr) 
 		case <-l.ctx.Done():
 			return
 		case addr := <-candidateChan:
+			err := l.inFlightConnections.Exec(func(n *uint32) error {
+				if *n >= l.maxInFlightConnections {
+					return fmt.Errorf("server is busy, rejecting incoming connection from: %s", addr.raddr)
+				}
+				*n += 1
+				return nil
+			})
+			if err != nil {
+				// TODO: should we send an error STUN response here? It seems like Pion and browsers will retry
+				// STUN binding requests even when an error response is received.
+				// Refer: https://github.com/pion/ice/blob/master/agent.go#L1045-L1131
+				log.Warn(err)
+				continue
+			}
 			go func() {
 				ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
 				defer cancel()
 				conn, err := l.handleCandidate(ctx, addr)
 				if err != nil {
 					log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
+					err := l.inFlightConnections.Exec(func(n *uint32) error {
+						if *n == 0 {
+							return errors.New("invalid in flight connection (should be greater then 0)")
+						}
+						*n -= 1
+						return nil
+					})
+					if err != nil {
+						panic(err)
+					}
 					return
 				}
 				select {
 				case l.acceptQueue <- conn:
 				default:
 					log.Warnf("could not push connection")
+					err := l.inFlightConnections.Exec(func(n *uint32) error {
+						if *n == 0 {
+							return errors.New("invalid in flight connection (should be greater then 0)")
+						}
+						*n -= 1
+						return nil
+					})
+					if err != nil {
+						panic(err)
+					}
 					conn.Close()
 				}
 			}()
@@ -141,6 +184,16 @@ func (l *listener) Accept() (tpt.CapableConn, error) {
 	case <-l.ctx.Done():
 		return nil, os.ErrClosed
 	case conn := <-l.acceptQueue:
+		err := l.inFlightConnections.Exec(func(n *uint32) error {
+			if *n == 0 {
+				return errors.New("invalid in flight connection (should be greater then 0)")
+			}
+			*n -= 1
+			return nil
+		})
+		if err != nil {
+			panic(err)
+		}
 		return conn, nil
 	}
 }

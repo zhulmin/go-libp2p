@@ -778,7 +778,7 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	close(start)
 	wg.Wait()
 	successCount := atomic.LoadUint32(&success)
-	require.True(t, successCount >= count-1 && successCount <= count+1)
+	require.Equal(t, count, successCount)
 }
 
 // TestWebrtcTransport implements the standard go-libp2p transport test.
