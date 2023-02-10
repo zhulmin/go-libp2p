@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 
 	tpt "github.com/libp2p/go-libp2p/core/transport"
@@ -62,7 +60,9 @@ type listener struct {
 	// until it is dequed by a call to Accept, or errors out in some
 	// way.
 	//
-	inFlightConnections    *async.MutexExec[*uint32]
+	// ... blocking channel to get connections,
+	// allowing is to limit the number of in-flight connections
+	inFlightQueue          chan candidateAddr
 	maxInFlightConnections uint32
 
 	// used to control the lifecycle of the listener
@@ -108,7 +108,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
 		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections),
-		inFlightConnections:       async.NewMutexExec(new(uint32)),
+		inFlightQueue:             make(chan candidateAddr), // blocking on purpose
 		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
 
@@ -117,6 +117,15 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		defer l.wg.Done()
 		l.handleIncomingCandidates(candidateChan)
 	}()
+
+	for i := 0; i < int(l.maxInFlightConnections); i++ {
+		l.wg.Add(1)
+		go func() {
+			defer l.wg.Done()
+			l.inFlightWorker()
+		}()
+	}
+
 	return l, err
 }
 
@@ -126,97 +135,48 @@ func (l *listener) handleIncomingCandidates(candidateChan <-chan candidateAddr) 
 		case <-l.ctx.Done():
 			return
 		case addr := <-candidateChan:
-			err := l.inFlightConnections.Exec(func(n *uint32) error {
-				if *n >= l.maxInFlightConnections {
-					return fmt.Errorf("server is busy, rejecting incoming connection from: %s", addr.raddr)
-				}
-				*n += 1
-				return nil
-			})
-			if err != nil {
-				// TODO: should we send an error STUN response here? It seems like Pion and browsers will retry
-				// STUN binding requests even when an error response is received.
-				// Refer: https://github.com/pion/ice/blob/master/agent.go#L1045-L1131
-				log.Warn(err)
-				continue
+			select {
+			case l.inFlightQueue <- addr:
+			default:
+				log.Warnf("server is busy, rejecting incoming connection from: %s", addr.raddr)
 			}
-			go func() {
-				ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
-				defer cancel()
-				conn, err := l.handleCandidate(ctx, addr)
-				if err != nil {
-					log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
-					err := l.inFlightConnections.Exec(func(n *uint32) error {
-						if *n == 0 {
-							return errors.New("invalid in flight connection (should be greater then 0)")
-						}
-						*n -= 1
-						return nil
-					})
-					if err != nil {
-						panic(err)
-					}
-					return
-				}
-				select {
-				case l.acceptQueue <- conn:
-				default:
-					log.Warnf("could not push connection")
-					err := l.inFlightConnections.Exec(func(n *uint32) error {
-						if *n == 0 {
-							return errors.New("invalid in flight connection (should be greater then 0)")
-						}
-						*n -= 1
-						return nil
-					})
-					if err != nil {
-						panic(err)
-					}
-					conn.Close()
-				}
-			}()
 		}
 	}
 }
 
-func (l *listener) Accept() (tpt.CapableConn, error) {
-	select {
-	case <-l.ctx.Done():
-		return nil, os.ErrClosed
-	case conn := <-l.acceptQueue:
-		err := l.inFlightConnections.Exec(func(n *uint32) error {
-			if *n == 0 {
-				return errors.New("invalid in flight connection (should be greater then 0)")
-			}
-			*n -= 1
-			return nil
-		})
-		if err != nil {
-			panic(err)
+func (l *listener) inFlightWorker() {
+	for {
+		select {
+		case <-l.ctx.Done():
+			return
+
+		case addr := <-l.inFlightQueue:
+			l.establishConnForInFlightAddr(&addr)
 		}
-		return conn, nil
 	}
 }
 
-func (l *listener) Close() error {
+func (l *listener) establishConnForInFlightAddr(addr *candidateAddr) {
+	ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
+	defer cancel()
+
+	conn, err := l.handleCandidate(ctx, addr)
+	if err != nil {
+		log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
+		return
+	}
 	select {
 	case <-l.ctx.Done():
+		log.Warn("could not push connection: ctx done")
+		conn.Close()
+	case l.acceptQueue <- conn:
 	default:
-		l.cancel()
-		l.wg.Wait()
+		log.Warn("could not push connection")
+		conn.Close()
 	}
-	return nil
 }
 
-func (l *listener) Addr() net.Addr {
-	return l.localAddr
-}
-
-func (l *listener) Multiaddr() ma.Multiaddr {
-	return l.localMultiaddr
-}
-
-func (l *listener) handleCandidate(ctx context.Context, addr candidateAddr) (tpt.CapableConn, error) {
+func (l *listener) handleCandidate(ctx context.Context, addr *candidateAddr) (tpt.CapableConn, error) {
 	remoteMultiaddr, err := manet.FromNetAddr(addr.raddr)
 	if err != nil {
 		return nil, err
@@ -236,7 +196,7 @@ func (l *listener) handleCandidate(ctx context.Context, addr candidateAddr) (tpt
 	return conn, nil
 }
 
-func (l *listener) setupConnection(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
+func (l *listener) setupConnection(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr *candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
 	settingEngine := webrtc.SettingEngine{}
 
 	// suppress pion logs
@@ -342,4 +302,31 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 	conn.setRemotePublicKey(secureConn.RemotePublicKey())
 
 	return pc, conn, err
+}
+
+func (l *listener) Accept() (tpt.CapableConn, error) {
+	select {
+	case <-l.ctx.Done():
+		return nil, os.ErrClosed
+	case conn := <-l.acceptQueue:
+		return conn, nil
+	}
+}
+
+func (l *listener) Close() error {
+	select {
+	case <-l.ctx.Done():
+	default:
+		l.cancel()
+		l.wg.Wait()
+	}
+	return nil
+}
+
+func (l *listener) Addr() net.Addr {
+	return l.localAddr
+}
+
+func (l *listener) Multiaddr() ma.Multiaddr {
+	return l.localMultiaddr
 }
