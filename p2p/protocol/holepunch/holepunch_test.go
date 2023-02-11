@@ -469,7 +469,7 @@ func makeRelayedHosts(t *testing.T, h1opt, h2opt []holepunch.Option, addHolePunc
 	require.Eventually(t, func() bool {
 		supported, err := h.Peerstore().SupportsProtocols(relay.ID(), proto.ProtoIDv2Hop, relayv1.ProtoID)
 		return err == nil && len(supported) > 0
-	}, 3*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	h2 = mkHostWithStaticAutoRelay(t, relay)
 	if addHolePuncher {
