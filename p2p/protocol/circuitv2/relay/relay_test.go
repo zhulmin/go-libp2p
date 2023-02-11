@@ -3,9 +3,9 @@ package relay_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -325,8 +325,7 @@ func TestRelayLimitData(t *testing.T) {
 
 	buf := make([]byte, 1024)
 	for i := 0; i < 3; i++ {
-		_, err = rand.Read(buf)
-		if err != nil {
+		if _, err := rand.Read(buf); err != nil {
 			t.Fatal(err)
 		}
 
@@ -345,8 +344,7 @@ func TestRelayLimitData(t *testing.T) {
 	}
 
 	buf = make([]byte, 4096)
-	_, err = rand.Read(buf)
-	if err != nil {
+	if _, err := rand.Read(buf); err != nil {
 		t.Fatal(err)
 	}
 

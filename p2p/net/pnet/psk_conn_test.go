@@ -3,7 +3,7 @@ package pnet
 import (
 	"bytes"
 	"context"
-	"math/rand"
+	"crypto/rand"
 	"net"
 	"testing"
 )
@@ -62,8 +62,7 @@ func TestPSKFragmentation(t *testing.T) {
 	psk1, psk2 := setupPSKConns(ctx, t)
 
 	in := make([]byte, 1000)
-	_, err := rand.Read(in)
-	if err != nil {
+	if _, err := rand.Read(in); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,8 +84,7 @@ func TestPSKFragmentation(t *testing.T) {
 		in = in[100:]
 	}
 
-	err = <-wch
-	if err != nil {
+	if err := <-wch; err != nil {
 		t.Fatal(err)
 	}
 }
