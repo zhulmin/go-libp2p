@@ -248,7 +248,7 @@ func (storage *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
 		if conn, ok := storage.ufragMap[key]; ok {
 			_ = conn.closeConnection()
 			delete(storage.ufragMap, key)
-			for _, addr := range conn.addresses {
+			if addr, ok := conn.GetAddress(); ok {
 				delete(storage.addrMap, addr)
 			}
 		}
@@ -301,7 +301,7 @@ func (storage *udpMuxStorage) AddAddr(ufrag string, addr *net.UDPAddr, isIPv6 bo
 	addrStr := addr.String()
 
 	storage.addrMap[addrStr] = conn
-	conn.addresses = append(conn.addresses, addrStr)
+	conn.SetAddress(addrStr)
 
 	// connection is returned in case it was only now created
 	connCreated := !connExists

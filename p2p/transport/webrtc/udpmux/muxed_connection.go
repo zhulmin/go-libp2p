@@ -19,14 +19,12 @@ const maxPacketsInQueue int = 128
 // from which this connection (indexed by ufrag) received
 // data.
 type muxedConnection struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	pq     *packetQueue
-	// list of remote addresses associated with this connection.
-	// this is useful as a mapping from [address] -> ufrag
-	addresses []string
-	ufrag     string
-	mux       *udpMux
+	ctx     context.Context
+	cancel  context.CancelFunc
+	pq      *packetQueue
+	ufrag   string
+	address *string
+	mux     *udpMux
 }
 
 func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
@@ -37,6 +35,21 @@ func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 		pq:     newPacketQueue(),
 		ufrag:  ufrag,
 		mux:    mux,
+	}
+}
+
+func (conn *muxedConnection) GetAddress() (string, bool) {
+	if conn.address == nil {
+		return "", false
+	}
+	return *conn.address, true
+}
+
+func (conn *muxedConnection) SetAddress(s string) {
+	if conn.address == nil {
+		conn.address = &s
+	} else if *conn.address != s {
+		panic("address already set with differen value for same muxed conn")
 	}
 }
 
