@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/encoding"
@@ -16,23 +15,6 @@ import (
 	"github.com/pion/webrtc/v3"
 	"google.golang.org/protobuf/proto"
 )
-
-func FingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
-	if fp == nil {
-		return "", fmt.Errorf("fingerprint multihash: %w", ErrNilParam)
-	}
-	sdpString, err := GetSupportedSDPString(fp.Code)
-	if err != nil {
-		return "", err
-	}
-
-	var builder strings.Builder
-	builder.Grow(len(fp.Digest)*3 + 8)
-	builder.WriteString(sdpString)
-	builder.WriteByte(' ')
-	encoding.EncodeInterpersedHexToBuilder(fp.Digest, &builder)
-	return builder.String(), nil
-}
 
 func DecodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
 	remoteFingerprintMultibase, err := maddr.ValueForProtocol(ma.P_CERTHASH)

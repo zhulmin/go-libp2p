@@ -22,8 +22,11 @@ type (
 	webRTCStreamWriter struct {
 		stream *webRTCStream
 
-		writer   *async.MutexExec[pbio.Writer]
-		deadline async.MutexGetterSetter[time.Time]
+		writer    pbio.Writer
+		writerMux sync.Mutex
+
+		deadline    time.Time
+		deadlineMux sync.Mutex
 
 		deadlineUpdated async.CondVar
 		writeAvailable  async.CondVar
@@ -57,9 +60,7 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 					if w.stream.stateHandler.Closed() {
 						return
 					}
-					err := w.stream.reader.state.Exec(func(state *webRTCStreamReaderState) error {
-						return state.Reader.ReadMsg(&msg)
-					})
+					err := w.stream.reader.state.readMessageFromDataChannel(&msg)
 					if err != nil {
 						if errors.Is(err, io.EOF) {
 							w.stream.close(true, true)
@@ -137,9 +138,7 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 			case <-timeout:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				err := w.writer.Exec(func(writer pbio.Writer) error {
-					return writer.WriteMsg(msg)
-				})
+				err := w.writeMessageToWriter(msg)
 				if err != nil {
 					return 0, err
 				}
@@ -149,9 +148,7 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 			case <-deadlineUpdated:
 			}
 		} else {
-			err := w.writer.Exec(func(writer pbio.Writer) error {
-				return writer.WriteMsg(msg)
-			})
+			err := w.writeMessageToWriter(msg)
 			if err != nil {
 				return 0, err
 			}
@@ -160,13 +157,24 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 	}
 }
 
+func (w *webRTCStreamWriter) writeMessageToWriter(msg *pb.Message) error {
+	w.writerMux.Lock()
+	defer w.writerMux.Unlock()
+	return w.writer.WriteMsg(msg)
+}
+
 func (w *webRTCStreamWriter) SetWriteDeadline(t time.Time) error {
-	w.deadline.SetWithCond(t, &w.deadlineUpdated)
+	w.deadlineMux.Lock()
+	defer w.deadlineMux.Unlock()
+	w.deadline = t
+	w.deadlineUpdated.Signal()
 	return nil
 }
 
 func (w *webRTCStreamWriter) getWriteDeadline() (time.Time, bool) {
-	return w.deadline.Get()
+	w.deadlineMux.Lock()
+	defer w.deadlineMux.Unlock()
+	return w.deadline, !w.deadline.IsZero()
 }
 
 func (w *webRTCStreamWriter) CloseWrite() error {

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
@@ -56,7 +55,8 @@ type (
 
 		// hack for closing the Read side using a deadline
 		// in case `Read` does not return.
-		closeErr async.MutexGetterSetter[error]
+		closeErr    error
+		closeErrMux sync.Mutex
 
 		conn *connection
 		id   uint16
@@ -86,12 +86,12 @@ func newStream(
 
 	result := &webRTCStream{
 		reader: webRTCStreamReader{
-			state: async.NewMutexExec(&webRTCStreamReaderState{
+			state: &webRTCStreamReaderState{
 				Reader: pbio.NewDelimitedReader(reader, maxMessageSize),
-			}),
+			},
 		},
 		writer: webRTCStreamWriter{
-			writer: async.NewMutexExec[pbio.Writer](pbio.NewDelimitedWriter(rwc)),
+			writer: pbio.NewDelimitedWriter(rwc),
 		},
 
 		conn: connection,
@@ -111,6 +111,7 @@ func newStream(
 	})
 
 	result.reader.stream = result
+	result.reader.state.stream = result
 	result.writer.stream = result
 
 	return result
@@ -171,6 +172,23 @@ func (s *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
 	}
 }
 
+func (s *webRTCStream) setCloseErrIfUndefined(isReset bool) {
+	s.closeErrMux.Lock()
+	defer s.closeErrMux.Unlock()
+	if s.closeErr == nil {
+		s.closeErr = io.EOF
+		if isReset {
+			s.closeErr = io.ErrClosedPipe
+		}
+	}
+}
+
+func (s *webRTCStream) getCloseErr() error {
+	s.closeErrMux.Lock()
+	defer s.closeErrMux.Unlock()
+	return s.closeErr
+}
+
 // this is used to force reset a stream
 func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	if s.isClosed() {
@@ -181,14 +199,7 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	s.closeOnce.Do(func() {
 		log.Debug("closing: reset: %v, notify: %v", isReset, notifyConnection)
 		s.stateHandler.Close()
-		s.closeErr.SetFn(func(err *error) {
-			if *err == nil {
-				*err = io.EOF
-				if isReset {
-					*err = io.ErrClosedPipe
-				}
-			}
-		})
+		s.setCloseErrIfUndefined(isReset)
 		// force close reads
 		s.reader.SetReadDeadline(time.Now().Add(-100 * time.Millisecond))
 		if isReset {

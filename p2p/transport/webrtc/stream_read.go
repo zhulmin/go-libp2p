@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
@@ -17,17 +16,21 @@ import (
 type (
 	webRTCStreamReader struct {
 		stream *webRTCStream
+		state  *webRTCStreamReaderState
 
-		state *async.MutexExec[*webRTCStreamReaderState]
-
-		deadline async.MutexGetterSetter[time.Time]
+		deadline    time.Time
+		deadlineMux sync.Mutex
 
 		closeOnce sync.Once
 	}
 
 	webRTCStreamReaderState struct {
+		sync.Mutex
+
 		Reader pbio.Reader
 		Buffer []byte
+
+		stream *webRTCStream
 	}
 )
 
@@ -37,12 +40,15 @@ type (
 // is signaled by `Read` on the datachannel returning
 // io.EOF.
 func (r *webRTCStreamReader) Read(b []byte) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+
 	var (
-		readErr  error
-		read     int
-		finished bool
+		readErr error
+		read    int
 	)
-	for !finished && readErr == nil {
+	for read == 0 && readErr == nil {
 		if r.stream.isClosed() {
 			return 0, io.ErrClosedPipe
 		}
@@ -51,7 +57,7 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 		if hasReadDeadline {
 			// check if deadline exceeded
 			if readDeadline.Before(time.Now()) {
-				if err, found := r.stream.closeErr.Get(); found {
+				if err := r.stream.getCloseErr(); err != nil {
 					log.Debugf("[1] deadline exceeded: closeErr: %v", err)
 				} else {
 					log.Debug("[1] deadline exceeded: no closeErr")
@@ -60,71 +66,84 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 			}
 		}
 
-		readErr = r.state.Exec(func(state *webRTCStreamReaderState) error {
-			read = copy(b, state.Buffer)
-			state.Buffer = state.Buffer[read:]
-			remaining := len(state.Buffer)
-
-			if remaining == 0 && !r.stream.stateHandler.AllowRead() {
-				closeErr, _ := r.stream.closeErr.Get()
-				if closeErr != nil {
-					log.Debugf("[2] stream closed: %v", closeErr)
-					return closeErr
-				}
-				log.Debug("[2] stream empty")
-				return io.EOF
-			}
-
-			if read > 0 || read == len(b) {
-				finished = true
-				return nil
-			}
-
-			// read from datachannel
-			var msg pb.Message
-			readErr = state.Reader.ReadMsg(&msg)
-			if readErr != nil {
-				// This case occurs when the remote node goes away
-				// without writing a FIN message
-				if errors.Is(readErr, io.EOF) {
-					r.stream.Reset()
-					return io.ErrClosedPipe
-				}
-				if errors.Is(readErr, os.ErrDeadlineExceeded) {
-					// if the stream has been force closed or force reset
-					// using SetReadDeadline, we check if closeErr was set.
-					closeErr, _ := r.stream.closeErr.Get()
-					log.Debugf("closing stream, checking error: %v closeErr: %v", readErr, closeErr)
-					if closeErr != nil {
-						return closeErr
-					}
-				}
-				return readErr
-			}
-
-			// append incoming data to read buffer
-			if r.stream.stateHandler.AllowRead() && msg.Message != nil {
-				state.Buffer = append(state.Buffer, msg.GetMessage()...)
-			}
-
-			// process any flags on the message
-			if msg.Flag != nil {
-				r.stream.processIncomingFlag(msg.GetFlag())
-			}
-			return nil
-		})
+		read, readErr = r.state.readMessage(b)
 	}
 
 	return read, readErr
 }
 
+func (r *webRTCStreamReaderState) readMessage(b []byte) (int, error) {
+	r.Lock()
+	defer r.Unlock()
+
+	read := copy(b, r.Buffer)
+	r.Buffer = r.Buffer[read:]
+	remaining := len(r.Buffer)
+
+	if remaining == 0 && !r.stream.stateHandler.AllowRead() {
+		if closeErr := r.stream.getCloseErr(); closeErr != nil {
+			log.Debugf("[2] stream closed: %v", closeErr)
+			return read, closeErr
+		}
+		log.Debug("[2] stream empty")
+		return read, io.EOF
+	}
+
+	if read > 0 {
+		return read, nil
+	}
+
+	// read from datachannel
+	var msg pb.Message
+	err := r.Reader.ReadMsg(&msg)
+	if err != nil {
+		// This case occurs when the remote node goes away
+		// without writing a FIN message
+		if errors.Is(err, io.EOF) {
+			r.stream.Reset()
+			return read, io.ErrClosedPipe
+		}
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			// if the stream has been force closed or force reset
+			// using SetReadDeadline, we check if closeErr was set.
+			closeErr := r.stream.getCloseErr()
+			log.Debugf("closing stream, checking error: %v closeErr: %v", err, closeErr)
+			if closeErr != nil {
+				return read, closeErr
+			}
+		}
+		return read, err
+	}
+
+	// append incoming data to read buffer
+	if r.stream.stateHandler.AllowRead() && msg.Message != nil {
+		r.Buffer = append(r.Buffer, msg.GetMessage()...)
+	}
+
+	// process any flags on the message
+	if msg.Flag != nil {
+		r.stream.processIncomingFlag(msg.GetFlag())
+	}
+	return read, nil
+}
+
+func (r *webRTCStreamReaderState) readMessageFromDataChannel(msg *pb.Message) error {
+	r.Lock()
+	defer r.Unlock()
+	return r.Reader.ReadMsg(msg)
+}
+
 func (r *webRTCStreamReader) SetReadDeadline(t time.Time) error {
-	r.deadline.Set(t)
+	r.deadlineMux.Lock()
+	defer r.deadlineMux.Unlock()
+	r.deadline = t
 	return r.stream.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
 }
 
 func (r *webRTCStreamReader) getReadDeadline() (time.Time, bool) {
-	return r.deadline.Get()
+	r.deadlineMux.Lock()
+	defer r.deadlineMux.Unlock()
+	return r.deadline, !r.deadline.IsZero()
 }
 
 func (r *webRTCStreamReader) CloseRead() error {
@@ -133,9 +152,7 @@ func (r *webRTCStreamReader) CloseRead() error {
 	}
 	var err error
 	r.closeOnce.Do(func() {
-		err = r.stream.writer.writer.Exec(func(writer pbio.Writer) error {
-			return writer.WriteMsg(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
-		})
+		err = r.stream.writer.writeMessageToWriter(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
 		if err != nil {
 			log.Debug("could not write STOP_SENDING message")
 			err = fmt.Errorf("could not close stream for reading: %w", err)

@@ -4,7 +4,10 @@ import (
 	"crypto"
 	"fmt"
 	"net"
+	"strings"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/encoding"
+	mh "github.com/multiformats/go-multihash"
 	multihash "github.com/multiformats/go-multihash"
 )
 
@@ -85,6 +88,23 @@ func RenderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.Dec
 		ufrag,
 		fp,
 	), nil
+}
+
+func FingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
+	if fp == nil {
+		return "", fmt.Errorf("fingerprint multihash: %w", ErrNilParam)
+	}
+	sdpString, err := GetSupportedSDPString(fp.Code)
+	if err != nil {
+		return "", err
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(fp.Digest)*3 + 8)
+	builder.WriteString(sdpString)
+	builder.WriteByte(' ')
+	encoding.EncodeInterpersedHexToBuilder(fp.Digest, &builder)
+	return builder.String(), nil
 }
 
 // GetSupportedSDPHash converts a multihash code to the
