@@ -40,8 +40,8 @@ func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 	}
 }
 
-func (conn *muxedConnection) push(buf []byte, addr net.Addr) error {
-	return conn.pq.push(buf, addr)
+func (conn *muxedConnection) Push(buf []byte, addr net.Addr) error {
+	return conn.pq.Push(buf, addr)
 }
 
 // Close implements net.PacketConn
@@ -58,7 +58,7 @@ func (conn *muxedConnection) LocalAddr() net.Addr {
 
 // ReadFrom implements net.PacketConn
 func (conn *muxedConnection) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	return conn.pq.pop(conn.ctx, p)
+	return conn.pq.Pop(conn.ctx, p)
 }
 
 // SetDeadline implements net.PacketConn
@@ -90,7 +90,7 @@ func (conn *muxedConnection) closeConnection() error {
 		return errAlreadyClosed
 	default:
 	}
-	conn.pq.close()
+	conn.pq.Close()
 	conn.cancel()
 	return nil
 }
@@ -120,9 +120,9 @@ func newPacketQueue() *packetQueue {
 	}
 }
 
-// pop reads a packet from the packetQueue or blocks until
+// Pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the buffer is closed.
-func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
+func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
 	select {
 	case <-ctx.Done():
 		return 0, nil, ctx.Err()
@@ -143,8 +143,8 @@ func (pq *packetQueue) pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 	}
 }
 
-// push adds a packet to the packetQueue
-func (pq *packetQueue) push(buf []byte, addr net.Addr) (err error) {
+// Push adds a packet to the packetQueue
+func (pq *packetQueue) Push(buf []byte, addr net.Addr) (err error) {
 	select {
 	case pq.pkts <- packet{addr, buf}:
 		return nil
@@ -155,7 +155,7 @@ func (pq *packetQueue) push(buf []byte, addr net.Addr) (err error) {
 
 // discard all packets in the queue and return
 // buffers
-func (pq *packetQueue) close() {
+func (pq *packetQueue) Close() {
 	select {
 	case <-pq.ctx.Done():
 	default:

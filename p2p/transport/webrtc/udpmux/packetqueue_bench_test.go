@@ -30,11 +30,11 @@ func BenchmarkQueue(b *testing.B) {
 				buf := make([]byte, 256)
 				for i := 0; i < b.N; i++ {
 					for k := 0; k < input; k++ {
-						pq.push(pool.Get(255), addr)
+						pq.Push(pool.Get(255), addr)
 					}
 					for k := 0; k < input; k++ {
 
-						pq.pop(context.Background(), buf)
+						pq.Pop(context.Background(), buf)
 					}
 				}
 			})
