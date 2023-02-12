@@ -101,7 +101,8 @@ type packet struct {
 }
 
 var (
-	errTooManyPackets = errors.New("too many packets in queue; dropping")
+	errTooManyPackets    = errors.New("too many packets in queue; dropping")
+	errPacketQueueClosed = errors.New("packet queue closed")
 )
 
 // just a convenience wrapper around a channel
@@ -125,7 +126,7 @@ func newPacketQueue() *packetQueue {
 func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
 	select {
 	case <-ctx.Done():
-		return 0, nil, ctx.Err()
+		return 0, nil, errPacketQueueClosed
 	// It is desired to allow reads of this channel even
 	// when pq.ctx.Done() is already closed.
 	case p, ok := <-pq.pkts:
