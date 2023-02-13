@@ -19,7 +19,7 @@ var sizes = []int{
 
 func BenchmarkQueue(b *testing.B) {
 	addr := net.UDPAddrFromAddrPort(netip.MustParseAddrPort("127.0.0.1:12345"))
-	for _, dequeue := range []bool{true, false} {
+	for _, dequeue := range [...]bool{true, false} {
 		for _, input := range sizes {
 			testCase := fmt.Sprintf("enqueue_%d", input)
 			if dequeue {

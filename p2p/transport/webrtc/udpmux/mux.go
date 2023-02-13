@@ -3,12 +3,11 @@ package udpmux
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
-	"unsafe"
 
 	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
@@ -17,6 +16,10 @@ import (
 )
 
 var log = logging.Logger("mux")
+
+var (
+	errConnNotFound = errors.New("connection not found")
+)
 
 const ReceiveMTU = 1500
 
@@ -54,7 +57,7 @@ type udpMux struct {
 	cancel context.CancelFunc
 }
 
-func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr)) ice.UDPMux {
+func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr)) *udpMux {
 	ctx, cancel := context.WithCancel(context.Background())
 	mux := &udpMux{
 		ctx:                  ctx,
@@ -140,9 +143,6 @@ func (mux *udpMux) readLoop() {
 		if err != nil {
 			log.Errorf("error reading from socket: %v", err)
 			pool.Put(buf)
-			if os.IsTimeout(err) {
-				continue
-			}
 			return
 		}
 		buf = buf[:n]
@@ -151,8 +151,7 @@ func (mux *udpMux) readLoop() {
 		// passed on to any connection, and therefore the current
 		// function has ownership of the packet. Otherwise, the
 		// ownership of the packet is passed to a connection
-		processErr := mux.processPacket(buf, addr)
-		if processErr != nil {
+		if err := mux.processPacket(buf, addr); err != nil {
 			buf = buf[:cap(buf)]
 			pool.Put(buf)
 		}
@@ -166,34 +165,10 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	}
 	isIPv6 := udpAddr.IP.To4() == nil
 
-	// Connections are indexed by remote address. We firest
+	// Connections are indexed by remote address. We first
 	// check if the remote address has a connection associated
 	// with it. If yes, we push the received packet to the connection
-	// and loop again.
-	conn, ok := mux.storage.GetConnByAddr(udpAddr)
-	// if address was not found check if ufrag exists
-	if !ok && stun.IsMessage(buf) {
-		msg := &stun.Message{Raw: buf}
-		if err := msg.Decode(); err != nil || msg.Type != stun.BindingRequest {
-			log.Debug("incoming message should be a STUN binding request")
-			return err
-		}
-
-		ufrag, err := ufragFromStunMessage(msg)
-		if err != nil {
-			log.Debug("could not find STUN username: %w", err)
-			return err
-		}
-
-		var connCreated bool
-		conn, connCreated = mux.storage.AddAddr(ufrag, udpAddr, isIPv6, mux)
-
-		if connCreated && mux.unknownUfragCallback != nil {
-			mux.unknownUfragCallback(ufrag, udpAddr)
-		}
-	}
-
-	if conn != nil {
+	if conn, ok := mux.storage.GetConnByAddr(udpAddr); ok {
 		err := conn.Push(buf, addr)
 		if err != nil {
 			log.Errorf("could not push packet: %v", err)
@@ -201,10 +176,35 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 		return nil
 	}
 
-	return fmt.Errorf("connection not found")
+	if !stun.IsMessage(buf) {
+		return errConnNotFound
+	}
+
+	msg := &stun.Message{Raw: buf}
+	if err := msg.Decode(); err != nil || msg.Type != stun.BindingRequest {
+		log.Debug("incoming message should be a STUN binding request")
+		return err
+	}
+
+	ufrag, err := ufragFromSTUNMessage(msg)
+	if err != nil {
+		log.Debug("could not find STUN username: %w", err)
+		return err
+	}
+
+	var connCreated bool
+	conn, connCreated := mux.storage.AddAddr(ufrag, udpAddr, isIPv6, mux)
+	if connCreated && mux.unknownUfragCallback != nil {
+		mux.unknownUfragCallback(ufrag, udpAddr)
+	}
+
+	if err = conn.Push(buf, addr); err != nil {
+		log.Errorf("could not push packet: %v", err)
+	}
+	return nil
 }
 
-// ufragFromStunMessage returns the local or ufrag
+// ufragFromSTUNMessage returns the local or ufrag
 // from the STUN username attribute. Local ufrag is the ufrag of the
 // peer which initiated the connectivity check, e.g in a connectivity
 // check from A to B, the username attribute will be B_ufrag:A_ufrag
@@ -213,16 +213,16 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 // implementations do not generate connectivity checks. In our specific
 // case, since the local and remote ufrag is equal, we can return
 // either value.
-func ufragFromStunMessage(msg *stun.Message) (string, error) {
+func ufragFromSTUNMessage(msg *stun.Message) (string, error) {
 	attr, err := msg.Get(stun.AttrUsername)
 	if err != nil {
 		return "", err
 	}
-	ufrag := bytes.Split(attr, []byte{':'})
-	if len(ufrag) < 2 {
+	index := bytes.Index(attr, []byte{':'})
+	if index == -1 {
 		return "", fmt.Errorf("invalid STUN username attribute")
 	}
-	return *(*string)(unsafe.Pointer(&ufrag[1])), nil
+	return string(attr[index+1:]), nil
 }
 
 type udpMuxStorage struct {
@@ -243,7 +243,7 @@ func (storage *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
 	storage.Lock()
 	defer storage.Unlock()
 
-	for _, isIPv6 := range []bool{true, false} {
+	for _, isIPv6 := range [...]bool{true, false} {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		if conn, ok := storage.ufragMap[key]; ok {
 			_ = conn.closeConnection()

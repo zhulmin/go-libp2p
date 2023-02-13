@@ -40,13 +40,6 @@ func EncodeDTLSFingerprint(fp webrtc.DTLSFingerprint) (string, error) {
 	return multibase.Encode(multibase.Base64url, encoded)
 }
 
-func Min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // only use this if the datachannels are detached, since the OnOpen callback
 // will be called immediately. Only use after the peerconnection is open.
 // The context should close if the peerconnection underlying the datachannel

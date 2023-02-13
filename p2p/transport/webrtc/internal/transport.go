@@ -2,7 +2,6 @@ package internal
 
 import (
 	"crypto/rand"
-	"unsafe"
 )
 
 const (
@@ -20,5 +19,5 @@ func GenUfrag(n int) string {
 	for i := uFragIdOffset; i < uFragLength; i++ {
 		b[i] = uFragAlphabet[int(b[i])%len(uFragAlphabet)]
 	}
-	return *(*string)(unsafe.Pointer(&b))
+	return string(b)
 }

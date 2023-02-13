@@ -12,7 +12,11 @@ import (
 
 var _ net.PacketConn = &muxedConnection{}
 
-const maxPacketsInQueue int = 128
+var (
+	errAlreadyClosed = errors.New("already closed")
+)
+
+const maxPacketsInQueue = 128
 
 // muxedConnection provides a net.PacketConn abstraction
 // over packetQueue and adds the ability to store addresses
@@ -135,7 +139,7 @@ func newPacketQueue() *packetQueue {
 }
 
 // Pop reads a packet from the packetQueue or blocks until
-// either a packet becomes available or the buffer is closed.
+// either a packet becomes available or the queue is closed.
 func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
 	select {
 	case <-ctx.Done():
@@ -151,7 +155,6 @@ func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 		if n < len(p.buf) {
 			err = io.ErrShortBuffer
 		}
-		p.buf = p.buf[:cap(p.buf)]
 		pool.Put(p.buf)
 		return n, p.addr, err
 	}

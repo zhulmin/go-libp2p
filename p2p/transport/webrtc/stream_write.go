@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
@@ -87,7 +86,10 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 	)
 
 	for len(b) > 0 {
-		end := internal.Min(chunkSize, len(b))
+		end := len(b)
+		if chunkSize < end {
+			end = chunkSize
+		}
 
 		written, err := w.writeMessage(&pb.Message{Message: b[:end]})
 		n += written
