@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/encoding"
-	mh "github.com/multiformats/go-multihash"
 	multihash "github.com/multiformats/go-multihash"
 )
 
@@ -90,7 +89,7 @@ func RenderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.Dec
 	), nil
 }
 
-func FingerprintToSDP(fp *mh.DecodedMultihash) (string, error) {
+func FingerprintToSDP(fp *multihash.DecodedMultihash) (string, error) {
 	if fp == nil {
 		return "", fmt.Errorf("fingerprint multihash: %w", ErrNilParam)
 	}
