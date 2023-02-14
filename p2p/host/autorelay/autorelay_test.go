@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -379,40 +378,6 @@ func TestMaxAge(t *testing.T) {
 	require.Contains(t, ids, relays[0])
 }
 
-func expectDeltaInAddrUpdated(t *testing.T, addrUpdated event.Subscription, expectedDelta int) {
-	t.Helper()
-	delta := 0
-	for {
-		select {
-		case evAny := <-addrUpdated.Out():
-			ev := evAny.(event.EvtLocalAddressesUpdated)
-			for _, updatedAddr := range ev.Removed {
-				if updatedAddr.Action == event.Removed {
-					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-						delta--
-						if delta == expectedDelta {
-							return
-						}
-					}
-				}
-			}
-			for _, updatedAddr := range ev.Current {
-				if updatedAddr.Action == event.Added {
-					if _, err := updatedAddr.Address.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-						delta++
-						if delta == expectedDelta {
-							return
-						}
-					}
-				}
-			}
-		case <-time.After(10 * time.Second):
-			t.Fatal("timeout waiting for address updated event")
-		}
-	}
-
-}
-
 func TestReconnectToStaticRelays(t *testing.T) {
 	cl := clock.NewMock()
 	var staticRelays []peer.AddrInfo
@@ -429,15 +394,10 @@ func TestReconnectToStaticRelays(t *testing.T) {
 		staticRelays,
 		autorelay.WithClock(cl),
 	)
-
 	defer h.Close()
 
-	addrUpdated, err := h.EventBus().Subscribe(new(event.EvtLocalAddressesUpdated))
-	require.NoError(t, err)
-
-	expectDeltaInAddrUpdated(t, addrUpdated, 1)
-
 	cl.Add(time.Minute)
+	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 10*time.Second, 100*time.Millisecond)
 
 	relaysInUse := usedRelays(h)
 	oldRelay := relaysInUse[0]
@@ -448,7 +408,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	}
 
 	cl.Add(time.Hour)
-	expectDeltaInAddrUpdated(t, addrUpdated, -1)
+	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestMinInterval(t *testing.T) {
