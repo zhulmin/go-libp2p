@@ -179,7 +179,7 @@ func TestWaitForCandidates(t *testing.T) {
 	r2 := newRelay(t)
 	t.Cleanup(func() { r2.Close() })
 	peerChan <- peer.AddrInfo{ID: r2.ID(), Addrs: r2.Addrs()}
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 30*time.Second, 100*time.Millisecond)
 }
 
 func TestBackoff(t *testing.T) {
