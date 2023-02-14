@@ -115,3 +115,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
+
+replace github.com/stretchr/testify => github.com/marcopolo/testify v1.8.1-eventually
