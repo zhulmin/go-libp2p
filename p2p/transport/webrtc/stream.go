@@ -19,11 +19,11 @@ var _ network.MuxedStream = &webRTCStream{}
 
 const (
 	// maxMessageSize is limited to 16384 bytes in the SDP.
-	maxMessageSize int = 16384
+	maxMessageSize = 16384
 	// Pion SCTP association has an internal receive buffer of 1MB (roughly, 1MB per connection).
 	// We can change this value in the SettingEngine before creating the peerconnection.
 	// https://github.com/pion/webrtc/blob/v3.1.49/sctptransport.go#L341
-	maxBufferedAmount int = 2 * maxMessageSize
+	maxBufferedAmount = 2 * maxMessageSize
 	// bufferedAmountLowThreshold and maxBufferedAmount are bound
 	// to a stream but congestion control is done on the whole
 	// SCTP association. This means that a single stream can monopolize
@@ -31,48 +31,46 @@ const (
 	// read stream data and it's remote continues to send. We can
 	// add messages to the send buffer once there is space for 1 full
 	// sized message.
-	bufferedAmountLowThreshold uint64 = uint64(maxBufferedAmount) / 2
+	bufferedAmountLowThreshold = maxBufferedAmount / 2
 
 	// Proto overhead assumption is 5 bytes
-	protoOverhead int = 5
+	protoOverhead = 5
 	// Varint overhead is assumed to be 2 bytes. This is safe since
 	// 1. This is only used and when writing message, and
 	// 2. We only send messages in chunks of `maxMessageSize - varintOverhead`
 	// which includes the data and the protobuf header. Since `maxMessageSize`
 	// is less than or equal to 2 ^ 14, the varint will not be more than
 	// 2 bytes in length.
-	varintOverhead int = 2
+	varintOverhead = 2
 )
 
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
-type (
-	webRTCStream struct {
-		reader webRTCStreamReader
-		writer webRTCStreamWriter
+type webRTCStream struct {
+	reader webRTCStreamReader
+	writer webRTCStreamWriter
 
-		stateHandler webRTCStreamState
+	stateHandler webRTCStreamState
 
-		// hack for closing the Read side using a deadline
-		// in case `Read` does not return.
-		closeErr    error
-		closeErrMux sync.Mutex
+	// hack for closing the Read side using a deadline
+	// in case `Read` does not return.
+	closeErr    error
+	closeErrMux sync.Mutex
 
-		conn *connection
-		id   uint16
-		rwc  datachannel.ReadWriteCloser
+	conn *connection
+	id   uint16
+	rwc  datachannel.ReadWriteCloser
 
-		laddr net.Addr
-		raddr net.Addr
+	laddr net.Addr
+	raddr net.Addr
 
-		wg sync.WaitGroup
+	wg sync.WaitGroup
 
-		ctx    context.Context
-		cancel context.CancelFunc
+	ctx    context.Context
+	cancel context.CancelFunc
 
-		closeOnce sync.Once
-	}
-)
+	closeOnce sync.Once
+}
 
 func newStream(
 	connection *connection,
@@ -201,7 +199,7 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		s.stateHandler.Close()
 		s.setCloseErrIfUndefined(isReset)
 		// force close reads
-		s.reader.SetReadDeadline(time.Now().Add(-100 * time.Millisecond))
+		s.reader.SetReadDeadline(time.Time{})
 		if isReset {
 			// write the RESET message. The error is explicitly ignored
 			// because we do not know if the remote is still connected

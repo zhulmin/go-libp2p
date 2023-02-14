@@ -13,26 +13,24 @@ import (
 	"github.com/pion/datachannel"
 )
 
-type (
-	webRTCStreamReader struct {
-		stream *webRTCStream
-		state  *webRTCStreamReaderState
+type webRTCStreamReader struct {
+	stream *webRTCStream
+	state  *webRTCStreamReaderState
 
-		deadline    time.Time
-		deadlineMux sync.Mutex
+	deadline    time.Time
+	deadlineMux sync.Mutex
 
-		closeOnce sync.Once
-	}
+	closeOnce sync.Once
+}
 
-	webRTCStreamReaderState struct {
-		sync.Mutex
+type webRTCStreamReaderState struct {
+	sync.Mutex
 
-		Reader pbio.Reader
-		Buffer []byte
+	Reader pbio.Reader
+	Buffer []byte
 
-		stream *webRTCStream
-	}
-)
+	stream *webRTCStream
+}
 
 // Read from the underlying datachannel. This also
 // process sctp control messages such as DCEP, which is
