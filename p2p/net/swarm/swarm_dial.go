@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -74,12 +75,6 @@ const ConcurrentFdDials = 160
 // DefaultPerPeerRateLimit is the number of concurrent outbound dials to make
 // per peer
 var DefaultPerPeerRateLimit = 8
-
-func init() {
-	if os.Getenv("CI") != "" {
-		DefaultPerPeerRateLimit = 1
-	}
-}
 
 // dialbackoff is a struct used to avoid over-dialing the same, dead peers.
 // Whenever we totally time out on a peer (all three attempts), we add them
@@ -494,6 +489,12 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	tpt := s.TransportForDialing(addr)
 	if tpt == nil {
 		return nil, ErrNoTransport
+	}
+
+	// DEBUG
+	if os.Getenv("CI") != "" {
+		t := time.Duration(rand.Intn(10)) * time.Millisecond
+		time.Sleep(t)
 	}
 
 	start := time.Now()
