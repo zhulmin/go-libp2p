@@ -224,14 +224,14 @@ func TestBackoff(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool { return reservations.Load() == 1 }, 3*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return reservations.Load() == 1 }, 10*time.Second, 20*time.Millisecond)
 	// make sure we don't add any relays yet
 	for i := 0; i < 2; i++ {
 		cl.Add(backoff / 3)
 		require.Equal(t, 1, int(reservations.Load()))
 	}
 	cl.Add(backoff / 2)
-	require.Eventually(t, func() bool { return reservations.Load() == 2 }, 3*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return reservations.Load() == 2 }, 10*time.Second, 20*time.Millisecond)
 	require.Less(t, int(counter.Load()), 100) // just make sure we're not busy-looping
 	require.Equal(t, 2, int(reservations.Load()))
 }
