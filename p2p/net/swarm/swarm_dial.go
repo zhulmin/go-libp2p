@@ -483,8 +483,6 @@ func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp
 	})
 }
 
-var debugCounter int32 = 0
-
 // dialAddr is the actual dial for an addr, indirectly invoked through the limiter
 func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (transport.CapableConn, error) {
 	// Just to double check. Costs nothing.
