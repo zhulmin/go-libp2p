@@ -531,12 +531,20 @@ func (rf *relayFinder) usingRelay(p peer.ID) bool {
 	return ok
 }
 
+func (rf *relayFinder) candidateOk(c *candidate) bool {
+	now := rf.conf.clock.Now()
+	// Check max age here as well in case our background ticker hasn't fired.
+	return c.added.Add(rf.conf.maxCandidateAge).After(now)
+}
+
 // selectCandidates returns an ordered slice of relay candidates.
 // Callers should attempt to obtain reservations with the candidates in this order.
 func (rf *relayFinder) selectCandidates() []*candidate {
 	candidates := make([]*candidate, 0, len(rf.candidates))
 	for _, cand := range rf.candidates {
-		candidates = append(candidates, cand)
+		if rf.candidateOk(cand) {
+			candidates = append(candidates, cand)
+		}
 	}
 
 	// TODO: better relay selection strategy; this just selects random relays,

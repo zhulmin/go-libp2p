@@ -352,7 +352,14 @@ func TestMaxAge(t *testing.T) {
 		peerChan2 <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
 	}
 	cl.Add(11 * time.Minute)
+
+	require.Eventually(t, func() bool {
+		relays = usedRelays(h)
+		return len(relays) == 1
+	}, 3*time.Second, 100*time.Millisecond)
+
 	// by now the 3 relays should have been garbage collected
+	// And we should only be using a single relay. Lets close it.
 	var oldRelay peer.ID
 	for _, r := range relays1 {
 		if r.ID() == relays[0] {
