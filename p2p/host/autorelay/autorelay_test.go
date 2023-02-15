@@ -393,6 +393,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	h := newPrivateNodeWithStaticRelays(t,
 		staticRelays,
 		autorelay.WithClock(cl),
+		autorelay.WithBackoff(30*time.Minute),
 	)
 	defer h.Close()
 
