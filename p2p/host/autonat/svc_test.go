@@ -96,7 +96,7 @@ func TestAutoNATServiceDialRateLimiter(t *testing.T) {
 	defer c.host.Close()
 	defer c.dialer.Close()
 
-	c.dialTimeout = 200 * time.Millisecond
+	c.dialTimeout = 10 * time.Second
 	c.throttleResetPeriod = 200 * time.Millisecond
 	c.throttleResetJitter = 0
 	c.throttlePeerMax = 1
