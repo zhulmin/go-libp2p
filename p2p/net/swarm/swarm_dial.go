@@ -76,6 +76,12 @@ const ConcurrentFdDials = 160
 // per peer
 var DefaultPerPeerRateLimit = 8
 
+func init() {
+	if os.Getenv("CI") != "" {
+		DefaultPerPeerRateLimit = 1
+	}
+}
+
 // dialbackoff is a struct used to avoid over-dialing the same, dead peers.
 // Whenever we totally time out on a peer (all three attempts), we add them
 // to dialbackoff. Then, whenevers goroutines would _wait_ (dialsync), they
