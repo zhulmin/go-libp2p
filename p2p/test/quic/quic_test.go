@@ -105,6 +105,7 @@ func TestDisableQUICDraft29(t *testing.T) {
 	// We disabled QUIC Version Negotiation, so we will _not_ receive a Version Negotiation packet.
 	// Instead, the connection will run into the context timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Microsecond)
+	ctx = network.WithDialPeerTimeout(ctx, 300*time.Microsecond)
 	defer cancel()
 	require.ErrorIs(t,
 		h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/udp/12346/quic")}}),

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -81,11 +80,6 @@ func WithMetricsTracer(t MetricsTracer) Option {
 
 func WithDialTimeout(t time.Duration) Option {
 	return func(s *Swarm) error {
-		if os.Getenv("CI") != "" {
-			if t < 5*time.Second {
-				t = 5 * time.Second
-			}
-		}
 		s.dialTimeout = t
 		return nil
 	}
