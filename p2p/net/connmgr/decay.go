@@ -157,15 +157,14 @@ func (d *decayer) process() {
 
 	var (
 		bmp   bumpCmd
-		now   time.Time
 		visit = make(map[*decayingTag]struct{})
 	)
 
 	for {
 		select {
-		case now = <-ticker.C:
-			nn := now
-			d.lastTick.Store(&nn)
+		case <-ticker.C:
+			now := d.clock.Now()
+			d.lastTick.Store(&now)
 
 			d.tagsMu.Lock()
 			for _, tag := range d.knownTags {
