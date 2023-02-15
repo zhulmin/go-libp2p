@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/canonicallog"
@@ -478,6 +478,8 @@ func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp
 	})
 }
 
+var debugCounter int32 = 0
+
 // dialAddr is the actual dial for an addr, indirectly invoked through the limiter
 func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (transport.CapableConn, error) {
 	// Just to double check. Costs nothing.
@@ -493,7 +495,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 
 	// DEBUG
 	if os.Getenv("CI") != "" {
-		t := time.Duration(rand.Intn(10)) * time.Millisecond
+		t := time.Duration(atomic.AddInt32(&debugCounter, 1)%20) * time.Millisecond
 		time.Sleep(t)
 	}
 
