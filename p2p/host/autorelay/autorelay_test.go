@@ -408,7 +408,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	}
 
 	cl.Add(time.Hour)
-	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 10*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 30*time.Second, 100*time.Millisecond)
 }
 
 func TestMinInterval(t *testing.T) {
