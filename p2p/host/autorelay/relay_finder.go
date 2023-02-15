@@ -156,9 +156,11 @@ func (rf *relayFinder) background(ctx context.Context) {
 			rf.notifyMaybeConnectToRelay()
 		case <-rf.relayUpdated:
 			push = true
-		case now := <-refreshTicker.C:
+		case <-refreshTicker.C:
+			now := rf.conf.clock.Now()
 			push = rf.refreshReservations(ctx, now)
-		case now := <-backoffTicker.C:
+		case <-backoffTicker.C:
+			now := rf.conf.clock.Now()
 			rf.candidateMx.Lock()
 			for id, t := range rf.backoff {
 				if !t.Add(rf.conf.backoff).After(now) {
@@ -167,7 +169,8 @@ func (rf *relayFinder) background(ctx context.Context) {
 				}
 			}
 			rf.candidateMx.Unlock()
-		case now := <-oldCandidateTicker.C:
+		case <-oldCandidateTicker.C:
+			now := rf.conf.clock.Now()
 			var deleted bool
 			rf.candidateMx.Lock()
 			for id, cand := range rf.candidates {
@@ -221,7 +224,8 @@ func (rf *relayFinder) findNodes(ctx context.Context) {
 		select {
 		case <-rf.maybeRequestNewCandidates:
 			continue
-		case now := <-timer.Chan():
+		case <-timer.Chan():
+			now := rf.conf.clock.Now()
 			timer.SetRead()
 			if peerChan != nil {
 				// We're still reading peers from the peerChan. No need to query for more peers now.
