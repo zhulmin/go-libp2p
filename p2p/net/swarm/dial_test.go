@@ -552,6 +552,13 @@ func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {
 }
 
 func TestDialSimultaneousJoin(t *testing.T) {
+	// This test relies on concurrent dials
+	currentConccurentDials := swarm.DefaultPerPeerRateLimit
+	swarm.DefaultPerPeerRateLimit = 8
+	defer func() {
+		swarm.DefaultPerPeerRateLimit = currentConccurentDials
+	}()
+
 	const dialTimeout = 10 * time.Second
 
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
