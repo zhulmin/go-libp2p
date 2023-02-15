@@ -139,7 +139,7 @@ func (m *certManager) background(hostKey ic.PrivKey) {
 			case <-m.ctx.Done():
 				return
 			case <-t.C:
-				m.clock.Now()
+				now := m.clock.Now()
 				m.mx.Lock()
 				if err := m.rollConfig(hostKey); err != nil {
 					log.Errorw("rolling config failed", "error", err)
