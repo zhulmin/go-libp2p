@@ -398,7 +398,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	defer h.Close()
 
 	cl.Add(time.Minute)
-	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 10*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 30*time.Second, 100*time.Millisecond)
 
 	relaysInUse := usedRelays(h)
 	oldRelay := relaysInUse[0]
@@ -407,6 +407,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 			r.Network().ClosePeer(h.ID())
 		}
 	}
+	require.Eventually(t, func() bool { return numRelays(h) == 0 }, 30*time.Second, 100*time.Millisecond)
 
 	cl.Add(time.Hour)
 	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 30*time.Second, 100*time.Millisecond)
