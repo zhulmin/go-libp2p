@@ -486,17 +486,19 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	if s.local == p {
 		return nil, ErrDialToSelf
 	}
+
+	// DEBUG
+	if os.Getenv("CI") != "" {
+		step := int32(50)
+		t := time.Duration(step*atomic.AddInt32(&debugCounter, 1)%(int32(DefaultPerPeerRateLimit+1)*step)) * time.Millisecond
+		time.Sleep(t)
+	}
+
 	log.Debugf("%s swarm dialing %s %s", s.local, p, addr)
 
 	tpt := s.TransportForDialing(addr)
 	if tpt == nil {
 		return nil, ErrNoTransport
-	}
-
-	// DEBUG
-	if os.Getenv("CI") != "" {
-		t := time.Duration(5*atomic.AddInt32(&debugCounter, 1)%40) * time.Millisecond
-		time.Sleep(t)
 	}
 
 	start := time.Now()
