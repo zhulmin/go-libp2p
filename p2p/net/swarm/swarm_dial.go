@@ -495,7 +495,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 
 	// DEBUG
 	if os.Getenv("CI") != "" {
-		t := time.Duration(atomic.AddInt32(&debugCounter, 1)%20) * time.Millisecond
+		t := time.Duration(5*atomic.AddInt32(&debugCounter, 1)%40) * time.Millisecond
 		time.Sleep(t)
 	}
 
