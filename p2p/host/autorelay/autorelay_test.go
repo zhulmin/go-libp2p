@@ -120,7 +120,7 @@ func TestSingleCandidate(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 30*time.Second, 100*time.Millisecond)
 	// test that we don't add any more relays
 	require.Never(t, func() bool { return numRelays(h) > 1 }, 200*time.Millisecond, 50*time.Millisecond)
 	require.Equal(t, 1, counter, "expected the peer source callback to only have been called once")

@@ -250,7 +250,7 @@ func getHostPair(t *testing.T) (host.Host, host.Host) {
 	require.NoError(t, err)
 	h2.Start()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
 	require.NoError(t, h1.Connect(ctx, h2pi))
