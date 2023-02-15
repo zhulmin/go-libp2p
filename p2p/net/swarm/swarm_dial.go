@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/canonicallog"
@@ -491,13 +490,6 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	// Just to double check. Costs nothing.
 	if s.local == p {
 		return nil, ErrDialToSelf
-	}
-
-	// DEBUG
-	if os.Getenv("CI") != "" {
-		step := int32(50)
-		t := time.Duration(step*atomic.AddInt32(&debugCounter, 1)%(int32(DefaultPerPeerRateLimit+1)*step)) * time.Millisecond
-		time.Sleep(t)
 	}
 
 	log.Debugf("%s swarm dialing %s %s", s.local, p, addr)
