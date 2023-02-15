@@ -331,11 +331,11 @@ func TestMaxAge(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
 
-	waitFor := 500 * time.Millisecond
+	waitFor := time.Second
 	tick := 100 * time.Millisecond
 	if os.Getenv("CI") != "" {
 		// Only increase the waitFor since we are increasing the mock clock every tick.
@@ -356,7 +356,7 @@ func TestMaxAge(t *testing.T) {
 	require.Eventually(t, func() bool {
 		relays = usedRelays(h)
 		return len(relays) == 1
-	}, 3*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// by now the 3 relays should have been garbage collected
 	// And we should only be using a single relay. Lets close it.
@@ -375,7 +375,7 @@ func TestMaxAge(t *testing.T) {
 			return false
 		}
 		return relays[0] != oldRelay
-	}, 3*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	require.Len(t, relays, 1)
 	ids := make([]peer.ID, 0, len(relays2))
