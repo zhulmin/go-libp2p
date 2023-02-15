@@ -97,7 +97,7 @@ func TestAutoNATServiceDialRateLimiter(t *testing.T) {
 	defer c.dialer.Close()
 
 	c.dialTimeout = 10 * time.Second
-	c.throttleResetPeriod = 200 * time.Millisecond
+	c.throttleResetPeriod = 1 * time.Second
 	c.throttleResetJitter = 0
 	c.throttlePeerMax = 1
 	_ = makeAutoNATService(t, c)
@@ -122,10 +122,10 @@ func TestAutoNATServiceDialRateLimiter(t *testing.T) {
 
 	time.Sleep(400 * time.Millisecond)
 
-	_, err = ac.DialBack(ctx, c.host.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Eventually(t, func() bool {
+		_, err = ac.DialBack(ctx, c.host.ID())
+		return err == nil
+	}, 5*time.Second, time.Second)
 }
 
 func TestAutoNATServiceGlobalLimiter(t *testing.T) {

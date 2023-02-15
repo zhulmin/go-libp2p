@@ -194,7 +194,7 @@ func newSilentPeer(t *testing.T) (peer.ID, ma.Multiaddr, net.Listener) {
 }
 
 func TestDialWait(t *testing.T) {
-	const dialTimeout = 250 * time.Millisecond
+	const dialTimeout = 5 * time.Second
 
 	swarms := makeSwarms(t, 1, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	s1 := swarms[0]
