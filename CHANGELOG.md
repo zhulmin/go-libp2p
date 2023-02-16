@@ -11,7 +11,7 @@
 
 Since the last release, we've added additional metrics to different components.
 Metrics were added to:
-* [AutoNat](https://github.com/libp2p/go-libp2p/pull/2086): Current Reachability Status and Confidence, Client and Server DialResponses, Server DialRejections. The dashboard is [available here](https://github.com/sukunrt/go-libp2p/blob/master/p2p/host/autonat/grafana-dashboards/autonat.json).
+* [AutoNat](https://github.com/libp2p/go-libp2p/pull/2086): Current Reachability Status and Confidence, Client and Server DialResponses, Server DialRejections. The dashboard is [available here](https://github.com/libp2p/go-libp2p/blob/master/dashboards/autonat/autonat.json).
 
 ## 🐞 Bugfixes <!-- omit in toc -->
 
