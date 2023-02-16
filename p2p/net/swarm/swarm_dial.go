@@ -77,7 +77,7 @@ var DefaultPerPeerRateLimit = 8
 
 func init() {
 	if os.Getenv("CI") != "" {
-		DefaultPerPeerRateLimit = 1
+		DefaultPerPeerRateLimit = 4
 	}
 }
 
@@ -500,6 +500,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	start := time.Now()
 	connC, err := tpt.Dial(ctx, addr, p)
 	if err != nil {
+		log.Errorf("error dialing %s %s: %s", p, addr, err)
 		if s.metricsTracer != nil {
 			s.metricsTracer.FailedDialing(addr, err)
 		}

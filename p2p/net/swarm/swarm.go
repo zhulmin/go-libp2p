@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,15 +23,19 @@ import (
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
-const (
-	defaultDialTimeout = 15 * time.Second
+const defaultDialTimeout = 15 * time.Second
 
-	// defaultDialTimeoutLocal is the maximum duration a Dial to local network address
-	// is allowed to take.
-	// This includes the time between dialing the raw network connection,
-	// protocol selection as well the handshake, if applicable.
-	defaultDialTimeoutLocal = 5 * time.Second
-)
+// defaultDialTimeoutLocal is the maximum duration a Dial to local network address
+// is allowed to take.
+// This includes the time between dialing the raw network connection,
+// protocol selection as well the handshake, if applicable.
+var defaultDialTimeoutLocal = 5 * time.Second
+
+func init() {
+	if os.Getenv("CI") != "" {
+		defaultDialTimeoutLocal = 30 * time.Second
+	}
+}
 
 var log = logging.Logger("swarm2")
 
