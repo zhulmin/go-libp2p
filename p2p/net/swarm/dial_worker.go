@@ -191,6 +191,7 @@ loop:
 			w.triggerDial = nil
 
 		case res := <-w.resch:
+			log.Debugf("dial worker %s got response for %s. Has conn? %v. we were connected? %v", w.peer, res.Addr, res.Conn != nil, w.connected)
 			if res.Conn != nil {
 				w.connected = true
 			}

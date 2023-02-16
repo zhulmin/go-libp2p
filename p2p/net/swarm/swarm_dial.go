@@ -77,7 +77,7 @@ var DefaultPerPeerRateLimit = 8
 
 func init() {
 	if os.Getenv("CI") != "" {
-		DefaultPerPeerRateLimit = 4
+		DefaultPerPeerRateLimit = 1
 	}
 }
 
@@ -506,7 +506,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 		}
 		return nil, err
 	}
-	canonicallog.LogPeerStatus(100, connC.RemotePeer(), connC.RemoteMultiaddr(), "connection_status", "established", "dir", "outbound")
+	canonicallog.LogPeerStatus(1, connC.RemotePeer(), connC.RemoteMultiaddr(), "connection_status", "established", "dir", "outbound")
 	if s.metricsTracer != nil {
 		connState := connC.ConnState()
 		s.metricsTracer.OpenedConnection(network.DirOutbound, connC.RemotePublicKey(), connState)
