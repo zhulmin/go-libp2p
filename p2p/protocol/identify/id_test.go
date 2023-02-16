@@ -894,6 +894,47 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 	}
 }
 
+func TestDeduplicateIdentifySnapshots(t *testing.T) {
+	h1 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer h1.Close()
+	defer h2.Close()
+
+	ids1, err := identify.NewIDService(h1)
+	require.NoError(t, err)
+	defer ids1.Close()
+	ids1.Start()
+
+	ids2, err := identify.NewIDService(h2)
+	require.NoError(t, err)
+	defer ids2.Close()
+	ids2.Start()
+
+	sub1, err := h2.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted))
+	require.NoError(t, err)
+
+	require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()}))
+
+	select {
+	case ev := <-sub1.Out():
+		require.Equal(t, h1.ID(), ev.(event.EvtPeerIdentificationCompleted).Peer)
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
+	}
+
+	emitter, err := h1.EventBus().Emitter(new(event.EvtLocalProtocolsUpdated))
+	require.NoError(t, err)
+	// Emit the event. Nothing changed about the snapshot, so we don't expect any Identify Push.
+	require.NoError(t, emitter.Emit(event.EvtLocalProtocolsUpdated{}))
+	sub2, err := h2.EventBus().Subscribe(new(event.EvtPeerProtocolsUpdated))
+	require.NoError(t, err)
+	select {
+	case ev := <-sub2.Out():
+		t.Fatalf("received duplicate event: %+v", ev)
+	case <-time.After(250 * time.Millisecond):
+	}
+}
+
 func waitForAddrInStream(t *testing.T, s <-chan ma.Multiaddr, expected ma.Multiaddr, timeout time.Duration, failMsg string) {
 	t.Helper()
 	for {

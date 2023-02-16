@@ -1,9 +1,11 @@
 package identify
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"time"
 
@@ -54,13 +56,6 @@ const (
 )
 
 var defaultUserAgent = "github.com/libp2p/go-libp2p"
-
-type identifySnapshot struct {
-	seq       uint64
-	protocols []protocol.ID
-	addrs     []ma.Multiaddr
-	record    *record.Envelope
-}
 
 type IDService interface {
 	// IdentifyConn synchronously triggers an identify request on the connection and
@@ -254,10 +249,11 @@ func (ids *idService) loop(ctx context.Context) {
 			if ids.metricsTracer != nil {
 				ids.metricsTracer.TriggeredPushes(e)
 			}
-			ids.updateSnapshot()
-			select {
-			case triggerPush <- struct{}{}:
-			default: // we already have one more push queued, no need to queue another one
+			if updated := ids.updateSnapshot(); updated {
+				select {
+				case triggerPush <- struct{}{}:
+				default: // we already have one more push queued, no need to queue another one
+				}
 			}
 		case <-ctx.Done():
 			return
@@ -291,8 +287,8 @@ func (ids *idService) sendPushes(ctx context.Context) {
 		ids.currentSnapshot.Lock()
 		snapshot := ids.currentSnapshot.snapshot
 		ids.currentSnapshot.Unlock()
-		if e.Sequence >= snapshot.seq {
-			log.Debugw("already sent this snapshot to peer", "peer", c.RemotePeer(), "seq", snapshot.seq)
+		if e.Sequence >= snapshot.Sequence {
+			log.Debugw("already sent this snapshot to peer", "peer", c.RemotePeer(), "Sequence", snapshot.Sequence)
 			continue
 		}
 		// we haven't, send it now
@@ -447,7 +443,7 @@ func (ids *idService) sendIdentifyResp(s network.Stream) error {
 	if !ok {
 		return nil
 	}
-	e.Sequence = snapshot.seq
+	e.Sequence = snapshot.Sequence
 	ids.conns[s.Conn()] = e
 	return nil
 }
@@ -517,28 +513,36 @@ func readAllIDMessages(r pbio.Reader, finalMsg proto.Message) error {
 	return fmt.Errorf("too many parts")
 }
 
-func (ids *idService) updateSnapshot() {
+func (ids *idService) updateSnapshot() (updated bool) {
+	addrs := ids.Host.Addrs()
+	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) > 1 })
+	protos := ids.Host.Mux().Protocols()
+	sort.Slice(protos, func(i, j int) bool { return protos[i] < protos[j] })
 	snapshot := identifySnapshot{
-		addrs:     ids.Host.Addrs(),
-		protocols: ids.Host.Mux().Protocols(),
+		Addrs:     addrs,
+		Protocols: protos,
 	}
 	if !ids.disableSignedPeerRecord {
 		if cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore()); ok {
-			snapshot.record = cab.GetPeerRecord(ids.Host.ID())
+			snapshot.Record = cab.GetPeerRecord(ids.Host.ID())
 		}
 	}
 
 	ids.currentSnapshot.Lock()
-	snapshot.seq = ids.currentSnapshot.snapshot.seq + 1
+	defer ids.currentSnapshot.Unlock()
+	if ids.currentSnapshot.snapshot.Equal(&snapshot) {
+		return false
+	}
+	snapshot.Sequence = ids.currentSnapshot.snapshot.Sequence + 1
 	ids.currentSnapshot.snapshot = snapshot
-	ids.currentSnapshot.Unlock()
 
-	log.Debugw("updating snapshot", "seq", snapshot.seq, "addrs", snapshot.addrs)
+	log.Debugw("updating snapshot", "Sequence", snapshot.Sequence, "addrs", snapshot.Addrs)
+	return true
 }
 
 func (ids *idService) writeChunkedIdentifyMsg(s network.Stream, snapshot *identifySnapshot) error {
 	c := s.Conn()
-	log.Debugw("sending snapshot", "seq", snapshot.seq, "protocols", snapshot.protocols, "addrs", snapshot.addrs)
+	log.Debugw("sending snapshot", "Sequence", snapshot.Sequence, "protocols", snapshot.Protocols, "addrs", snapshot.Addrs)
 
 	mes := ids.createBaseIdentifyResponse(c, snapshot)
 	sr := ids.getSignedRecord(snapshot)
@@ -564,7 +568,7 @@ func (ids *idService) createBaseIdentifyResponse(conn network.Conn, snapshot *id
 	localAddr := conn.LocalMultiaddr()
 
 	// set protocols this node is currently handling
-	mes.Protocols = protocol.ConvertToStrings(snapshot.protocols)
+	mes.Protocols = protocol.ConvertToStrings(snapshot.Protocols)
 
 	// observed address so other side is informed of their
 	// "public" address, at least in relation to us.
@@ -574,8 +578,8 @@ func (ids *idService) createBaseIdentifyResponse(conn network.Conn, snapshot *id
 	// peers that do not yet support signed addresses will need this.
 	// Note: LocalMultiaddr is sometimes 0.0.0.0
 	viaLoopback := manet.IsIPLoopback(localAddr) || manet.IsIPLoopback(remoteAddr)
-	mes.ListenAddrs = make([][]byte, 0, len(snapshot.addrs))
-	for _, addr := range snapshot.addrs {
+	mes.ListenAddrs = make([][]byte, 0, len(snapshot.Addrs))
+	for _, addr := range snapshot.Addrs {
 		if !viaLoopback && manet.IsIPLoopback(addr) {
 			continue
 		}
@@ -610,11 +614,11 @@ func (ids *idService) createBaseIdentifyResponse(conn network.Conn, snapshot *id
 }
 
 func (ids *idService) getSignedRecord(snapshot *identifySnapshot) []byte {
-	if ids.disableSignedPeerRecord || snapshot.record == nil {
+	if ids.disableSignedPeerRecord || snapshot.Record == nil {
 		return nil
 	}
 
-	recBytes, err := snapshot.record.Marshal()
+	recBytes, err := snapshot.Record.Marshal()
 	if err != nil {
 		log.Errorw("failed to marshal signed record", "err", err)
 		return nil
