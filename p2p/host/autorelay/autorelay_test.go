@@ -410,7 +410,14 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	require.Eventually(t, func() bool { return numRelays(h) == 0 }, 30*time.Second, 100*time.Millisecond)
 
 	cl.Add(time.Hour)
-	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 30*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool {
+		// Increment time so that we refire any timers that need time to advance (like the peer source timer)
+		// There's a race condition here where if the peer chan timer is
+		// selected first, then the backoff clear timer we will never reconnect
+		// to the static relay. So we increment time here to make sure that we will run the peer chan timer again.
+		cl.Add(time.Minute)
+		return numRelays(h) == 1
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestMinInterval(t *testing.T) {
