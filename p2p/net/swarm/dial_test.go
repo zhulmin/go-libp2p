@@ -29,8 +29,6 @@ func closeSwarms(swarms []*swarm.Swarm) {
 }
 
 func TestBasicDialPeer(t *testing.T) {
-	t.Parallel()
-
 	swarms := makeSwarms(t, 2)
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
@@ -47,8 +45,6 @@ func TestBasicDialPeer(t *testing.T) {
 }
 
 func TestBasicDialPeerWithResolver(t *testing.T) {
-	t.Parallel()
-
 	mockResolver := madns.MockResolver{IP: make(map[string][]net.IPAddr)}
 	ipaddr, err := net.ResolveIPAddr("ip4", "127.0.0.1")
 	require.NoError(t, err)
@@ -85,8 +81,6 @@ func TestBasicDialPeerWithResolver(t *testing.T) {
 }
 
 func TestDialWithNoListeners(t *testing.T) {
-	t.Parallel()
-
 	s1 := makeDialOnlySwarm(t)
 	swarms := makeSwarms(t, 1)
 	defer closeSwarms(swarms)
@@ -119,8 +113,6 @@ func acceptAndHang(l net.Listener) {
 }
 
 func TestSimultDials(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 	swarms := makeSwarms(t, 2, swarmt.OptDisableReuseport)
 	defer closeSwarms(swarms)
@@ -231,8 +223,6 @@ func TestDialBackoff(t *testing.T) {
 	if ci.IsRunning() {
 		t.Skip("travis will never have fun with this test")
 	}
-	t.Parallel()
-
 	const dialTimeout = 100 * time.Millisecond
 
 	ctx := context.Background()
@@ -436,8 +426,6 @@ func TestDialBackoff(t *testing.T) {
 }
 
 func TestDialBackoffClears(t *testing.T) {
-	t.Parallel()
-
 	const dialTimeout = 10 * time.Second
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
@@ -478,8 +466,6 @@ func TestDialBackoffClears(t *testing.T) {
 }
 
 func TestDialPeerFailed(t *testing.T) {
-	t.Parallel()
-
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(100*time.Millisecond)))
 	defer closeSwarms(swarms)
 	testedSwarm, targetSwarm := swarms[0], swarms[1]
@@ -652,8 +638,6 @@ func TestDialSimultaneousJoin(t *testing.T) {
 }
 
 func TestDialSelf(t *testing.T) {
-	t.Parallel()
-
 	swarms := makeSwarms(t, 2)
 	defer closeSwarms(swarms)
 	s1 := swarms[0]
