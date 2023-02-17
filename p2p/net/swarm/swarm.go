@@ -195,7 +195,11 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 	}
 
 	s.dsync = newDialSync(s.dialWorkerLoop)
-	s.limiter = newDialLimiter(s.dialAddr)
+	if os.Getenv("CI") != "" {
+		s.limiter = newDialLimiter(s.dialAddrForCI)
+	} else {
+		s.limiter = newDialLimiter(s.dialAddr)
+	}
 	s.backf.init(s.ctx)
 	return s, nil
 }
@@ -388,8 +392,12 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 		if err != nil {
 			return nil, err
 		}
+		if c != nil {
+			log.Debugf("[%s] found connection: %s", s.local, c)
+		}
 
 		if c == nil {
+			log.Debugf("[%s] no connection dialing", s.local)
 			if nodial, _ := network.GetNoDial(ctx); nodial {
 				return nil, network.ErrNoConn
 			}
@@ -404,6 +412,7 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 			if err != nil {
 				return nil, err
 			}
+			log.Debugf("[%s] dialed connection", s.local, c)
 		}
 
 		s, err := c.NewStream(ctx)
@@ -413,6 +422,7 @@ func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error
 			}
 			return nil, err
 		}
+		log.Debugf("[%s] opened stream: %s", s.Conn().LocalPeer(), s)
 		return s, nil
 	}
 }
