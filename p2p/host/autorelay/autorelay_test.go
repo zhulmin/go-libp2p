@@ -223,14 +223,20 @@ func TestBackoff(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool { return reservations.Load() == 1 }, 10*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool {
+		cl.Add(time.Second)
+		return reservations.Load() == 1
+	}, 10*time.Second, 20*time.Millisecond)
 	// make sure we don't add any relays yet
 	for i := 0; i < 2; i++ {
 		cl.Add(backoff / 3)
 		require.Equal(t, 1, int(reservations.Load()))
 	}
 	cl.Add(backoff / 2)
-	require.Eventually(t, func() bool { return reservations.Load() == 2 }, 10*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool {
+		cl.Add(time.Second)
+		return reservations.Load() == 2
+	}, 10*time.Second, 20*time.Millisecond)
 	require.Less(t, int(counter.Load()), 100) // just make sure we're not busy-looping
 	require.Equal(t, 2, int(reservations.Load()))
 }
@@ -330,7 +336,10 @@ func TestMaxAge(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool {
+		cl.Add(time.Second)
+		return numRelays(h) > 0
+	}, 10*time.Second, 100*time.Millisecond)
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
 
@@ -347,6 +356,7 @@ func TestMaxAge(t *testing.T) {
 	cl.Add(11 * time.Minute)
 
 	require.Eventually(t, func() bool {
+		cl.Add(time.Second)
 		relays = usedRelays(h)
 		return len(relays) == 1
 	}, 10*time.Second, 100*time.Millisecond)
@@ -363,6 +373,7 @@ func TestMaxAge(t *testing.T) {
 	require.NotEmpty(t, oldRelay)
 
 	require.Eventually(t, func() bool {
+		cl.Add(time.Second)
 		relays = usedRelays(h)
 		if len(relays) != 1 {
 			return false
@@ -398,7 +409,10 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	defer h.Close()
 
 	cl.Add(time.Minute)
-	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 180*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool {
+		cl.Add(time.Second)
+		return numRelays(h) == 1
+	}, 10*time.Second, 100*time.Millisecond)
 
 	relaysInUse := usedRelays(h)
 	oldRelay := relaysInUse[0]
@@ -407,7 +421,10 @@ func TestReconnectToStaticRelays(t *testing.T) {
 			r.Network().ClosePeer(h.ID())
 		}
 	}
-	require.Eventually(t, func() bool { return numRelays(h) == 0 }, 30*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool {
+		cl.Add(time.Second)
+		return numRelays(h) == 0
+	}, 30*time.Second, 100*time.Millisecond)
 
 	cl.Add(time.Hour)
 	require.Eventually(t, func() bool {
