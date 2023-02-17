@@ -74,10 +74,20 @@ const ConcurrentFdDials = 160
 // DefaultPerPeerRateLimit is the number of concurrent outbound dials to make
 // per peer
 var DefaultPerPeerRateLimit = 8
+var defaultPerPeerRateLimitMu = &sync.Mutex{}
+
+func SwapDefaultPerPeerRateLimit(newLimit int) int {
+	defaultPerPeerRateLimitMu.Lock()
+	defer defaultPerPeerRateLimitMu.Unlock()
+
+	oldVal := DefaultPerPeerRateLimit
+	DefaultPerPeerRateLimit = newLimit
+	return oldVal
+}
 
 func init() {
 	if os.Getenv("CI") != "" {
-		DefaultPerPeerRateLimit = 1
+		SwapDefaultPerPeerRateLimit(1)
 	}
 }
 

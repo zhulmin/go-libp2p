@@ -292,11 +292,7 @@ func TestDialWorkerLoopConcurrentMix(t *testing.T) {
 }
 
 func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
-	currentConccurentDials := DefaultPerPeerRateLimit
-	DefaultPerPeerRateLimit = 8
-	defer func() {
-		DefaultPerPeerRateLimit = currentConccurentDials
-	}()
+	defer SwapDefaultPerPeerRateLimit(SwapDefaultPerPeerRateLimit(8))
 
 	s1 := makeSwarm(t)
 	defer s1.Close()
