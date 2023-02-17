@@ -64,7 +64,7 @@ func expectConnectedness(t *testing.T, a, b network.Network, expected network.Co
 		atob := a.Connectedness(b.LocalPeer())
 		btoa := b.Connectedness(a.LocalPeer())
 		return atob == expected && btoa == expected
-	}, 10*time.Second, 100*time.Millisecond, "Expected %s to be %s to %s", a, expected, b)
+	}, 10*time.Second, 100*time.Millisecond, "Expected %s to be %s to %s.\nA: %s \nB: %s", a, expected, b, printConns(a), printConns(b))
 }
 
 func printConns(n network.Network) string {
