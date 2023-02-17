@@ -422,7 +422,9 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		ho = routed.Wrap(h, router)
 	}
 	if ar != nil {
-		return autorelay.NewAutoRelayHost(ho, ar), nil
+		arh := autorelay.NewAutoRelayHost(ho, ar)
+		arh.Start()
+		ho = arh
 	}
 	return ho, nil
 }
