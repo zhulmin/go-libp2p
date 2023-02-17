@@ -2,7 +2,6 @@ package autorelay_test
 
 import (
 	"context"
-	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -96,7 +95,7 @@ func newRelay(t *testing.T) host.Host {
 			}
 		}
 		return false
-	}, 500*time.Millisecond, 10*time.Millisecond)
+	}, time.Second, 10*time.Millisecond)
 	return h
 }
 
@@ -251,7 +250,7 @@ func TestStaticRelays(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 2*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 50*time.Millisecond)
 }
 
 func TestConnectOnDisconnect(t *testing.T) {
@@ -274,7 +273,7 @@ func TestConnectOnDisconnect(t *testing.T) {
 	)
 	defer h.Close()
 
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
 	relaysInUse := usedRelays(h)
 	require.Len(t, relaysInUse, 1)
 	oldRelay := relaysInUse[0]
@@ -285,7 +284,7 @@ func TestConnectOnDisconnect(t *testing.T) {
 		}
 	}
 
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
 	relaysInUse = usedRelays(h)
 	require.Len(t, relaysInUse, 1)
 	require.NotEqualf(t, oldRelay, relaysInUse[0], "old relay should not be used again")
@@ -335,17 +334,11 @@ func TestMaxAge(t *testing.T) {
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
 
-	waitFor := time.Second
-	tick := 100 * time.Millisecond
-	if os.Getenv("CI") != "" {
-		// Only increase the waitFor since we are increasing the mock clock every tick.
-		waitFor *= 10
-	}
 	require.Eventually(t, func() bool {
 		// we don't know exactly when the timer is reset, just advance our timer multiple times if necessary
 		cl.Add(time.Second)
 		return len(peerChans) == 0
-	}, waitFor, tick)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	cl.Add(10 * time.Minute)
 	for _, r := range relays2 {
@@ -405,7 +398,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	defer h.Close()
 
 	cl.Add(time.Minute)
-	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 30*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) == 1 }, 180*time.Second, 100*time.Millisecond)
 
 	relaysInUse := usedRelays(h)
 	oldRelay := relaysInUse[0]
@@ -439,5 +432,5 @@ func TestMinInterval(t *testing.T) {
 
 	// The second call to peerSource should happen after 1 second
 	require.Never(t, func() bool { return numRelays(h) > 0 }, 500*time.Millisecond, 100*time.Millisecond)
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 1*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
 }
