@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,7 +38,7 @@ func (s *Stream) ID() string {
 func (s *Stream) String() string {
 	return fmt.Sprintf(
 		"<swarm.Stream[%s] %s (%s) <-> %s (%s)>",
-		s.conn.conn.Transport(),
+		reflect.TypeOf(s.conn.conn.Transport()),
 		s.conn.LocalMultiaddr(),
 		s.conn.LocalPeer(),
 		s.conn.RemoteMultiaddr(),
