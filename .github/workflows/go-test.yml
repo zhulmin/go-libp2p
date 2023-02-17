@@ -13,7 +13,7 @@ jobs:
         go: ["1.19.x","1.20.x"]
     env:
       COVERAGES: ""
-      GOLOG_LOG_LEVEL: swarm2=debug,basichost=debug
+      GOLOG_LOG_LEVEL: swarm2=debug,basichost=debug,net/identify=debug,autorelay=debug
     runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:

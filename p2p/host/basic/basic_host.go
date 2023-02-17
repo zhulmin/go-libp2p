@@ -319,7 +319,7 @@ func (h *BasicHost) updateLocalIpAddr() {
 		}
 
 		if _, _, localIPv6, err := r.Route(net.IPv6unspecified); err != nil {
-			log.Debugw("failed to fetch local IPv6 address", "error", err)
+			// log.Debugw("failed to fetch local IPv6 address", "error", err)
 		} else if localIPv6.IsGlobalUnicast() {
 			maddr, err := manet.FromIP(localIPv6)
 			if err == nil {
