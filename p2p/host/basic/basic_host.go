@@ -418,7 +418,11 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 
 	log.Debugf("negotiated: %s (took %s)", protoID, took)
 
-	go handle(protoID, s)
+	go func() {
+		n := time.Now()
+		handle(protoID, s)
+		log.Debugf("protocol handler done: %s (took %s)", protoID, time.Since(n))
+	}()
 }
 
 // SignalAddressChange signals to the host that it needs to determine whether our listen addresses have recently
