@@ -71,18 +71,25 @@ const DialAttempts = 1
 // that consume file descriptors
 const ConcurrentFdDials = 160
 
-// DefaultPerPeerRateLimit is the number of concurrent outbound dials to make
+// defaultPerPeerRateLimit is the number of concurrent outbound dials to make
 // per peer
-var DefaultPerPeerRateLimit = 8
+var defaultPerPeerRateLimit = 8
 var defaultPerPeerRateLimitMu = &sync.Mutex{}
 
 func SwapDefaultPerPeerRateLimit(newLimit int) int {
 	defaultPerPeerRateLimitMu.Lock()
 	defer defaultPerPeerRateLimitMu.Unlock()
 
-	oldVal := DefaultPerPeerRateLimit
-	DefaultPerPeerRateLimit = newLimit
+	oldVal := defaultPerPeerRateLimit
+	defaultPerPeerRateLimit = newLimit
 	return oldVal
+}
+
+func GetDefaultPerPeerRateLimit() int {
+	defaultPerPeerRateLimitMu.Lock()
+	defer defaultPerPeerRateLimitMu.Unlock()
+
+	return defaultPerPeerRateLimit
 }
 
 func init() {
@@ -505,7 +512,7 @@ func (s *Swarm) dialAddrForCI(ctx context.Context, p peer.ID, addr ma.Multiaddr)
 	val := pacer[p]
 	pacer[p] = val + 1
 	pacerMu.Unlock()
-	time.Sleep((time.Duration(val) * 20 * time.Millisecond) % (time.Duration(DefaultPerPeerRateLimit+1) * 20 * time.Millisecond))
+	time.Sleep((time.Duration(val) * 20 * time.Millisecond) % (time.Duration(GetDefaultPerPeerRateLimit()+1) * 20 * time.Millisecond))
 	return s.dialAddr(ctx, p, addr)
 }
 
