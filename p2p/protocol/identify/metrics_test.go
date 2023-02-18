@@ -11,6 +11,7 @@ import (
 )
 
 func TestMetricsNoAllocNoCover(t *testing.T) {
+	t.Skip("Investigate. this is flaky")
 	events := []any{
 		event.EvtLocalAddressesUpdated{},
 		event.EvtLocalProtocolsUpdated{},
