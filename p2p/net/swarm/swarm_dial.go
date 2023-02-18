@@ -512,7 +512,7 @@ func (s *Swarm) dialAddrForCI(ctx context.Context, p peer.ID, addr ma.Multiaddr)
 	val := pacer[p]
 	pacer[p] = val + 1
 	pacerMu.Unlock()
-	time.Sleep((time.Duration(val) * 20 * time.Millisecond) % (time.Duration(GetDefaultPerPeerRateLimit()+1) * 20 * time.Millisecond))
+	time.Sleep((time.Duration(val) * 50 * time.Millisecond) % (time.Duration(GetDefaultPerPeerRateLimit()+1) * 50 * time.Millisecond))
 	return s.dialAddr(ctx, p, addr)
 }
 
