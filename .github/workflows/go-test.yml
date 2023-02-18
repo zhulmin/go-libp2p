@@ -14,6 +14,7 @@ jobs:
     env:
       COVERAGES: ""
       GOLOG_LOG_LEVEL: swarm2=debug,basichost=debug,net/identify=debug,autorelay=debug
+      GOTEST_FLAGS: "-timeout 20m -p 1 -v"
     runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
@@ -47,7 +48,7 @@ jobs:
           # Use -coverpkg=./..., so that we include cross-package coverage.
           # If package ./A imports ./B, and ./A's tests also cover ./B,
           # this means ./B's coverage will be significantly higher than 0%.
-          run: go test -p 1 -v -shuffle=on -coverprofile=module-coverage.txt -coverpkg=./... ./...
+          run: go test ${{ env.GOTEST_FLAGS }} -shuffle=on -coverprofile=module-coverage.txt -coverpkg=./... ./...
       - name: Run tests (32 bit)
         # can't run 32 bit tests on OSX.
         if: matrix.os != 'macos' &&
@@ -59,19 +60,19 @@ jobs:
         with:
           run: |
             export "PATH=$PATH_386:$PATH"
-            go test -p 1 -v -shuffle=on ./...
+            go test ${{ env.GOTEST_FLAGS }} -p 1 -v -shuffle=on ./...
       - name: Run tests with race detector
         # speed things up. Windows and OSX VMs are slow
         if: matrix.os == 'ubuntu' &&
           contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: protocol/multiple-go-modules@v1.2
         with:
-          run: go test -p 1 -v -race ./...
+          run: go test ${{ env.GOTEST_FLAGS }}  -race ./...
       - name: Collect coverage files
         shell: bash
         run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # v3.1.1
         with:
-          files: '${{ env.COVERAGES }}'
+          files: "${{ env.COVERAGES }}"
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
