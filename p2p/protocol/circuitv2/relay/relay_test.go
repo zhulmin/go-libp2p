@@ -197,7 +197,7 @@ func TestRelayLimitTime(t *testing.T) {
 	})
 
 	rc := relay.DefaultResources()
-	rc.Limit.Duration = 4*time.Second
+	rc.Limit.Duration = 4 * time.Second
 
 	r, err := relay.New(hosts[1], relay.WithResources(rc))
 	if err != nil {
