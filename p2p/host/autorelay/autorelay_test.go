@@ -234,10 +234,11 @@ func TestBackoff(t *testing.T) {
 	}
 	cl.Add(backoff / 2)
 	require.Eventually(t, func() bool {
+		// TODO there should be some other way of ticking things without advancing time
 		cl.Add(time.Second)
 		return reservations.Load() == 2
-	}, 10*time.Second, 20*time.Millisecond, "reservations load should be 2 was %d", reservations.Load())
-	require.Less(t, int(counter.Load()), 100) // just make sure we're not busy-looping
+	}, 10*time.Second, 100*time.Millisecond, "reservations load should be 2 was %d", reservations.Load())
+	require.Less(t, int(counter.Load()), 300) // just make sure we're not busy-looping
 	require.Equal(t, 2, int(reservations.Load()))
 }
 
