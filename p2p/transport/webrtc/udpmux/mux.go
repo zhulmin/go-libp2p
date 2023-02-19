@@ -47,7 +47,7 @@ type ufragConnKey struct {
 // unseen IP address and the `unknownUfragCallback` callback is invoked.
 type udpMux struct {
 	socket               net.PacketConn
-	unknownUfragCallback func(string, net.Addr)
+	unknownUfragCallback func(string, net.Addr) bool
 
 	storage *udpMuxStorage
 
@@ -57,7 +57,7 @@ type udpMux struct {
 	cancel context.CancelFunc
 }
 
-func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr)) *udpMux {
+func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr) bool) *udpMux {
 	ctx, cancel := context.WithCancel(context.Background())
 	mux := &udpMux{
 		ctx:                  ctx,
@@ -195,7 +195,10 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	var connCreated bool
 	conn, connCreated := mux.storage.AddAddr(ufrag, udpAddr, isIPv6, mux)
 	if connCreated && mux.unknownUfragCallback != nil {
-		mux.unknownUfragCallback(ufrag, udpAddr)
+		if !mux.unknownUfragCallback(ufrag, udpAddr) {
+			conn.Close()
+			return nil
+		}
 	}
 
 	if err = conn.Push(buf, addr); err != nil {

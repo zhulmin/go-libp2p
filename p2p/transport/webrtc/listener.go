@@ -72,7 +72,6 @@ type listener struct {
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
-	candidateChan := make(chan candidateAddr, transport.maxInFlightConnections)
 	localFingerprints, err := config.Certificates[0].GetFingerprints()
 	if err != nil {
 		return nil, err
@@ -85,15 +84,19 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	localMhBuf, _ := multihash.Encode(localMh, multihash.SHA2_256)
 	localFpMultibase, _ := multibase.Encode(multibase.Base64url, localMhBuf)
 
+	inFlightQueueCh := make(chan candidateAddr, transport.maxInFlightConnections)
+
 	ctx, cancel := context.WithCancel(context.Background())
-	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) {
-		// Push to the candidateChan asynchronously to avoid blocking the mux goroutine
+	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {
+		// Push to the inFlightQueue asynchronously to avoid blocking the mux goroutine
 		// on candidates being processed. This can cause new connections to fail at high
 		// throughput but will allow packets for existing connections to be processed.
 		select {
-		case candidateChan <- candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}:
+		case inFlightQueueCh <- candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}:
+			return true
 		default:
 			log.Debug("candidate chan full, dropping incoming candidate")
+			return false
 		}
 	})
 
@@ -108,15 +111,9 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
 		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections),
-		inFlightQueue:             make(chan candidateAddr), // blocking on purpose
+		inFlightQueue:             inFlightQueueCh,
 		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
-
-	l.wg.Add(1)
-	go func() {
-		defer l.wg.Done()
-		l.handleIncomingCandidates(candidateChan)
-	}()
 
 	for i := 0; i < int(l.maxInFlightConnections); i++ {
 		l.wg.Add(1)
@@ -127,21 +124,6 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	}
 
 	return l, err
-}
-
-func (l *listener) handleIncomingCandidates(candidateChan <-chan candidateAddr) {
-	for {
-		select {
-		case <-l.ctx.Done():
-			return
-		case addr := <-candidateChan:
-			select {
-			case l.inFlightQueue <- addr:
-			default:
-				log.Warnf("server is busy, rejecting incoming connection from: %s", addr.raddr)
-			}
-		}
-	}
 }
 
 func (l *listener) inFlightWorker() {
@@ -171,7 +153,7 @@ func (l *listener) establishConnForInFlightAddr(addr *candidateAddr) {
 		conn.Close()
 	case l.acceptQueue <- conn:
 	default:
-		log.Warn("could not push connection")
+		log.Warn("could not push connection: accept queue full")
 		conn.Close()
 	}
 }
@@ -185,24 +167,35 @@ func (l *listener) handleCandidate(ctx context.Context, addr *candidateAddr) (tp
 	if err != nil {
 		return nil, err
 	}
-	pc, conn, err := l.setupConnection(ctx, scope, remoteMultiaddr, addr)
+	conn, err := l.setupConnection(ctx, scope, remoteMultiaddr, addr)
 	if err != nil {
 		scope.Done()
-		if pc != nil {
-			_ = pc.Close()
-		}
 		return nil, err
 	}
 	return conn, nil
 }
 
-func (l *listener) setupConnection(ctx context.Context, scope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr, addr *candidateAddr) (*webrtc.PeerConnection, tpt.CapableConn, error) {
+func (l *listener) setupConnection(
+	ctx context.Context, scope network.ConnManagementScope,
+	remoteMultiaddr ma.Multiaddr, addr *candidateAddr,
+) (tConn tpt.CapableConn, err error) {
+	var pc *webrtc.PeerConnection
+	defer func() {
+		if err != nil {
+			if pc != nil {
+				_ = pc.Close()
+			}
+			if tConn != nil {
+				_ = tConn.Close()
+			}
+		}
+	}()
+
 	settingEngine := webrtc.SettingEngine{}
 
 	// suppress pion logs
 	loggerFactory := pionlogger.NewDefaultLoggerFactory()
-	// NOTE: in future we might want to enable this in a verbose-log only mode
-	loggerFactory.DefaultLogLevel = pionlogger.LogLevelDisabled
+	loggerFactory.DefaultLogLevel = pionlogger.LogLevelWarn
 	settingEngine.LoggerFactory = loggerFactory
 
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
@@ -220,18 +213,18 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 
-	pc, err := api.NewPeerConnection(l.config)
+	pc, err = api.NewPeerConnection(l.config)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
-	negotiated, id := hansdhakeChannelNegotiated, handshakeChannelId
+	negotiated, id := handshakeChannelNegotiated, handshakeChannelId
 	rawDatachannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: &negotiated,
 		ID:         &id,
 	})
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	errC := internal.AwaitPeerConnectionOpen(addr.ufrag, pc)
@@ -243,27 +236,27 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	err = pc.SetLocalDescription(answer)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	select {
 	case <-ctx.Done():
-		return pc, nil, ctx.Err()
+		return nil, ctx.Err()
 	case err := <-errC:
 		if err != nil {
-			return pc, nil, fmt.Errorf("peerconnection error: %w", err)
+			return nil, fmt.Errorf("peer connection error: %w", err)
 		}
 
 	}
 
 	rwc, err := internal.GetDetachedChannel(ctx, rawDatachannel)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	handshakeChannel := newStream(nil, rawDatachannel, rwc, l.localAddr, addr.raddr)
@@ -278,30 +271,30 @@ func (l *listener) setupConnection(ctx context.Context, scope network.ConnManage
 		l.transport.localPeerId,
 		l.transport.privKey,
 		l.localMultiaddr,
-		"",
-		nil,
+		"",  // remotePeer
+		nil, // remoteKey
 		remoteMultiaddr,
 	)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	// we do not yet know A's peer ID so accept any inbound
 	secureConn, err := l.transport.noiseHandshake(ctx, pc, handshakeChannel, "", crypto.SHA256, true)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	// earliest point where we know the remote's peerID
 	err = scope.SetPeer(secureConn.RemotePeer())
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	conn.setRemotePeer(secureConn.RemotePeer())
 	conn.setRemotePublicKey(secureConn.RemotePublicKey())
 
-	return pc, conn, err
+	return conn, err
 }
 
 func (l *listener) Accept() (tpt.CapableConn, error) {

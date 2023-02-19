@@ -38,11 +38,11 @@ var log = logging.Logger("webrtc-transport")
 var dialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_WEBRTC), mafmt.Base(ma.P_CERTHASH))
 
 const (
-	// hansdhakeChannelNegotiated is used to specify that the
+	// handshakeChannelNegotiated is used to specify that the
 	// handshake data channel does not need negotiation via DCEP.
 	// A constant is used since the `DataChannelInit` struct takes
 	// references instead of values.
-	hansdhakeChannelNegotiated = true
+	handshakeChannelNegotiated = true
 	// handshakeChannelId is the agreed ID for the handshake data
 	// channel. A constant is used since the `DataChannelInit` struct takes
 	// references instead of values. We specify the type here as this
@@ -191,28 +191,32 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		return nil, fmt.Errorf("listen on udp: %w", err)
 	}
 
-	// construct multiaddr
+	listener, err := t.listenSocket(socket)
+	if err != nil {
+		socket.Close()
+		return nil, err
+	}
+	return listener, nil
+}
+
+func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error) {
 	listenerMultiaddr, err := manet.FromNetAddr(socket.LocalAddr())
 	if err != nil {
-		_ = socket.Close()
 		return nil, err
 	}
 
 	listenerFingerprint, err := t.getCertificateFingerprint()
 	if err != nil {
-		_ = socket.Close()
 		return nil, err
 	}
 
 	encodedLocalFingerprint, err := internal.EncodeDTLSFingerprint(listenerFingerprint)
 	if err != nil {
-		_ = socket.Close()
 		return nil, err
 	}
 
 	certMultiaddress, err := ma.NewMultiaddr(fmt.Sprintf("/webrtc/certhash/%s", encodedLocalFingerprint))
 	if err != nil {
-		_ = socket.Close()
 		return nil, err
 	}
 
@@ -225,7 +229,6 @@ func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		t.webrtcConfig,
 	)
 	if err != nil {
-		_ = socket.Close()
 		return nil, err
 	}
 	return listener, nil
@@ -238,14 +241,12 @@ func (t *WebRTCTransport) Dial(ctx context.Context, remoteMultiaddr ma.Multiaddr
 	}
 	err = scope.SetPeer(p)
 	if err != nil {
+		scope.Done()
 		return nil, err
 	}
-	pc, conn, err := t.dial(ctx, scope, remoteMultiaddr, p)
+	conn, err := t.dial(ctx, scope, remoteMultiaddr, p)
 	if err != nil {
 		scope.Done()
-		if pc != nil {
-			_ = pc.Close()
-		}
 		return nil, err
 	}
 	return conn, nil
@@ -256,26 +257,36 @@ func (t *WebRTCTransport) dial(
 	scope network.ConnManagementScope,
 	remoteMultiaddr ma.Multiaddr,
 	p peer.ID,
-) (*webrtc.PeerConnection, tpt.CapableConn, error) {
+) (tConn tpt.CapableConn, err error) {
 	var pc *webrtc.PeerConnection
+	defer func() {
+		if err != nil {
+			if pc != nil {
+				_ = pc.Close()
+			}
+			if tConn != nil {
+				_ = tConn.Close()
+			}
+		}
+	}()
 
 	remoteMultihash, err := internal.DecodeRemoteFingerprint(remoteMultiaddr)
 	if err != nil {
-		return pc, nil, fmt.Errorf("decode fingerprint: %w", err)
+		return nil, fmt.Errorf("decode fingerprint: %w", err)
 	}
 	remoteHashFunction, ok := internal.GetSupportedSDPHash(remoteMultihash.Code)
 	if !ok {
-		return pc, nil, fmt.Errorf("unsupported hash function: %w", nil)
+		return nil, fmt.Errorf("unsupported hash function: %w", nil)
 	}
 
 	rnw, rhost, err := manet.DialArgs(remoteMultiaddr)
 	if err != nil {
-		return pc, nil, fmt.Errorf("generate dial args: %w", err)
+		return nil, fmt.Errorf("generate dial args: %w", err)
 	}
 
 	raddr, err := net.ResolveUDPAddr(rnw, rhost)
 	if err != nil {
-		return pc, nil, fmt.Errorf("resolve udp address: %w", err)
+		return nil, fmt.Errorf("resolve udp address: %w", err)
 	}
 
 	// Instead of encoding the local fingerprint we
@@ -303,64 +314,64 @@ func (t *WebRTCTransport) dial(
 
 	pc, err = api.NewPeerConnection(t.webrtcConfig)
 	if err != nil {
-		return pc, nil, fmt.Errorf("instantiate peerconnection: %w", err)
+		return nil, fmt.Errorf("instantiate peerconnection: %w", err)
 	}
 
 	errC := internal.AwaitPeerConnectionOpen(ufrag, pc)
 	// We need to set negotiated = true for this channel on both
 	// the client and server to avoid DCEP errors.
-	negotiated, id := hansdhakeChannelNegotiated, handshakeChannelId
+	negotiated, id := handshakeChannelNegotiated, handshakeChannelId
 	rawHandshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: &negotiated,
 		ID:         &id,
 	})
 	if err != nil {
-		return pc, nil, fmt.Errorf("create datachannel: %w", err)
+		return nil, fmt.Errorf("create datachannel: %w", err)
 	}
 
 	// do offer-answer exchange
 	offer, err := pc.CreateOffer(nil)
 	if err != nil {
-		return pc, nil, fmt.Errorf("create offer: %w", err)
+		return nil, fmt.Errorf("create offer: %w", err)
 	}
 
 	err = pc.SetLocalDescription(offer)
 	if err != nil {
-		return pc, nil, fmt.Errorf("set local description: %w", err)
+		return nil, fmt.Errorf("set local description: %w", err)
 	}
 
 	answerSdpString, err := internal.RenderServerSdp(raddr, ufrag, remoteMultihash)
 	if err != nil {
-		return pc, nil, fmt.Errorf("render server SDP: %w", err)
+		return nil, fmt.Errorf("render server SDP: %w", err)
 	}
 
 	answer := webrtc.SessionDescription{SDP: answerSdpString, Type: webrtc.SDPTypeAnswer}
 	err = pc.SetRemoteDescription(answer)
 	if err != nil {
-		return pc, nil, fmt.Errorf("set remote description: %w", err)
+		return nil, fmt.Errorf("set remote description: %w", err)
 	}
 
 	// await peerconnection opening
 	select {
 	case err := <-errC:
 		if err != nil {
-			return pc, nil, err
+			return nil, err
 		}
 	case <-ctx.Done():
-		return pc, nil, errors.New("peerconnection opening timed out")
+		return nil, errors.New("peerconnection opening timed out")
 	}
 
 	detached, err := internal.GetDetachedChannel(ctx, rawHandshakeChannel)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 	// set the local address from the candidate pair
 	cp, err := rawHandshakeChannel.Transport().Transport().ICETransport().GetSelectedCandidatePair()
 	if cp == nil {
-		return pc, nil, errors.New("ice connection did not have selected candidate pair: nil result")
+		return nil, errors.New("ice connection did not have selected candidate pair: nil result")
 	}
 	if err != nil {
-		return pc, nil, fmt.Errorf("ice connection did not have selected candidate pair: error: %w", err)
+		return nil, fmt.Errorf("ice connection did not have selected candidate pair: error: %w", err)
 	}
 	laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
 
@@ -370,7 +381,7 @@ func (t *WebRTCTransport) dial(
 	// are multiplexed over the same SCTP connection
 	localAddr, err := manet.FromNetAddr(channel.LocalAddr())
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	// we can only know the remote public key after the noise handshake,
@@ -388,15 +399,15 @@ func (t *WebRTCTransport) dial(
 		remoteMultiaddr,
 	)
 	if err != nil {
-		return pc, nil, err
+		return nil, err
 	}
 
 	secConn, err := t.noiseHandshake(ctx, pc, channel, p, remoteHashFunction, false)
 	if err != nil {
-		return pc, conn, err
+		return conn, err
 	}
 	conn.setRemotePublicKey(secConn.RemotePublicKey())
-	return pc, conn, err
+	return conn, nil
 }
 
 func (t *WebRTCTransport) getCertificateFingerprint() (webrtc.DTLSFingerprint, error) {
