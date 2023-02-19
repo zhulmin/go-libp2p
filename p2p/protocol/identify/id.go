@@ -360,6 +360,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 	}
 
 	if e.IdentifyWaitChan != nil {
+		log.Debugf("Found prior identify chan for connection %s", c.RemotePeer())
 		return e.IdentifyWaitChan
 	}
 	// First call to IdentifyWait for this connection. Create the channel.
@@ -384,11 +385,13 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 }
 
 func (ids *idService) identifyConn(c network.Conn) error {
+	log.Debugf("starting identifyConn %s with new stream", c.RemotePeer())
 	s, err := c.NewStream(network.WithUseTransient(context.TODO(), "identify"))
 	if err != nil {
 		log.Debugw("error opening identify stream", "peer", c.RemotePeer(), "error", err)
 		return err
 	}
+	log.Debugf("starting identifyConn %s got new stream", c.RemotePeer())
 
 	if err := s.SetProtocol(ID); err != nil {
 		log.Warnf("error setting identify protocol for stream: %s", err)
@@ -401,10 +404,12 @@ func (ids *idService) identifyConn(c network.Conn) error {
 		s.Reset()
 		return err
 	}
+	log.Debugf("identifyConn: %s Selected proto", c.RemotePeer())
 
 	if ids.metricsTracer != nil {
 		ids.metricsTracer.Identify(network.DirInbound)
 	}
+	defer log.Debugf("identifyConn: %s finished", c.RemotePeer())
 	return ids.handleIdentifyResponse(s, false)
 }
 
@@ -417,6 +422,7 @@ func (ids *idService) handlePush(s network.Stream) {
 }
 
 func (ids *idService) handleIdentifyRequest(s network.Stream) {
+	log.Debugf("starting handleIdentifyRequest %s", s.Conn().RemotePeer())
 	if ids.metricsTracer != nil {
 		ids.metricsTracer.Identify(network.DirOutbound)
 	}

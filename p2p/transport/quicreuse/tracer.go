@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	golog "github.com/ipfs/go-log/v2"
@@ -68,15 +69,32 @@ func newQlogger(qlogDir string, role logging.Perspective, connID []byte) io.Writ
 	}
 }
 
+var nosave bool
+var nosaveMu *sync.Mutex = &sync.Mutex{}
+
+func SetNoSave() {
+	nosaveMu.Lock()
+	nosave = true
+	nosaveMu.Unlock()
+}
+
 func (l *qlogger) Close() error {
 	defer os.Remove(l.f.Name())
 	defer l.f.Close()
+
 	if err := l.Writer.Flush(); err != nil {
 		return err
 	}
 	if _, err := l.f.Seek(0, io.SeekStart); err != nil { // set the read position to the beginning of the file
 		return err
 	}
+
+	nosaveMu.Lock()
+	defer nosaveMu.Unlock()
+	if nosave {
+		return nil
+	}
+
 	f, err := os.Create(l.filename)
 	if err != nil {
 		return err

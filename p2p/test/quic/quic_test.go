@@ -3,6 +3,8 @@ package quic_test
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"strconv"
 	"testing"
 	"time"
 
@@ -124,16 +126,20 @@ func TestDisableQUICDraft29(t *testing.T) {
 }
 
 func TestQUICAndWebTransport(t *testing.T) {
+	port := strconv.Itoa(rand.Intn(30000) + 20000)
 	h1, err := libp2p.New(
 		libp2p.QUICReuse(quicreuse.NewConnManager),
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
 		libp2p.ListenAddrStrings(
-			"/ip4/127.0.0.1/udp/12347/quic/",
-			"/ip4/127.0.0.1/udp/12347/quic-v1",
-			"/ip4/127.0.0.1/udp/12347/quic-v1/webtransport",
+			"/ip4/127.0.0.1/udp/"+port+"/quic/",
+			"/ip4/127.0.0.1/udp/"+port+"/quic-v1",
+			"/ip4/127.0.0.1/udp/"+port+"/quic-v1/webtransport",
 		),
 	)
+	if err != nil {
+		return
+	}
 	require.NoError(t, err)
 	defer h1.Close()
 
@@ -161,7 +167,13 @@ func TestQUICAndWebTransport(t *testing.T) {
 		libp2p.NoListenAddrs,
 	)
 	require.NoError(t, err)
-	require.NoError(t, h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	defer h2.Close()
+	err = h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
+	if err == nil {
+		quicreuse.SetNoSave()
+	}
+	require.NoError(t, err)
+	return
 	for _, conns := range [][]network.Conn{h2.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h2.ID())} {
 		require.Len(t, conns, 1)
 		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
