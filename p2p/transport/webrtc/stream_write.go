@@ -37,9 +37,6 @@ type (
 )
 
 func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
-	w.stream.wg.Add(1)
-	defer w.stream.wg.Done()
-
 	if !w.stream.stateHandler.AllowWrite() {
 		return 0, io.ErrClosedPipe
 	}
@@ -48,9 +45,7 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 	// messages only when the read side of the stream is closed
 	if w.stream.stateHandler.State() == stateReadClosed {
 		w.readLoopOnce.Do(func() {
-			w.stream.wg.Add(1)
 			go func() {
-				defer w.stream.wg.Done()
 				// zero the read deadline, so read call only returns
 				// when the underlying datachannel closes or there is
 				// a message on the channel
@@ -103,9 +98,6 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 }
 
 func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
-	w.stream.wg.Add(1)
-	defer w.stream.wg.Done()
-
 	var writeDeadlineTimer *time.Timer
 	defer func() {
 		if writeDeadlineTimer != nil {

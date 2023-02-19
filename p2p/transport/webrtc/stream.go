@@ -64,8 +64,6 @@ type webRTCStream struct {
 	laddr net.Addr
 	raddr net.Addr
 
-	wg sync.WaitGroup
-
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -207,8 +205,6 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		}
 		// close the context
 		s.cancel()
-		// wait for all processes to be finished
-		s.wg.Wait()
 		// close the channel. We do not care about the error message in
 		// this case
 		err = s.rwc.Close()
