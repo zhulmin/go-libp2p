@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -59,7 +60,7 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 					if w.stream.stateHandler.Closed() {
 						return
 					}
-					err := w.stream.reader.state.readMessageFromDataChannel(&msg)
+					err := w.stream.reader.readMessageFromDataChannel(&msg)
 					if err != nil {
 						if errors.Is(err, io.EOF) {
 							w.stream.close(true, true)
@@ -105,10 +106,12 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 	w.stream.wg.Add(1)
 	defer w.stream.wg.Done()
 
-	// if the next message will add more data than we are willing to buffer,
-	// block until we have sent enough bytes to reduce the amount of data buffered.
-	timeout := make(chan struct{})
-	var deadlineTimer *time.Timer
+	var writeDeadlineTimer *time.Timer
+	defer func() {
+		if writeDeadlineTimer != nil {
+			writeDeadlineTimer.Stop()
+		}
+	}()
 
 	for {
 		if !w.stream.stateHandler.AllowWrite() {
@@ -120,24 +123,20 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 		writeAvailable := w.writeAvailable.Wait()
 
 		writeDeadline, hasWriteDeadline := w.getWriteDeadline()
-		if hasWriteDeadline {
-			// check if deadline exceeded
-			if writeDeadline.Before(time.Now()) {
-				return 0, os.ErrDeadlineExceeded
-			}
-
-			if deadlineTimer == nil {
-				deadlineTimer = time.AfterFunc(time.Until(writeDeadline), func() { close(timeout) })
-				defer deadlineTimer.Stop()
-			}
-			deadlineTimer.Reset(time.Until(writeDeadline))
+		if !hasWriteDeadline {
+			writeDeadline = time.Unix(math.MaxInt64, 0)
+		}
+		if writeDeadlineTimer == nil {
+			writeDeadlineTimer = time.NewTimer(time.Until(writeDeadline))
+		} else {
+			writeDeadlineTimer.Reset(time.Until(writeDeadline))
 		}
 
 		bufferedAmount := int(w.stream.rwc.(*datachannel.DataChannel).BufferedAmount())
 		addedBuffer := bufferedAmount + varintOverhead + proto.Size(msg)
 		if addedBuffer > maxBufferedAmount {
 			select {
-			case <-timeout:
+			case <-writeDeadlineTimer.C:
 				return 0, os.ErrDeadlineExceeded
 			case <-writeAvailable:
 				err := w.writeMessageToWriter(msg)

@@ -15,21 +15,11 @@ import (
 
 type webRTCStreamReader struct {
 	stream *webRTCStream
-	state  *webRTCStreamReaderState
 
-	deadline    time.Time
-	deadlineMux sync.Mutex
+	reader pbio.Reader
+	buffer []byte
 
 	closeOnce sync.Once
-}
-
-type webRTCStreamReaderState struct {
-	sync.Mutex
-
-	Reader pbio.Reader
-	Buffer []byte
-
-	stream *webRTCStream
 }
 
 // Read from the underlying datachannel. This also
@@ -50,33 +40,15 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 		if r.stream.isClosed() {
 			return 0, io.ErrClosedPipe
 		}
-
-		readDeadline, hasReadDeadline := r.getReadDeadline()
-		if hasReadDeadline {
-			// check if deadline exceeded
-			if readDeadline.Before(time.Now()) {
-				if err := r.stream.getCloseErr(); err != nil {
-					log.Debugf("[1] deadline exceeded: closeErr: %v", err)
-				} else {
-					log.Debug("[1] deadline exceeded: no closeErr")
-				}
-				return 0, os.ErrDeadlineExceeded
-			}
-		}
-
-		read, readErr = r.state.readMessage(b)
+		read, readErr = r.readMessage(b)
 	}
-
 	return read, readErr
 }
 
-func (r *webRTCStreamReaderState) readMessage(b []byte) (int, error) {
-	r.Lock()
-	defer r.Unlock()
-
-	read := copy(b, r.Buffer)
-	r.Buffer = r.Buffer[read:]
-	remaining := len(r.Buffer)
+func (r *webRTCStreamReader) readMessage(b []byte) (int, error) {
+	read := copy(b, r.buffer)
+	r.buffer = r.buffer[read:]
+	remaining := len(r.buffer)
 
 	if remaining == 0 && !r.stream.stateHandler.AllowRead() {
 		if closeErr := r.stream.getCloseErr(); closeErr != nil {
@@ -93,7 +65,7 @@ func (r *webRTCStreamReaderState) readMessage(b []byte) (int, error) {
 
 	// read from datachannel
 	var msg pb.Message
-	err := r.Reader.ReadMsg(&msg)
+	err := r.reader.ReadMsg(&msg)
 	if err != nil {
 		// This case occurs when the remote node goes away
 		// without writing a FIN message
@@ -115,7 +87,7 @@ func (r *webRTCStreamReaderState) readMessage(b []byte) (int, error) {
 
 	// append incoming data to read buffer
 	if r.stream.stateHandler.AllowRead() && msg.Message != nil {
-		r.Buffer = append(r.Buffer, msg.GetMessage()...)
+		r.buffer = append(r.buffer, msg.GetMessage()...)
 	}
 
 	// process any flags on the message
@@ -125,23 +97,13 @@ func (r *webRTCStreamReaderState) readMessage(b []byte) (int, error) {
 	return read, nil
 }
 
-func (r *webRTCStreamReaderState) readMessageFromDataChannel(msg *pb.Message) error {
-	r.Lock()
-	defer r.Unlock()
-	return r.Reader.ReadMsg(msg)
+func (r *webRTCStreamReader) readMessageFromDataChannel(msg *pb.Message) error {
+	// TODO: remove this fn once the cyclic design is gone
+	return r.reader.ReadMsg(msg)
 }
 
 func (r *webRTCStreamReader) SetReadDeadline(t time.Time) error {
-	r.deadlineMux.Lock()
-	defer r.deadlineMux.Unlock()
-	r.deadline = t
 	return r.stream.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
-}
-
-func (r *webRTCStreamReader) getReadDeadline() (time.Time, bool) {
-	r.deadlineMux.Lock()
-	defer r.deadlineMux.Unlock()
-	return r.deadline, !r.deadline.IsZero()
 }
 
 func (r *webRTCStreamReader) CloseRead() error {

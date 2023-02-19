@@ -84,9 +84,7 @@ func newStream(
 
 	result := &webRTCStream{
 		reader: webRTCStreamReader{
-			state: &webRTCStreamReaderState{
-				Reader: pbio.NewDelimitedReader(reader, maxMessageSize),
-			},
+			reader: pbio.NewDelimitedReader(reader, maxMessageSize),
 		},
 		writer: webRTCStreamWriter{
 			writer: pbio.NewDelimitedWriter(rwc),
@@ -109,7 +107,6 @@ func newStream(
 	})
 
 	result.reader.stream = result
-	result.reader.state.stream = result
 	result.writer.stream = result
 
 	return result
