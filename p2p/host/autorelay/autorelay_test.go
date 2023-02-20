@@ -224,7 +224,6 @@ func TestBackoff(t *testing.T) {
 	defer h.Close()
 
 	require.Eventually(t, func() bool {
-		cl.Add(time.Second)
 		return reservations.Load() == 1
 	}, 10*time.Second, 20*time.Millisecond, "reservations load should be 1 was %d", reservations.Load())
 	// make sure we don't add any relays yet
@@ -232,10 +231,8 @@ func TestBackoff(t *testing.T) {
 		cl.Add(backoff / 3)
 		require.Equal(t, 1, int(reservations.Load()))
 	}
-	cl.Add(backoff / 2)
+	cl.Add(backoff)
 	require.Eventually(t, func() bool {
-		// TODO there should be some other way of ticking things without advancing time
-		cl.Add(time.Second)
 		return reservations.Load() == 2
 	}, 10*time.Second, 100*time.Millisecond, "reservations load should be 2 was %d", reservations.Load())
 	require.Less(t, int(counter.Load()), 300) // just make sure we're not busy-looping
@@ -338,7 +335,6 @@ func TestMaxAge(t *testing.T) {
 	defer h.Close()
 
 	require.Eventually(t, func() bool {
-		cl.Add(time.Second)
 		return numRelays(h) > 0
 	}, 10*time.Second, 100*time.Millisecond)
 	relays := usedRelays(h)
@@ -346,7 +342,7 @@ func TestMaxAge(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		// we don't know exactly when the timer is reset, just advance our timer multiple times if necessary
-		cl.Add(time.Second)
+		cl.Add(30 * time.Second)
 		return len(peerChans) == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -357,7 +353,6 @@ func TestMaxAge(t *testing.T) {
 	cl.Add(11 * time.Minute)
 
 	require.Eventually(t, func() bool {
-		cl.Add(time.Second)
 		relays = usedRelays(h)
 		return len(relays) == 1
 	}, 10*time.Second, 100*time.Millisecond)
@@ -374,7 +369,6 @@ func TestMaxAge(t *testing.T) {
 	require.NotEmpty(t, oldRelay)
 
 	require.Eventually(t, func() bool {
-		cl.Add(time.Second)
 		relays = usedRelays(h)
 		if len(relays) != 1 {
 			return false
@@ -411,7 +405,6 @@ func TestReconnectToStaticRelays(t *testing.T) {
 
 	cl.Add(time.Minute)
 	require.Eventually(t, func() bool {
-		cl.Add(time.Second)
 		return numRelays(h) == 1
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -423,17 +416,11 @@ func TestReconnectToStaticRelays(t *testing.T) {
 		}
 	}
 	require.Eventually(t, func() bool {
-		cl.Add(time.Second)
 		return numRelays(h) == 0
 	}, 30*time.Second, 100*time.Millisecond)
 
 	cl.Add(time.Hour)
 	require.Eventually(t, func() bool {
-		// Increment time so that we refire any timers that need time to advance (like the peer source timer)
-		// There's a race condition here where if the peer chan timer is
-		// selected first, then the backoff clear timer we will never reconnect
-		// to the static relay. So we increment time here to make sure that we will run the peer chan timer again.
-		cl.Add(time.Minute)
 		return numRelays(h) == 1
 	}, 10*time.Second, 100*time.Millisecond)
 }
