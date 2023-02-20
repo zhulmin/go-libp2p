@@ -426,7 +426,9 @@ func TestDialBackoff(t *testing.T) {
 }
 
 func TestDialBackoffClears(t *testing.T) {
-	const dialTimeout = 10 * time.Second
+	// This test relies on parallel dials
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
+	const dialTimeout = 3 * time.Second
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
 	s1 := swarms[0]

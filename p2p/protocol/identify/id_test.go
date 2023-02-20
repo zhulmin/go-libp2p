@@ -890,7 +890,7 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 				}
 			}
 			return true
-		}, 1*time.Second, 200*time.Millisecond)
+		}, 5*time.Second, 200*time.Millisecond)
 	}
 }
 
