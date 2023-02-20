@@ -2,6 +2,8 @@ package libp2p
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
@@ -355,4 +358,30 @@ func TestTransportCustomAddressWebTransportDoesNotStall(t *testing.T) {
 	require.NotEqual(t, lastComp.Protocol().Code, ma.P_CERTHASH)
 	// We did not add the certhash to the multiaddr
 	require.Equal(t, addrs[0], customAddr)
+}
+
+type mockPeerRouting struct {
+	queried []peer.ID
+}
+
+func (r *mockPeerRouting) FindPeer(_ context.Context, id peer.ID) (peer.AddrInfo, error) {
+	r.queried = append(r.queried, id)
+	return peer.AddrInfo{}, errors.New("mock peer routing error")
+}
+
+func TestRoutedHost(t *testing.T) {
+	mockRouter := &mockPeerRouting{}
+	h, err := New(
+		NoListenAddrs,
+		Routing(func(host.Host) (routing.PeerRouting, error) { return mockRouter, nil }),
+		DisableRelay(),
+	)
+	require.NoError(t, err)
+
+	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	id, err := peer.IDFromPrivateKey(priv)
+	require.NoError(t, err)
+	require.EqualError(t, h.Connect(context.Background(), peer.AddrInfo{ID: id}), "mock peer routing error")
+	require.Equal(t, []peer.ID{id}, mockRouter.queried)
 }
