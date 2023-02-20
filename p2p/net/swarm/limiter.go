@@ -54,7 +54,7 @@ func newDialLimiter(df dialfunc) *dialLimiter {
 			fd = int(n)
 		}
 	}
-	return newDialLimiterWithParams(df, fd, defaultPerPeerRateLimit)
+	return newDialLimiterWithParams(df, fd, GetDefaultPerPeerRateLimit())
 }
 
 func newDialLimiterWithParams(df dialfunc, fdLimit, perPeerLimit int) *dialLimiter {
