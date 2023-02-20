@@ -361,7 +361,6 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	// Note: h.AddrsFactory may be changed by relayFinder, but non-relay version is
 	// used by AutoNAT below.
 	var ar *autorelay.AutoRelay
-	addrF := h.AddrsFactory
 	if cfg.EnableAutoRelay {
 		if !cfg.Relay {
 			h.Close()
@@ -380,6 +379,29 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		}
 	}
 
+	if err := cfg.addAutoNAT(h); err != nil {
+		h.Close()
+		return nil, err
+	}
+
+	// start the host background tasks
+	h.Start()
+
+	var ho host.Host
+	ho = h
+	if router != nil {
+		ho = routed.Wrap(h, router)
+	}
+	if ar != nil {
+		arh := autorelay.NewAutoRelayHost(ho, ar)
+		arh.Start()
+		return arh, nil
+	}
+	return ho, nil
+}
+
+func (cfg *Config) addAutoNAT(h *bhost.BasicHost) error {
+	addrF := h.AddrsFactory
 	autonatOpts := []autonat.Option{
 		autonat.UsingAddresses(func() []ma.Multiaddr {
 			return addrF(h.AllAddrs())
@@ -398,11 +420,11 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if cfg.AutoNATConfig.EnableService {
 		autonatPrivKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		ps, err := pstoremem.NewPeerstore()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// Pull out the pieces of the config that we _actually_ care about.
@@ -428,14 +450,12 @@ func (cfg *Config) NewNode() (host.Host, error) {
 
 		dialer, err := autoNatCfg.makeSwarm(eventbus.NewBus(), false)
 		if err != nil {
-			h.Close()
-			return nil, err
+			return err
 		}
 		dialerHost := blankhost.NewBlankHost(dialer)
 		if err := autoNatCfg.addTransports(dialerHost); err != nil {
 			dialerHost.Close()
-			h.Close()
-			return nil, err
+			return err
 		}
 		// NOTE: We're dropping the blank host here but that's fine. It
 		// doesn't really _do_ anything and doesn't even need to be
@@ -448,25 +468,10 @@ func (cfg *Config) NewNode() (host.Host, error) {
 
 	autonat, err := autonat.New(h, autonatOpts...)
 	if err != nil {
-		h.Close()
-		return nil, fmt.Errorf("cannot enable autorelay; autonat failed to start: %v", err)
+		return fmt.Errorf("cannot enable autorelay; autonat failed to start: %v", err)
 	}
 	h.SetAutoNat(autonat)
-
-	// start the host background tasks
-	h.Start()
-
-	var ho host.Host
-	ho = h
-	if router != nil {
-		ho = routed.Wrap(h, router)
-	}
-	if ar != nil {
-		arh := autorelay.NewAutoRelayHost(ho, ar)
-		arh.Start()
-		ho = arh
-	}
-	return ho, nil
+	return nil
 }
 
 // Option is a libp2p config option that can be given to the libp2p constructor
