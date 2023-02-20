@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -190,11 +191,11 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	return swarm.NewSwarm(pid, cfg.Peerstore, eventBus, opts...)
 }
 
-func (cfg *Config) addTransports(h host.Host) error {
+func (cfg *Config) addTransports(h host.Host) ([]fx.Option, error) {
 	swrm, ok := h.Network().(transport.TransportNetwork)
 	if !ok {
 		// Should probably skip this if no transports.
-		return fmt.Errorf("swarm does not support transports")
+		return nil, fmt.Errorf("swarm does not support transports")
 	}
 
 	fxopts := []fx.Option{
@@ -283,12 +284,7 @@ func (cfg *Config) addTransports(h host.Host) error {
 	if cfg.Relay {
 		fxopts = append(fxopts, fx.Invoke(circuitv2.AddTransport))
 	}
-	app := fx.New(fxopts...)
-	if err := app.Err(); err != nil {
-		h.Close()
-		return err
-	}
-	return nil
+	return fxopts, nil
 }
 
 // NewNode constructs a new libp2p Host from the Config.
@@ -336,14 +332,27 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		}
 	}
 
-	if err := cfg.addTransports(h); err != nil {
+	fxopts, err := cfg.addTransports(h)
+	if err != nil {
 		h.Close()
 		return nil, err
 	}
 
-	// TODO: This method succeeds if listening on one address succeeds. We
-	// should probably fail if listening on *any* addr fails.
-	if err := h.Network().Listen(cfg.ListenAddrs...); err != nil {
+	// start listening
+	fxopts = append(fxopts, fx.Supply(swrm))
+	fxopts = append(fxopts, fx.Invoke(func(lifecycle fx.Lifecycle, sw *swarm.Swarm) {
+		lifecycle.Append(fx.Hook{
+			OnStart: func(context.Context) error {
+				// TODO: This method succeeds if listening on one address succeeds. We
+				// should probably fail if listening on *any* addr fails.
+				return sw.Listen(cfg.ListenAddrs...)
+			},
+			OnStop: func(context.Context) error { return sw.Close() },
+		})
+	}))
+
+	app := fx.New(fxopts...)
+	if err := app.Start(context.Background()); err != nil {
 		h.Close()
 		return nil, err
 	}
@@ -453,7 +462,13 @@ func (cfg *Config) addAutoNAT(h *bhost.BasicHost) error {
 			return err
 		}
 		dialerHost := blankhost.NewBlankHost(dialer)
-		if err := autoNatCfg.addTransports(dialerHost); err != nil {
+		fxopts, err := autoNatCfg.addTransports(dialerHost)
+		if err != nil {
+			dialerHost.Close()
+			return err
+		}
+		app := fx.New(fxopts...)
+		if err := app.Err(); err != nil {
 			dialerHost.Close()
 			return err
 		}
