@@ -318,8 +318,22 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			return eventbus.NewBus(eventbus.WithMetricsTracer(eventbus.NewMetricsTracer(eventbus.WithRegisterer(cfg.PrometheusRegisterer))))
 		}),
 		fx.Provide(func(eventBus event.Bus) (*swarm.Swarm, error) { return cfg.makeSwarm(eventBus, !cfg.DisableMetrics) }),
+		fx.Decorate(func(sw *swarm.Swarm, lifecycle fx.Lifecycle) *swarm.Swarm {
+			lifecycle.Append(fx.Hook{
+				OnStart: func(context.Context) error {
+					// TODO: This method succeeds if listening on one address succeeds. We
+					// should probably fail if listening on *any* addr fails.
+					return sw.Listen(cfg.ListenAddrs...)
+				},
+				OnStop: func(context.Context) error { return sw.Close() },
+			})
+			return sw
+		}),
 		fx.Provide(cfg.newBasicHost),
-		fx.Provide(func(h *bhost.BasicHost) host.Host { return h }),
+		fx.Provide(func(h *bhost.BasicHost, lifecycle fx.Lifecycle) host.Host {
+			lifecycle.Append(fx.StartHook(h.Start))
+			return h
+		}),
 		fx.Provide(func(h host.Host) peer.ID { return h.ID() }),
 		fx.Provide(func(h host.Host) crypto.PrivKey { return h.Peerstore().PrivKey(h.ID()) }),
 	}
@@ -328,18 +342,6 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		return nil, err
 	}
 	fxopts = append(fxopts, transportOpts...)
-
-	// start listening
-	fxopts = append(fxopts, fx.Invoke(func(lifecycle fx.Lifecycle, sw *swarm.Swarm) {
-		lifecycle.Append(fx.Hook{
-			OnStart: func(context.Context) error {
-				// TODO: This method succeeds if listening on one address succeeds. We
-				// should probably fail if listening on *any* addr fails.
-				return sw.Listen(cfg.ListenAddrs...)
-			},
-			OnStop: func(context.Context) error { return sw.Close() },
-		})
-	}))
 
 	var h *bhost.BasicHost
 	fxopts = append(fxopts, fx.Invoke(func(ho *bhost.BasicHost) { h = ho }))
@@ -382,9 +384,6 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		h.Close()
 		return nil, err
 	}
-
-	// start the host background tasks
-	h.Start()
 
 	var ho host.Host
 	ho = h
