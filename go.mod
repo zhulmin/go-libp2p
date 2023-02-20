@@ -117,3 +117,5 @@ require (
 )
 
 replace github.com/stretchr/testify => github.com/marcopolo/testify v1.8.1-eventually
+
+replace github.com/benbjohnson/clock => github.com/marcopolo/clock v1.4.0
