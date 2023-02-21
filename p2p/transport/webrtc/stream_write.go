@@ -6,67 +6,44 @@ import (
 	"io"
 	"math"
 	"os"
-	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
 	"google.golang.org/protobuf/proto"
 )
 
-// Package pion detached data channel into a net.Conn
-// and then a network.MuxedStream
-type (
-	webRTCStreamWriter struct {
-		stream *webRTCStream
-
-		writer    pbio.Writer
-		writerMux sync.Mutex
-
-		deadline    time.Time
-		deadlineMux sync.Mutex
-
-		deadlineUpdated async.CondVar
-		writeAvailable  async.CondVar
-
-		readLoopOnce sync.Once
-		closeOnce    sync.Once
-	}
-)
-
-func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
-	if !w.stream.stateHandler.AllowWrite() {
+func (s *webRTCStream) Write(b []byte) (int, error) {
+	if !s.stateHandler.AllowWrite() {
 		return 0, io.ErrClosedPipe
 	}
 
 	// Check if there is any message on the wire. This is used for control
 	// messages only when the read side of the stream is closed
-	if w.stream.stateHandler.State() == stateReadClosed {
-		w.readLoopOnce.Do(func() {
+	if s.stateHandler.State() == stateReadClosed {
+		s.readLoopOnce.Do(func() {
 			go func() {
 				// zero the read deadline, so read call only returns
 				// when the underlying datachannel closes or there is
 				// a message on the channel
-				w.stream.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
+				s.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
 				var msg pb.Message
 				for {
-					if w.stream.stateHandler.Closed() {
+					if s.stateHandler.Closed() {
 						return
 					}
-					err := w.stream.reader.readMessageFromDataChannel(&msg)
+					err := s.readMessageFromDataChannel(&msg)
 					if err != nil {
 						if errors.Is(err, io.EOF) {
-							w.stream.close(true, true)
+							s.close(true, true)
 						}
 						return
 					}
 					if msg.Flag != nil {
-						state, reset := w.stream.stateHandler.HandleInboundFlag(msg.GetFlag())
+						state, reset := s.stateHandler.HandleInboundFlag(msg.GetFlag())
 						if state == stateClosed {
 							log.Debug("closing: after handle inbound flag")
-							w.stream.close(reset, true)
+							s.close(reset, true)
 						}
 					}
 				}
@@ -87,7 +64,7 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 			end = chunkSize
 		}
 
-		err := w.writeMessage(&pb.Message{Message: b[:end]})
+		err := s.writeMessage(&pb.Message{Message: b[:end]})
 		n += end
 		b = b[end:]
 		if err != nil {
@@ -97,7 +74,7 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) error {
+func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 	var writeDeadlineTimer *time.Timer
 	defer func() {
 		if writeDeadlineTimer != nil {
@@ -106,15 +83,15 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) error {
 	}()
 
 	for {
-		if !w.stream.stateHandler.AllowWrite() {
+		if !s.stateHandler.AllowWrite() {
 			return io.ErrClosedPipe
 		}
 		// prepare waiting for writeAvailable signal
 		// if write is blocked
-		deadlineUpdated := w.deadlineUpdated.Wait()
-		writeAvailable := w.writeAvailable.Wait()
+		deadlineUpdated := s.writerDeadlineUpdated.Wait()
+		writeAvailable := s.writeAvailable.Wait()
 
-		writeDeadline, hasWriteDeadline := w.getWriteDeadline()
+		writeDeadline, hasWriteDeadline := s.getWriteDeadline()
 		if !hasWriteDeadline {
 			writeDeadline = time.Unix(math.MaxInt64, 0)
 		}
@@ -124,24 +101,24 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) error {
 			writeDeadlineTimer.Reset(time.Until(writeDeadline))
 		}
 
-		bufferedAmount := int(w.stream.rwc.(*datachannel.DataChannel).BufferedAmount())
+		bufferedAmount := int(s.rwc.(*datachannel.DataChannel).BufferedAmount())
 		addedBuffer := bufferedAmount + varintOverhead + proto.Size(msg)
 		if addedBuffer > maxBufferedAmount {
 			select {
 			case <-writeDeadlineTimer.C:
 				return os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				err := w.writeMessageToWriter(msg)
+				err := s.writeMessageToWriter(msg)
 				if err != nil {
 					return err
 				}
 				return nil
-			case <-w.stream.ctx.Done():
+			case <-s.ctx.Done():
 				return io.ErrClosedPipe
 			case <-deadlineUpdated:
 			}
 		} else {
-			err := w.writeMessageToWriter(msg)
+			err := s.writeMessageToWriter(msg)
 			if err != nil {
 				return err
 			}
@@ -150,45 +127,45 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) error {
 	}
 }
 
-func (w *webRTCStreamWriter) writeMessageToWriter(msg *pb.Message) error {
-	w.writerMux.Lock()
-	defer w.writerMux.Unlock()
-	return w.writer.WriteMsg(msg)
+func (s *webRTCStream) writeMessageToWriter(msg *pb.Message) error {
+	s.writerMux.Lock()
+	defer s.writerMux.Unlock()
+	return s.writer.WriteMsg(msg)
 }
 
-func (w *webRTCStreamWriter) SetWriteDeadline(t time.Time) error {
-	w.deadlineMux.Lock()
-	defer w.deadlineMux.Unlock()
-	w.deadline = t
-	w.deadlineUpdated.Signal()
+func (s *webRTCStream) SetWriteDeadline(t time.Time) error {
+	s.writerDeadlineMux.Lock()
+	defer s.writerDeadlineMux.Unlock()
+	s.writerDeadline = t
+	s.writerDeadlineUpdated.Signal()
 	return nil
 }
 
-func (w *webRTCStreamWriter) getWriteDeadline() (time.Time, bool) {
-	w.deadlineMux.Lock()
-	defer w.deadlineMux.Unlock()
-	return w.deadline, !w.deadline.IsZero()
+func (s *webRTCStream) getWriteDeadline() (time.Time, bool) {
+	s.writerDeadlineMux.Lock()
+	defer s.writerDeadlineMux.Unlock()
+	return s.writerDeadline, !s.writerDeadline.IsZero()
 }
 
-func (w *webRTCStreamWriter) CloseWrite() error {
-	if w.stream.isClosed() {
+func (s *webRTCStream) CloseWrite() error {
+	if s.isClosed() {
 		return nil
 	}
 	var err error
-	w.closeOnce.Do(func() {
-		err = w.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
+	s.closeOnce.Do(func() {
+		err = s.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		if err != nil {
 			log.Debug("could not write FIN message")
 			err = fmt.Errorf("close stream for writing: %w", err)
 			return
 		}
 		// if successfully written, process the outgoing flag
-		state := w.stream.stateHandler.CloseRead()
+		state := s.stateHandler.CloseRead()
 		// unblock and fail any ongoing writes
-		w.writeAvailable.Signal()
+		s.writeAvailable.Signal()
 		// check if closure required
 		if state == stateClosed {
-			w.stream.close(false, true)
+			s.close(false, true)
 		}
 	})
 	return err

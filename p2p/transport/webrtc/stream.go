@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
@@ -47,8 +48,28 @@ const (
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type webRTCStream struct {
-	reader webRTCStreamReader
-	writer webRTCStreamWriter
+	reader pbio.Reader
+	// pbio.Reader is not thread safe,
+	// and while our Read is not promised to be thread safe,
+	// we ourselves internally read from multiple routines...
+	readerMux       sync.Mutex
+	readBuffer      []byte
+	closeReaderOnce sync.Once
+
+	writer pbio.Writer
+	// public write API is not promised to be thread safe, however we also write from
+	// read functionality due to our spec limiations, so (e.g. 1 channel for state and data)
+	// and thus we do need to protect the writer
+	writerMux sync.Mutex
+
+	writerDeadline    time.Time
+	writerDeadlineMux sync.Mutex
+
+	writerDeadlineUpdated async.CondVar
+	writeAvailable        async.CondVar
+
+	readLoopOnce    sync.Once
+	closeWriterOnce sync.Once
 
 	stateHandler webRTCStreamState
 
@@ -86,12 +107,8 @@ func newStream(
 	reader := bufio.NewReaderSize(rwc, maxMessageSize)
 
 	result := &webRTCStream{
-		reader: webRTCStreamReader{
-			reader: pbio.NewDelimitedReader(reader, maxMessageSize),
-		},
-		writer: webRTCStreamWriter{
-			writer: pbio.NewDelimitedWriter(rwc),
-		},
+		reader: pbio.NewDelimitedReader(reader, maxMessageSize),
+		writer: pbio.NewDelimitedWriter(rwc),
 
 		conn: connection,
 		id:   *channel.ID(),
@@ -106,33 +123,14 @@ func newStream(
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
 	channel.OnBufferedAmountLow(func() {
-		result.writer.writeAvailable.Signal()
+		result.writeAvailable.Signal()
 	})
-
-	result.reader.stream = result
-	result.writer.stream = result
 
 	return result
 }
 
-func (s *webRTCStream) Read(b []byte) (int, error) {
-	return s.reader.Read(b)
-}
-
-func (s *webRTCStream) Write(b []byte) (int, error) {
-	return s.writer.Write(b)
-}
-
 func (s *webRTCStream) Close() error {
 	return s.close(false, true)
-}
-
-func (s *webRTCStream) CloseRead() error {
-	return s.reader.CloseRead()
-}
-
-func (s *webRTCStream) CloseWrite() error {
-	return s.writer.CloseWrite()
 }
 
 func (s *webRTCStream) Reset() error {
@@ -148,15 +146,7 @@ func (s *webRTCStream) RemoteAddr() net.Addr {
 }
 
 func (s *webRTCStream) SetDeadline(t time.Time) error {
-	return s.writer.SetWriteDeadline(t)
-}
-
-func (s *webRTCStream) SetReadDeadline(t time.Time) error {
-	return s.reader.SetReadDeadline(t)
-}
-
-func (s *webRTCStream) SetWriteDeadline(t time.Time) error {
-	return s.writer.SetWriteDeadline(t)
+	return s.SetWriteDeadline(t)
 }
 
 func (s *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
@@ -199,14 +189,14 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		s.stateHandler.Close()
 		s.setCloseErrIfUndefined(isReset)
 		// force close reads
-		s.reader.SetReadDeadline(time.Time{})
+		s.SetReadDeadline(time.Time{})
 		if isReset {
 			// write the RESET message. The error is explicitly ignored
 			// because we do not know if the remote is still connected
-			s.writer.writeMessage(&pb.Message{Flag: pb.Message_RESET.Enum()})
+			s.writeMessage(&pb.Message{Flag: pb.Message_RESET.Enum()})
 		} else {
 			// write a FIN message for standard stream closure
-			s.writer.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
+			s.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		}
 		// close the context
 		s.cancel()

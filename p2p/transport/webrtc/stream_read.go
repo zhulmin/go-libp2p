@@ -5,29 +5,18 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 	"time"
 
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
 )
-
-type webRTCStreamReader struct {
-	stream *webRTCStream
-
-	reader pbio.Reader
-	buffer []byte
-
-	closeOnce sync.Once
-}
 
 // Read from the underlying datachannel. This also
 // process sctp control messages such as DCEP, which is
 // handled internally by pion, and stream closure which
 // is signaled by `Read` on the datachannel returning
 // io.EOF.
-func (r *webRTCStreamReader) Read(b []byte) (int, error) {
+func (s *webRTCStream) Read(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
@@ -37,21 +26,21 @@ func (r *webRTCStreamReader) Read(b []byte) (int, error) {
 		read    int
 	)
 	for read == 0 && readErr == nil {
-		if r.stream.isClosed() {
+		if s.isClosed() {
 			return 0, io.ErrClosedPipe
 		}
-		read, readErr = r.readMessage(b)
+		read, readErr = s.readMessage(b)
 	}
 	return read, readErr
 }
 
-func (r *webRTCStreamReader) readMessage(b []byte) (int, error) {
-	read := copy(b, r.buffer)
-	r.buffer = r.buffer[read:]
-	remaining := len(r.buffer)
+func (s *webRTCStream) readMessage(b []byte) (int, error) {
+	read := copy(b, s.readBuffer)
+	s.readBuffer = s.readBuffer[read:]
+	remaining := len(s.readBuffer)
 
-	if remaining == 0 && !r.stream.stateHandler.AllowRead() {
-		if closeErr := r.stream.getCloseErr(); closeErr != nil {
+	if remaining == 0 && !s.stateHandler.AllowRead() {
+		if closeErr := s.getCloseErr(); closeErr != nil {
 			log.Debugf("[2] stream closed: %v", closeErr)
 			return read, closeErr
 		}
@@ -65,12 +54,12 @@ func (r *webRTCStreamReader) readMessage(b []byte) (int, error) {
 
 	// read from datachannel
 	var msg pb.Message
-	err := r.reader.ReadMsg(&msg)
+	err := s.readMessageFromDataChannel(&msg)
 	if err != nil {
 		// This case occurs when the remote node goes away
 		// without writing a FIN message
 		if errors.Is(err, io.EOF) {
-			r.stream.Reset()
+			s.Reset()
 			return read, io.ErrClosedPipe
 		}
 		if errors.Is(err, os.ErrDeadlineExceeded) {
@@ -89,7 +78,7 @@ func (r *webRTCStreamReader) readMessage(b []byte) (int, error) {
 			// Please note: control and data packets are only read and processed from the underlying SCTP conn if
 			// a read is called on the data channel. Please refer here:
 			// https://github.com/pion/datachannel/blob/master/datachannel.go#L193-L200
-			closeErr := r.stream.getCloseErr()
+			closeErr := s.getCloseErr()
 			log.Debugf("closing stream, checking error: %v closeErr: %v", err, closeErr)
 			if closeErr != nil {
 				return read, closeErr
@@ -98,41 +87,42 @@ func (r *webRTCStreamReader) readMessage(b []byte) (int, error) {
 		return read, err
 	}
 
-	// append incoming data to read buffer
-	if r.stream.stateHandler.AllowRead() && msg.Message != nil {
-		r.buffer = append(r.buffer, msg.GetMessage()...)
+	// append incoming data to read readBuffer
+	if s.stateHandler.AllowRead() && msg.Message != nil {
+		s.readBuffer = append(s.readBuffer, msg.GetMessage()...)
 	}
 
 	// process any flags on the message
 	if msg.Flag != nil {
-		r.stream.processIncomingFlag(msg.GetFlag())
+		s.processIncomingFlag(msg.GetFlag())
 	}
 	return read, nil
 }
 
-func (r *webRTCStreamReader) readMessageFromDataChannel(msg *pb.Message) error {
-	// TODO: remove this fn once the cyclic design is gone
-	return r.reader.ReadMsg(msg)
+func (s *webRTCStream) readMessageFromDataChannel(msg *pb.Message) error {
+	s.readerMux.Lock()
+	defer s.readerMux.Unlock()
+	return s.reader.ReadMsg(msg)
 }
 
-func (r *webRTCStreamReader) SetReadDeadline(t time.Time) error {
-	return r.stream.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
+func (s *webRTCStream) SetReadDeadline(t time.Time) error {
+	return s.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
 }
 
-func (r *webRTCStreamReader) CloseRead() error {
-	if r.stream.isClosed() {
+func (s *webRTCStream) CloseRead() error {
+	if s.isClosed() {
 		return nil
 	}
 	var err error
-	r.closeOnce.Do(func() {
-		err = r.stream.writer.writeMessageToWriter(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+	s.closeOnce.Do(func() {
+		err = s.writeMessageToWriter(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
 		if err != nil {
 			log.Debug("could not write STOP_SENDING message")
 			err = fmt.Errorf("could not close stream for reading: %w", err)
 			return
 		}
-		if r.stream.stateHandler.CloseRead() == stateClosed {
-			r.stream.close(false, true)
+		if s.stateHandler.CloseRead() == stateClosed {
+			s.close(false, true)
 		}
 	})
 	return err
