@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -44,6 +45,7 @@ func makeAutoNATClient(t *testing.T) (host.Host, Client) {
 
 // Note: these tests assume that the host has only private network addresses!
 func TestAutoNATServiceDialRefused(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -69,6 +71,7 @@ func TestAutoNATServiceDialRefused(t *testing.T) {
 }
 
 func TestAutoNATServiceDialSuccess(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -89,6 +92,7 @@ func TestAutoNATServiceDialSuccess(t *testing.T) {
 }
 
 func TestAutoNATServiceDialRateLimiter(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -129,6 +133,7 @@ func TestAutoNATServiceDialRateLimiter(t *testing.T) {
 }
 
 func TestAutoNATServiceGlobalLimiter(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -169,6 +174,7 @@ func TestAutoNATServiceGlobalLimiter(t *testing.T) {
 }
 
 func TestAutoNATServiceRateLimitJitter(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	c := makeAutoNATConfig(t)
 	defer c.host.Close()
 	defer c.dialer.Close()
@@ -194,6 +200,7 @@ func TestAutoNATServiceRateLimitJitter(t *testing.T) {
 }
 
 func TestAutoNATServiceStartup(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	defer h.Close()
 	dh := bhost.NewBlankHost(swarmt.GenSwarm(t))
