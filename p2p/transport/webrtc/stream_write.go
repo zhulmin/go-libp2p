@@ -87,17 +87,17 @@ func (w *webRTCStreamWriter) Write(b []byte) (int, error) {
 			end = chunkSize
 		}
 
-		written, err := w.writeMessage(&pb.Message{Message: b[:end]})
-		n += written
+		err := w.writeMessage(&pb.Message{Message: b[:end]})
+		n += end
+		b = b[end:]
 		if err != nil {
 			return n, err
 		}
-		b = b[end:]
 	}
 	return n, err
 }
 
-func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
+func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) error {
 	var writeDeadlineTimer *time.Timer
 	defer func() {
 		if writeDeadlineTimer != nil {
@@ -107,7 +107,7 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 
 	for {
 		if !w.stream.stateHandler.AllowWrite() {
-			return 0, io.ErrClosedPipe
+			return io.ErrClosedPipe
 		}
 		// prepare waiting for writeAvailable signal
 		// if write is blocked
@@ -129,23 +129,23 @@ func (w *webRTCStreamWriter) writeMessage(msg *pb.Message) (int, error) {
 		if addedBuffer > maxBufferedAmount {
 			select {
 			case <-writeDeadlineTimer.C:
-				return 0, os.ErrDeadlineExceeded
+				return os.ErrDeadlineExceeded
 			case <-writeAvailable:
 				err := w.writeMessageToWriter(msg)
 				if err != nil {
-					return 0, err
+					return err
 				}
-				return int(len(msg.Message)), nil
+				return nil
 			case <-w.stream.ctx.Done():
-				return 0, io.ErrClosedPipe
+				return io.ErrClosedPipe
 			case <-deadlineUpdated:
 			}
 		} else {
 			err := w.writeMessageToWriter(msg)
 			if err != nil {
-				return 0, err
+				return err
 			}
-			return int(len(msg.Message)), nil
+			return nil
 		}
 	}
 }
@@ -176,7 +176,7 @@ func (w *webRTCStreamWriter) CloseWrite() error {
 	}
 	var err error
 	w.closeOnce.Do(func() {
-		_, err = w.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
+		err = w.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
 		if err != nil {
 			log.Debug("could not write FIN message")
 			err = fmt.Errorf("close stream for writing: %w", err)

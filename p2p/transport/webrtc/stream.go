@@ -78,6 +78,11 @@ func newStream(
 ) *webRTCStream {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// allocating 16KiB per stream might seem wasteful,
+	// but problem is that we also write max up to this amount,
+	// and pion does not allow us to read chunks. Should you try to do so,
+	// and you read less then that there's written you'll notice
+	// undefined behaviour where the unread part is dropped.
 	reader := bufio.NewReaderSize(rwc, maxMessageSize)
 
 	result := &webRTCStream{

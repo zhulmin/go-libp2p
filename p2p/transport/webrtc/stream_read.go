@@ -55,7 +55,7 @@ func (r *webRTCStreamReader) readMessage(b []byte) (int, error) {
 			log.Debugf("[2] stream closed: %v", closeErr)
 			return read, closeErr
 		}
-		log.Debug("[2] stream empty")
+		log.Debug("[2] stream has no more data to read")
 		return read, io.EOF
 	}
 
@@ -76,6 +76,19 @@ func (r *webRTCStreamReader) readMessage(b []byte) (int, error) {
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			// if the stream has been force closed or force reset
 			// using SetReadDeadline, we check if closeErr was set.
+			//
+			// Deadlines don't close / reset streams, however if we call close
+			// on a detached Pion datachannel when a Read call is in progress, it will not
+			// cause the read call to return immediately. The Read only returns an io.EOF
+			// when the remote closes the stream in response to the local response that is sent.
+			//
+			// To mitigate this issue, we set the closeErr var on the stream and set a ReadDeadline to a past time.
+			// This causes any reads in progress to return immediately. FOr this, if a Read exists with ErrDeadlineExceeded,
+			// we check if it was caused by closeErr being set.
+			//
+			// Please note: control and data packets are only read and processed from the underlying SCTP conn if
+			// a read is called on the data channel. Please refer here:
+			// https://github.com/pion/datachannel/blob/master/datachannel.go#L193-L200
 			closeErr := r.stream.getCloseErr()
 			log.Debugf("closing stream, checking error: %v closeErr: %v", err, closeErr)
 			if closeErr != nil {

@@ -79,6 +79,10 @@ func AwaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 				}
 			})
 		case webrtc.PeerConnectionStateDisconnected:
+			// the connection can move to a disconnected state and back to a connected state without ICE renegotiation.
+			// This could happen when underlying UDP packets are lost, and therefore the connection moves to the disconnected state.
+			// If the connection then receives packets on the connection, it can move back to the connected state.
+			// If no packets are received until the failed timeout is triggered, the connection moves to the failed state.
 			log.Warn("peerconnection disconnected")
 		}
 	})
