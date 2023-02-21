@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -99,11 +100,22 @@ func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) 
 	}
 }
 
+type scheduledWorkTimes struct {
+	nextRefresh                 time.Time
+	nextBackoff                 time.Time
+	nextOldCandidateCheck       time.Time
+	nextAllowedCallToPeerSource time.Time
+	peerSourceTimer             *clock.Timer
+	needMorePeers               bool
+}
+
 func (rf *relayFinder) background(ctx context.Context) {
+	needMorePeersChan := make(chan struct{}, 1)
+	canCallPeerSourceChan := make(chan struct{}, 1)
 	rf.refCount.Add(1)
 	go func() {
 		defer rf.refCount.Done()
-		rf.findNodes(ctx)
+		rf.findNodes(ctx, needMorePeersChan, canCallPeerSourceChan)
 	}()
 
 	rf.refCount.Add(1)
@@ -119,6 +131,8 @@ func (rf *relayFinder) background(ctx context.Context) {
 	}
 	defer subConnectedness.Close()
 
+	peerSourceTimer := rf.conf.clock.Timer(rf.conf.minInterval)
+	defer peerSourceTimer.Stop()
 	bootDelayTimer := rf.conf.clock.Timer(rf.conf.bootDelay)
 	defer bootDelayTimer.Stop()
 	refreshTicker := rf.conf.clock.Ticker(rsvpRefreshInterval)
@@ -127,6 +141,15 @@ func (rf *relayFinder) background(ctx context.Context) {
 	defer backoffTicker.Stop()
 	oldCandidateTicker := rf.conf.clock.Ticker(rf.conf.maxCandidateAge / 5)
 	defer oldCandidateTicker.Stop()
+
+	scheduledWork := &scheduledWorkTimes{
+		nextRefresh:                 rf.conf.clock.Now().Add(rsvpRefreshInterval),
+		nextBackoff:                 rf.conf.clock.Now().Add(rf.conf.backoff / 5),
+		nextOldCandidateCheck:       rf.conf.clock.Now().Add(rf.conf.maxCandidateAge / 5),
+		nextAllowedCallToPeerSource: rf.conf.clock.Now().Add(-time.Second), // allow immediately
+		peerSourceTimer:             peerSourceTimer,
+		needMorePeers:               true,
+	}
 
 	for {
 		// when true, we need to identify push
@@ -156,31 +179,18 @@ func (rf *relayFinder) background(ctx context.Context) {
 			rf.notifyMaybeConnectToRelay()
 		case <-rf.relayUpdated:
 			push = true
-		case now := <-refreshTicker.C:
-			push = rf.refreshReservations(ctx, now)
-		case now := <-backoffTicker.C:
-			rf.candidateMx.Lock()
-			for id, t := range rf.backoff {
-				if !t.Add(rf.conf.backoff).After(now) {
-					log.Debugw("removing backoff for node", "id", id)
-					delete(rf.backoff, id)
-				}
-			}
-			rf.candidateMx.Unlock()
-		case now := <-oldCandidateTicker.C:
-			var deleted bool
-			rf.candidateMx.Lock()
-			for id, cand := range rf.candidates {
-				if !cand.added.Add(rf.conf.maxCandidateAge).After(now) {
-					deleted = true
-					log.Debugw("deleting candidate due to age", "id", id)
-					delete(rf.candidates, id)
-				}
-			}
-			rf.candidateMx.Unlock()
-			if deleted {
-				rf.notifyMaybeNeedNewCandidates()
-			}
+		case <-refreshTicker.C:
+			push = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, canCallPeerSourceChan)
+		case <-backoffTicker.C:
+			log.Debugf("backoff ticker fired")
+			push = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, canCallPeerSourceChan)
+		case <-oldCandidateTicker.C:
+			push = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, canCallPeerSourceChan)
+		case <-peerSourceTimer.C:
+			push = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, canCallPeerSourceChan)
+		case <-needMorePeersChan:
+			scheduledWork.needMorePeers = true
+			push = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, canCallPeerSourceChan)
 		case <-ctx.Done():
 			return
 		}
@@ -194,41 +204,91 @@ func (rf *relayFinder) background(ctx context.Context) {
 	}
 }
 
+func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, scheduledWork *scheduledWorkTimes, canCallPeerSourceChan chan<- struct{}) bool {
+	var push bool
+
+	if now.After(scheduledWork.nextRefresh) {
+		scheduledWork.nextRefresh = now.Add(rsvpRefreshInterval)
+		push = rf.refreshReservations(ctx, now)
+	}
+
+	if now.After(scheduledWork.nextBackoff) {
+		scheduledWork.nextBackoff = now.Add(rf.conf.backoff / 5)
+		rf.candidateMx.Lock()
+		for id, t := range rf.backoff {
+			if !t.Add(rf.conf.backoff).After(now) {
+				log.Debugw("removing backoff for node", "id", id)
+				delete(rf.backoff, id)
+			}
+		}
+		rf.candidateMx.Unlock()
+
+	}
+
+	if now.After(scheduledWork.nextOldCandidateCheck) {
+		scheduledWork.nextOldCandidateCheck = now.Add(rf.conf.maxCandidateAge / 5)
+		var deleted bool
+		rf.candidateMx.Lock()
+		for id, cand := range rf.candidates {
+			if !cand.added.Add(rf.conf.maxCandidateAge).After(now) {
+				deleted = true
+				log.Debugw("deleting candidate due to age", "id", id)
+				delete(rf.candidates, id)
+			}
+		}
+		rf.candidateMx.Unlock()
+		if deleted {
+			rf.notifyMaybeNeedNewCandidates()
+		}
+	}
+
+	if scheduledWork.needMorePeers && now.After(scheduledWork.nextAllowedCallToPeerSource) {
+		scheduledWork.nextAllowedCallToPeerSource = now.Add(rf.conf.minInterval)
+		scheduledWork.needMorePeers = false
+
+		if !scheduledWork.peerSourceTimer.Stop() {
+			// Maybe drain the channel
+			select {
+			case <-scheduledWork.peerSourceTimer.C:
+			default:
+			}
+		}
+		scheduledWork.peerSourceTimer.Reset(scheduledWork.nextAllowedCallToPeerSource.Sub(now))
+
+		select {
+		case canCallPeerSourceChan <- struct{}{}:
+		default:
+		}
+	}
+
+	return push
+}
+
 // findNodes accepts nodes from the channel and tests if they support relaying.
 // It is run on both public and private nodes.
 // It garbage collects old entries, so that nodes doesn't overflow.
 // This makes sure that as soon as we need to find relay candidates, we have them available.
-func (rf *relayFinder) findNodes(ctx context.Context) {
-	peerChan := rf.peerSource(ctx, rf.conf.maxCandidates)
+func (rf *relayFinder) findNodes(ctx context.Context, needMorePeersChan chan<- struct{}, canCallPeerSource <-chan struct{}) {
+	var peerChan <-chan peer.AddrInfo
 	var wg sync.WaitGroup
-	lastCallToPeerSource := rf.conf.clock.Now()
-
-	timer := newTimer(rf.conf.clock)
 	for {
 		rf.candidateMx.Lock()
 		numCandidates := len(rf.candidates)
 		rf.candidateMx.Unlock()
 
-		if peerChan == nil {
-			now := rf.conf.clock.Now()
-			nextAllowedCallToPeerSource := lastCallToPeerSource.Add(rf.conf.minInterval).Sub(now)
-			if numCandidates < rf.conf.minCandidates {
-				log.Debugw("not enough candidates. Resetting timer", "num", numCandidates, "desired", rf.conf.minCandidates)
-				timer.Reset(nextAllowedCallToPeerSource)
+		if peerChan == nil && numCandidates < rf.conf.minCandidates {
+			select {
+			case needMorePeersChan <- struct{}{}:
+			default:
 			}
 		}
 
 		select {
 		case <-rf.maybeRequestNewCandidates:
 			continue
-		case now := <-timer.Chan():
-			timer.SetRead()
-			if peerChan != nil {
-				// We're still reading peers from the peerChan. No need to query for more peers now.
-				continue
-			}
-			lastCallToPeerSource = now
+		case <-canCallPeerSource:
 			peerChan = rf.peerSource(ctx, rf.conf.maxCandidates)
+			continue
 		case pi, ok := <-peerChan:
 			if !ok {
 				wg.Wait()
@@ -527,12 +587,20 @@ func (rf *relayFinder) usingRelay(p peer.ID) bool {
 	return ok
 }
 
+func (rf *relayFinder) candidateOk(c *candidate) bool {
+	now := rf.conf.clock.Now()
+	// Check max age here as well in case our background ticker hasn't fired.
+	return c.added.Add(rf.conf.maxCandidateAge).After(now)
+}
+
 // selectCandidates returns an ordered slice of relay candidates.
 // Callers should attempt to obtain reservations with the candidates in this order.
 func (rf *relayFinder) selectCandidates() []*candidate {
 	candidates := make([]*candidate, 0, len(rf.candidates))
 	for _, cand := range rf.candidates {
-		candidates = append(candidates, cand)
+		if rf.candidateOk(cand) {
+			candidates = append(candidates, cand)
+		}
 	}
 
 	// TODO: better relay selection strategy; this just selects random relays,
