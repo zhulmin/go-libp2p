@@ -109,8 +109,9 @@ type Stats struct {
 	Direction Direction
 	// Opened is the timestamp when this connection was opened.
 	Opened time.Time
-	// Transient indicates that this connection is transient and may be closed soon.
-	Transient bool
+	// Relayed indicates that this connection is a relayed connection.
+	// If a hole punching is successful, it may be closed within a short time frame.
+	Relayed bool
 	// Extra stores additional metadata about this connection.
 	Extra map[interface{}]interface{}
 }

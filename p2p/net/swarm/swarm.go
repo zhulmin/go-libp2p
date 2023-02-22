@@ -428,8 +428,8 @@ func (s *Swarm) ConnsToPeer(p peer.ID) []network.Conn {
 
 func isBetterConn(a, b *Conn) bool {
 	// If one is transient and not the other, prefer the non-transient connection.
-	aTransient := a.Stat().Transient
-	bTransient := b.Stat().Transient
+	aTransient := a.Stat().Relayed
+	bTransient := b.Stat().Relayed
 	if aTransient != bTransient {
 		return !aTransient
 	}
@@ -495,7 +495,7 @@ func (s *Swarm) bestAcceptableConnToPeer(ctx context.Context, p peer.ID) (*Conn,
 	}
 
 	useTransient, _ := network.GetUseTransient(ctx)
-	if useTransient || !conn.Stat().Transient {
+	if useTransient || !conn.Stat().Relayed {
 		return conn, nil
 	}
 
