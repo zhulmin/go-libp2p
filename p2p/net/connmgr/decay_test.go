@@ -36,7 +36,7 @@ func TestDecayExpire(t *testing.T) {
 	mockClock.Add(250 * time.Millisecond)
 	mockClock.Add(250 * time.Millisecond)
 
-	require.Zero(t, mgr.GetTagInfo(id).Value)
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 0)
 }
 
 func TestMultipleBumps(t *testing.T) {
@@ -108,15 +108,15 @@ func TestCustomFunctions(t *testing.T) {
 
 	// only tag3 should tick.
 	mockClock.Add(50 * time.Millisecond)
-	require.Equal(t, 2999, mgr.GetTagInfo(id).Value)
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 2999)
 
 	// tag3 will tick thrice, tag2 will tick twice.
 	mockClock.Add(150 * time.Millisecond)
-	require.Equal(t, 2986, mgr.GetTagInfo(id).Value)
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 2986)
 
 	// tag3 will tick once, tag1 will tick once.
 	mockClock.Add(50 * time.Millisecond)
-	require.Equal(t, 2975, mgr.GetTagInfo(id).Value)
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 2975)
 }
 
 func TestMultiplePeers(t *testing.T) {
@@ -166,6 +166,13 @@ func TestMultiplePeers(t *testing.T) {
 	require.Equal(t, 40, mgr.GetTagInfo(ids[2]).Value)
 }
 
+func eventuallyEqual(t *testing.T, f func() int, val int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return f() == val
+	}, 1*time.Second, 10*time.Millisecond)
+}
+
 func TestLinearDecayOverwrite(t *testing.T) {
 	id := tu.RandPeerIDFatal(t)
 	mgr, decay, mockClock := testDecayTracker(t)
@@ -176,15 +183,15 @@ func TestLinearDecayOverwrite(t *testing.T) {
 	_ = tag1.Bump(id, 1000)
 	waitForTag(t, mgr, id)
 
-	require.Equal(t, 1000, mgr.GetTagInfo(id).Value)
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 1000)
 	mockClock.Add(250 * time.Millisecond)
-	require.Equal(t, 500, mgr.GetTagInfo(id).Value)
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 500)
 
 	mockClock.Add(250 * time.Millisecond)
-	require.Equal(t, 250, mgr.GetTagInfo(id).Value)
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 250)
 
 	_ = tag1.Bump(id, 1000)
-	require.Eventually(t, func() bool { return mgr.GetTagInfo(id).Value == 1000 }, 500*time.Millisecond, 10*time.Millisecond, "expected value to be 1000")
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Value }, 1000)
 }
 
 func TestResolutionMisaligned(t *testing.T) {
@@ -207,17 +214,17 @@ func TestResolutionMisaligned(t *testing.T) {
 
 	// first tick.
 	mockClock.Add(TestResolution)
-	require.Equal(1000, mgr.GetTagInfo(id).Tags["beep"])
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Tags["beep"] }, 1000)
 	require.Equal(1000, mgr.GetTagInfo(id).Tags["bop"])
 
 	// next tick; tag1 would've ticked.
 	mockClock.Add(TestResolution)
-	require.Equal(999, mgr.GetTagInfo(id).Tags["beep"])
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Tags["beep"] }, 999)
 	require.Equal(1000, mgr.GetTagInfo(id).Tags["bop"])
 
 	// next tick; tag1 would've ticked twice, tag2 once.
 	mockClock.Add(TestResolution)
-	require.Equal(998, mgr.GetTagInfo(id).Tags["beep"])
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Tags["beep"] }, 998)
 	require.Equal(999, mgr.GetTagInfo(id).Tags["bop"])
 
 	require.Equal(1997, mgr.GetTagInfo(id).Value)
@@ -243,7 +250,7 @@ func TestTagRemoval(t *testing.T) {
 
 	// first tick.
 	mockClock.Add(TestResolution)
-	require.Equal(t, 999, mgr.GetTagInfo(id1).Tags["beep"])
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id1).Tags["beep"] }, 999)
 	require.Equal(t, 999, mgr.GetTagInfo(id1).Tags["bop"])
 	require.Equal(t, 999, mgr.GetTagInfo(id2).Tags["beep"])
 
@@ -281,13 +288,13 @@ func TestTagClosure(t *testing.T) {
 
 	// nothing has happened.
 	mockClock.Add(TestResolution)
-	require.Equal(t, 999, mgr.GetTagInfo(id).Tags["beep"])
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Tags["beep"] }, 999)
 	require.Equal(t, 999, mgr.GetTagInfo(id).Tags["bop"])
 	require.Equal(t, 999*2, mgr.GetTagInfo(id).Value)
 
 	// next tick; tag1 would've ticked.
 	mockClock.Add(TestResolution)
-	require.Equal(t, 998, mgr.GetTagInfo(id).Tags["beep"])
+	eventuallyEqual(t, func() int { return mgr.GetTagInfo(id).Tags["beep"] }, 998)
 	require.Equal(t, 998, mgr.GetTagInfo(id).Tags["bop"])
 	require.Equal(t, 998*2, mgr.GetTagInfo(id).Value)
 
