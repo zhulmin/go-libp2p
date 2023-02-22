@@ -110,8 +110,7 @@ func (r *reuse) gc() {
 		select {
 		case <-r.closeChan:
 			return
-		case <-ticker.C:
-			now := time.Now()
+		case now := <-ticker.C:
 			r.mutex.Lock()
 			for key, conn := range r.global {
 				if conn.ShouldGarbageCollect(now) {
