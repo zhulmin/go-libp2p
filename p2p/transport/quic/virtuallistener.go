@@ -152,17 +152,17 @@ func (r *acceptLoopRunner) Accept(l *listener, expectedVersion quic.VersionNumbe
 		case r.acceptSem <- struct{}{}:
 			conn, err = r.innerAccept(l, expectedVersion, bufferedConnChan)
 			<-r.acceptSem
+
+			if conn == nil && err == nil {
+				// Didn't find a conn for the expected version and there was no error, lets try again
+				continue
+			}
 		case v, ok := <-bufferedConnChan:
 			if !ok {
 				return nil, errors.New("listener closed")
 			}
 			conn = v.conn
 			err = v.err
-		}
-
-		if conn == nil && err == nil {
-			// Didn't find a conn for the expected version and there was no error, lets try again
-			continue
 		}
 		return conn, err
 	}
