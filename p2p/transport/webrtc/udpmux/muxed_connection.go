@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	pool "github.com/libp2p/go-buffer-pool"
@@ -124,7 +125,10 @@ var (
 
 // just a convenience wrapper around a channel
 type packetQueue struct {
-	pkts   chan packet
+	pktsMux sync.Mutex
+	pktsCh  chan struct{}
+	pkts    []packet
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -132,9 +136,10 @@ type packetQueue struct {
 func newPacketQueue() *packetQueue {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &packetQueue{
+		pktsCh: make(chan struct{}, 1),
+
 		ctx:    ctx,
 		cancel: cancel,
-		pkts:   make(chan packet, maxPacketsInQueue),
 	}
 }
 
@@ -142,14 +147,9 @@ func newPacketQueue() *packetQueue {
 // either a packet becomes available or the queue is closed.
 func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
 	select {
-	case <-ctx.Done():
-		return 0, nil, errPacketQueueClosed
-	// It is desired to allow reads of this channel even
-	// when pq.ctx.Done() is already closed.
-	case p, ok := <-pq.pkts:
-		if !ok {
-			return 0, nil, io.EOF
-		}
+	case <-pq.pktsCh:
+		p := pq.popQueue()
+
 		n := copy(buf, p.buf)
 		var err error
 		if n < len(p.buf) {
@@ -157,16 +157,36 @@ func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 		}
 		pool.Put(p.buf)
 		return n, p.addr, err
+
+	// It is desired to allow reads of this channel even
+	// when pq.ctx.Done() is already closed.
+	case <-ctx.Done():
+		return 0, nil, errPacketQueueClosed
 	}
 }
 
+func (pq *packetQueue) popQueue() packet {
+	pq.pktsMux.Lock()
+	defer pq.pktsMux.Unlock()
+
+	p := pq.pkts[0]
+	pq.pkts = pq.pkts[1:]
+	return p
+}
+
 // Push adds a packet to the packetQueue
-func (pq *packetQueue) Push(buf []byte, addr net.Addr) (err error) {
-	select {
-	case pq.pkts <- packet{addr, buf}:
-		return nil
-	default:
+func (pq *packetQueue) Push(buf []byte, addr net.Addr) error {
+	pq.pktsMux.Lock()
+	defer pq.pktsMux.Unlock()
+
+	if len(pq.pkts) > maxPacketsInQueue {
 		return errTooManyPackets
+	}
+
+	pq.pkts = append(pq.pkts, packet{addr, buf})
+	select {
+	case pq.pktsCh <- struct{}{}:
+	default:
 	}
 }
 
