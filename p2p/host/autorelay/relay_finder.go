@@ -223,7 +223,7 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 	}
 
 	if now.After(scheduledWork.nextAllowedCallToPeerSource) {
-		scheduledWork.nextAllowedCallToPeerSource = now.Add(rf.conf.minInterval)
+		scheduledWork.nextAllowedCallToPeerSource = scheduledWork.nextAllowedCallToPeerSource.Add(rf.conf.minInterval)
 		select {
 		case peerSourceRateLimiter <- struct{}{}:
 		default:
