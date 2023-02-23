@@ -135,7 +135,7 @@ type packetQueue struct {
 func newPacketQueue() *packetQueue {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &packetQueue{
-		pktsCh: make(chan struct{}, 1),
+		pktsCh: make(chan struct{}, maxPacketsInQueue),
 
 		ctx:    ctx,
 		cancel: cancel,
@@ -161,6 +161,11 @@ func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 			// otherwise we need to keep the packet in the queue
 			// but do update the buf
 			pq.pkts[0].buf = p.buf[n:]
+			// do make sure to put a receiver again
+			select {
+			case pq.pktsCh <- struct{}{}:
+			default:
+			}
 		}
 
 		return n, p.addr, nil
@@ -177,7 +182,7 @@ func (pq *packetQueue) Push(buf []byte, addr net.Addr) error {
 	pq.pktsMux.Lock()
 	defer pq.pktsMux.Unlock()
 
-	if len(pq.pkts) > maxPacketsInQueue {
+	if len(pq.pkts) >= maxPacketsInQueue {
 		return errTooManyPackets
 	}
 
