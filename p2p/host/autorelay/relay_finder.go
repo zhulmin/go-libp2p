@@ -179,14 +179,14 @@ func (rf *relayFinder) background(ctx context.Context) {
 			rf.relayMx.Unlock()
 
 			if push {
-				rf.clearCachedAddrsAndIdentifyPush()
+				rf.clearCachedAddrsAndSignalAddressChange()
 			}
 		case <-rf.candidateFound:
 			rf.notifyMaybeConnectToRelay()
 		case <-bootDelayTimer.C:
 			rf.notifyMaybeConnectToRelay()
 		case <-rf.relayUpdated:
-			rf.clearCachedAddrsAndIdentifyPush()
+			rf.clearCachedAddrsAndSignalAddressChange()
 		case <-workTimer.C:
 			now := rf.conf.clock.Now()
 			nextTime := rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter)
@@ -197,7 +197,7 @@ func (rf *relayFinder) background(ctx context.Context) {
 	}
 }
 
-func (rf *relayFinder) clearCachedAddrsAndIdentifyPush() {
+func (rf *relayFinder) clearCachedAddrsAndSignalAddressChange() {
 	rf.relayMx.Lock()
 	rf.cachedAddrs = nil
 	rf.relayMx.Unlock()
@@ -210,7 +210,7 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 	if now.After(scheduledWork.nextRefresh) {
 		scheduledWork.nextRefresh = now.Add(rsvpRefreshInterval)
 		if rf.refreshReservations(ctx, now) {
-			rf.clearCachedAddrsAndIdentifyPush()
+			rf.clearCachedAddrsAndSignalAddressChange()
 		}
 	}
 
