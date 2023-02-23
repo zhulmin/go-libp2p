@@ -426,6 +426,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 }
 
 func TestMinInterval(t *testing.T) {
+	cl := clock.NewMock()
 	h := newPrivateNode(t,
 		func(context.Context, int) <-chan peer.AddrInfo {
 			peerChan := make(chan peer.AddrInfo, 1)
@@ -435,6 +436,7 @@ func TestMinInterval(t *testing.T) {
 			peerChan <- peer.AddrInfo{ID: r1.ID(), Addrs: r1.Addrs()}
 			return peerChan
 		},
+		autorelay.WithClock(cl),
 		autorelay.WithMinCandidates(2),
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(time.Hour),
@@ -442,7 +444,9 @@ func TestMinInterval(t *testing.T) {
 	)
 	defer h.Close()
 
+	cl.Add(500 * time.Millisecond)
 	// The second call to peerSource should happen after 1 second
 	require.Never(t, func() bool { return numRelays(h) > 0 }, 500*time.Millisecond, 100*time.Millisecond)
+	cl.Add(500 * time.Millisecond)
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
 }
