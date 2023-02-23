@@ -353,7 +353,7 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 
 	e, found := ids.conns[c]
 	if !found { // No entry found. Connection was most likely closed (and removed from this map) recently.
-		log.Debugf("connection %s not found in identify service", c.RemotePeer())
+		log.Debugw("connection not found in identify service", "peer", c.RemotePeer())
 		ch := make(chan struct{})
 		close(ch)
 		return ch
