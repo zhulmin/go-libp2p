@@ -3,7 +3,6 @@ package udpmux
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -148,30 +147,29 @@ func newPacketQueue() *packetQueue {
 func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
 	select {
 	case <-pq.pktsCh:
-		p := pq.popQueue()
+		pq.pktsMux.Lock()
+		defer pq.pktsMux.Unlock()
+
+		p := pq.pkts[0]
 
 		n := copy(buf, p.buf)
-		var err error
-		if n < len(p.buf) {
-			err = io.ErrShortBuffer
+		if n == len(p.buf) {
+			// only move packet from queue if we read all
+			pq.pkts = pq.pkts[1:]
+			pool.Put(p.buf)
+		} else {
+			// otherwise we need to keep the packet in the queue
+			// but do update the buf
+			pq.pkts[0].buf = p.buf[n:]
 		}
-		pool.Put(p.buf)
-		return n, p.addr, err
+
+		return n, p.addr, nil
 
 	// It is desired to allow reads of this channel even
 	// when pq.ctx.Done() is already closed.
 	case <-ctx.Done():
 		return 0, nil, errPacketQueueClosed
 	}
-}
-
-func (pq *packetQueue) popQueue() packet {
-	pq.pktsMux.Lock()
-	defer pq.pktsMux.Unlock()
-
-	p := pq.pkts[0]
-	pq.pkts = pq.pkts[1:]
-	return p
 }
 
 // Push adds a packet to the packetQueue
@@ -188,6 +186,8 @@ func (pq *packetQueue) Push(buf []byte, addr net.Addr) error {
 	case pq.pktsCh <- struct{}{}:
 	default:
 	}
+
+	return nil
 }
 
 // discard all packets in the queue and return
