@@ -426,6 +426,8 @@ func TestDialBackoff(t *testing.T) {
 }
 
 func TestDialBackoffClears(t *testing.T) {
+	// This test relies on parallel dials
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	const dialTimeout = 3 * time.Second
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))
 	defer closeSwarms(swarms)
@@ -538,6 +540,8 @@ func newSilentListener(t *testing.T) ([]ma.Multiaddr, net.Listener) {
 }
 
 func TestDialSimultaneousJoin(t *testing.T) {
+	// This test relies on concurrent dials
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	const dialTimeout = 3 * time.Second
 
 	swarms := makeSwarms(t, 2, swarmt.WithSwarmOpts(swarm.WithDialTimeout(dialTimeout)))

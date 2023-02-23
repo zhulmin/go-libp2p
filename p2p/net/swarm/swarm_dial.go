@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -70,9 +71,32 @@ const DialAttempts = 1
 // that consume file descriptors
 const ConcurrentFdDials = 160
 
-// DefaultPerPeerRateLimit is the number of concurrent outbound dials to make
+// defaultPerPeerRateLimit is the number of concurrent outbound dials to make
 // per peer
-var DefaultPerPeerRateLimit = 8
+var defaultPerPeerRateLimit = 8
+var defaultPerPeerRateLimitMu = &sync.Mutex{}
+
+func SwapDefaultPerPeerRateLimit(newLimit int) int {
+	defaultPerPeerRateLimitMu.Lock()
+	defer defaultPerPeerRateLimitMu.Unlock()
+
+	oldVal := defaultPerPeerRateLimit
+	defaultPerPeerRateLimit = newLimit
+	return oldVal
+}
+
+func GetDefaultPerPeerRateLimit() int {
+	defaultPerPeerRateLimitMu.Lock()
+	defer defaultPerPeerRateLimitMu.Unlock()
+
+	return defaultPerPeerRateLimit
+}
+
+func init() {
+	if os.Getenv("CI") != "" {
+		SwapDefaultPerPeerRateLimit(1)
+	}
+}
 
 // dialbackoff is a struct used to avoid over-dialing the same, dead peers.
 // Whenever we totally time out on a peer (all three attempts), we add them

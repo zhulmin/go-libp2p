@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -80,6 +81,7 @@ func (s *mockIDService) OwnObservedAddrs() []ma.Multiaddr {
 }
 
 func TestNoHolePunchIfDirectConnExists(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	tr := &mockEventTracer{}
 	h1, hps := mkHostWithHolePunchSvc(t, holepunch.WithTracer(tr))
 	defer h1.Close()
@@ -102,6 +104,7 @@ func TestNoHolePunchIfDirectConnExists(t *testing.T) {
 }
 
 func TestDirectDialWorks(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	// mark all addresses as public
 	cpy := manet.Private4
 	manet.Private4 = []*net.IPNet{}
@@ -126,6 +129,7 @@ func TestDirectDialWorks(t *testing.T) {
 }
 
 func TestEndToEndSimConnect(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	h1tr := &mockEventTracer{}
 	h2tr := &mockEventTracer{}
 	h1, h2, relay, _ := makeRelayedHosts(t, []holepunch.Option{holepunch.WithTracer(h1tr)}, []holepunch.Option{holepunch.WithTracer(h2tr)}, true)
@@ -165,6 +169,7 @@ func TestEndToEndSimConnect(t *testing.T) {
 }
 
 func TestFailuresOnInitiator(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	tcs := map[string]struct {
 		rhandler         func(s network.Stream)
 		errMsg           string
@@ -256,6 +261,7 @@ func addrsToBytes(as []ma.Multiaddr) [][]byte {
 }
 
 func TestFailuresOnResponder(t *testing.T) {
+	defer swarm.SwapDefaultPerPeerRateLimit(swarm.SwapDefaultPerPeerRateLimit(8))
 	tcs := map[string]struct {
 		initiator        func(s network.Stream)
 		errMsg           string

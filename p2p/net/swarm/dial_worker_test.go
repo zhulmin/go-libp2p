@@ -292,6 +292,8 @@ func TestDialWorkerLoopConcurrentMix(t *testing.T) {
 }
 
 func TestDialWorkerLoopConcurrentFailureStress(t *testing.T) {
+	defer SwapDefaultPerPeerRateLimit(SwapDefaultPerPeerRateLimit(8))
+
 	s1 := makeSwarm(t)
 	defer s1.Close()
 

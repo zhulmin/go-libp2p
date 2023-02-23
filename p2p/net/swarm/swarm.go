@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -190,7 +191,11 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, opts ...Option) (*Swarm,
 	}
 
 	s.dsync = newDialSync(s.dialWorkerLoop)
-	s.limiter = newDialLimiter(s.dialAddr)
+	if os.Getenv("CI") != "" {
+		s.limiter = newDialLimiter(s.dialAddrForCI)
+	} else {
+		s.limiter = newDialLimiter(s.dialAddr)
+	}
 	s.backf.init(s.ctx)
 	return s, nil
 }
