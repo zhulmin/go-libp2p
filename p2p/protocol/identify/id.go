@@ -81,12 +81,12 @@ type IDService interface {
 	io.Closer
 }
 
-type IdentifyPushSupport uint8
+type identifyPushSupport uint8
 
 const (
-	IdentifyPushSupportUnknown IdentifyPushSupport = iota
-	IdentifyPushSupported
-	IdentifyPushUnsupported
+	identifyPushSupportUnknown identifyPushSupport = iota
+	identifyPushSupported
+	identifyPushUnsupported
 )
 
 type entry struct {
@@ -96,7 +96,7 @@ type entry struct {
 
 	// PushSupport saves our knowledge about the peer's support of the Identify Push protocol.
 	// Before the identify request returns, we don't know yet if the peer supports Identify Push.
-	PushSupport IdentifyPushSupport
+	PushSupport identifyPushSupport
 	// Sequence is the sequence number of the last snapshot we sent to this peer.
 	Sequence uint64
 }
@@ -271,7 +271,7 @@ func (ids *idService) sendPushes(ctx context.Context) {
 	for c, e := range ids.conns {
 		// Push even if we don't know if push is supported.
 		// This will be only the case while the IdentifyWaitChan call is in flight.
-		if e.PushSupport == IdentifyPushSupported || e.PushSupport == IdentifyPushSupportUnknown {
+		if e.PushSupport == identifyPushSupported || e.PushSupport == identifyPushSupportUnknown {
 			conns = append(conns, c)
 		}
 	}
@@ -496,9 +496,9 @@ func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) erro
 	}
 	sup, err := ids.Host.Peerstore().SupportsProtocols(c.RemotePeer(), IDPush)
 	if supportsIdentifyPush := err == nil && len(sup) > 0; supportsIdentifyPush {
-		e.PushSupport = IdentifyPushSupported
+		e.PushSupport = identifyPushSupported
 	} else {
-		e.PushSupport = IdentifyPushUnsupported
+		e.PushSupport = identifyPushUnsupported
 	}
 
 	if ids.metricsTracer != nil {
