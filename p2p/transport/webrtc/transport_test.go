@@ -455,8 +455,6 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 }
 
 func TestTransportWebRTC_Read(t *testing.T) {
-	t.Skip("TODO: FIX")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -465,16 +463,23 @@ func TestTransportWebRTC_Read(t *testing.T) {
 
 	tr1, connectingPeer := getTransport(t)
 
+	createListener := func(writeErr bool) {
+		lconn, err := listener.Accept()
+		require.NoError(t, err)
+		require.Equal(t, connectingPeer, lconn.RemotePeer())
+		stream, err := lconn.AcceptStream()
+		require.NoError(t, err)
+		_, err = stream.Write(make([]byte, 2*1024*1024))
+		if writeErr {
+			// e.g. i/o timeout
+			require.Error(t, err)
+		} else {
+			require.NoError(t, err)
+		}
+	}
+
 	t.Run("read partial message", func(t *testing.T) {
-		go func() {
-			lconn, err := listener.Accept()
-			require.NoError(t, err)
-			require.Equal(t, connectingPeer, lconn.RemotePeer())
-			stream, err := lconn.AcceptStream()
-			require.NoError(t, err)
-			_, err = stream.Write(make([]byte, 2*1024*1024))
-			require.NoError(t, err)
-		}()
+		go createListener(true)
 
 		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
@@ -489,15 +494,7 @@ func TestTransportWebRTC_Read(t *testing.T) {
 	})
 
 	t.Run("read zero bytes", func(t *testing.T) {
-		go func() {
-			lconn, err := listener.Accept()
-			require.NoError(t, err)
-			require.Equal(t, connectingPeer, lconn.RemotePeer())
-			stream, err := lconn.AcceptStream()
-			require.NoError(t, err)
-			_, err = stream.Write(make([]byte, 2*1024*1024))
-			require.NoError(t, err)
-		}()
+		go createListener(false)
 
 		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
