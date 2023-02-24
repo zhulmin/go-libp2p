@@ -95,7 +95,7 @@ type MetricsTracer interface {
 	TriggeredPushes(event any)
 
 	// ConnPushSupport counts peers by Push Support
-	ConnPushSupport(identifyPushSupport)
+	ConnPushSupport(IdentifyPushSupport)
 
 	// IdentifyReceived tracks metrics on receiving an identify response
 	IdentifyReceived(isPush bool, numProtocols int, numAddrs int)
@@ -146,7 +146,7 @@ func (t *metricsTracer) TriggeredPushes(ev any) {
 	pushesTriggered.WithLabelValues(*tags...).Inc()
 }
 
-func (t *metricsTracer) IncrementPushSupport(s identifyPushSupport) {
+func (t *metricsTracer) IncrementPushSupport(s IdentifyPushSupport) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
@@ -186,7 +186,7 @@ func (t *metricsTracer) IdentifyReceived(isPush bool, numProtocols int, numAddrs
 	numAddrsReceived.Observe(float64(numAddrs))
 }
 
-func (t *metricsTracer) ConnPushSupport(support identifyPushSupport) {
+func (t *metricsTracer) ConnPushSupport(support IdentifyPushSupport) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
@@ -194,11 +194,11 @@ func (t *metricsTracer) ConnPushSupport(support identifyPushSupport) {
 	connPushSupportTotal.WithLabelValues(*tags...).Inc()
 }
 
-func getPushSupport(s identifyPushSupport) string {
+func getPushSupport(s IdentifyPushSupport) string {
 	switch s {
-	case identifyPushSupported:
+	case IdentifyPushSupported:
 		return "supported"
-	case identifyPushUnsupported:
+	case IdentifyPushUnsupported:
 		return "not supported"
 	default:
 		return "unknown"
