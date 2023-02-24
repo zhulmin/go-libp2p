@@ -169,7 +169,12 @@ func TestMultiplePeers(t *testing.T) {
 func eventuallyEqual(t *testing.T, f func() int, val int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
-		return f() == val
+		v := f()
+		if v == val {
+			return true
+		}
+		t.Log("f() was", v, "expected", val, "retrying...")
+		return false
 	}, 1*time.Second, 10*time.Millisecond)
 }
 
