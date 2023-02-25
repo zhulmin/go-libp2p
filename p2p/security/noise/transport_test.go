@@ -159,15 +159,16 @@ func TestKeys(t *testing.T) {
 	defer initConn.Close()
 	defer respConn.Close()
 
-	sk := respConn.LocalPrivateKey()
-	pk := sk.GetPublic()
-
-	if !sk.Equals(respTransport.privateKey) {
-		t.Error("Private key Mismatch.")
+	pk1 := respConn.RemotePublicKey()
+	pk2 := initTransport.privateKey.GetPublic()
+	if !pk1.Equals(pk2) {
+		t.Errorf("Public key mismatch. expected %x got %x", pk1, pk2)
 	}
 
-	if !pk.Equals(initConn.RemotePublicKey()) {
-		t.Errorf("Public key mismatch. expected %x got %x", pk, initConn.RemotePublicKey())
+	pk3 := initConn.RemotePublicKey()
+	pk4 := respTransport.privateKey.GetPublic()
+	if !pk3.Equals(pk4) {
+		t.Errorf("Public key mismatch. expected %x got %x", pk3, pk4)
 	}
 }
 

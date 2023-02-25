@@ -158,11 +158,6 @@ func (c *conn) LocalPeer() peer.ID {
 	return c.local
 }
 
-// LocalPrivateKey is the private key of the peer on our side.
-func (c *conn) LocalPrivateKey() ic.PrivKey {
-	return c.localPrivKey
-}
-
 // RemoteMultiaddr is the Multiaddr on the remote side
 func (c *conn) RemoteMultiaddr() ma.Multiaddr {
 	return c.remoteAddr

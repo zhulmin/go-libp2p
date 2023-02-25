@@ -53,9 +53,6 @@ type ConnSecurity interface {
 	// LocalPeer returns our peer ID
 	LocalPeer() peer.ID
 
-	// LocalPrivateKey returns our private key
-	LocalPrivateKey() ic.PrivKey
-
 	// RemotePeer returns the peer ID of the remote peer.
 	RemotePeer() peer.ID
 

@@ -796,7 +796,6 @@ type mockConn struct {
 
 func (m mockConn) Close() error                                          { panic("implement me") }
 func (m mockConn) LocalPeer() peer.ID                                    { panic("implement me") }
-func (m mockConn) LocalPrivateKey() crypto.PrivKey                       { panic("implement me") }
 func (m mockConn) RemotePeer() peer.ID                                   { panic("implement me") }
 func (m mockConn) RemotePublicKey() crypto.PubKey                        { panic("implement me") }
 func (m mockConn) LocalMultiaddr() ma.Multiaddr                          { panic("implement me") }

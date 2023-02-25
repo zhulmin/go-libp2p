@@ -168,11 +168,6 @@ func (c *Conn) RemotePeer() peer.ID {
 	return c.conn.RemotePeer()
 }
 
-// LocalPrivateKey is the public key of the peer on this side
-func (c *Conn) LocalPrivateKey() ic.PrivKey {
-	return c.conn.LocalPrivateKey()
-}
-
 // RemotePublicKey is the public key of the peer on the remote side
 func (c *Conn) RemotePublicKey() ic.PubKey {
 	return c.conn.RemotePublicKey()

@@ -111,8 +111,6 @@ func TestHandshakeSucceeds(t *testing.T) {
 
 		require.Equal(t, clientConn.LocalPeer(), clientID)
 		require.Equal(t, serverConn.LocalPeer(), serverID)
-		require.True(t, clientConn.LocalPrivateKey().Equals(clientKey), "client private key mismatch")
-		require.True(t, serverConn.LocalPrivateKey().Equals(serverKey), "server private key mismatch")
 		require.Equal(t, clientConn.RemotePeer(), serverID)
 		require.Equal(t, serverConn.RemotePeer(), clientID)
 		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")
@@ -249,8 +247,6 @@ func TestHandshakeWithNextProtoSucceeds(t *testing.T) {
 
 		require.Equal(t, clientConn.LocalPeer(), clientID)
 		require.Equal(t, serverConn.LocalPeer(), serverID)
-		require.True(t, clientConn.LocalPrivateKey().Equals(clientKey), "client private key mismatch")
-		require.True(t, serverConn.LocalPrivateKey().Equals(serverKey), "server private key mismatch")
 		require.Equal(t, clientConn.RemotePeer(), serverID)
 		require.Equal(t, serverConn.RemotePeer(), clientID)
 		require.True(t, clientConn.RemotePublicKey().Equals(serverKey.GetPublic()), "server public key mismatch")

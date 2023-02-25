@@ -103,12 +103,10 @@ func testHandshake(t *testing.T, tc *connTestCase) {
 		defer serverConn.Close()
 
 		require.Equal(t, conn.LocalPeer(), clientID)
-		require.True(t, conn.LocalPrivateKey().Equals(clientKey), "local private key doesn't match")
 		require.Equal(t, conn.RemotePeer(), serverID)
 		require.True(t, conn.RemotePublicKey().Equals(serverKey.GetPublic()), "remote public key doesn't match")
 
 		require.Equal(t, serverConn.LocalPeer(), serverID)
-		require.True(t, serverConn.LocalPrivateKey().Equals(serverKey), "local private key doesn't match")
 		require.Equal(t, serverConn.RemotePeer(), clientID)
 		require.True(t, serverConn.RemotePublicKey().Equals(clientKey.GetPublic()), "remote public key doesn't match")
 	}

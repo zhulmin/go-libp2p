@@ -103,6 +103,7 @@ func connect(t *testing.T, clientTpt, serverTpt *Transport, clientExpectsID, ser
 
 // Check the peer IDs
 func testIDs(t *testing.T, clientTpt, serverTpt *Transport, clientConn, serverConn sec.SecureConn) {
+	t.Helper()
 	require.Equal(t, clientConn.LocalPeer(), clientTpt.LocalPeer(), "Client Local Peer ID mismatch.")
 	require.Equal(t, clientConn.RemotePeer(), serverTpt.LocalPeer(), "Client Remote Peer ID mismatch.")
 	require.Equal(t, clientConn.LocalPeer(), serverConn.RemotePeer(), "Server Local Peer ID mismatch.")
@@ -110,9 +111,9 @@ func testIDs(t *testing.T, clientTpt, serverTpt *Transport, clientConn, serverCo
 
 // Check the keys
 func testKeys(t *testing.T, clientTpt, serverTpt *Transport, clientConn, serverConn sec.SecureConn) {
-	sk := serverConn.LocalPrivateKey()
-	require.True(t, sk.Equals(serverTpt.LocalPrivateKey()), "private key mismatch")
-	require.True(t, sk.GetPublic().Equals(clientConn.RemotePublicKey()), "public key mismatch")
+	t.Helper()
+	require.True(t, clientConn.RemotePublicKey().Equals(serverTpt.key.GetPublic()), "client conn key mismatch")
+	require.True(t, serverConn.RemotePublicKey().Equals(clientTpt.key.GetPublic()), "server conn key mismatch")
 }
 
 // Check sending and receiving messages
