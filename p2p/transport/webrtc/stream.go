@@ -52,9 +52,8 @@ type webRTCStream struct {
 	// pbio.Reader is not thread safe,
 	// and while our Read is not promised to be thread safe,
 	// we ourselves internally read from multiple routines...
-	readerMux       sync.Mutex
-	readBuffer      []byte
-	closeReaderOnce sync.Once
+	readerMux  sync.Mutex
+	readBuffer []byte
 
 	writer pbio.Writer
 	// public write API is not promised to be thread safe, however we also write from
