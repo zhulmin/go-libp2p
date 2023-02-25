@@ -68,8 +68,7 @@ type webRTCStream struct {
 	writerDeadlineUpdated async.CondVar
 	writeAvailable        async.CondVar
 
-	readLoopOnce    sync.Once
-	closeWriterOnce sync.Once
+	readLoopOnce sync.Once
 
 	stateHandler webRTCStreamState
 

@@ -50,11 +50,10 @@ func (conn *muxedConnection) GetAddress() (string, bool) {
 }
 
 func (conn *muxedConnection) SetAddress(s string) {
-	if conn.address == nil {
-		conn.address = &s
-	} else if *conn.address != s {
-		panic("address already set with differen value for same muxed conn")
+	if conn.address != nil && *conn.address != s {
+		log.Debugf("address changed for ufrag %s: %s -> %s", conn.ufrag, *conn.address, s)
 	}
+	conn.address = &s
 }
 
 func (conn *muxedConnection) Push(buf []byte, addr net.Addr) error {
