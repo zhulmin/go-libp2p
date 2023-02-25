@@ -84,7 +84,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	localMhBuf, _ := multihash.Encode(localMh, multihash.SHA2_256)
 	localFpMultibase, _ := multibase.Encode(multibase.Base64url, localMhBuf)
 
-	inFlightQueueCh := make(chan candidateAddr, transport.maxInFlightConnections)
+	inFlightQueueCh := make(chan candidateAddr) // unbuffered, it's up to the workers to define if they can accept work
 
 	ctx, cancel := context.WithCancel(context.Background())
 	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {

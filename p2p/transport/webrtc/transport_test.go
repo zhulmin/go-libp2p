@@ -463,23 +463,24 @@ func TestTransportWebRTC_Read(t *testing.T) {
 
 	tr1, connectingPeer := getTransport(t)
 
-	createListener := func(writeErr bool) {
+	createListener := func() {
 		lconn, err := listener.Accept()
 		require.NoError(t, err)
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
 		stream, err := lconn.AcceptStream()
 		require.NoError(t, err)
 		_, err = stream.Write(make([]byte, 2*1024*1024))
-		if writeErr {
-			// e.g. i/o timeout
-			require.Error(t, err)
-		} else {
-			require.NoError(t, err)
-		}
+		// we expect an error in both cases
+		require.Error(t, err)
 	}
 
 	t.Run("read partial message", func(t *testing.T) {
-		go createListener(true)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			createListener()
+		}()
 
 		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
@@ -491,10 +492,17 @@ func TestTransportWebRTC_Read(t *testing.T) {
 		n, err := stream.Read(buf)
 		require.NoError(t, err)
 		require.Equal(t, n, 10)
+
+		wg.Wait()
 	})
 
 	t.Run("read zero bytes", func(t *testing.T) {
-		go createListener(false)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			createListener()
+		}()
 
 		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 		require.NoError(t, err)
@@ -506,12 +514,11 @@ func TestTransportWebRTC_Read(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, n, 0)
 
+		wg.Wait()
 	})
 }
 
 func TestTransportWebRTC_Close(t *testing.T) {
-	t.Skip("TODO: FIX")
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
@@ -553,7 +560,10 @@ func TestTransportWebRTC_Close(t *testing.T) {
 	})
 
 	t.Run("RemoteClosesStream", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			lconn, err := listener.Accept()
 			require.NoError(t, err)
 			require.Equal(t, connectingPeer, lconn.RemotePeer())
@@ -575,6 +585,8 @@ func TestTransportWebRTC_Close(t *testing.T) {
 		require.NoError(t, err)
 		_, err = stream.Read(buf)
 		require.ErrorIs(t, err, io.ErrClosedPipe)
+
+		wg.Wait()
 	})
 }
 
@@ -588,7 +600,11 @@ func TestTransportWebRTC_ReceiveFlagsAfterReadClosed(t *testing.T) {
 	tr1, connectingPeer := getTransport(t)
 	done := make(chan struct{})
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
 		lconn, err := listener.Accept()
 		require.NoError(t, err)
 		t.Logf("listener accepted connection")
@@ -618,7 +634,10 @@ func TestTransportWebRTC_ReceiveFlagsAfterReadClosed(t *testing.T) {
 	require.NoError(t, err)
 	<-done
 	_, err = stream.Write(make([]byte, 2*1024*1024))
-	require.ErrorContains(t, err, "closed")
+	// can be an error closed or timeout
+	require.Error(t, err)
+
+	wg.Wait()
 }
 
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
@@ -641,9 +660,7 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 
 	tr1, _ := getTransport(t)
 
-	go func() {
-		listener.Accept()
-	}()
+	go listener.Accept()
 
 	badMultiaddr, _ := multiaddr.SplitFunc(listener.Multiaddr(), func(component multiaddr.Component) bool {
 		return component.Protocol().Code == multiaddr.P_CERTHASH
@@ -663,12 +680,9 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 	require.Error(t, err)
 
 	require.ErrorContains(t, err, "failed")
-
 }
 
 func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
-	t.Skip("TODO: FIX")
-
 	tr, listeningPeer := getTransport(
 		t,
 		WithPeerConnectionIceTimeouts(IceTimeouts{
@@ -708,7 +722,7 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 		for {
 			_, err := stream.Write([]byte("test"))
 			if err != nil {
-				assert.ErrorIs(t, err, io.ErrClosedPipe)
+				assert.ErrorIs(t, err, os.ErrDeadlineExceeded)
 				close(done)
 				return
 			}
@@ -733,8 +747,6 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 }
 
 func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
-	t.Skip("TODO: FIX")
-
 	count := uint32(3)
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),

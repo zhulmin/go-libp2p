@@ -189,7 +189,7 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		s.stateHandler.Close()
 		s.setCloseErrIfUndefined(isReset)
 		// force close reads
-		s.SetReadDeadline(time.Time{})
+		s.SetReadDeadline(time.Now()) // pion ignores zero times
 		if isReset {
 			// write the RESET message. The error is explicitly ignored
 			// because we do not know if the remote is still connected
