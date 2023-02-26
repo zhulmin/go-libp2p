@@ -3,7 +3,6 @@ package libp2pwebrtc
 import (
 	"bufio"
 	"context"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -70,11 +69,6 @@ type webRTCStream struct {
 	readLoopOnce sync.Once
 
 	stateHandler webRTCStreamState
-
-	// hack for closing the Read side using a deadline
-	// in case `Read` does not return.
-	closeErr    error
-	closeErrMux sync.Mutex
 
 	conn *connection
 	id   uint16
@@ -158,23 +152,6 @@ func (s *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
 	}
 }
 
-func (s *webRTCStream) setCloseErrIfUndefined(isReset bool) {
-	s.closeErrMux.Lock()
-	defer s.closeErrMux.Unlock()
-	if s.closeErr == nil {
-		s.closeErr = io.EOF
-		if isReset {
-			s.closeErr = io.ErrClosedPipe
-		}
-	}
-}
-
-func (s *webRTCStream) getCloseErr() error {
-	s.closeErrMux.Lock()
-	defer s.closeErrMux.Unlock()
-	return s.closeErr
-}
-
 // this is used to force reset a stream
 func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	if s.isClosed() {
@@ -185,7 +162,6 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 	s.closeOnce.Do(func() {
 		log.Debug("closing: reset: %v, notify: %v", isReset, notifyConnection)
 		s.stateHandler.Close()
-		s.setCloseErrIfUndefined(isReset)
 		// force close reads
 		s.SetReadDeadline(time.Now()) // pion ignores zero times
 		if isReset {

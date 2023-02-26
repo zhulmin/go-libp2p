@@ -550,7 +550,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 		})
 
 		_, err = stream.Read(make([]byte, 19))
-		require.ErrorIs(t, err, io.EOF)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
 		select {
 		case <-done:
@@ -737,7 +737,7 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 	require.NoError(t, err)
 	_, err = io.ReadAll(stream)
 	require.Error(t, err)
-	require.ErrorIs(t, err, io.ErrClosedPipe)
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
 	select {
 	case <-done:
