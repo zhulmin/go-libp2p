@@ -52,12 +52,14 @@ func TestQUICVersions(t *testing.T) {
 	require.NotNil(t, quicDraft29Addr, "expected to be listening on a QUIC draft-29 address")
 	require.NotNil(t, quicV1Addr, "expected to be listening on a QUIC v1 address")
 
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 	//  connect using QUIC draft-29
 	h2, err := libp2p.New(
 		libp2p.Transport(libp2pquic.NewTransport),
 	)
 	require.NoError(t, err)
-	require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{quicDraft29Addr}}))
+	require.NoError(t, h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{quicDraft29Addr}}))
 	conns := h2.Network().ConnsToPeer(h1.ID())
 	require.Len(t, conns, 1)
 	require.Equal(t, ma.P_QUIC, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
@@ -69,7 +71,7 @@ func TestQUICVersions(t *testing.T) {
 		libp2p.Transport(libp2pquic.NewTransport),
 	)
 	require.NoError(t, err)
-	require.NoError(t, h3.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{quicV1Addr}}))
+	require.NoError(t, h3.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{quicV1Addr}}))
 	conns = h3.Network().ConnsToPeer(h1.ID())
 	require.Len(t, conns, 1)
 	require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
@@ -109,7 +111,9 @@ func TestDisableQUICDraft29(t *testing.T) {
 		context.DeadlineExceeded,
 	)
 	// make sure that dialing QUIC v1 works
-	require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{addrs[0]}}))
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{addrs[0]}}))
 }
 
 func TestQUICAndWebTransport(t *testing.T) {
@@ -142,13 +146,15 @@ func TestQUICAndWebTransport(t *testing.T) {
 	require.NotNil(t, quicDraft29Addr, "expected to have a QUIC draft-29 address")
 	require.NotNil(t, quicV1Addr, "expected to have a QUIC v1 address")
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	// first test that we can dial a QUIC v1
 	h2, err := libp2p.New(
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.NoListenAddrs,
 	)
 	require.NoError(t, err)
-	require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	require.NoError(t, h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
 	for _, conns := range [][]network.Conn{h2.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h2.ID())} {
 		require.Len(t, conns, 1)
 		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
@@ -165,7 +171,7 @@ func TestQUICAndWebTransport(t *testing.T) {
 		libp2p.NoListenAddrs,
 	)
 	require.NoError(t, err)
-	require.NoError(t, h3.Connect(context.Background(), peer.AddrInfo{
+	require.NoError(t, h3.Connect(ctx, peer.AddrInfo{
 		ID: h1.ID(),
 		// a libp2p host will prefer dialing v1 if it supports both versions,
 		// so we need to filter the addresses so it thinks that h1 only supports draft-29
@@ -187,7 +193,7 @@ func TestQUICAndWebTransport(t *testing.T) {
 		libp2p.NoListenAddrs,
 	)
 	require.NoError(t, err)
-	require.NoError(t, h4.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	require.NoError(t, h4.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
 	for _, conns := range [][]network.Conn{h4.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h4.ID())} {
 		require.Len(t, conns, 1)
 		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err != nil {

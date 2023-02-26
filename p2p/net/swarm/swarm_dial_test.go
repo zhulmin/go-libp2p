@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/test"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
@@ -47,7 +48,7 @@ func TestAddrsForDial(t *testing.T) {
 
 	tpt, err := websocket.New(nil, &network.NullResourceManager{})
 	require.NoError(t, err)
-	s, err := NewSwarm(id, ps, WithMultiaddrResolver(resolver))
+	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(resolver))
 	require.NoError(t, err)
 	defer s.Close()
 	err = s.AddTransport(tpt)
@@ -74,7 +75,7 @@ func newTestSwarmWithResolver(t *testing.T, resolver *madns.Resolver) *Swarm {
 	ps.AddPubKey(id, priv.GetPublic())
 	ps.AddPrivKey(id, priv)
 	t.Cleanup(func() { ps.Close() })
-	s, err := NewSwarm(id, ps, WithMultiaddrResolver(resolver))
+	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithMultiaddrResolver(resolver))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		s.Close()

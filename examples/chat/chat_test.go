@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 
@@ -43,6 +44,8 @@ func TestMain(t *testing.T) {
 
 		go startPeer(ctx, h1, func(network.Stream) {
 			log.Println("Got a new stream!")
+			// Sleep a bit to let h2 print the logs we're waiting for
+			time.Sleep(500 * time.Millisecond)
 			cancel() // end the test
 		})
 

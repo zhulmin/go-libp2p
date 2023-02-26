@@ -1,7 +1,7 @@
 package test
 
 import (
-	"math/rand"
+	"crypto/rand"
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/peer"

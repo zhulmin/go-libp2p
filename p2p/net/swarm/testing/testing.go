@@ -5,11 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
-
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/control"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/metrics"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -17,11 +16,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -36,6 +37,7 @@ type config struct {
 	connectionGater  connmgr.ConnectionGater
 	sk               crypto.PrivKey
 	swarmOpts        []swarm.Option
+	eventBus         event.Bus
 	clock
 }
 
@@ -99,6 +101,12 @@ func OptPeerPrivateKey(sk crypto.PrivKey) Option {
 	}
 }
 
+func EventBus(b event.Bus) Option {
+	return func(_ *testing.T, c *config) {
+		c.eventBus = b
+	}
+}
+
 // GenUpgrader creates a new connection upgrader for use with this swarm.
 func GenUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater, opts ...tptu.Option) transport.Upgrader {
 	id := n.LocalPeer()
@@ -140,7 +148,12 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	if cfg.connectionGater != nil {
 		swarmOpts = append(swarmOpts, swarm.WithConnectionGater(cfg.connectionGater))
 	}
-	s, err := swarm.NewSwarm(id, ps, swarmOpts...)
+
+	eventBus := cfg.eventBus
+	if eventBus == nil {
+		eventBus = eventbus.NewBus()
+	}
+	s, err := swarm.NewSwarm(id, ps, eventBus, swarmOpts...)
 	require.NoError(t, err)
 
 	upgrader := GenUpgrader(t, s, cfg.connectionGater)

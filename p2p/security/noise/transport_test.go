@@ -271,12 +271,6 @@ func TestPeerIDOutboundNoCheck(t *testing.T) {
 	require.NoError(t, initErr)
 }
 
-func makeLargePlaintext(size int) []byte {
-	buf := make([]byte, size)
-	rand.Read(buf)
-	return buf
-}
-
 func TestLargePayloads(t *testing.T) {
 	initTransport := newTestTransport(t, crypto.Ed25519, 2048)
 	respTransport := newTestTransport(t, crypto.Ed25519, 2048)
@@ -287,11 +281,12 @@ func TestLargePayloads(t *testing.T) {
 
 	// enough to require a couple Noise messages, with a size that
 	// isn't a neat multiple of Noise message size, just in case
-	size := 100000
+	rnd := rand.New(rand.NewSource(1234))
+	const size = 100000
+	before := make([]byte, size)
+	rnd.Read(before)
 
-	before := makeLargePlaintext(size)
-	_, err := initConn.Write(before)
-	if err != nil {
+	if _, err := initConn.Write(before); err != nil {
 		t.Fatal(err)
 	}
 
@@ -691,7 +686,9 @@ func TestHandshakeWithTransportEarlyData(t *testing.T) {
 		defer respConn.Close()
 
 		require.Equal(t, expectedProto, initConn.connectionState.StreamMultiplexer)
+		require.Equal(t, expectedProto != "", initConn.connectionState.UsedEarlyMuxerNegotiation)
 		require.Equal(t, expectedProto, respConn.connectionState.StreamMultiplexer)
+		require.Equal(t, expectedProto != "", respConn.connectionState.UsedEarlyMuxerNegotiation)
 
 		initData := []byte("Test data for noise transport")
 		_, err := initConn.Write(initData)

@@ -13,9 +13,9 @@ import (
 )
 
 func main() {
+	rnd := rand.New(rand.NewSource(666))
 	// Choose random ports between 10000-10100
-	rand.Seed(666)
-	port1 := rand.Intn(100) + 10000
+	port1 := rnd.Intn(100) + 10000
 	port2 := port1 + 1
 
 	done := make(chan bool, 1)

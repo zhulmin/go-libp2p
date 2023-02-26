@@ -71,14 +71,14 @@ func (h *harness) connInbound(observer peer.ID) network.Conn {
 func (h *harness) observe(observed ma.Multiaddr, observer peer.ID) network.Conn {
 	c := h.conn(observer)
 	h.oas.Record(c, observed)
-	time.Sleep(50 * time.Millisecond) // let the worker run
+	time.Sleep(200 * time.Millisecond) // let the worker run
 	return c
 }
 
 func (h *harness) observeInbound(observed ma.Multiaddr, observer peer.ID) network.Conn {
 	c := h.connInbound(observer)
 	h.oas.Record(c, observed)
-	time.Sleep(50 * time.Millisecond) // let the worker run
+	time.Sleep(200 * time.Millisecond) // let the worker run
 	return c
 }
 

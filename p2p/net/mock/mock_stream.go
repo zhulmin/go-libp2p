@@ -13,7 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
-var streamCounter int64
+var streamCounter atomic.Int64
 
 // stream implements network.Stream
 type stream struct {
@@ -31,7 +31,7 @@ type stream struct {
 
 	writeErr error
 
-	protocol atomic.Value
+	protocol atomic.Pointer[protocol.ID]
 	stat     network.Stats
 }
 
@@ -57,7 +57,7 @@ func newStream(w *io.PipeWriter, r *io.PipeReader, dir network.Direction) *strea
 	s := &stream{
 		read:      r,
 		write:     w,
-		id:        atomic.AddInt64(&streamCounter, 1),
+		id:        streamCounter.Add(1),
 		reset:     make(chan struct{}, 1),
 		close:     make(chan struct{}, 1),
 		closed:    make(chan struct{}),
@@ -92,9 +92,11 @@ func (s *stream) ID() string {
 }
 
 func (s *stream) Protocol() protocol.ID {
-	// Ignore type error. It means that the protocol is unset.
-	p, _ := s.protocol.Load().(protocol.ID)
-	return p
+	p := s.protocol.Load()
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func (s *stream) Stat() network.Stats {
@@ -102,7 +104,7 @@ func (s *stream) Stat() network.Stats {
 }
 
 func (s *stream) SetProtocol(proto protocol.ID) error {
-	s.protocol.Store(proto)
+	s.protocol.Store(&proto)
 	return nil
 }
 

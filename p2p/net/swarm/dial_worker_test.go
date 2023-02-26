@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
 	"github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
@@ -43,7 +44,7 @@ func makeSwarm(t *testing.T) *Swarm {
 	ps.AddPrivKey(id, priv)
 	t.Cleanup(func() { ps.Close() })
 
-	s, err := NewSwarm(id, ps, WithDialTimeout(time.Second))
+	s, err := NewSwarm(id, ps, eventbus.NewBus(), WithDialTimeout(time.Second))
 	require.NoError(t, err)
 
 	upgrader := makeUpgrader(t, s)

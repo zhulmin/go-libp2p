@@ -3,9 +3,9 @@ package relay_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
@@ -48,7 +49,7 @@ func getNetHosts(t *testing.T, ctx context.Context, n int) (hosts []host.Host, u
 		}
 
 		bwr := metrics.NewBandwidthCounter()
-		netw, err := swarm.NewSwarm(p, ps, swarm.WithMetrics(bwr))
+		netw, err := swarm.NewSwarm(p, ps, eventbus.NewBus(), swarm.WithMetrics(bwr))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -325,8 +326,7 @@ func TestRelayLimitData(t *testing.T) {
 
 	buf := make([]byte, 1024)
 	for i := 0; i < 3; i++ {
-		_, err = rand.Read(buf)
-		if err != nil {
+		if _, err := rand.Read(buf); err != nil {
 			t.Fatal(err)
 		}
 
@@ -345,8 +345,7 @@ func TestRelayLimitData(t *testing.T) {
 	}
 
 	buf = make([]byte, 4096)
-	_, err = rand.Read(buf)
-	if err != nil {
+	if _, err := rand.Read(buf); err != nil {
 		t.Fatal(err)
 	}
 

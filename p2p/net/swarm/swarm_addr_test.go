@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/test"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	circuitv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
@@ -74,7 +75,7 @@ func TestDialAddressSelection(t *testing.T) {
 	require.NoError(t, err)
 	id, err := peer.IDFromPrivateKey(priv)
 	require.NoError(t, err)
-	s, err := swarm.NewSwarm("local", nil)
+	s, err := swarm.NewSwarm("local", nil, eventbus.NewBus())
 	require.NoError(t, err)
 
 	tcpTr, err := tcp.NewTCPTransport(nil, nil)
