@@ -751,9 +751,9 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),
 		WithPeerConnectionIceTimeouts(IceTimeouts{
-			Disconnect: 2 * time.Second,
-			Failed:     3 * time.Second,
-			Keepalive:  time.Second,
+			Disconnect: 8 * time.Second,
+			Failed:     10 * time.Second,
+			Keepalive:  5 * time.Second,
 		}),
 	)
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
@@ -762,25 +762,28 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	require.NoError(t, err)
 	defer listener.Close()
 
+	dialerCount := count + 2
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	var wg sync.WaitGroup
 	start := make(chan struct{})
+	ready := make(chan struct{}, dialerCount)
 	var success uint32
-	for i := 0; uint32(i) < count+2; i++ {
+	for i := 0; uint32(i) < dialerCount; i++ {
 		wg.Add(1)
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer func() {
-				wg.Done()
-				cancel()
-			}()
+			defer wg.Done()
 			dialer, _ := getTransport(
 				t,
 				WithPeerConnectionIceTimeouts(IceTimeouts{
-					Disconnect: 2 * time.Second,
-					Failed:     3 * time.Second,
-					Keepalive:  time.Second,
+					Disconnect: 8 * time.Second,
+					Failed:     10 * time.Second,
+					Keepalive:  5 * time.Second,
 				}),
 			)
+			ready <- struct{}{}
 			<-start
 			_, err := dialer.Dial(ctx, listener.Multiaddr(), listeningPeer)
 			if err == nil {
@@ -788,10 +791,12 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 			} else {
 				t.Logf("dial error: %v", err)
 			}
-
 		}()
 	}
 
+	for i := 0; uint32(i) < dialerCount; i++ {
+		<-ready
+	}
 	close(start)
 	wg.Wait()
 	successCount := atomic.LoadUint32(&success)

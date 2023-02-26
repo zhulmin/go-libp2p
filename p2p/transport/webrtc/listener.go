@@ -110,7 +110,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections),
+		acceptQueue:               make(chan tpt.CapableConn),
 		inFlightQueue:             inFlightQueueCh,
 		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
@@ -152,9 +152,8 @@ func (l *listener) establishConnForInFlightAddr(addr *candidateAddr) {
 		log.Warn("could not push connection: ctx done")
 		conn.Close()
 	case l.acceptQueue <- conn:
-	default:
-		log.Warn("could not push connection: accept queue full")
-		conn.Close()
+		// block until the connection is accepted,
+		// or until we are done, this effectively blocks our in flight from continuing to progress
 	}
 }
 

@@ -197,7 +197,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	if connCreated && mux.unknownUfragCallback != nil {
 		if !mux.unknownUfragCallback(ufrag, udpAddr) {
 			conn.Close()
-			return nil
+			return io.ErrClosedPipe
 		}
 	}
 
