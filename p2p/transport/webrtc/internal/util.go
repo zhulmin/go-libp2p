@@ -2,18 +2,15 @@ package internal
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/encoding"
-	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
-	"google.golang.org/protobuf/proto"
 )
 
 func DecodeRemoteFingerprint(maddr ma.Multiaddr) (*mh.DecodedMultihash, error) {
@@ -87,22 +84,4 @@ func AwaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 		}
 	})
 	return errC
-}
-
-// writeMessage writes a length-prefixed protobuf message to the datachannel. It
-// is preferred over protoio DelimitedWriter because it is thread safe, and the
-// buffer is only allocated from the global pool when writing.
-func WriteMessage(rwc datachannel.ReadWriteCloser, msg *pb.Message) (int, error) {
-	buf := make([]byte, 5)
-	varintLen := binary.PutUvarint(buf, uint64(proto.Size(msg)))
-	buf = buf[:varintLen]
-	_, err := proto.MarshalOptions{}.MarshalAppend(buf, msg)
-	if err != nil {
-		return 0, err
-	}
-	_, err = rwc.Write(buf)
-	if err != nil {
-		return 0, err
-	}
-	return len(msg.Message), nil
 }

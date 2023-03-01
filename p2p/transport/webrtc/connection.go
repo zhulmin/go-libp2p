@@ -14,11 +14,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
+	"google.golang.org/protobuf/proto"
 )
 
 var _ tpt.CapableConn = &connection{}
@@ -112,12 +113,14 @@ func newConnection(
 				log.Warnf("could not detach datachannel: id: %d", *dc.ID())
 				return
 			}
+			w := msgio.NewWriter(rwc)
 			select {
 			case conn.acceptQueue <- acceptStream{rwc, dc}:
 			default:
 				log.Warnf("connection busy, rejecting stream")
 				// reject stream without instantiating a delimited writer
-				_, _ = internal.WriteMessage(rwc, &pb.Message{Flag: pb.Message_RESET.Enum()})
+				b, _ := proto.Marshal(&pb.Message{Flag: pb.Message_RESET.Enum()})
+				w.WriteMsg(b)
 				rwc.Close()
 			}
 		})
