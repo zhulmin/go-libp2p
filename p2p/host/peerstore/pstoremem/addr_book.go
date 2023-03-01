@@ -46,7 +46,7 @@ type addrSegment struct {
 }
 
 func (segments *addrSegments) get(p peer.ID) *addrSegment {
-	pBytes, err := p.MustMarshalBinary()
+	pBytes := p.MustMarshalBinary()
 	if len(pBytes) == 0 { // it's not terribly useful to use an empty peer ID, but at least we should not panic
 		return segments[0]
 	}
