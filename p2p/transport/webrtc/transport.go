@@ -191,9 +191,11 @@ func (t *WebRTCTransport) CanDial(addr ma.Multiaddr) bool {
 	return dialMatcher.Matches(addr)
 }
 
+var webRTCMultiAddr = ma.StringCast("/webrtc")
+
 func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	addr, wrtcComponent := ma.SplitLast(addr)
-	isWebrtc := wrtcComponent.Equal(ma.StringCast("/webrtc"))
+	isWebrtc := wrtcComponent.Equal(webRTCMultiAddr)
 	if !isWebrtc {
 		return nil, fmt.Errorf("must listen on webrtc multiaddr")
 	}
@@ -356,7 +358,7 @@ func (t *WebRTCTransport) dial(
 		return nil, fmt.Errorf("set local description: %w", err)
 	}
 
-	answerSdpString, err := internal.RenderServerSdp(raddr, ufrag, remoteMultihash)
+	answerSdpString, err := internal.RenderServerSdp(raddr, ufrag, *remoteMultihash)
 	if err != nil {
 		return nil, fmt.Errorf("render server SDP: %w", err)
 	}

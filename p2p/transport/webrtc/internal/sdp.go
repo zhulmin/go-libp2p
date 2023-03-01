@@ -50,7 +50,7 @@ func RenderClientSdp(addr *net.UDPAddr, ufrag string) string {
 // to infer the SDP answer of a server based on the provided
 // multiaddr, and the locally set ICE credentials. The max
 // message size is fixed to 16384 bytes.
-const serverSDP string = `v=0
+const serverSDP = `v=0
 o=- 0 0 IN %[1]s %[2]s
 s=-
 t=0 0
@@ -70,15 +70,24 @@ a=candidate:1 1 UDP 1 %[2]s %[3]d typ host
 a=end-of-candidates
 `
 
-func RenderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.DecodedMultihash) (string, error) {
+func RenderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint multihash.DecodedMultihash) (string, error) {
 	ipVersion := "IP4"
 	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
 	}
-	fp, err := FingerprintToSDP(fingerprint)
+
+	sdpString, err := getSupportedSDPString(fingerprint.Code)
 	if err != nil {
 		return "", err
 	}
+
+	var builder strings.Builder
+	builder.Grow(len(fingerprint.Digest)*3 + 8)
+	builder.WriteString(sdpString)
+	builder.WriteByte(' ')
+	encoding.EncodeInterspersedHexToBuilder(fingerprint.Digest, &builder)
+	fp := builder.String()
+
 	return fmt.Sprintf(
 		serverSDP,
 		ipVersion,
@@ -87,23 +96,6 @@ func RenderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint *multihash.Dec
 		ufrag,
 		fp,
 	), nil
-}
-
-func FingerprintToSDP(fp *multihash.DecodedMultihash) (string, error) {
-	if fp == nil {
-		return "", fmt.Errorf("fingerprint multihash: %w", ErrNilParam)
-	}
-	sdpString, err := getSupportedSDPString(fp.Code)
-	if err != nil {
-		return "", err
-	}
-
-	var builder strings.Builder
-	builder.Grow(len(fp.Digest)*3 + 8)
-	builder.WriteString(sdpString)
-	builder.WriteByte(' ')
-	encoding.EncodeInterspersedHexToBuilder(fp.Digest, &builder)
-	return builder.String(), nil
 }
 
 // GetSupportedSDPHash converts a multihash code to the
@@ -147,6 +139,6 @@ func getSupportedSDPString(code uint64) (string, error) {
 	case multihash.SHA2_512:
 		return "sha-512", nil
 	default:
-		return "", fmt.Errorf("unsupported hash code (%d) :%w", code, ErrInvalidParam)
+		return "", fmt.Errorf("unsupported hash code (%d)", code)
 	}
 }

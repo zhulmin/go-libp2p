@@ -33,7 +33,7 @@ func TestRenderServerSDP(t *testing.T) {
 	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 	require.NoError(t, err)
 
-	testMultihash := &multihash.DecodedMultihash{
+	testMultihash := multihash.DecodedMultihash{
 		Code:   multihash.SHA2_256,
 		Name:   multihash.Codes[multihash.SHA2_256],
 		Digest: encoded,
@@ -84,7 +84,7 @@ func BenchmarkRenderClientSDP(b *testing.B) {
 func BenchmarkRenderServerSDP(b *testing.B) {
 	encoded, _ := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 
-	testMultihash := &multihash.DecodedMultihash{
+	testMultihash := multihash.DecodedMultihash{
 		Code:   multihash.SHA2_256,
 		Name:   multihash.Codes[multihash.SHA2_256],
 		Digest: encoded,

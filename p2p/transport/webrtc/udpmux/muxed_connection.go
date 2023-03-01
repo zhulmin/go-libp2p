@@ -18,43 +18,30 @@ const maxPacketsInQueue = 128
 // from which this connection (indexed by ufrag) received
 // data.
 type muxedConnection struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	pq      *packetQueue
-	ufrag   string
-	address *string
-	mux     *udpMux
+	ctx    context.Context
+	cancel context.CancelFunc
+	pq     *packetQueue
+	ufrag  string
+	addr   net.Addr
+	mux    *udpMux
 }
 
 var _ net.PacketConn = (*muxedConnection)(nil)
 
-func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
+func newMuxedConnection(mux *udpMux, ufrag string, addr net.Addr) *muxedConnection {
 	ctx, cancel := context.WithCancel(mux.ctx)
 	return &muxedConnection{
 		ctx:    ctx,
 		cancel: cancel,
 		pq:     newPacketQueue(),
 		ufrag:  ufrag,
+		addr:   addr,
 		mux:    mux,
 	}
 }
 
-func (conn *muxedConnection) GetAddress() (string, bool) {
-	if conn.address == nil {
-		return "", false
-	}
-	return *conn.address, true
-}
-
-func (conn *muxedConnection) SetAddress(s string) {
-	if conn.address != nil && *conn.address != s {
-		log.Debugf("address changed for ufrag %s: %s -> %s", conn.ufrag, *conn.address, s)
-	}
-	conn.address = &s
-}
-
-func (conn *muxedConnection) Push(buf []byte, addr net.Addr) error {
-	return conn.pq.Push(buf, addr)
+func (conn *muxedConnection) Push(buf []byte) error {
+	return conn.pq.Push(conn.ctx, buf)
 }
 
 // Close implements net.PacketConn
@@ -69,9 +56,14 @@ func (conn *muxedConnection) LocalAddr() net.Addr {
 	return conn.mux.socket.LocalAddr()
 }
 
+func (conn *muxedConnection) Address() net.Addr {
+	return conn.addr
+}
+
 // ReadFrom implements net.PacketConn
-func (conn *muxedConnection) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	return conn.pq.Pop(conn.ctx, p)
+func (conn *muxedConnection) ReadFrom(p []byte) (int, net.Addr, error) {
+	n, err := conn.pq.Pop(conn.ctx, p)
+	return n, conn.addr, err
 }
 
 // SetDeadline implements net.PacketConn
@@ -103,7 +95,6 @@ func (conn *muxedConnection) closeConnection() error {
 		return errAlreadyClosed
 	default:
 	}
-	conn.pq.Close()
 	conn.cancel()
 	return nil
 }

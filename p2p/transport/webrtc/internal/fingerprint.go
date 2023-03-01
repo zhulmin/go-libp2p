@@ -19,11 +19,8 @@ func Fingerprint(cert *x509.Certificate, algo crypto.Hash) ([]byte, error) {
 		return nil, errHashUnavailable
 	}
 	h := algo.New()
-	for i := 0; i < len(cert.Raw); {
-		n, _ := h.Write(cert.Raw[i:])
-		// Hash.Writer is specified to be never returning an error.
-		// https://golang.org/pkg/hash/#Hash
-		i += n
-	}
+	h.Write(cert.Raw)
+	// Hash.Writer is specified to be never returning an error.
+	// https://golang.org/pkg/hash/#Hash
 	return h.Sum(nil), nil
 }

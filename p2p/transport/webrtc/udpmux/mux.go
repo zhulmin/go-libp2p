@@ -92,7 +92,7 @@ func (mux *udpMux) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) 
 		return nil, fmt.Errorf("unexpected address type: %T", addr)
 	}
 	isIPv6 := ok && a.IP.To4() == nil
-	return mux.getOrCreateConn(ufrag, isIPv6)
+	return mux.getOrCreateConn(ufrag, isIPv6, addr)
 }
 
 // Close implements ice.UDPMux
@@ -115,12 +115,13 @@ func (mux *udpMux) RemoveConnByUfrag(ufrag string) {
 	}
 }
 
-func (mux *udpMux) getOrCreateConn(ufrag string, isIPv6 bool) (net.PacketConn, error) {
+func (mux *udpMux) getOrCreateConn(ufrag string, isIPv6 bool, addr net.Addr) (net.PacketConn, error) {
 	select {
 	case <-mux.ctx.Done():
 		return nil, io.ErrClosedPipe
 	default:
-		return mux.storage.GetOrCreateConn(ufrag, isIPv6, mux)
+		conn, _, err := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, addr)
+		return conn, err
 	}
 }
 
@@ -169,7 +170,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	// check if the remote address has a connection associated
 	// with it. If yes, we push the received packet to the connection
 	if conn, ok := mux.storage.GetConnByAddr(udpAddr); ok {
-		err := conn.Push(buf, addr)
+		err := conn.Push(buf)
 		if err != nil {
 			log.Errorf("could not push packet: %v", err)
 		}
@@ -193,7 +194,11 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	}
 
 	var connCreated bool
-	conn, connCreated := mux.storage.AddAddr(ufrag, udpAddr, isIPv6, mux)
+	conn, connCreated, err := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, udpAddr)
+	if err != nil {
+		log.Debug("could not find create conn: %w", err)
+		return err
+	}
 	if connCreated && mux.unknownUfragCallback != nil {
 		if !mux.unknownUfragCallback(ufrag, udpAddr) {
 			conn.Close()
@@ -201,7 +206,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 		}
 	}
 
-	if err = conn.Push(buf, addr); err != nil {
+	if err = conn.Push(buf); err != nil {
 		log.Errorf("could not push packet: %v", err)
 	}
 	return nil
@@ -242,71 +247,48 @@ func newUDPMuxStorage() *udpMuxStorage {
 	}
 }
 
-func (storage *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
-	storage.Lock()
-	defer storage.Unlock()
+func (s *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
+	s.Lock()
+	defer s.Unlock()
 
 	for _, isIPv6 := range [...]bool{true, false} {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-		if conn, ok := storage.ufragMap[key]; ok {
+		if conn, ok := s.ufragMap[key]; ok {
 			_ = conn.closeConnection()
-			delete(storage.ufragMap, key)
-			if addr, ok := conn.GetAddress(); ok {
-				delete(storage.addrMap, addr)
-			}
+			delete(s.ufragMap, key)
+			delete(s.addrMap, conn.Address().String())
 		}
 	}
 }
 
-func (storage *udpMuxStorage) GetConn(ufrag string, isIPv6 bool) (*muxedConnection, bool) {
+func (s *udpMuxStorage) GetConn(ufrag string, isIPv6 bool) (*muxedConnection, bool) {
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-	storage.Lock()
-	conn, ok := storage.ufragMap[key]
-	storage.Unlock()
+	s.Lock()
+	conn, ok := s.ufragMap[key]
+	s.Unlock()
 	return conn, ok
 }
 
-func (storage *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *udpMux) (*muxedConnection, error) {
+func (s *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *udpMux, addr net.Addr) (*muxedConnection, bool, error) {
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 
-	storage.Lock()
-	defer storage.Unlock()
+	s.Lock()
+	defer s.Unlock()
 
-	if conn, ok := storage.ufragMap[key]; ok {
-		return conn, nil
+	if conn, ok := s.ufragMap[key]; ok {
+		return conn, false, nil
 	}
 
-	conn := newMuxedConnection(mux, ufrag)
-	storage.ufragMap[key] = conn
+	conn := newMuxedConnection(mux, ufrag, addr)
+	s.ufragMap[key] = conn
+	s.addrMap[addr.String()] = conn
 
-	return conn, nil
+	return conn, true, nil
 }
 
-func (storage *udpMuxStorage) GetConnByAddr(addr *net.UDPAddr) (*muxedConnection, bool) {
-	storage.Lock()
-	conn, ok := storage.addrMap[addr.String()]
-	storage.Unlock()
+func (s *udpMuxStorage) GetConnByAddr(addr *net.UDPAddr) (*muxedConnection, bool) {
+	s.Lock()
+	conn, ok := s.addrMap[addr.String()]
+	s.Unlock()
 	return conn, ok
-}
-
-func (storage *udpMuxStorage) AddAddr(ufrag string, addr *net.UDPAddr, isIPv6 bool, mux *udpMux) (*muxedConnection, bool) {
-	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-
-	storage.Lock()
-	defer storage.Unlock()
-
-	conn, connExists := storage.ufragMap[key]
-	if !connExists {
-		conn = newMuxedConnection(mux, ufrag)
-		storage.ufragMap[key] = conn
-	}
-
-	addrStr := addr.String()
-
-	storage.addrMap[addrStr] = conn
-	conn.SetAddress(addrStr)
-
-	// connection is returned in case it was only now created
-	connCreated := !connExists
-	return conn, connCreated
 }

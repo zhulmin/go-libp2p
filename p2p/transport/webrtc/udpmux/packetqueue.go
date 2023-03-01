@@ -3,15 +3,13 @@ package udpmux
 import (
 	"context"
 	"errors"
-	"net"
 	"sync"
 
 	pool "github.com/libp2p/go-buffer-pool"
 )
 
 type packet struct {
-	addr net.Addr
-	buf  []byte
+	buf []byte
 }
 
 var (
@@ -20,36 +18,28 @@ var (
 	errPacketQueueClosed = errors.New("packet queue closed")
 )
 
-// just a convenience wrapper around a channel
 type packetQueue struct {
 	packetsMux sync.Mutex
 	packetsCh  chan struct{}
 	packets    []packet
-
-	ctx    context.Context
-	cancel context.CancelFunc
 }
 
 func newPacketQueue() *packetQueue {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &packetQueue{
 		packetsCh: make(chan struct{}, maxPacketsInQueue),
-
-		ctx:    ctx,
-		cancel: cancel,
 	}
 }
 
 // Pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the queue is closed.
-func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
+func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, error) {
 	select {
 	case <-pq.packetsCh:
 		pq.packetsMux.Lock()
 		defer pq.packetsMux.Unlock()
 
 		if len(pq.packets) == 0 {
-			return 0, nil, errEmptyPacketQueue
+			return 0, errEmptyPacketQueue
 		}
 		p := pq.packets[0]
 
@@ -66,17 +56,17 @@ func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, erro
 			pq.packetsCh <- struct{}{}
 		}
 
-		return n, p.addr, nil
+		return n, nil
 
 	// It is desired to allow reads of this channel even
 	// when pq.ctx.Done() is already closed.
 	case <-ctx.Done():
-		return 0, nil, errPacketQueueClosed
+		return 0, errPacketQueueClosed
 	}
 }
 
 // Push adds a packet to the packetQueue
-func (pq *packetQueue) Push(buf []byte, addr net.Addr) error {
+func (pq *packetQueue) Push(ctx context.Context, buf []byte) error {
 	pq.packetsMux.Lock()
 	defer pq.packetsMux.Unlock()
 
@@ -84,18 +74,12 @@ func (pq *packetQueue) Push(buf []byte, addr net.Addr) error {
 		return errTooManyPackets
 	}
 
-	pq.packets = append(pq.packets, packet{addr, buf})
-	pq.packetsCh <- struct{}{}
+	select {
+	case pq.packetsCh <- struct{}{}:
+		pq.packets = append(pq.packets, packet{buf})
+	case <-ctx.Done():
+		return errPacketQueueClosed
+	}
 
 	return nil
-}
-
-// discard all packets in the queue and return
-// buffers
-func (pq *packetQueue) Close() {
-	select {
-	case <-pq.ctx.Done():
-	default:
-		pq.cancel()
-	}
 }
