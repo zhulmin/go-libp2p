@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
@@ -187,7 +188,7 @@ func (l *listener) handshake(ctx context.Context, sess *webtransport.Session) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Noise session: %w", err)
 	}
-	c, err := n.SecureInbound(ctx, &webtransportStream{Stream: str, wsess: sess}, "")
+	c, err := n.SecureInbound(ctx, &webtransportStream{Stream: str, wsess: sess}, peer.EmptyID)
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,7 @@ func newDialMessage(pi peer.AddrInfo) *pb.Message {
 	msg.Type = pb.Message_DIAL.Enum()
 	msg.Dial = new(pb.Message_Dial)
 	msg.Dial.Peer = new(pb.Message_PeerInfo)
-	msg.Dial.Peer.Id = []byte(pi.ID)
+	msg.Dial.Peer.Id = pi.ID.MustMarshalBinary()
 	msg.Dial.Peer.Addrs = make([][]byte, len(pi.Addrs))
 	for i, addr := range pi.Addrs {
 		msg.Dial.Peer.Addrs[i] = addr.Bytes()

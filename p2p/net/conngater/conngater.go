@@ -75,7 +75,11 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 			return err
 		}
 
-		p := peer.ID(r.Entry.Value)
+		p, err := peer.IDFromBytes(r.Entry.Value)
+		if err != nil {
+			log.Errorf("parse peer error: %s", err)
+			continue
+		}
 		cg.blockedPeers[p] = struct{}{}
 	}
 
@@ -125,7 +129,7 @@ func (cg *BasicConnectionGater) loadRules(ctx context.Context) error {
 // Note: active connections to the peer are not automatically closed.
 func (cg *BasicConnectionGater) BlockPeer(p peer.ID) error {
 	if cg.ds != nil {
-		err := cg.ds.Put(context.Background(), datastore.NewKey(keyPeer+p.String()), []byte(p))
+		err := cg.ds.Put(context.Background(), datastore.NewKey(keyPeer+p.String()), p.MustMarshalBinary())
 		if err != nil {
 			log.Errorf("error writing blocked peer to datastore: %s", err)
 			return err

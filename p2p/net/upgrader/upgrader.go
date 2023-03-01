@@ -131,7 +131,7 @@ func (u *upgrader) Upgrade(ctx context.Context, t transport.Transport, maconn ma
 }
 
 func (u *upgrader) upgrade(ctx context.Context, t transport.Transport, maconn manet.Conn, dir network.Direction, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {
-	if dir == network.DirOutbound && p == "" {
+	if dir == network.DirOutbound && p == peer.EmptyID {
 		return nil, ErrNilPeer
 	}
 	var stat network.ConnStats

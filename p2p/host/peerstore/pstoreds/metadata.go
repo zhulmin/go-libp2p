@@ -42,7 +42,7 @@ func NewPeerMetadata(_ context.Context, store ds.Datastore, _ Options) (*dsPeerM
 }
 
 func (pm *dsPeerMetadata) Get(p peer.ID, key string) (interface{}, error) {
-	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(p))).ChildString(key)
+	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString(p.MustMarshalBinary())).ChildString(key)
 	value, err := pm.ds.Get(context.TODO(), k)
 	if err != nil {
 		if err == ds.ErrNotFound {
@@ -59,7 +59,7 @@ func (pm *dsPeerMetadata) Get(p peer.ID, key string) (interface{}, error) {
 }
 
 func (pm *dsPeerMetadata) Put(p peer.ID, key string, val interface{}) error {
-	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(p))).ChildString(key)
+	k := pmBase.ChildString(base32.RawStdEncoding.EncodeToString(p.MustMarshalBinary())).ChildString(key)
 	var buf pool.Buffer
 	if err := gob.NewEncoder(&buf).Encode(&val); err != nil {
 		return err
@@ -69,7 +69,7 @@ func (pm *dsPeerMetadata) Put(p peer.ID, key string, val interface{}) error {
 
 func (pm *dsPeerMetadata) RemovePeer(p peer.ID) {
 	result, err := pm.ds.Query(context.TODO(), query.Query{
-		Prefix:   pmBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(p))).String(),
+		Prefix:   pmBase.ChildString(base32.RawStdEncoding.EncodeToString(p.MustMarshalBinary())).String(),
 		KeysOnly: true,
 	})
 	if err != nil {

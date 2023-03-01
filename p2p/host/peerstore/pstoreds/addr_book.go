@@ -241,13 +241,13 @@ func (ab *dsAddrBook) loadRecord(id peer.ID, cache bool, update bool) (pr *addrs
 	}
 
 	pr = &addrsRecord{AddrBookRecord: &pb.AddrBookRecord{}}
-	key := addrBookBase.ChildString(b32.RawStdEncoding.EncodeToString([]byte(id)))
+	key := addrBookBase.ChildString(b32.RawStdEncoding.EncodeToString(id.MustMarshalBinary()))
 	data, err := ab.ds.Get(context.TODO(), key)
 
 	switch err {
 	case ds.ErrNotFound:
 		err = nil
-		pr.Id = []byte(id)
+		pr.Id = id.MustMarshalBinary()
 	case nil:
 		if err := proto.Unmarshal(data, pr); err != nil {
 			return nil, err
@@ -464,7 +464,7 @@ func (ab *dsAddrBook) AddrStream(ctx context.Context, p peer.ID) <-chan ma.Multi
 func (ab *dsAddrBook) ClearAddrs(p peer.ID) {
 	ab.cache.Remove(p)
 
-	key := addrBookBase.ChildString(b32.RawStdEncoding.EncodeToString([]byte(p)))
+	key := addrBookBase.ChildString(b32.RawStdEncoding.EncodeToString(p.MustMarshalBinary()))
 	if err := ab.ds.Delete(context.TODO(), key); err != nil {
 		log.Errorf("failed to clear addresses for peer %s: %v", p.Pretty(), err)
 	}
@@ -607,7 +607,7 @@ func cleanAddrs(addrs []ma.Multiaddr, pid peer.ID) []ma.Multiaddr {
 			log.Warnw("Was passed a nil multiaddr", "peer", pid)
 			continue
 		}
-		if addrPid != "" && addrPid != pid {
+		if addrPid != peer.EmptyID && addrPid != pid {
 			log.Warnf("Was passed p2p address with a different peerId. found: %s, expected: %s", addrPid, pid)
 			continue
 		}

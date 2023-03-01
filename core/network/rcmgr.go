@@ -318,7 +318,7 @@ func (n *NullScope) BeginSpan() (ResourceScopeSpan, error)    { return &NullScop
 func (n *NullScope) Done()                                    {}
 func (n *NullScope) Name() string                             { return "" }
 func (n *NullScope) Protocol() protocol.ID                    { return "" }
-func (n *NullScope) Peer() peer.ID                            { return "" }
+func (n *NullScope) Peer() peer.ID                            { return peer.EmptyID }
 func (n *NullScope) PeerScope() PeerScope                     { return &NullScope{} }
 func (n *NullScope) SetPeer(peer.ID) error                    { return nil }
 func (n *NullScope) ProtocolScope() ProtocolScope             { return &NullScope{} }

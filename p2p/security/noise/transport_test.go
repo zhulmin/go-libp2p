@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/sec"
+	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
 
 	"github.com/stretchr/testify/assert"
@@ -89,7 +90,7 @@ func connect(t *testing.T, initTransport, respTransport *Transport) (*secureSess
 		initConn, initErr = initTransport.SecureOutbound(context.Background(), init, respTransport.localID)
 	}()
 
-	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, "")
+	respConn, respErr := respTransport.SecureInbound(context.Background(), resp, peer.EmptyID)
 	<-done
 
 	if initErr != nil {
@@ -202,11 +203,11 @@ func TestPeerIDMismatchOutboundFailsHandshake(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := initTransport.SecureOutbound(context.Background(), init, "a-random-peer-id")
+		_, err := initTransport.SecureOutbound(context.Background(), init, test.MustPeerIDFromSeed("a-random-peer-id"))
 		errChan <- err
 	}()
 
-	_, err := respTransport.SecureInbound(context.Background(), resp, "")
+	_, err := respTransport.SecureInbound(context.Background(), resp, peer.EmptyID)
 	require.Error(t, err)
 
 	initErr := <-errChan
@@ -228,7 +229,7 @@ func TestPeerIDMismatchInboundFailsHandshake(t *testing.T) {
 		assert.Error(t, err)
 	}()
 
-	_, err := respTransport.SecureInbound(context.Background(), resp, "a-random-peer-id")
+	_, err := respTransport.SecureInbound(context.Background(), resp, test.MustPeerIDFromSeed("a-random-peer-id"))
 	require.Error(t, err, "expected responder to fail with peer ID mismatch error")
 	<-done
 }
@@ -242,7 +243,7 @@ func TestPeerIDInboundCheckDisabled(t *testing.T) {
 	require.NoError(t, err)
 	errChan := make(chan error)
 	go func() {
-		_, err := initSessionTransport.SecureInbound(context.Background(), init, "test")
+		_, err := initSessionTransport.SecureInbound(context.Background(), init, test.MustPeerIDFromSeed("test"))
 		errChan <- err
 	}()
 	_, err = respTransport.SecureOutbound(context.Background(), resp, initTransport.localID)
@@ -261,11 +262,11 @@ func TestPeerIDOutboundNoCheck(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := initSessionTransport.SecureOutbound(context.Background(), init, "test")
+		_, err := initSessionTransport.SecureOutbound(context.Background(), init, test.MustPeerIDFromSeed("test"))
 		errChan <- err
 	}()
 
-	_, err = respTransport.SecureInbound(context.Background(), resp, "")
+	_, err = respTransport.SecureInbound(context.Background(), resp, peer.EmptyID)
 	require.NoError(t, err)
 	initErr := <-errChan
 	require.NoError(t, initErr)
@@ -436,7 +437,7 @@ func TestPrologueMatches(t *testing.T) {
 	tpt, err := respTransport.
 		WithSessionOptions(Prologue(commonPrologue))
 	require.NoError(t, err)
-	conn, err := tpt.SecureInbound(context.Background(), respConn, "")
+	conn, err := tpt.SecureInbound(context.Background(), respConn, peer.EmptyID)
 	require.NoError(t, err)
 	defer conn.Close()
 	<-done
@@ -463,7 +464,7 @@ func TestPrologueDoesNotMatchFailsHandshake(t *testing.T) {
 	tpt, err := respTransport.WithSessionOptions(Prologue(respPrologue))
 	require.NoError(t, err)
 
-	_, err = tpt.SecureInbound(context.Background(), respConn, "")
+	_, err = tpt.SecureInbound(context.Background(), respConn, peer.EmptyID)
 	require.Error(t, err)
 	<-done
 }
@@ -500,7 +501,7 @@ func TestEarlyDataAccepted(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+			_, err := respTransport.SecureInbound(context.Background(), initConn, peer.EmptyID)
 			errChan <- err
 		}()
 
@@ -553,7 +554,7 @@ func TestEarlyDataRejected(t *testing.T) {
 
 		errChan := make(chan error)
 		go func() {
-			_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+			_, err := respTransport.SecureInbound(context.Background(), initConn, peer.EmptyID)
 			errChan <- err
 		}()
 
@@ -611,7 +612,7 @@ func TestEarlyfffDataAcceptedWithNoHandler(t *testing.T) {
 
 	errChan := make(chan error)
 	go func() {
-		_, err := respTransport.SecureInbound(context.Background(), initConn, "")
+		_, err := respTransport.SecureInbound(context.Background(), initConn, peer.EmptyID)
 		errChan <- err
 	}()
 

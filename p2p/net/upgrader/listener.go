@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -118,7 +119,7 @@ func (l *listener) handleIncoming() {
 			ctx, cancel := context.WithTimeout(l.ctx, l.upgrader.acceptTimeout)
 			defer cancel()
 
-			conn, err := l.upgrader.Upgrade(ctx, l.transport, maconn, network.DirInbound, "", connScope)
+			conn, err := l.upgrader.Upgrade(ctx, l.transport, maconn, network.DirInbound, peer.EmptyID, connScope)
 			if err != nil {
 				// Don't bother bubbling this up. We just failed
 				// to completely negotiate the connection.

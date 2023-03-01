@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 	tu "github.com/libp2p/go-libp2p/core/test"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -831,28 +832,28 @@ func makeSegmentsWithPeerInfos(peerInfos peerInfos) *segments {
 
 func TestPeerInfoSorting(t *testing.T) {
 	t.Run("starts with temporary connections", func(t *testing.T) {
-		p1 := &peerInfo{id: peer.ID("peer1")}
-		p2 := &peerInfo{id: peer.ID("peer2"), temp: true}
+		p1 := &peerInfo{id: test.MustPeerIDFromSeed("peer1")}
+		p2 := &peerInfo{id: test.MustPeerIDFromSeed("peer2"), temp: true}
 		pis := peerInfos{p1, p2}
 		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
 	t.Run("starts with low-value connections", func(t *testing.T) {
-		p1 := &peerInfo{id: peer.ID("peer1"), value: 40}
-		p2 := &peerInfo{id: peer.ID("peer2"), value: 20}
+		p1 := &peerInfo{id: test.MustPeerIDFromSeed("peer1"), value: 40}
+		p2 := &peerInfo{id: test.MustPeerIDFromSeed("peer2"), value: 20}
 		pis := peerInfos{p1, p2}
 		pis.SortByValueAndStreams(makeSegmentsWithPeerInfos(pis), false)
 		require.Equal(t, pis, peerInfos{p2, p1})
 	})
 
 	t.Run("prefer peers with no streams", func(t *testing.T) {
-		p1 := &peerInfo{id: peer.ID("peer1"),
+		p1 := &peerInfo{id: test.MustPeerIDFromSeed("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 0}}: time.Now(),
 			},
 		}
-		p2 := &peerInfo{id: peer.ID("peer2"),
+		p2 := &peerInfo{id: test.MustPeerIDFromSeed("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 1}}: time.Now(),
 			},
@@ -871,27 +872,27 @@ func TestPeerInfoSorting(t *testing.T) {
 		outgoingSomeStreams := network.ConnStats{Stats: network.Stats{Direction: network.DirOutbound}, NumStreams: 1}
 		outgoingMoreStreams := network.ConnStats{Stats: network.Stats{Direction: network.DirOutbound}, NumStreams: 2}
 		p1 := &peerInfo{
-			id: peer.ID("peer1"),
+			id: test.MustPeerIDFromSeed("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoingSomeStreams}: time.Now(),
 			},
 		}
 		p2 := &peerInfo{
-			id: peer.ID("peer2"),
+			id: test.MustPeerIDFromSeed("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoingSomeStreams}: time.Now(),
 				&mockConn{stats: incoming}:            time.Now(),
 			},
 		}
 		p3 := &peerInfo{
-			id: peer.ID("peer3"),
+			id: test.MustPeerIDFromSeed("peer3"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoing}: time.Now(),
 				&mockConn{stats: incoming}: time.Now(),
 			},
 		}
 		p4 := &peerInfo{
-			id: peer.ID("peer4"),
+			id: test.MustPeerIDFromSeed("peer4"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: outgoingMoreStreams}: time.Now(),
 				&mockConn{stats: incoming}:            time.Now(),
@@ -907,13 +908,13 @@ func TestPeerInfoSorting(t *testing.T) {
 
 	t.Run("in a memory emergency, starts with connections that have many streams", func(t *testing.T) {
 		p1 := &peerInfo{
-			id: peer.ID("peer1"),
+			id: test.MustPeerIDFromSeed("peer1"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 100}}: time.Now(),
 			},
 		}
 		p2 := &peerInfo{
-			id: peer.ID("peer2"),
+			id: test.MustPeerIDFromSeed("peer2"),
 			conns: map[network.Conn]time.Time{
 				&mockConn{stats: network.ConnStats{NumStreams: 80}}: time.Now(),
 				&mockConn{stats: network.ConnStats{NumStreams: 40}}: time.Now(),
@@ -929,8 +930,8 @@ func TestSafeConcurrency(t *testing.T) {
 	t.Run("Safe Concurrency", func(t *testing.T) {
 		cl := clock.NewMock()
 
-		p1 := &peerInfo{id: peer.ID("peer1"), conns: map[network.Conn]time.Time{}}
-		p2 := &peerInfo{id: peer.ID("peer2"), conns: map[network.Conn]time.Time{}}
+		p1 := &peerInfo{id: test.MustPeerIDFromSeed("peer1"), conns: map[network.Conn]time.Time{}}
+		p2 := &peerInfo{id: test.MustPeerIDFromSeed("peer2"), conns: map[network.Conn]time.Time{}}
 		pis := peerInfos{p1, p2}
 
 		ss := makeSegmentsWithPeerInfos(pis)

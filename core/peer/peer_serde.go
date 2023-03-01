@@ -18,7 +18,7 @@ var _ encoding.TextMarshaler = (*ID)(nil)
 var _ encoding.TextUnmarshaler = (*ID)(nil)
 
 func (id ID) Marshal() ([]byte, error) {
-	return []byte(id), nil
+	return []byte(id.idBytes), nil
 }
 
 // MarshalBinary returns the byte representation of the peer ID.
@@ -26,8 +26,13 @@ func (id ID) MarshalBinary() ([]byte, error) {
 	return id.Marshal()
 }
 
+// MustMarshalBinary returns the byte representation of the peer ID.
+func (id ID) MustMarshalBinary() []byte {
+	return []byte(id.idBytes)
+}
+
 func (id ID) MarshalTo(data []byte) (n int, err error) {
-	return copy(data, []byte(id)), nil
+	return copy(data, []byte(id.idBytes)), nil
 }
 
 func (id *ID) Unmarshal(data []byte) (err error) {
@@ -41,7 +46,7 @@ func (id *ID) UnmarshalBinary(data []byte) error {
 }
 
 func (id ID) Size() int {
-	return len([]byte(id))
+	return len([]byte(id.idBytes))
 }
 
 func (id ID) MarshalJSON() ([]byte, error) {

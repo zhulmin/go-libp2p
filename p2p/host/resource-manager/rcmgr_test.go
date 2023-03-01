@@ -14,8 +14,8 @@ import (
 var dummyMA = multiaddr.StringCast("/ip4/1.2.3.4/tcp/1234")
 
 func TestResourceManager(t *testing.T) {
-	peerA := peer.ID("A")
-	peerB := peer.ID("B")
+	peerA := test.MustPeerIDFromSeed("A")
+	peerB := test.MustPeerIDFromSeed("B")
 	protoA := protocol.ID("/A")
 	protoB := protocol.ID("/B")
 	svcA := "A.svc"

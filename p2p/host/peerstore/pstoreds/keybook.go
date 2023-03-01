@@ -132,5 +132,5 @@ func (kb *dsKeyBook) RemovePeer(p peer.ID) {
 }
 
 func peerToKey(p peer.ID, suffix ds.Key) ds.Key {
-	return kbBase.ChildString(base32.RawStdEncoding.EncodeToString([]byte(p))).Child(suffix)
+	return kbBase.ChildString(base32.RawStdEncoding.EncodeToString(p.MustMarshalBinary())).Child(suffix)
 }

@@ -71,9 +71,9 @@ func (mn *mocknet) GenPeer() (host.Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	suffix := id
-	if len(id) > 8 {
-		suffix = id[len(id)-8:]
+	suffix := id.MustMarshalBinary()
+	if len(suffix) > 8 {
+		suffix = suffix[len(suffix)-8:]
 	}
 	ip := append(net.IP{}, blackholeIP6...)
 	copy(ip[net.IPv6len-len(suffix):], suffix)
@@ -190,10 +190,10 @@ func (mn *mocknet) Links() LinkMap {
 
 	links := map[string]map[string]map[Link]struct{}{}
 	for p1, lm := range mn.links {
-		sp1 := string(p1)
+		sp1 := p1.String()
 		links[sp1] = map[string]map[Link]struct{}{}
 		for p2, ls := range lm {
-			sp2 := string(p2)
+			sp2 := p2.String()
 			links[sp1][sp2] = map[Link]struct{}{}
 			for l := range ls {
 				links[sp1][sp2][l] = struct{}{}
@@ -396,13 +396,17 @@ func (mn *mocknet) LinkDefaults() LinkOptions {
 // netSlice for sorting by peer
 type netSlice []network.Network
 
-func (es netSlice) Len() int           { return len(es) }
-func (es netSlice) Swap(i, j int)      { es[i], es[j] = es[j], es[i] }
-func (es netSlice) Less(i, j int) bool { return string(es[i].LocalPeer()) < string(es[j].LocalPeer()) }
+func (es netSlice) Len() int      { return len(es) }
+func (es netSlice) Swap(i, j int) { es[i], es[j] = es[j], es[i] }
+func (es netSlice) Less(i, j int) bool {
+	return string(es[i].LocalPeer().MustMarshalBinary()) < string(es[j].LocalPeer().MustMarshalBinary())
+}
 
 // hostSlice for sorting by peer
 type hostSlice []host.Host
 
-func (es hostSlice) Len() int           { return len(es) }
-func (es hostSlice) Swap(i, j int)      { es[i], es[j] = es[j], es[i] }
-func (es hostSlice) Less(i, j int) bool { return string(es[i].ID()) < string(es[j].ID()) }
+func (es hostSlice) Len() int      { return len(es) }
+func (es hostSlice) Swap(i, j int) { es[i], es[j] = es[j], es[i] }
+func (es hostSlice) Less(i, j int) bool {
+	return string(es[i].ID().MustMarshalBinary()) < string(es[j].ID().MustMarshalBinary())
+}

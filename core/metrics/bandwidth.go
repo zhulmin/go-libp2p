@@ -45,21 +45,21 @@ func (bwc *BandwidthCounter) LogRecvMessage(size int64) {
 // Bandwidth is associated with the given protocol.ID and peer.ID.
 func (bwc *BandwidthCounter) LogSentMessageStream(size int64, proto protocol.ID, p peer.ID) {
 	bwc.protocolOut.Get(string(proto)).Mark(uint64(size))
-	bwc.peerOut.Get(string(p)).Mark(uint64(size))
+	bwc.peerOut.Get(string(p.MustMarshalBinary())).Mark(uint64(size))
 }
 
 // LogRecvMessageStream records the size of an incoming message over a single logical stream.
 // Bandwidth is associated with the given protocol.ID and peer.ID.
 func (bwc *BandwidthCounter) LogRecvMessageStream(size int64, proto protocol.ID, p peer.ID) {
 	bwc.protocolIn.Get(string(proto)).Mark(uint64(size))
-	bwc.peerIn.Get(string(p)).Mark(uint64(size))
+	bwc.peerIn.Get(string(p.MustMarshalBinary())).Mark(uint64(size))
 }
 
 // GetBandwidthForPeer returns a Stats struct with bandwidth metrics associated with the given peer.ID.
 // The metrics returned include all traffic sent / received for the peer, regardless of protocol.
 func (bwc *BandwidthCounter) GetBandwidthForPeer(p peer.ID) (out Stats) {
-	inSnap := bwc.peerIn.Get(string(p)).Snapshot()
-	outSnap := bwc.peerOut.Get(string(p)).Snapshot()
+	inSnap := bwc.peerIn.Get(string(p.MustMarshalBinary())).Snapshot()
+	outSnap := bwc.peerOut.Get(string(p.MustMarshalBinary())).Snapshot()
 
 	return Stats{
 		TotalIn:  int64(inSnap.Total),
@@ -104,7 +104,10 @@ func (bwc *BandwidthCounter) GetBandwidthByPeer() map[peer.ID]Stats {
 	peers := make(map[peer.ID]Stats)
 
 	bwc.peerIn.ForEach(func(p string, meter *flow.Meter) {
-		id := peer.ID(p)
+		id, err := peer.IDFromBytes([]byte(p))
+		if err != nil {
+			return
+		}
 		snap := meter.Snapshot()
 
 		stat := peers[id]
@@ -114,7 +117,10 @@ func (bwc *BandwidthCounter) GetBandwidthByPeer() map[peer.ID]Stats {
 	})
 
 	bwc.peerOut.ForEach(func(p string, meter *flow.Meter) {
-		id := peer.ID(p)
+		id, err := peer.IDFromBytes([]byte(p))
+		if err != nil {
+			return
+		}
 		snap := meter.Snapshot()
 
 		stat := peers[id]

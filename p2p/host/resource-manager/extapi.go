@@ -103,7 +103,7 @@ func (r *resourceManager) ListPeers() []peer.ID {
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return bytes.Compare([]byte(result[i]), []byte(result[j])) < 0
+		return bytes.Compare(result[i].MustMarshalBinary(), result[j].MustMarshalBinary()) < 0
 	})
 
 	return result

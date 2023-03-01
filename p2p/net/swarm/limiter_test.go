@@ -80,7 +80,7 @@ func TestLimiterBasicDials(t *testing.T) {
 	good := addrWithPort(20)
 
 	resch := make(chan dialResult)
-	pid := peer.ID("testpeer")
+	pid := test.MustPeerIDFromSeed("testpeer")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -126,7 +126,12 @@ func TestFDLimiting(t *testing.T) {
 	l := newDialLimiterWithParams(hangDialFunc(hang), 16, 5)
 
 	bads := []ma.Multiaddr{addrWithPort(1), addrWithPort(2), addrWithPort(3), addrWithPort(4)}
-	pids := []peer.ID{"testpeer1", "testpeer2", "testpeer3", "testpeer4"}
+	pids := []peer.ID{
+		test.MustPeerIDFromSeed("testpeer1"),
+		test.MustPeerIDFromSeed("testpeer2"),
+		test.MustPeerIDFromSeed("testpeer3"),
+		test.MustPeerIDFromSeed("testpeer4"),
+	}
 	goodTCP := addrWithPort(20)
 
 	ctx := context.Background()
@@ -154,7 +159,7 @@ func TestFDLimiting(t *testing.T) {
 	case <-time.After(time.Millisecond * 100):
 	}
 
-	pid5 := peer.ID("testpeer5")
+	pid5 := test.MustPeerIDFromSeed("testpeer5")
 	utpaddr := ma.StringCast("/ip4/127.0.0.1/udp/7777/utp")
 
 	// This should complete immediately since utp addresses arent blocked by fd rate limiting
@@ -202,7 +207,10 @@ func TestTokenRedistribution(t *testing.T) {
 	l := newDialLimiterWithParams(df, 8, 4)
 
 	bads := []ma.Multiaddr{addrWithPort(1), addrWithPort(2), addrWithPort(3), addrWithPort(4)}
-	pids := []peer.ID{"testpeer1", "testpeer2"}
+	pids := []peer.ID{
+		test.MustPeerIDFromSeed("testpeer1"),
+		test.MustPeerIDFromSeed("testpeer2"),
+	}
 
 	ctx := context.Background()
 	resch := make(chan dialResult)
@@ -322,7 +330,7 @@ func TestStressLimiter(t *testing.T) {
 					return
 				}
 			}
-		}(peer.ID(fmt.Sprintf("testpeer%d", i)))
+		}(test.MustPeerIDFromSeed(fmt.Sprintf("testpeer%d", i)))
 	}
 
 	for i := 0; i < 20; i++ {
@@ -375,7 +383,7 @@ func TestFDLimitUnderflow(t *testing.T) {
 				}
 				errs <- errors.New("got dial res, but shouldn't")
 			}
-		}(peer.ID(fmt.Sprintf("testpeer%d", i%20)), i)
+		}(test.MustPeerIDFromSeed(fmt.Sprintf("testpeer%d", i%20)), i)
 	}
 
 	go func() {

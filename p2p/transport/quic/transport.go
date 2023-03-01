@@ -280,7 +280,7 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		// Note that since we have no way of associating an incoming QUIC connection with
 		// the peer ID calculated here, we don't actually receive the peer's public key
 		// from the key chan.
-		conf, _ := t.identity.ConfigForPeer("")
+		conf, _ := t.identity.ConfigForPeer(peer.EmptyID)
 		return conf, nil
 	}
 	tlsConf.NextProtos = []string{"libp2p"}

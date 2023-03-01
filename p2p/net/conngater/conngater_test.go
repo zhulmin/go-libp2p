@@ -6,7 +6,7 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -14,8 +14,8 @@ import (
 func TestConnectionGater(t *testing.T) {
 	ds := datastore.NewMapDatastore()
 
-	peerA := peer.ID("A")
-	peerB := peer.ID("B")
+	peerA := test.MustPeerIDFromSeed("A")
+	peerB := test.MustPeerIDFromSeed("B")
 
 	ip1 := net.ParseIP("1.2.3.4")
 

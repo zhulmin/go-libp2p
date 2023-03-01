@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
 )
 
@@ -84,7 +85,7 @@ func (b benchenv) connect(stopTimer bool) (*secureSession, *secureSession) {
 		initSession, initErr = b.initTpt.SecureOutbound(context.TODO(), initConn, b.respTpt.localID)
 	}()
 
-	respSession, respErr := b.respTpt.SecureInbound(context.TODO(), respConn, "")
+	respSession, respErr := b.respTpt.SecureInbound(context.TODO(), respConn, peer.EmptyID)
 	<-done
 
 	if initErr != nil {

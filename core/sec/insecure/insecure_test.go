@@ -9,6 +9,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
+	"github.com/libp2p/go-libp2p/core/test"
+	testutil "github.com/libp2p/go-libp2p/core/test"
 
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +20,7 @@ func TestConnections(t *testing.T) {
 	clientTpt := newTestTransport(t, crypto.RSA, 2048)
 	serverTpt := newTestTransport(t, crypto.Ed25519, 1024)
 
-	clientConn, serverConn, clientErr, serverErr := connect(t, clientTpt, serverTpt, serverTpt.LocalPeer(), "")
+	clientConn, serverConn, clientErr, serverErr := connect(t, clientTpt, serverTpt, serverTpt.LocalPeer(), peer.EmptyID)
 	require.NoError(t, clientErr)
 	require.NoError(t, serverErr)
 	testIDs(t, clientTpt, serverTpt, clientConn, serverConn)
@@ -42,7 +44,7 @@ func TestPeerIDMismatchInbound(t *testing.T) {
 	clientTpt := newTestTransport(t, crypto.RSA, 2048)
 	serverTpt := newTestTransport(t, crypto.Ed25519, 1024)
 
-	_, _, _, serverErr := connect(t, clientTpt, serverTpt, serverTpt.LocalPeer(), "a-random-peer")
+	_, _, _, serverErr := connect(t, clientTpt, serverTpt, serverTpt.LocalPeer(), test.MustPeerIDFromSeed("a-random-peer"))
 	require.Error(t, serverErr)
 	require.Contains(t, serverErr.Error(), "remote peer sent unexpected peer ID")
 }
@@ -51,7 +53,7 @@ func TestPeerIDMismatchOutbound(t *testing.T) {
 	clientTpt := newTestTransport(t, crypto.RSA, 2048)
 	serverTpt := newTestTransport(t, crypto.Ed25519, 1024)
 
-	_, _, clientErr, _ := connect(t, clientTpt, serverTpt, "a random peer", "")
+	_, _, clientErr, _ := connect(t, clientTpt, serverTpt, testutil.MustPeerIDFromSeed("a-random-peer"), peer.EmptyID)
 	require.Error(t, clientErr)
 	require.Contains(t, clientErr.Error(), "remote peer sent unexpected peer ID")
 }

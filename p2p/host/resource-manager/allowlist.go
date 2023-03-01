@@ -112,7 +112,7 @@ func (al *Allowlist) Add(ma multiaddr.Multiaddr) error {
 	al.mu.Lock()
 	defer al.mu.Unlock()
 
-	if allowedPeer != peer.ID("") {
+	if allowedPeer != peer.EmptyID {
 		// We have a peerID constraint
 		if al.allowedPeerByNetwork == nil {
 			al.allowedPeerByNetwork = make(map[peer.ID][]*net.IPNet)
@@ -134,7 +134,7 @@ func (al *Allowlist) Remove(ma multiaddr.Multiaddr) error {
 
 	ipNetList := al.allowedNetworks
 
-	if allowedPeer != "" {
+	if allowedPeer != peer.EmptyID {
 		// We have a peerID constraint
 		ipNetList = al.allowedPeerByNetwork[allowedPeer]
 	}
@@ -155,7 +155,7 @@ func (al *Allowlist) Remove(ma multiaddr.Multiaddr) error {
 		}
 	}
 
-	if allowedPeer != "" {
+	if allowedPeer != peer.EmptyID {
 		al.allowedPeerByNetwork[allowedPeer] = ipNetList
 	} else {
 		al.allowedNetworks = ipNetList

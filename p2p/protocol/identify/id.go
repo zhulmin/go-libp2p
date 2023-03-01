@@ -771,7 +771,7 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 	if np != rp {
 		// if the newKey's peer.ID does not match known peer.ID...
 
-		if rp == "" && np != "" {
+		if rp == peer.EmptyID && np != peer.EmptyID {
 			// if local peerid is empty, then use the new, sent key.
 			err := ids.Host.Peerstore().AddPubKey(rp, newKey)
 			if err != nil {

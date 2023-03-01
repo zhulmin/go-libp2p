@@ -82,7 +82,7 @@ func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer
 		return nil, err
 	}
 
-	if t.key != nil && p != "" && p != conn.remote {
+	if t.key != nil && p != peer.EmptyID && p != conn.remote {
 		return nil, fmt.Errorf("remote peer sent unexpected peer ID. expected=%s received=%s", p, conn.remote)
 	}
 
@@ -143,7 +143,7 @@ func makeExchangeMessage(pubkey ci.PubKey) (*pb.Exchange, error) {
 	}
 
 	return &pb.Exchange{
-		Id:     []byte(id),
+		Id:     id.MustMarshalBinary(),
 		Pubkey: keyMsg,
 	}, nil
 }

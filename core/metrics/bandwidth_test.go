@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/core/test"
 
 	"github.com/libp2p/go-flow-metrics"
 
@@ -36,7 +36,7 @@ func round(bwc *BandwidthCounter, b *testing.B) {
 	var wg sync.WaitGroup
 	wg.Add(10000)
 	for i := 0; i < 1000; i++ {
-		p := peer.ID(fmt.Sprintf("peer-%d", i))
+		p := test.MustPeerIDFromSeed(fmt.Sprintf("peer-%d", i))
 		for j := 0; j < 10; j++ {
 			proto := protocol.ID(fmt.Sprintf("bitswap-%d", j))
 			go func() {
@@ -62,7 +62,7 @@ func TestBandwidthCounter(t *testing.T) {
 	bwc := NewBandwidthCounter()
 	for i := 0; i < 40; i++ {
 		for i := 0; i < 100; i++ {
-			p := peer.ID(fmt.Sprintf("peer-%d", i))
+			p := test.MustPeerIDFromSeed(fmt.Sprintf("peer-%d", i))
 			for j := 0; j < 2; j++ {
 				proto := protocol.ID(fmt.Sprintf("proto-%d", j))
 
@@ -93,7 +93,7 @@ func TestBandwidthCounter(t *testing.T) {
 		byPeer := bwc.GetBandwidthByPeer()
 		require.Len(t, byPeer, 100, "expected 100 peers")
 		for i := 0; i < 100; i++ {
-			p := peer.ID(fmt.Sprintf("peer-%d", i))
+			p := test.MustPeerIDFromSeed(fmt.Sprintf("peer-%d", i))
 			for _, stats := range [...]Stats{bwc.GetBandwidthForPeer(p), byPeer[p]} {
 				check(stats)
 			}
@@ -118,7 +118,7 @@ func TestBandwidthCounter(t *testing.T) {
 func TestResetBandwidthCounter(t *testing.T) {
 	bwc := NewBandwidthCounter()
 
-	p := peer.ID("peer-0")
+	p := test.MustPeerIDFromSeed("peer-0")
 	proto := protocol.ID("proto-0")
 
 	// We don't calculate bandwidth till we've been active for a second.

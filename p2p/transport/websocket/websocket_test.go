@@ -305,7 +305,7 @@ func TestWebsocketTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ttransport.SubtestTransport(t, ta, tb, "/ip4/127.0.0.1/tcp/0/ws", "peerA")
+	ttransport.SubtestTransport(t, ta, tb, "/ip4/127.0.0.1/tcp/0/ws", test.MustPeerIDFromSeed("peerA"))
 }
 
 func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {

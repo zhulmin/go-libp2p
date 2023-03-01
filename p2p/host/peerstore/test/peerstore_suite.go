@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	testutils "github.com/libp2p/go-libp2p/core/test"
+
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
@@ -51,7 +53,7 @@ func sortProtos(protos []protocol.ID) {
 
 func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 	return func(t *testing.T) {
-		addrs, pid := getAddrs(t, 100), peer.ID("testpeer")
+		addrs, pid := getAddrs(t, 100), testutils.MustPeerIDFromSeed("testpeer")
 		ps.AddAddrs(pid, addrs[:10], time.Hour)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -125,7 +127,7 @@ func testAddrStream(ps pstore.Peerstore) func(t *testing.T) {
 
 func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 	return func(t *testing.T) {
-		addrs, pid := getAddrs(t, 10), peer.ID("testpeer")
+		addrs, pid := getAddrs(t, 10), testutils.MustPeerIDFromSeed("testpeer")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -174,7 +176,7 @@ func testGetStreamBeforePeerAdded(ps pstore.Peerstore) func(t *testing.T) {
 
 func testAddrStreamDuplicates(ps pstore.Peerstore) func(t *testing.T) {
 	return func(t *testing.T) {
-		addrs, pid := getAddrs(t, 10), peer.ID("testpeer")
+		addrs, pid := getAddrs(t, 10), testutils.MustPeerIDFromSeed("testpeer")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -213,7 +215,7 @@ func testAddrStreamDuplicates(ps pstore.Peerstore) func(t *testing.T) {
 func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("adding and removing protocols", func(t *testing.T) {
-			p1 := peer.ID("TESTPEER")
+			p1 := testutils.MustPeerIDFromSeed("TESTPEER")
 			protos := []protocol.ID{"a", "b", "c", "d"}
 
 			require.NoError(t, ps.AddProtocols(p1, protos...))
@@ -274,7 +276,7 @@ func testPeerstoreProtoStore(ps pstore.Peerstore) func(t *testing.T) {
 		})
 
 		t.Run("removing peer", func(t *testing.T) {
-			p := peer.ID("foobar")
+			p := testutils.MustPeerIDFromSeed("foobar")
 			protos := []protocol.ID{"a", "b"}
 
 			require.NoError(t, ps.SetProtocols(p, protos...))
@@ -346,8 +348,8 @@ func testMetadata(ps pstore.Peerstore) func(t *testing.T) {
 		})
 
 		t.Run("removing a peer", func(t *testing.T) {
-			p := peer.ID("foo")
-			otherP := peer.ID("foobar")
+			p := testutils.MustPeerIDFromSeed("foo")
+			otherP := testutils.MustPeerIDFromSeed("foobar")
 			require.NoError(t, ps.Put(otherP, "AgentVersion", "v1"))
 			require.NoError(t, ps.Put(p, "AgentVersion", "v1"))
 			require.NoError(t, ps.Put(p, "bar", 1))
@@ -387,7 +389,7 @@ func getAddrs(t *testing.T, n int) []ma.Multiaddr {
 }
 
 func TestPeerstoreProtoStoreLimits(t *testing.T, ps pstore.Peerstore, limit int) {
-	p := peer.ID("foobar")
+	p := testutils.MustPeerIDFromSeed("foobar")
 	protocols := make([]protocol.ID, limit)
 	for i := 0; i < limit; i++ {
 		protocols[i] = protocol.ID(fmt.Sprintf("protocol %d", i))

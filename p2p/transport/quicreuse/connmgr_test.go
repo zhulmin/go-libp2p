@@ -193,7 +193,7 @@ func getTLSConfForProto(t *testing.T, alpn string) (peer.ID, *tls.Config) {
 	var tlsConf tls.Config
 	tlsConf.NextProtos = []string{alpn}
 	tlsConf.GetConfigForClient = func(info *tls.ClientHelloInfo) (*tls.Config, error) {
-		c, _ := identity.ConfigForPeer("")
+		c, _ := identity.ConfigForPeer(peer.EmptyID)
 		c.NextProtos = tlsConf.NextProtos
 		return c, nil
 	}
@@ -206,13 +206,13 @@ func connectWithProtocol(t *testing.T, addr net.Addr, alpn string) (peer.ID, err
 	require.NoError(t, err)
 	clientIdentity, err := libp2ptls.NewIdentity(clientKey)
 	require.NoError(t, err)
-	tlsConf, peerChan := clientIdentity.ConfigForPeer("")
+	tlsConf, peerChan := clientIdentity.ConfigForPeer(peer.EmptyID)
 	cconn, err := net.ListenUDP("udp4", nil)
 	tlsConf.NextProtos = []string{alpn}
 	require.NoError(t, err)
 	c, err := quic.Dial(cconn, addr, "localhost", tlsConf, nil)
 	if err != nil {
-		return "", err
+		return peer.EmptyID, err
 	}
 	defer c.CloseWithError(0, "")
 	require.Equal(t, alpn, c.ConnectionState().TLS.NegotiatedProtocol)

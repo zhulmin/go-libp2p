@@ -71,7 +71,8 @@ type segments struct {
 	buckets   [256]*segment
 }
 
-func (ss *segments) get(p peer.ID) *segment {
+func (ss *segments) get(peer peer.ID) *segment {
+	p := peer.MustMarshalBinary()
 	return ss.buckets[byte(p[len(p)-1])]
 }
 

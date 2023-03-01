@@ -39,7 +39,12 @@ const maxInlineKeyLength = 42
 //
 // Peer IDs are derived by hashing a peer's public key and encoding the
 // hash output as a multihash. See IDFromPublicKey for details.
-type ID string
+type ID struct {
+	// the raw bytes for the id. This is a string type so that we can compare them
+	idBytes string
+}
+
+var EmptyID = ID{}
 
 // Pretty returns a base58-encoded string representation of the ID.
 // Deprecated: use String() instead.
@@ -55,7 +60,7 @@ func (id ID) Loggable() map[string]interface{} {
 }
 
 func (id ID) String() string {
-	return b58.Encode([]byte(id))
+	return b58.Encode([]byte(id.idBytes))
 }
 
 // ShortString prints out the peer ID.
@@ -91,7 +96,7 @@ func (id ID) MatchesPublicKey(pk ic.PubKey) bool {
 // This method returns ErrNoPublicKey if the peer ID looks valid but it can't extract
 // the public key.
 func (id ID) ExtractPublicKey() (ic.PubKey, error) {
-	decoded, err := mh.Decode([]byte(id))
+	decoded, err := mh.Decode([]byte(id.idBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +112,7 @@ func (id ID) ExtractPublicKey() (ic.PubKey, error) {
 
 // Validate checks if ID is empty or not.
 func (id ID) Validate() error {
-	if id == ID("") {
+	if id == EmptyID {
 		return ErrEmptyPeerID
 	}
 
@@ -118,9 +123,9 @@ func (id ID) Validate() error {
 // the value to make sure it is a multihash.
 func IDFromBytes(b []byte) (ID, error) {
 	if _, err := mh.Cast(b); err != nil {
-		return ID(""), err
+		return EmptyID, err
 	}
-	return ID(b), nil
+	return ID{idBytes: string(b)}, nil
 }
 
 // Decode accepts an encoded peer ID and returns the decoded ID if the input is
@@ -133,14 +138,14 @@ func Decode(s string) (ID, error) {
 		// base58 encoded sha256 or identity multihash
 		m, err := mh.FromB58String(s)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse peer ID: %s", err)
+			return EmptyID, fmt.Errorf("failed to parse peer ID: %s", err)
 		}
-		return ID(m), nil
+		return ID{idBytes: string(m)}, nil
 	}
 
 	c, err := cid.Decode(s)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse peer ID: %s", err)
+		return EmptyID, fmt.Errorf("failed to parse peer ID: %s", err)
 	}
 	return FromCid(c)
 }
@@ -159,16 +164,16 @@ func Encode(id ID) string {
 func FromCid(c cid.Cid) (ID, error) {
 	code := mc.Code(c.Type())
 	if code != mc.Libp2pKey {
-		return "", fmt.Errorf("can't convert CID of type %q to a peer ID", code)
+		return EmptyID, fmt.Errorf("can't convert CID of type %q to a peer ID", code)
 	}
-	return ID(c.Hash()), nil
+	return ID{idBytes: string(c.Hash())}, nil
 }
 
 // ToCid encodes a peer ID as a CID of the public key.
 //
 // If the peer ID is invalid (e.g., empty), this will return the empty CID.
 func ToCid(id ID) cid.Cid {
-	m, err := mh.Cast([]byte(id))
+	m, err := mh.Cast([]byte(id.idBytes))
 	if err != nil {
 		return cid.Cid{}
 	}
@@ -179,14 +184,14 @@ func ToCid(id ID) cid.Cid {
 func IDFromPublicKey(pk ic.PubKey) (ID, error) {
 	b, err := ic.MarshalPublicKey(pk)
 	if err != nil {
-		return "", err
+		return EmptyID, err
 	}
 	var alg uint64 = mh.SHA2_256
 	if AdvancedEnableInlining && len(b) <= maxInlineKeyLength {
 		alg = mh.IDENTITY
 	}
 	hash, _ := mh.Sum(b, alg, -1)
-	return ID(hash), nil
+	return ID{idBytes: string(hash)}, nil
 }
 
 // IDFromPrivateKey returns the Peer ID corresponding to the secret key sk.
@@ -199,7 +204,7 @@ type IDSlice []ID
 
 func (es IDSlice) Len() int           { return len(es) }
 func (es IDSlice) Swap(i, j int)      { es[i], es[j] = es[j], es[i] }
-func (es IDSlice) Less(i, j int) bool { return string(es[i]) < string(es[j]) }
+func (es IDSlice) Less(i, j int) bool { return es[i].idBytes < es[j].idBytes }
 
 func (es IDSlice) String() string {
 	peersStrings := make([]string, len(es))

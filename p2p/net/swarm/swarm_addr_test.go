@@ -75,7 +75,7 @@ func TestDialAddressSelection(t *testing.T) {
 	require.NoError(t, err)
 	id, err := peer.IDFromPrivateKey(priv)
 	require.NoError(t, err)
-	s, err := swarm.NewSwarm("local", nil, eventbus.NewBus())
+	s, err := swarm.NewSwarm(test.MustPeerIDFromSeed("local"), nil, eventbus.NewBus())
 	require.NoError(t, err)
 
 	tcpTr, err := tcp.NewTCPTransport(nil, nil)

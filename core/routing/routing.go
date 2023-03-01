@@ -94,7 +94,7 @@ type PubKeyFetcher interface {
 // KeyForPublicKey returns the key used to retrieve public keys
 // from a value store.
 func KeyForPublicKey(id peer.ID) string {
-	return "/pk/" + string(id)
+	return "/pk/" + id.String()
 }
 
 // GetPublicKey retrieves the public key associated with the given peer ID from

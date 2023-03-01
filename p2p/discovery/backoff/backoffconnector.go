@@ -54,7 +54,7 @@ func (c *BackoffConnector) Connect(ctx context.Context, peerCh <-chan peer.AddrI
 				return
 			}
 
-			if pi.ID == c.host.ID() || pi.ID == "" {
+			if pi.ID == c.host.ID() || pi.ID == peer.EmptyID {
 				continue
 			}
 

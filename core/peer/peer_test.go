@@ -94,7 +94,7 @@ func TestIDMatchesPublicKey(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if ks.hpk != string(p1) {
+		if ks.hpk != string(p1.MustMarshalBinary()) {
 			t.Error("p1 and hpk differ")
 		}
 
@@ -129,7 +129,7 @@ func TestIDMatchesPrivateKey(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if ks.hpk != string(p1) {
+		if ks.hpk != string(p1.MustMarshalBinary()) {
 			t.Error("p1 and hpk differ")
 		}
 
@@ -159,7 +159,7 @@ func TestIDEncoding(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if ks.hpk != string(p1) {
+		if ks.hpk != string(p1.MustMarshalBinary()) {
 			t.Error("p1 and hpk differ")
 		}
 
@@ -191,7 +191,7 @@ func TestIDEncoding(t *testing.T) {
 		t.Fatal("should refuse to decode a non-peer ID CID")
 	}
 
-	c := ToCid("")
+	c := ToCid(EmptyID)
 	if c.Defined() {
 		t.Fatal("cid of empty peer ID should have been undefined")
 	}
@@ -222,7 +222,7 @@ func TestPublicKeyExtraction(t *testing.T) {
 	}
 
 	// Test invalid multihash (invariant of the type of public key)
-	pk, err := ID("").ExtractPublicKey()
+	pk, err := EmptyID.ExtractPublicKey()
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -251,7 +251,7 @@ func TestPublicKeyExtraction(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	// Empty peer ID invalidates
-	err := ID("").Validate()
+	err := EmptyID.Validate()
 	if err == nil {
 		t.Error("expected error")
 	} else if err != ErrEmptyPeerID {

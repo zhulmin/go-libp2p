@@ -46,10 +46,11 @@ type addrSegment struct {
 }
 
 func (segments *addrSegments) get(p peer.ID) *addrSegment {
-	if len(p) == 0 { // it's not terribly useful to use an empty peer ID, but at least we should not panic
+	pBytes, err := p.MustMarshalBinary()
+	if len(pBytes) == 0 { // it's not terribly useful to use an empty peer ID, but at least we should not panic
 		return segments[0]
 	}
-	return segments[uint8(p[len(p)-1])]
+	return segments[uint8(pBytes[len(pBytes)-1])]
 }
 
 type clock interface {
@@ -244,7 +245,7 @@ func (mab *memoryAddrBook) addAddrsUnlocked(s *addrSegment, p peer.ID, addrs []m
 			log.Warnw("Was passed nil multiaddr", "peer", p)
 			continue
 		}
-		if addrPid != "" && addrPid != p {
+		if addrPid != peer.EmptyID && addrPid != p {
 			log.Warnf("Was passed p2p address with a different peerId. found: %s, expected: %s", addrPid, p)
 			continue
 		}
@@ -293,7 +294,7 @@ func (mab *memoryAddrBook) SetAddrs(p peer.ID, addrs []ma.Multiaddr, ttl time.Du
 			log.Warnw("was passed nil multiaddr", "peer", p)
 			continue
 		}
-		if addrPid != "" && addrPid != p {
+		if addrPid != peer.EmptyID && addrPid != p {
 			log.Warnf("was passed p2p address with a different peerId, found: %s wanted: %s", addrPid, p)
 			continue
 		}

@@ -268,7 +268,7 @@ func TestResourceManagerDialing(t *testing.T) {
 	rcmgr := mocknetwork.NewMockResourceManager(ctrl)
 
 	addr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
-	p := peer.ID("foobar")
+	p := test.MustPeerIDFromSeed("foobar")
 
 	_, key := newIdentity(t)
 	tr, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, rcmgr)

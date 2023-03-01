@@ -45,7 +45,7 @@ func TestSplitAddr(t *testing.T) {
 	if !tpt.Equal(maddrTpt) {
 		t.Fatal("expected a transport")
 	}
-	if id != "" {
+	if id != EmptyID {
 		t.Fatal("expected no peer ID")
 	}
 }

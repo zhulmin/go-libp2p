@@ -382,7 +382,7 @@ func (as *AmbientAutoNAT) probe(pi *peer.AddrInfo) {
 func (as *AmbientAutoNAT) getPeerToProbe() peer.ID {
 	peers := as.host.Network().Peers()
 	if len(peers) == 0 {
-		return ""
+		return peer.EmptyID
 	}
 
 	candidates := make([]peer.ID, 0, len(peers))
@@ -408,7 +408,7 @@ func (as *AmbientAutoNAT) getPeerToProbe() peer.ID {
 	}
 
 	if len(candidates) == 0 {
-		return ""
+		return peer.EmptyID
 	}
 
 	shufflePeers(candidates)

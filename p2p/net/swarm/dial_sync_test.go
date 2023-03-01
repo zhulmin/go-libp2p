@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +36,7 @@ func getMockDialFunc() (dialWorkerFunc, func(), context.Context, <-chan struct{}
 func TestBasicDialSync(t *testing.T) {
 	df, done, _, callsch := getMockDialFunc()
 	dsync := newDialSync(df)
-	p := peer.ID("testpeer")
+	p := test.MustPeerIDFromSeed("testpeer")
 
 	finished := make(chan struct{}, 2)
 	go func() {
@@ -69,7 +70,7 @@ func TestDialSyncCancel(t *testing.T) {
 
 	dsync := newDialSync(df)
 
-	p := peer.ID("testpeer")
+	p := test.MustPeerIDFromSeed("testpeer")
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
 
@@ -119,7 +120,7 @@ func TestDialSyncAllCancel(t *testing.T) {
 	df, done, dctx, _ := getMockDialFunc()
 
 	dsync := newDialSync(df)
-	p := peer.ID("testpeer")
+	p := test.MustPeerIDFromSeed("testpeer")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	finished := make(chan struct{})
@@ -182,7 +183,7 @@ func TestFailFirst(t *testing.T) {
 	}
 
 	ds := newDialSync(f)
-	p := peer.ID("testing")
+	p := test.MustPeerIDFromSeed("testing")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
@@ -210,7 +211,7 @@ func TestStressActiveDial(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
-	pid := peer.ID("foo")
+	pid := test.MustPeerIDFromSeed("foo")
 
 	makeDials := func() {
 		for i := 0; i < 10000; i++ {

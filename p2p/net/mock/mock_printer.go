@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // separate object so our interfaces are separate :)
@@ -18,9 +17,9 @@ func (p *printer) MocknetLinks(mn Mocknet) {
 
 	fmt.Fprintf(p.w, "Mocknet link map:\n")
 	for p1, lm := range links {
-		fmt.Fprintf(p.w, "\t%s linked to:\n", peer.ID(p1))
+		fmt.Fprintf(p.w, "\t%s linked to:\n", p1)
 		for p2, l := range lm {
-			fmt.Fprintf(p.w, "\t\t%s (%d links)\n", peer.ID(p2), len(l))
+			fmt.Fprintf(p.w, "\t\t%s (%d links)\n", p2, len(l))
 		}
 	}
 	fmt.Fprintf(p.w, "\n")

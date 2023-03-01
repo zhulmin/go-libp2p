@@ -16,7 +16,8 @@ type protoSegment struct {
 
 type protoSegments [256]*protoSegment
 
-func (s *protoSegments) get(p peer.ID) *protoSegment {
+func (s *protoSegments) get(peer peer.ID) *protoSegment {
+	p := peer.MustMarshalBinary()
 	return s[byte(p[len(p)-1])]
 }
 

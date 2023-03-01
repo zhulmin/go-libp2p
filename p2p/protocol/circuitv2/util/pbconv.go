@@ -38,7 +38,7 @@ func PeerInfoToPeerV2(pi peer.AddrInfo) *pbv2.Peer {
 	}
 
 	return &pbv2.Peer{
-		Id:    []byte(pi.ID),
+		Id:    pi.ID.MustMarshalBinary(),
 		Addrs: addrs,
 	}
 }

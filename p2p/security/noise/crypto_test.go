@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/test"
 )
 
 func TestEncryptAndDecrypt_InitToResp(t *testing.T) {
@@ -93,7 +94,7 @@ func TestCryptoFailsIfHandshakeIncomplete(t *testing.T) {
 	init, resp := net.Pipe()
 	_ = resp.Close()
 
-	session, _ := newSecureSession(initTransport, context.TODO(), init, "remote-peer", nil, nil, nil, true, true)
+	session, _ := newSecureSession(initTransport, context.TODO(), init, test.MustPeerIDFromSeed("remote-peer"), nil, nil, nil, true, true)
 	_, err := session.encrypt(nil, []byte("hi"))
 	if err == nil {
 		t.Error("expected encryption error when handshake incomplete")

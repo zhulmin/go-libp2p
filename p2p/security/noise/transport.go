@@ -53,7 +53,7 @@ func New(id protocol.ID, privkey crypto.PrivKey, muxers []tptu.StreamMuxer) (*Tr
 // If p is empty, connections from any peer are accepted.
 func (t *Transport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
 	responderEDH := newTransportEDH(t)
-	c, err := newSecureSession(t, ctx, insecure, p, nil, nil, responderEDH, false, p != "")
+	c, err := newSecureSession(t, ctx, insecure, p, nil, nil, responderEDH, false, p != peer.EmptyID)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())
 		if maErr == nil {

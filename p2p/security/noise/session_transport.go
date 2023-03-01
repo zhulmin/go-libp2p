@@ -80,7 +80,7 @@ type SessionTransport struct {
 // SecureInbound runs the Noise handshake as the responder.
 // If p is empty, connections from any peer are accepted.
 func (i *SessionTransport) SecureInbound(ctx context.Context, insecure net.Conn, p peer.ID) (sec.SecureConn, error) {
-	checkPeerID := !i.disablePeerIDCheck && p != ""
+	checkPeerID := !i.disablePeerIDCheck && p != peer.EmptyID
 	c, err := newSecureSession(i.t, ctx, insecure, p, i.prologue, i.initiatorEarlyDataHandler, i.responderEarlyDataHandler, false, checkPeerID)
 	if err != nil {
 		addr, maErr := manet.FromNetAddr(insecure.RemoteAddr())

@@ -26,7 +26,7 @@ func AddrInfosFromP2pAddrs(maddrs ...ma.Multiaddr) ([]AddrInfo, error) {
 	m := make(map[ID][]ma.Multiaddr)
 	for _, maddr := range maddrs {
 		transport, id := SplitAddr(maddr)
-		if id == "" {
+		if id == EmptyID {
 			return nil, ErrInvalidAddr
 		}
 		if transport == nil {
@@ -50,14 +50,14 @@ func AddrInfosFromP2pAddrs(maddrs ...ma.Multiaddr) ([]AddrInfo, error) {
 // * Returns a empty peer ID if the address doesn't contain a /p2p part.
 func SplitAddr(m ma.Multiaddr) (transport ma.Multiaddr, id ID) {
 	if m == nil {
-		return nil, ""
+		return nil, EmptyID
 	}
 
 	transport, p2ppart := ma.SplitLast(m)
 	if p2ppart == nil || p2ppart.Protocol().Code != ma.P_P2P {
-		return m, ""
+		return m, EmptyID
 	}
-	id = ID(p2ppart.RawValue()) // already validated by the multiaddr library.
+	id = ID{idBytes: string(p2ppart.RawValue())} // already validated by the multiaddr library.
 	return transport, id
 }
 
@@ -74,7 +74,7 @@ func AddrInfoFromString(s string) (*AddrInfo, error) {
 // AddrInfoFromP2pAddr converts a Multiaddr to an AddrInfo.
 func AddrInfoFromP2pAddr(m ma.Multiaddr) (*AddrInfo, error) {
 	transport, id := SplitAddr(m)
-	if id == "" {
+	if id == EmptyID {
 		return nil, ErrInvalidAddr
 	}
 	info := &AddrInfo{ID: id}

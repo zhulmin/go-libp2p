@@ -7,6 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 
@@ -32,14 +33,14 @@ func TestGracePeriod(t *testing.T) {
 	require.NoError(t, err)
 	start := time.Now()
 	removed := make(chan struct{})
-	pstore.EXPECT().RemovePeer(peer.ID("foobar")).DoAndReturn(func(p peer.ID) {
+	pstore.EXPECT().RemovePeer(test.MustPeerIDFromSeed("foobar")).DoAndReturn(func(p peer.ID) {
 		defer close(removed)
 		// make sure the call happened after the grace period
 		require.GreaterOrEqual(t, time.Since(start), gracePeriod)
 		require.LessOrEqual(t, time.Since(start), 3*gracePeriod)
 	})
 	require.NoError(t, emitter.Emit(event.EvtPeerConnectednessChanged{
-		Peer:          "foobar",
+		Peer:          test.MustPeerIDFromSeed("foobar"),
 		Connectedness: network.NotConnected,
 	}))
 	<-removed
@@ -59,11 +60,11 @@ func TestReconnect(t *testing.T) {
 	emitter, err := eventBus.Emitter(new(event.EvtPeerConnectednessChanged))
 	require.NoError(t, err)
 	require.NoError(t, emitter.Emit(event.EvtPeerConnectednessChanged{
-		Peer:          "foobar",
+		Peer:          test.MustPeerIDFromSeed("foobar"),
 		Connectedness: network.NotConnected,
 	}))
 	require.NoError(t, emitter.Emit(event.EvtPeerConnectednessChanged{
-		Peer:          "foobar",
+		Peer:          test.MustPeerIDFromSeed("foobar"),
 		Connectedness: network.Connected,
 	}))
 	time.Sleep(gracePeriod * 3 / 2)
@@ -88,7 +89,7 @@ func TestClose(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, emitter.Emit(event.EvtPeerConnectednessChanged{
-		Peer:          "foobar",
+		Peer:          test.MustPeerIDFromSeed("foobar"),
 		Connectedness: network.NotConnected,
 	}))
 
@@ -101,7 +102,7 @@ func TestClose(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	pstore.EXPECT().RemovePeer(peer.ID("foobar")).Do(func(peer.ID) { close(done) })
+	pstore.EXPECT().RemovePeer(test.MustPeerIDFromSeed("foobar")).Do(func(peer.ID) { close(done) })
 	require.NoError(t, man.Close())
 	select {
 	case <-done:

@@ -138,8 +138,8 @@ func testAddAddress(ab pstore.AddrBook, clk *mockClock.Mock) func(*testing.T) {
 
 		t.Run("accessing an empty peer ID", func(t *testing.T) {
 			addrs := GenerateAddrs(5)
-			ab.AddAddrs("", addrs, time.Hour)
-			AssertAddressesEqual(t, addrs, ab.Addrs(""))
+			ab.AddAddrs(peer.EmptyID, addrs, time.Hour)
+			AssertAddressesEqual(t, addrs, ab.Addrs(peer.EmptyID))
 		})
 
 		t.Run("add a /p2p address with valid peerid", func(t *testing.T) {

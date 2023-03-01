@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
@@ -200,7 +201,7 @@ func testResourceManagerDialDenied(t *testing.T, tc *connTestCase) {
 
 	rcmgr.EXPECT().OpenConnection(network.DirOutbound, false, target).Return(connScope, nil)
 	rerr := errors.New("nope")
-	p := peer.ID("server")
+	p := test.MustPeerIDFromSeed("server")
 	connScope.EXPECT().SetPeer(p).Return(rerr)
 	connScope.EXPECT().Done()
 

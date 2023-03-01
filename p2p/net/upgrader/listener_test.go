@@ -12,9 +12,9 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/sec"
 	"github.com/libp2p/go-libp2p/core/sec/insecure"
+	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/net/upgrader"
 
@@ -161,7 +161,7 @@ func TestListenerClose(t *testing.T) {
 	require.Contains(err.Error(), "use of closed network connection")
 
 	// doesn't accept new connections when it is closed
-	_, err = dial(t, u, ln.Multiaddr(), peer.ID("1"), &network.NullScope{})
+	_, err = dial(t, u, ln.Multiaddr(), test.MustPeerIDFromSeed("1"), &network.NullScope{})
 	require.Error(err)
 }
 
@@ -307,21 +307,21 @@ func TestListenerConnectionGater(t *testing.T) {
 	// rejecting after handshake.
 	testGater.BlockSecured(true)
 	testGater.BlockAccept(false)
-	conn, err = dial(t, u, ln.Multiaddr(), "invalid", &network.NullScope{})
+	conn, err = dial(t, u, ln.Multiaddr(), test.MustPeerIDFromSeed("invalid"), &network.NullScope{})
 	require.Error(err)
 	require.Nil(conn)
 
 	// rejecting on accept will trigger firupgrader.
 	testGater.BlockSecured(true)
 	testGater.BlockAccept(true)
-	conn, err = dial(t, u, ln.Multiaddr(), "invalid", &network.NullScope{})
+	conn, err = dial(t, u, ln.Multiaddr(), test.MustPeerIDFromSeed("invalid"), &network.NullScope{})
 	require.Error(err)
 	require.Nil(conn)
 
 	// rejecting only on acceptance.
 	testGater.BlockSecured(false)
 	testGater.BlockAccept(true)
-	conn, err = dial(t, u, ln.Multiaddr(), "invalid", &network.NullScope{})
+	conn, err = dial(t, u, ln.Multiaddr(), test.MustPeerIDFromSeed("invalid"), &network.NullScope{})
 	require.Error(err)
 	require.Nil(conn)
 

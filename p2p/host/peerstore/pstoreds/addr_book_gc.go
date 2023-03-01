@@ -290,7 +290,12 @@ func (gc *dsAddrBookGc) purgeStore() {
 		if err := record.flush(batch); err != nil {
 			log.Warnf("failed to flush entry modified by GC for peer: &v, err: %v", id, err)
 		}
-		gc.ab.cache.Remove(peer.ID(id))
+		p, err := peer.IDFromBytes(id)
+		if err != nil {
+			log.Warnf("failed to parse peer from bytes: bytes=%v err=%v", id, err)
+			continue
+		}
+		gc.ab.cache.Remove(peer.ID(p))
 	}
 
 	if err = batch.Commit(context.TODO()); err != nil {
