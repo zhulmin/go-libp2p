@@ -57,3 +57,15 @@ func TestDecodeInterpersedHexBytesOneByte(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "ba", hex.EncodeToString(b))
 }
+
+func FuzzInterpersedHex(f *testing.F) {
+	f.Fuzz(func(t *testing.T, b []byte) {
+		s := EncodeInterspersedHex(b)
+		b1, err := DecodeInterspersedHex([]byte(s))
+		require.NoError(t, err)
+		require.Equal(t, b, b1)
+		b2, err := DecodeInterpersedHexFromASCIIString(s)
+		require.NoError(t, err)
+		require.Equal(t, b, b2)
+	})
+}
