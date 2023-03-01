@@ -5,21 +5,21 @@ import (
 	"strings"
 )
 
-// EncodeInterpersedHex encodes a byte slice into a string of hex characters,
+// EncodeInterspersedHex encodes a byte slice into a string of hex characters,
 // separating each encoded byte with a colon (':').
 //
 // Example: { 0x01, 0x02, 0x03 } -> "01:02:03"
-func EncodeInterpersedHex(src []byte) string {
+func EncodeInterspersedHex(src []byte) string {
 	var builder strings.Builder
-	EncodeInterpersedHexToBuilder(src, &builder)
+	EncodeInterspersedHexToBuilder(src, &builder)
 	return builder.String()
 }
 
-// EncodeInterpersedHexToBuilder encodes a byte slice into a of hex characters,
+// EncodeInterspersedHexToBuilder encodes a byte slice into a of hex characters,
 // separating each encoded byte with a colon (':'). String is written to the builder.
 //
 // Example: { 0x01, 0x02, 0x03 } -> "01:02:03"
-func EncodeInterpersedHexToBuilder(src []byte, builder *strings.Builder) {
+func EncodeInterspersedHexToBuilder(src []byte, builder *strings.Builder) {
 	if src == nil {
 		return
 	}
@@ -34,11 +34,11 @@ func EncodeInterpersedHexToBuilder(src []byte, builder *strings.Builder) {
 	}
 }
 
-// DecodeInterpersedHex decodes a byte slice string of hex characters into a byte slice,
+// DecodeInterspersedHex decodes a byte slice string of hex characters into a byte slice,
 // where the hex characters are expected to be separated by a colon (':').
 //
 // Example: {'0', '1', ':', '0', '2', ':', '0', '3'} -> { 0x01, 0x02, 0x03 }
-func DecodeInterpersedHex(src []byte) ([]byte, error) {
+func DecodeInterspersedHex(src []byte) ([]byte, error) {
 	dst := make([]byte, (len(src)+1)/3)
 	i, j := 0, 1
 	for ; j < len(src); j += 3 { // jump one extra byte for the separator (:)

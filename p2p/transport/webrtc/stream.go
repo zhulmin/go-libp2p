@@ -51,7 +51,10 @@ type webRTCStream struct {
 	// pbio.Reader is not thread safe,
 	// and while our Read is not promised to be thread safe,
 	// we ourselves internally read from multiple routines...
-	readerMux  sync.Mutex
+	readerMux sync.Mutex
+	// this buffer is limited up to a single message. Reason we need it
+	// is because a reader might read a message midway, and so we need a
+	// wait to buffer that for as long as the remaining part is not (yet) read
 	readBuffer []byte
 
 	writer pbio.Writer
@@ -72,7 +75,7 @@ type webRTCStream struct {
 
 	conn *connection
 	id   uint16
-	rwc  datachannel.ReadWriteCloser
+	rwc  *datachannel.DataChannel
 
 	laddr net.Addr
 	raddr net.Addr
@@ -104,7 +107,7 @@ func newStream(
 
 		conn: connection,
 		id:   *channel.ID(),
-		rwc:  rwc,
+		rwc:  rwc.(*datachannel.DataChannel),
 
 		laddr: laddr,
 		raddr: raddr,
@@ -114,9 +117,7 @@ func newStream(
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
-	channel.OnBufferedAmountLow(func() {
-		result.writeAvailable.Signal()
-	})
+	channel.OnBufferedAmountLow(result.writeAvailable.Signal)
 
 	return result
 }

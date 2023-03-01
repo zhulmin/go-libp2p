@@ -4,17 +4,12 @@ import (
 	"context"
 	"errors"
 	"net"
-	"sync"
 	"time"
-
-	pool "github.com/libp2p/go-buffer-pool"
 )
 
 var _ net.PacketConn = &muxedConnection{}
 
-var (
-	errAlreadyClosed = errors.New("already closed")
-)
+var errAlreadyClosed = errors.New("already closed")
 
 const maxPacketsInQueue = 128
 
@@ -30,6 +25,8 @@ type muxedConnection struct {
 	address *string
 	mux     *udpMux
 }
+
+var _ net.PacketConn = (*muxedConnection)(nil)
 
 func newMuxedConnection(mux *udpMux, ufrag string) *muxedConnection {
 	ctx, cancel := context.WithCancel(mux.ctx)
@@ -109,97 +106,4 @@ func (conn *muxedConnection) closeConnection() error {
 	conn.pq.Close()
 	conn.cancel()
 	return nil
-}
-
-type packet struct {
-	addr net.Addr
-	buf  []byte
-}
-
-var (
-	errTooManyPackets    = errors.New("too many packets in queue; dropping")
-	errPacketQueueClosed = errors.New("packet queue closed")
-)
-
-// just a convenience wrapper around a channel
-type packetQueue struct {
-	pktsMux sync.Mutex
-	pktsCh  chan struct{}
-	pkts    []packet
-
-	ctx    context.Context
-	cancel context.CancelFunc
-}
-
-func newPacketQueue() *packetQueue {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &packetQueue{
-		pktsCh: make(chan struct{}, maxPacketsInQueue),
-
-		ctx:    ctx,
-		cancel: cancel,
-	}
-}
-
-// Pop reads a packet from the packetQueue or blocks until
-// either a packet becomes available or the queue is closed.
-func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, net.Addr, error) {
-	select {
-	case <-pq.pktsCh:
-		pq.pktsMux.Lock()
-		defer pq.pktsMux.Unlock()
-
-		p := pq.pkts[0]
-
-		n := copy(buf, p.buf)
-		if n == len(p.buf) {
-			// only move packet from queue if we read all
-			pq.pkts = pq.pkts[1:]
-			pool.Put(p.buf)
-		} else {
-			// otherwise we need to keep the packet in the queue
-			// but do update the buf
-			pq.pkts[0].buf = p.buf[n:]
-			// do make sure to put a receiver again
-			select {
-			case pq.pktsCh <- struct{}{}:
-			default:
-			}
-		}
-
-		return n, p.addr, nil
-
-	// It is desired to allow reads of this channel even
-	// when pq.ctx.Done() is already closed.
-	case <-ctx.Done():
-		return 0, nil, errPacketQueueClosed
-	}
-}
-
-// Push adds a packet to the packetQueue
-func (pq *packetQueue) Push(buf []byte, addr net.Addr) error {
-	pq.pktsMux.Lock()
-	defer pq.pktsMux.Unlock()
-
-	if len(pq.pkts) >= maxPacketsInQueue {
-		return errTooManyPackets
-	}
-
-	pq.pkts = append(pq.pkts, packet{addr, buf})
-	select {
-	case pq.pktsCh <- struct{}{}:
-	default:
-	}
-
-	return nil
-}
-
-// discard all packets in the queue and return
-// buffers
-func (pq *packetQueue) Close() {
-	select {
-	case <-pq.ctx.Done():
-	default:
-		pq.cancel()
-	}
 }

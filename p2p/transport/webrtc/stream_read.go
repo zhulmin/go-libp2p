@@ -7,7 +7,6 @@ import (
 	"time"
 
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"github.com/pion/datachannel"
 )
 
 // Read from the underlying datachannel. This also
@@ -79,7 +78,7 @@ func (s *webRTCStream) readMessageFromDataChannel(msg *pb.Message) error {
 }
 
 func (s *webRTCStream) SetReadDeadline(t time.Time) error {
-	return s.rwc.(*datachannel.DataChannel).SetReadDeadline(t)
+	return s.rwc.SetReadDeadline(t)
 }
 
 func (s *webRTCStream) CloseRead() error {

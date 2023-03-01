@@ -132,7 +132,7 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		log.Error("WebRTC doesn't support private networks yet.")
 		return nil, fmt.Errorf("WebRTC doesn't support private networks yet")
 	}
-	localPeerId, err := peer.IDFromPrivateKey(privKey)
+	localPeerID, err := peer.IDFromPrivateKey(privKey)
 	if err != nil {
 		return nil, fmt.Errorf("get local peer ID: %w", err)
 	}
@@ -161,7 +161,7 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		webrtcConfig: config,
 		privKey:      privKey,
 		noiseTpt:     noiseTpt,
-		localPeerId:  localPeerId,
+		localPeerId:  localPeerID,
 
 		peerConnectionTimeouts: IceTimeouts{
 			Disconnect: DefaultDisconnectedTimeout,
@@ -242,16 +242,12 @@ func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error
 
 	listenerMultiaddr = listenerMultiaddr.Encapsulate(certMultiaddress)
 
-	listener, err := newListener(
+	return newListener(
 		t,
 		listenerMultiaddr,
 		socket,
 		t.webrtcConfig,
 	)
-	if err != nil {
-		return nil, err
-	}
-	return listener, nil
 }
 
 func (t *WebRTCTransport) Dial(ctx context.Context, remoteMultiaddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {

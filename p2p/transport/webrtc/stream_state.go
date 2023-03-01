@@ -15,13 +15,11 @@ const (
 	stateClosed
 )
 
-type (
-	webRTCStreamState struct {
-		mu    sync.RWMutex
-		state channelState
-		reset bool
-	}
-)
+type webRTCStreamState struct {
+	mu    sync.RWMutex
+	state channelState
+	reset bool
+}
 
 func (ss *webRTCStreamState) HandleInboundFlag(flag pb.Message_Flag) (channelState, bool) {
 	ss.mu.Lock()

@@ -64,7 +64,7 @@ func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr
 		cancel:               cancel,
 		socket:               socket,
 		unknownUfragCallback: unknownUfragCallback,
-		storage:              newUdpMuxStorage(),
+		storage:              newUDPMuxStorage(),
 	}
 
 	mux.wg.Add(1)
@@ -235,7 +235,7 @@ type udpMuxStorage struct {
 	addrMap  map[string]*muxedConnection
 }
 
-func newUdpMuxStorage() *udpMuxStorage {
+func newUDPMuxStorage() *udpMuxStorage {
 	return &udpMuxStorage{
 		ufragMap: make(map[ufragConnKey]*muxedConnection),
 		addrMap:  make(map[string]*muxedConnection),

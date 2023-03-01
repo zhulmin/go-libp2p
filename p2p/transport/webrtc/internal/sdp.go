@@ -15,7 +15,7 @@ import (
 // The fingerprint used to render a client SDP is arbitrary since
 // it fingerprint verification is disabled in favour of a noise
 // handshake. The max message size is fixed to 16384 bytes.
-const clientSDP string = `v=0
+const clientSDP = `v=0
 o=- 0 0 IN %[1]s %[2]s
 s=-
 c=IN %[1]s %[2]s
@@ -93,7 +93,7 @@ func FingerprintToSDP(fp *multihash.DecodedMultihash) (string, error) {
 	if fp == nil {
 		return "", fmt.Errorf("fingerprint multihash: %w", ErrNilParam)
 	}
-	sdpString, err := GetSupportedSDPString(fp.Code)
+	sdpString, err := getSupportedSDPString(fp.Code)
 	if err != nil {
 		return "", err
 	}
@@ -102,7 +102,7 @@ func FingerprintToSDP(fp *multihash.DecodedMultihash) (string, error) {
 	builder.Grow(len(fp.Digest)*3 + 8)
 	builder.WriteString(sdpString)
 	builder.WriteByte(' ')
-	encoding.EncodeInterpersedHexToBuilder(fp.Digest, &builder)
+	encoding.EncodeInterspersedHexToBuilder(fp.Digest, &builder)
 	return builder.String(), nil
 }
 
@@ -128,10 +128,10 @@ func GetSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	}
 }
 
-// GetSupportedSDPString converts a multihash code
+// getSupportedSDPString converts a multihash code
 // to a string format recognised by pion for fingerprint
 // algorithms
-func GetSupportedSDPString(code uint64) (string, error) {
+func getSupportedSDPString(code uint64) (string, error) {
 	// values based on (cryto.Hash).String()
 	switch code {
 	case multihash.MD5:

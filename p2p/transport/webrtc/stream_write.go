@@ -9,7 +9,6 @@ import (
 	"time"
 
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"github.com/pion/datachannel"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -21,42 +20,12 @@ func (s *webRTCStream) Write(b []byte) (int, error) {
 	// Check if there is any message on the wire. This is used for control
 	// messages only when the read side of the stream is closed
 	if s.stateHandler.State() == stateReadClosed {
-		s.readLoopOnce.Do(func() {
-			go func() {
-				// zero the read deadline, so read call only returns
-				// when the underlying datachannel closes or there is
-				// a message on the channel
-				s.rwc.(*datachannel.DataChannel).SetReadDeadline(time.Time{})
-				var msg pb.Message
-				for {
-					if s.stateHandler.Closed() {
-						return
-					}
-					err := s.readMessageFromDataChannel(&msg)
-					if err != nil {
-						if errors.Is(err, io.EOF) {
-							s.close(true, true)
-						}
-						return
-					}
-					if msg.Flag != nil {
-						state, reset := s.stateHandler.HandleInboundFlag(msg.GetFlag())
-						if state == stateClosed {
-							log.Debug("closing: after handle inbound flag")
-							s.close(reset, true)
-						}
-					}
-				}
-			}()
-		})
+		s.readLoopOnce.Do(s.spawnControlMessageReader)
 	}
 
 	const chunkSize = maxMessageSize - protoOverhead - varintOverhead
 
-	var (
-		err error
-		n   int
-	)
+	var n int
 
 	for len(b) > 0 {
 		end := len(b)
@@ -71,7 +40,40 @@ func (s *webRTCStream) Write(b []byte) (int, error) {
 			return n, err
 		}
 	}
-	return n, err
+
+	return n, nil
+}
+
+// used for reading control messages while writing, in case the reader is closed,
+// as to ensure we do still get control messages. This is important as according to the spec
+// our data and control channels are intermixed on the same conn.
+func (s *webRTCStream) spawnControlMessageReader() {
+	go func() {
+		// zero the read deadline, so read call only returns
+		// when the underlying datachannel closes or there is
+		// a message on the channel
+		s.rwc.SetReadDeadline(time.Time{})
+		var msg pb.Message
+		for {
+			if s.stateHandler.Closed() {
+				return
+			}
+			err := s.readMessageFromDataChannel(&msg)
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					s.close(true, true)
+				}
+				return
+			}
+			if msg.Flag != nil {
+				state, reset := s.stateHandler.HandleInboundFlag(msg.GetFlag())
+				if state == stateClosed {
+					log.Debug("closing: after handle inbound flag")
+					s.close(reset, true)
+				}
+			}
+		}
+	}()
 }
 
 func (s *webRTCStream) writeMessage(msg *pb.Message) error {
@@ -101,28 +103,20 @@ func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 			writeDeadlineTimer.Reset(time.Until(writeDeadline))
 		}
 
-		bufferedAmount := int(s.rwc.(*datachannel.DataChannel).BufferedAmount())
+		bufferedAmount := int(s.rwc.BufferedAmount())
 		addedBuffer := bufferedAmount + varintOverhead + proto.Size(msg)
 		if addedBuffer > maxBufferedAmount {
 			select {
 			case <-writeDeadlineTimer.C:
 				return os.ErrDeadlineExceeded
 			case <-writeAvailable:
-				err := s.writeMessageToWriter(msg)
-				if err != nil {
-					return err
-				}
-				return nil
+				return s.writeMessageToWriter(msg)
 			case <-s.ctx.Done():
 				return io.ErrClosedPipe
 			case <-deadlineUpdated:
 			}
 		} else {
-			err := s.writeMessageToWriter(msg)
-			if err != nil {
-				return err
-			}
-			return nil
+			return s.writeMessageToWriter(msg)
 		}
 	}
 }
