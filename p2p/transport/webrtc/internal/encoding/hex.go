@@ -39,6 +39,10 @@ func EncodeInterspersedHexToBuilder(src []byte, builder *strings.Builder) {
 //
 // Example: {'0', '1', ':', '0', '2', ':', '0', '3'} -> { 0x01, 0x02, 0x03 }
 func DecodeInterspersedHex(src []byte) ([]byte, error) {
+	if len(src) == 0 {
+		return []byte{}, nil
+	}
+
 	dst := make([]byte, (len(src)+1)/3)
 	i, j := 0, 1
 	for ; j < len(src); j += 3 { // jump one extra byte for the separator (:)
@@ -74,6 +78,10 @@ func DecodeInterspersedHex(src []byte) ([]byte, error) {
 //
 // Example: "01:02:03" -> { 0x01, 0x02, 0x03 }
 func DecodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
+	if len(src) == 0 {
+		return []byte{}, nil
+	}
+
 	dst := make([]byte, (len(src)+1)/3)
 	i, j := 0, 1
 	for ; j < len(src); j += 3 { // jump one extra byte for the separator (:)
