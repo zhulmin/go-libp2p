@@ -20,7 +20,7 @@ func EncodeInterspersedHex(src []byte) string {
 //
 // Example: { 0x01, 0x02, 0x03 } -> "01:02:03"
 func EncodeInterspersedHexToBuilder(src []byte, builder *strings.Builder) {
-	if src == nil {
+	if len(src) == 0 {
 		return
 	}
 	builder.Grow(len(src)*3 - 1)
