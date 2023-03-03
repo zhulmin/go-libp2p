@@ -78,8 +78,14 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	if err != nil {
 		return nil, err
 	}
-	localMhBuf, _ := multihash.Encode(localMh, multihash.SHA2_256)
-	localFpMultibase, _ := multibase.Encode(multibase.Base64url, localMhBuf)
+	localMhBuf, err := multihash.Encode(localMh, multihash.SHA2_256)
+	if err != nil {
+		return nil, err
+	}
+	localFpMultibase, err := multibase.Encode(multibase.Base64url, localMhBuf)
+	if err != nil {
+		return nil, err
+	}
 
 	inFlightQueueCh := make(chan candidateAddr, 1)
 
