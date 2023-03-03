@@ -312,15 +312,15 @@ type sidAllocator struct {
 }
 
 func newSidAllocator(direction network.Direction) *sidAllocator {
-	var n atomic.Uint32
 	switch direction {
 	case network.DirInbound:
 		// server will use odd values
-		n.Add(1)
-		return &sidAllocator{n: n}
+		a := new(sidAllocator)
+		a.n.Store(1)
+		return a
 	case network.DirOutbound:
 		// client will use even values
-		return &sidAllocator{n: n}
+		return new(sidAllocator)
 	default:
 		panic(fmt.Sprintf("create SID allocator for direction: %s", direction))
 	}
