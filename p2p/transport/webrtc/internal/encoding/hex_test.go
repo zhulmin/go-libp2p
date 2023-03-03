@@ -77,6 +77,32 @@ func TestDecodeInterpersedHexFromASCIIStringEmpty(t *testing.T) {
 	require.Equal(t, []byte{}, b)
 }
 
+func TestDecodeInterpersedHexInvalid(t *testing.T) {
+	for _, v := range []string{"0", "0000", "000"} {
+		_, err := DecodeInterspersedHex([]byte(v))
+		require.Error(t, err)
+	}
+}
+
+func TestDecodeInterpersedHexValid(t *testing.T) {
+	b, err := DecodeInterspersedHex([]byte("00"))
+	require.NoError(t, err)
+	require.Equal(t, []byte{0}, b)
+}
+
+func TestDecodeInterpersedHexFromASCIIStringInvalid(t *testing.T) {
+	for _, v := range []string{"0", "0000", "000"} {
+		_, err := DecodeInterpersedHexFromASCIIString(v)
+		require.Error(t, err)
+	}
+}
+
+func TestDecodeInterpersedHexFromASCIIStringValid(t *testing.T) {
+	b, err := DecodeInterpersedHexFromASCIIString("00")
+	require.NoError(t, err)
+	require.Equal(t, []byte{0}, b)
+}
+
 func FuzzInterpersedHex(f *testing.F) {
 	f.Fuzz(func(t *testing.T, b []byte) {
 		decoded, err := DecodeInterspersedHex(b)
