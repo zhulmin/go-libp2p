@@ -153,7 +153,6 @@ func (mux *udpMux) readLoop() {
 		// function has ownership of the packet. Otherwise, the
 		// ownership of the packet is passed to a connection
 		if err := mux.processPacket(buf, addr); err != nil {
-			buf = buf[:cap(buf)]
 			pool.Put(buf)
 		}
 	}
@@ -206,7 +205,7 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 		}
 	}
 
-	if err = conn.Push(buf); err != nil {
+	if err := conn.Push(buf); err != nil {
 		log.Errorf("could not push packet: %v", err)
 	}
 	return nil

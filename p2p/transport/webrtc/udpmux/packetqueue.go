@@ -18,6 +18,8 @@ var (
 	errPacketQueueClosed = errors.New("packet queue closed")
 )
 
+const maxPacketsInQueue = 128
+
 type packetQueue struct {
 	packetsMux sync.Mutex
 	packetsCh  chan struct{}
@@ -26,7 +28,7 @@ type packetQueue struct {
 
 func newPacketQueue() *packetQueue {
 	return &packetQueue{
-		packetsCh: make(chan struct{}, maxPacketsInQueue),
+		packetsCh: make(chan struct{}, 1),
 	}
 }
 
@@ -52,8 +54,14 @@ func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, error) {
 			// otherwise we need to keep the packet in the queue
 			// but do update the buf
 			pq.packets[0].buf = p.buf[n:]
-			// do make sure to put a receiver again
-			pq.packetsCh <- struct{}{}
+		}
+
+		if len(pq.packets) > 0 {
+			// to make sure a next pop call will work
+			select {
+			case pq.packetsCh <- struct{}{}:
+			default:
+			}
 		}
 
 		return n, nil
@@ -74,11 +82,10 @@ func (pq *packetQueue) Push(ctx context.Context, buf []byte) error {
 		return errTooManyPackets
 	}
 
+	pq.packets = append(pq.packets, packet{buf})
 	select {
 	case pq.packetsCh <- struct{}{}:
-		pq.packets = append(pq.packets, packet{buf})
-	case <-ctx.Done():
-		return errPacketQueueClosed
+	default:
 	}
 
 	return nil

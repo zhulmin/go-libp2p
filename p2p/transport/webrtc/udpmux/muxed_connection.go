@@ -11,8 +11,6 @@ var _ net.PacketConn = &muxedConnection{}
 
 var errAlreadyClosed = errors.New("already closed")
 
-const maxPacketsInQueue = 128
-
 // muxedConnection provides a net.PacketConn abstraction
 // over packetQueue and adds the ability to store addresses
 // from which this connection (indexed by ufrag) received

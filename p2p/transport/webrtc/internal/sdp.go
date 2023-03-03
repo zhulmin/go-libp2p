@@ -32,7 +32,7 @@ a=sctp-port:5000
 a=max-message-size:16384
 `
 
-func RenderClientSdp(addr *net.UDPAddr, ufrag string) string {
+func RenderClientSDP(addr *net.UDPAddr, ufrag string) string {
 	ipVersion := "IP4"
 	if addr.IP.To4() == nil {
 		ipVersion = "IP6"
@@ -70,7 +70,7 @@ a=candidate:1 1 UDP 1 %[2]s %[3]d typ host
 a=end-of-candidates
 `
 
-func RenderServerSdp(addr *net.UDPAddr, ufrag string, fingerprint multihash.DecodedMultihash) (string, error) {
+func RenderServerSDP(addr *net.UDPAddr, ufrag string, fingerprint multihash.DecodedMultihash) (string, error) {
 	ipVersion := "IP4"
 	if addr.IP.To4() == nil {
 		ipVersion = "IP6"

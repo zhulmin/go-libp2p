@@ -358,7 +358,7 @@ func (t *WebRTCTransport) dial(
 		return nil, fmt.Errorf("set local description: %w", err)
 	}
 
-	answerSdpString, err := internal.RenderServerSdp(raddr, ufrag, *remoteMultihash)
+	answerSdpString, err := internal.RenderServerSDP(raddr, ufrag, *remoteMultihash)
 	if err != nil {
 		return nil, fmt.Errorf("render server SDP: %w", err)
 	}

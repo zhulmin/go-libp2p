@@ -148,7 +148,7 @@ func (l *listener) establishConnForInFlightAddr(addr *candidateAddr) {
 		return
 	}
 	select {
-	case <-l.ctx.Done():
+	case <-ctx.Done():
 		log.Warn("could not push connection: ctx done")
 		conn.Close()
 	case l.acceptQueue <- conn:
@@ -229,7 +229,7 @@ func (l *listener) setupConnection(
 	errC := internal.AwaitPeerConnectionOpen(addr.ufrag, pc)
 	// we infer the client sdp from the incoming STUN connectivity check
 	// by setting the ice-ufrag equal to the incoming check.
-	clientSdpString := internal.RenderClientSdp(addr.raddr, addr.ufrag)
+	clientSdpString := internal.RenderClientSDP(addr.raddr, addr.ufrag)
 	clientSdp := webrtc.SessionDescription{SDP: clientSdpString, Type: webrtc.SDPTypeOffer}
 	pc.SetRemoteDescription(clientSdp)
 

@@ -43,7 +43,7 @@ func TestRenderServerSDP(t *testing.T) {
 	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
 	fingerprint := testMultihash
 
-	sdp, err := RenderServerSdp(addr, ufrag, fingerprint)
+	sdp, err := RenderServerSDP(addr, ufrag, fingerprint)
 	require.NoError(t, err)
 	require.Equal(t, expectedServerSDP, sdp)
 }
@@ -68,7 +68,7 @@ a=max-message-size:16384
 func TestRenderClientSDP(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 37826}
 	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
-	sdp := RenderClientSdp(addr, ufrag)
+	sdp := RenderClientSDP(addr, ufrag)
 	require.Equal(t, expectedClientSDP, sdp)
 }
 
@@ -77,7 +77,7 @@ func BenchmarkRenderClientSDP(b *testing.B) {
 	ufrag := "d2c0fc07-8bb3-42ae-bae2-a6fce8a0b581"
 
 	for i := 0; i < b.N; i++ {
-		RenderClientSdp(addr, ufrag)
+		RenderClientSDP(addr, ufrag)
 	}
 }
 
@@ -95,7 +95,7 @@ func BenchmarkRenderServerSDP(b *testing.B) {
 	fingerprint := testMultihash
 
 	for i := 0; i < b.N; i++ {
-		RenderServerSdp(addr, ufrag, fingerprint)
+		RenderServerSDP(addr, ufrag, fingerprint)
 	}
 
 }

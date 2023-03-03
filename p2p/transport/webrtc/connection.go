@@ -72,15 +72,10 @@ func newConnection(
 	remoteKey ic.PubKey,
 	remoteMultiaddr ma.Multiaddr,
 ) (*connection, error) {
+	// this will be incremented before use
+	idAllocator := newSidAllocator(direction)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	// this will be incremented before use
-	idAllocator, err := newSidAllocator(direction)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
 	conn := &connection{
 		dbgId:     rand.Intn(65536),
 		pc:        pc,
@@ -269,7 +264,6 @@ func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
 		// reset any streams
 		c.resetStreams()
 		c.cancel()
-		// is done safe to call twice?
 		c.scope.Done()
 		c.pc.Close()
 	}
@@ -279,16 +273,12 @@ func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
 // passed to `OpenStream` as well the closure of the underlying peerconnection
 func (c *connection) detachChannel(ctx context.Context, dc *webrtc.DataChannel) (rwc datachannel.ReadWriteCloser, err error) {
 	done := make(chan struct{})
-	var cls sync.Once
-	defer cls.Do(func() {
-		close(done)
-	})
 	// OnOpen will return immediately for detached datachannels
 	// refer: https://github.com/pion/webrtc/blob/7ab3174640b3ce15abebc2516a2ca3939b5f105f/datachannel.go#L278-L282
 	dc.OnOpen(func() {
 		rwc, err = dc.Detach()
 		// this is safe since the function should return instantly if the peerconnection is closed
-		cls.Do(func() { close(done) })
+		close(done)
 	})
 	select {
 	case <-c.ctx.Done():
@@ -318,24 +308,26 @@ func (c *connection) setRemotePublicKey(key ic.PubKey) {
 // By definition, the DTLS role for inbound connections is set to DTLS Server,
 // and outbound connections are DTLS Client.
 type sidAllocator struct {
-	n uint32
+	n atomic.Uint32
 }
 
-func newSidAllocator(direction network.Direction) (*sidAllocator, error) {
+func newSidAllocator(direction network.Direction) *sidAllocator {
+	var n atomic.Uint32
 	switch direction {
 	case network.DirInbound:
 		// server will use odd values
-		return &sidAllocator{n: 1}, nil
+		n.Add(1)
+		return &sidAllocator{n: n}
 	case network.DirOutbound:
 		// client will use even values
-		return &sidAllocator{n: 0}, nil
+		return &sidAllocator{n: n}
 	default:
-		return nil, fmt.Errorf("create SID allocator for direction: %s", direction)
+		panic(fmt.Sprintf("create SID allocator for direction: %s", direction))
 	}
 }
 
 func (a *sidAllocator) nextID() (*uint16, error) {
-	nxt := atomic.AddUint32(&a.n, 2)
+	nxt := a.n.Add(2)
 	if nxt > math.MaxUint16 {
 		return nil, fmt.Errorf("sid exhausted")
 	}
