@@ -59,10 +59,7 @@ type listener struct {
 	// is considered to be in flight from the instant it is handled
 	// until it is dequed by a call to Accept, or errors out in some
 	// way.
-	//
-	// ... blocking channel to get connections,
-	// allowing is to limit the number of in-flight connections
-	inFlightQueue          chan candidateAddr
+	inFlightInputQueue     chan candidateAddr
 	maxInFlightConnections uint32
 
 	// used to control the lifecycle of the listener
@@ -84,7 +81,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	localMhBuf, _ := multihash.Encode(localMh, multihash.SHA2_256)
 	localFpMultibase, _ := multibase.Encode(multibase.Base64url, localMhBuf)
 
-	inFlightQueueCh := make(chan candidateAddr) // unbuffered, it's up to the workers to define if they can accept work
+	inFlightQueueCh := make(chan candidateAddr, 1)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {
@@ -110,18 +107,16 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		ctx:                       ctx,
 		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		acceptQueue:               make(chan tpt.CapableConn),
-		inFlightQueue:             inFlightQueueCh,
+		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections-1),
+		inFlightInputQueue:        inFlightQueueCh,
 		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
 
-	for i := 0; i < int(l.maxInFlightConnections); i++ {
-		l.wg.Add(1)
-		go func() {
-			defer l.wg.Done()
-			l.inFlightWorker()
-		}()
-	}
+	l.wg.Add(1)
+	go func() {
+		defer l.wg.Done()
+		l.inFlightWorker()
+	}()
 
 	return l, err
 }
@@ -132,28 +127,24 @@ func (l *listener) inFlightWorker() {
 		case <-l.ctx.Done():
 			return
 
-		case addr := <-l.inFlightQueue:
-			l.establishConnForInFlightAddr(&addr)
+		case addr := <-l.inFlightInputQueue:
+			ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
+			defer cancel()
+
+			conn, err := l.handleCandidate(ctx, &addr)
+			if err != nil {
+				log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
+				return
+			}
+			select {
+			case <-ctx.Done():
+				log.Warn("could not push connection: ctx done")
+				conn.Close()
+			case l.acceptQueue <- conn:
+				// block until the connection is accepted,
+				// or until we are done, this effectively blocks our in flight from continuing to progress
+			}
 		}
-	}
-}
-
-func (l *listener) establishConnForInFlightAddr(addr *candidateAddr) {
-	ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
-	defer cancel()
-
-	conn, err := l.handleCandidate(ctx, addr)
-	if err != nil {
-		log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
-		return
-	}
-	select {
-	case <-ctx.Done():
-		log.Warn("could not push connection: ctx done")
-		conn.Close()
-	case l.acceptQueue <- conn:
-		// block until the connection is accepted,
-		// or until we are done, this effectively blocks our in flight from continuing to progress
 	}
 }
 

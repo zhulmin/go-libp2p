@@ -122,7 +122,11 @@ func WithPeerConnectionIceTimeouts(timeouts IceTimeouts) Option {
 // they are being negotiated, or are waiting to be accepted.
 func WithListenerMaxInFlightConnections(m uint32) Option {
 	return func(t *WebRTCTransport) error {
-		t.maxInFlightConnections = m
+		if m == 0 {
+			t.maxInFlightConnections = DefaultMaxInFlightConnections
+		} else {
+			t.maxInFlightConnections = m
+		}
 		return nil
 	}
 }
