@@ -7,6 +7,10 @@
 
 # [v0.27.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.27.0) (unreleased)
 
+### Breaking Changes
+
+* The `LocalPrivateKey` method was removed from the `network.Conn` interface.
+
 # [v0.26.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.26.1)
 
 This patch release fixes two bugs:
