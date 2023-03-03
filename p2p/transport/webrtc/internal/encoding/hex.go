@@ -2,6 +2,7 @@ package encoding
 
 import (
 	"encoding/hex"
+	"errors"
 	"strings"
 )
 
@@ -42,12 +43,18 @@ func DecodeInterspersedHex(src []byte) ([]byte, error) {
 	if len(src) == 0 {
 		return []byte{}, nil
 	}
+	if len(src) < 2 {
+		return nil, hex.ErrLength
+	}
 
 	dst := make([]byte, (len(src)+1)/3)
 	i, j := 0, 1
 	for ; j < len(src); j += 3 { // jump one extra byte for the separator (:)
 		p := src[j-1]
 		q := src[j]
+		if j+1 < len(src) && src[j+1] != ':' {
+			return nil, errUnexpectedInterperseHexChar
+		}
 
 		a := reverseHexTable[p]
 		b := reverseHexTable[q]
@@ -61,6 +68,9 @@ func DecodeInterspersedHex(src []byte) ([]byte, error) {
 		i++
 	}
 	if (len(src)+1)%3 != 0 {
+		if len(src)%3 == 0 {
+			j -= 1
+		}
 		// Check for invalid char before reporting bad length,
 		// since the invalid char (if present) is an earlier problem.
 		if reverseHexTable[src[j-1]] > 0x0f {
@@ -81,12 +91,18 @@ func DecodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
 	if len(src) == 0 {
 		return []byte{}, nil
 	}
+	if len(src) < 2 {
+		return nil, hex.ErrLength
+	}
 
 	dst := make([]byte, (len(src)+1)/3)
 	i, j := 0, 1
 	for ; j < len(src); j += 3 { // jump one extra byte for the separator (:)
 		p := src[j-1]
 		q := src[j]
+		if j+1 < len(src) && src[j+1] != ':' {
+			return nil, errUnexpectedInterperseHexChar
+		}
 
 		a := reverseHexTable[p]
 		b := reverseHexTable[q]
@@ -100,6 +116,9 @@ func DecodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
 		i++
 	}
 	if (len(src)+1)%3 != 0 {
+		if len(src)%3 == 0 {
+			j -= 1
+		}
 		// Check for invalid char before reporting bad length,
 		// since the invalid char (if present) is an earlier problem.
 		if reverseHexTable[src[j-1]] > 0x0f {
@@ -109,6 +128,10 @@ func DecodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
 	}
 	return dst[:i], nil
 }
+
+var (
+	errUnexpectedInterperseHexChar = errors.New("unexpected character in interspersed hex string")
+)
 
 const (
 	hextable        = "0123456789abcdef"

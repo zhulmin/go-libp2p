@@ -79,12 +79,22 @@ func TestDecodeInterpersedHexFromASCIIStringEmpty(t *testing.T) {
 
 func FuzzInterpersedHex(f *testing.F) {
 	f.Fuzz(func(t *testing.T, b []byte) {
-		s := EncodeInterspersedHex(b)
-		b1, err := DecodeInterspersedHex([]byte(s))
-		require.NoError(t, err)
-		require.Equal(t, b, b1)
-		b2, err := DecodeInterpersedHexFromASCIIString(s)
-		require.NoError(t, err)
-		require.Equal(t, b, b2)
+		decoded, err := DecodeInterspersedHex(b)
+		if err != nil {
+			return
+		}
+		encoded := EncodeInterspersedHex(decoded)
+		require.Equal(t, strings.ToLower(string(b)), encoded)
+	})
+}
+
+func FuzzInterspersedHexASCII(f *testing.F) {
+	f.Fuzz(func(t *testing.T, s string) {
+		decoded, err := DecodeInterpersedHexFromASCIIString(s)
+		if err != nil {
+			return
+		}
+		encoded := EncodeInterspersedHex(decoded)
+		require.Equal(t, strings.ToLower(s), encoded)
 	})
 }
