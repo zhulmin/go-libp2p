@@ -223,7 +223,7 @@ func (l *listener) setupConnection(
 		return nil, err
 	}
 
-	errC := internal.AwaitPeerConnectionOpen(addr.ufrag, pc)
+	errC := awaitPeerConnectionOpen(addr.ufrag, pc)
 	// we infer the client sdp from the incoming STUN connectivity check
 	// by setting the ice-ufrag equal to the incoming check.
 	clientSdpString := internal.RenderClientSDP(addr.raddr, addr.ufrag)
@@ -318,4 +318,33 @@ func (l *listener) Addr() net.Addr {
 
 func (l *listener) Multiaddr() ma.Multiaddr {
 	return l.localMultiaddr
+}
+
+func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan error {
+	errC := make(chan error)
+	var once sync.Once
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
+			once.Do(func() { close(errC) })
+		case webrtc.PeerConnectionStateFailed:
+			once.Do(func() {
+				// this ensures that we don't block this routine if the
+				// listener goes away
+				select {
+				case errC <- fmt.Errorf("peerconnection failed: %s", ufrag):
+					close(errC)
+				default:
+					log.Error("could not signal peerconnection failure")
+				}
+			})
+		case webrtc.PeerConnectionStateDisconnected:
+			// the connection can move to a disconnected state and back to a connected state without ICE renegotiation.
+			// This could happen when underlying UDP packets are lost, and therefore the connection moves to the disconnected state.
+			// If the connection then receives packets on the connection, it can move back to the connected state.
+			// If no packets are received until the failed timeout is triggered, the connection moves to the failed state.
+			log.Warn("peerconnection disconnected")
+		}
+	})
+	return errC
 }
