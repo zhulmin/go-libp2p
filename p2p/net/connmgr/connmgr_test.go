@@ -802,6 +802,7 @@ func (m mockConn) LocalMultiaddr() ma.Multiaddr                          { panic
 func (m mockConn) RemoteMultiaddr() ma.Multiaddr                         { panic("implement me") }
 func (m mockConn) Stat() network.ConnStats                               { return m.stats }
 func (m mockConn) ID() string                                            { panic("implement me") }
+func (m mockConn) IsClosed() bool                                        { panic("implement me") }
 func (m mockConn) NewStream(ctx context.Context) (network.Stream, error) { panic("implement me") }
 func (m mockConn) GetStreams() []network.Stream                          { panic("implement me") }
 func (m mockConn) Scope() network.ConnScope                              { panic("implement me") }
