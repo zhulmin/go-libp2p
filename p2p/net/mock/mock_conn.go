@@ -41,6 +41,8 @@ type conn struct {
 
 	closeOnce sync.Once
 
+	isClosed atomic.Bool
+
 	sync.RWMutex
 }
 
@@ -67,12 +69,17 @@ func newConn(ln, rn *peernet, l *link, dir network.Direction) *conn {
 	return c
 }
 
+func (c *conn) IsClosed() bool {
+	return c.isClosed.Load()
+}
+
 func (c *conn) ID() string {
 	return strconv.FormatInt(c.id, 10)
 }
 
 func (c *conn) Close() error {
 	c.closeOnce.Do(func() {
+		c.isClosed.Store(true)
 		go c.rconn.Close()
 		c.teardown()
 	})

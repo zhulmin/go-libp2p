@@ -33,6 +33,10 @@ type Conn interface {
 
 	// GetStreams returns all open streams over this conn.
 	GetStreams() []Stream
+
+	// IsClosed returns whether a connection is fully closed, so it can
+	// be garbage collected.
+	IsClosed() bool
 }
 
 // ConnectionState holds information about the connection.

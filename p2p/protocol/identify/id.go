@@ -349,11 +349,17 @@ func (ids *idService) IdentifyWait(c network.Conn) <-chan struct{} {
 	defer ids.connsMu.Unlock()
 
 	e, found := ids.conns[c]
-	if !found { // No entry found. Connection was most likely closed (and removed from this map) recently.
-		log.Debugw("connection not found in identify service", "peer", c.RemotePeer())
-		ch := make(chan struct{})
-		close(ch)
-		return ch
+	if !found {
+		// No entry found. We may have gotten an out of order notification. Check it we should have this conn (because we're still connected)
+		// We hold the ids.connsMu lock so this is safe since a disconnect event will be processed later if we are connected.
+		if c.IsClosed() {
+			log.Debugw("connection not found in identify service", "peer", c.RemotePeer())
+			ch := make(chan struct{})
+			close(ch)
+			return ch
+		} else {
+			ids.addConnWithLock(c)
+		}
 	}
 
 	if e.IdentifyWaitChan != nil {
@@ -863,6 +869,15 @@ func (ids *idService) consumeObservedAddress(observed []byte, c network.Conn) {
 	ids.observedAddrs.Record(c, maddr)
 }
 
+// addConnWithLock assuems caller holds the connsMu lock
+func (ids *idService) addConnWithLock(c network.Conn) {
+	_, found := ids.conns[c]
+	if !found {
+		<-ids.setupCompleted
+		ids.conns[c] = entry{}
+	}
+}
+
 func signedPeerRecordFromMessage(msg *pb.Identify) (*record.Envelope, error) {
 	if msg.SignedPeerRecord == nil || len(msg.SignedPeerRecord) == 0 {
 		return nil, nil
@@ -883,10 +898,8 @@ func (nn *netNotifiee) Connected(_ network.Network, c network.Conn) {
 	// The swarm implementation guarantees this.
 	ids := nn.IDService()
 
-	<-ids.setupCompleted
-
 	ids.connsMu.Lock()
-	ids.conns[c] = entry{}
+	ids.addConnWithLock(c)
 	ids.connsMu.Unlock()
 
 	nn.IDService().IdentifyWait(c)

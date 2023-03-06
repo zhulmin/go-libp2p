@@ -43,6 +43,10 @@ type Conn struct {
 
 var _ network.Conn = &Conn{}
 
+func (c *Conn) IsClosed() bool {
+	return c.conn.IsClosed()
+}
+
 func (c *Conn) ID() string {
 	// format: <first 10 chars of peer id>-<global conn ordinal>
 	return fmt.Sprintf("%s-%d", c.RemotePeer().Pretty()[0:10], c.id)
