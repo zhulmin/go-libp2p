@@ -20,9 +20,11 @@ func TestPing(t *testing.T) {
 	h1, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
 	defer h1.Close()
+	h1.Start()
 	h2, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
 	defer h2.Close()
+	h2.Start()
 
 	err = h1.Connect(ctx, peer.AddrInfo{
 		ID:    h2.ID(),

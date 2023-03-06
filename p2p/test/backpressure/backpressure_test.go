@@ -25,8 +25,10 @@ func TestStBackpressureStreamWrite(t *testing.T) {
 
 	h1, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	h1.Start()
 	h2, err := bhost.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	h2.Start()
 
 	// setup sender handler on 2
 	h2.SetStreamHandler(protocol.TestingID, func(s network.Stream) {
