@@ -796,13 +796,13 @@ type mockConn struct {
 
 func (m mockConn) Close() error                                          { panic("implement me") }
 func (m mockConn) LocalPeer() peer.ID                                    { panic("implement me") }
-func (m mockConn) LocalPrivateKey() crypto.PrivKey                       { panic("implement me") }
 func (m mockConn) RemotePeer() peer.ID                                   { panic("implement me") }
 func (m mockConn) RemotePublicKey() crypto.PubKey                        { panic("implement me") }
 func (m mockConn) LocalMultiaddr() ma.Multiaddr                          { panic("implement me") }
 func (m mockConn) RemoteMultiaddr() ma.Multiaddr                         { panic("implement me") }
 func (m mockConn) Stat() network.ConnStats                               { return m.stats }
 func (m mockConn) ID() string                                            { panic("implement me") }
+func (m mockConn) IsClosed() bool                                        { panic("implement me") }
 func (m mockConn) NewStream(ctx context.Context) (network.Stream, error) { panic("implement me") }
 func (m mockConn) GetStreams() []network.Stream                          { panic("implement me") }
 func (m mockConn) Scope() network.ConnScope                              { panic("implement me") }

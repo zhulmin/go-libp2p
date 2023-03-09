@@ -49,7 +49,7 @@ require (
 	github.com/pion/webrtc/v3 v3.1.51
 	github.com/prometheus/client_golang v1.14.0
 	github.com/quic-go/quic-go v0.33.0
-	github.com/quic-go/webtransport-go v0.5.1
+	github.com/quic-go/webtransport-go v0.5.2
 	github.com/raulk/go-watchdog v1.3.0
 	github.com/stretchr/testify v1.8.1
 	go.uber.org/fx v1.18.2

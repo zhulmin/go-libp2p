@@ -280,6 +280,13 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}
 
 	if opts.EnableRelayService {
+		if opts.EnableMetrics {
+			// Prefer explicitly provided metrics tracer
+			metricsOpt := []relayv2.Option{
+				relayv2.WithMetricsTracer(
+					relayv2.NewMetricsTracer(relayv2.WithRegisterer(opts.PrometheusRegisterer)))}
+			opts.RelayServiceOpts = append(metricsOpt, opts.RelayServiceOpts...)
+		}
 		h.relayManager = relaysvc.NewRelayManager(h, opts.RelayServiceOpts...)
 	}
 
@@ -776,7 +783,6 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	h.addrMu.RLock()
 	filteredIfaceAddrs := h.filteredInterfaceAddrs
 	allIfaceAddrs := h.allInterfaceAddrs
-	autonat := h.autoNat
 	h.addrMu.RUnlock()
 
 	// Iterate over all _unresolved_ listen addresses, resolving our primary
@@ -788,19 +794,6 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		log.Debugw("failed to resolve listen addrs", "error", err)
 	} else {
 		finalAddrs = append(finalAddrs, resolved...)
-	}
-
-	// add autonat PublicAddr Consider the following scenario
-	// For example, it is deployed on a cloud server,
-	// it provides an elastic ip accessible to the public network,
-	// but not have an external network card,
-	// so net.InterfaceAddrs() not has the public ip
-	// The host can indeed be dialed ！！！
-	if autonat != nil {
-		publicAddr, _ := autonat.PublicAddr()
-		if publicAddr != nil {
-			finalAddrs = append(finalAddrs, publicAddr)
-		}
 	}
 
 	finalAddrs = dedupAddrs(finalAddrs)

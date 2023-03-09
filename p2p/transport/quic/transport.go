@@ -153,7 +153,6 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 		quicConn:        pconn,
 		transport:       t,
 		scope:           scope,
-		privKey:         t.privKey,
 		localPeer:       t.localPeer,
 		localMultiaddr:  localMultiaddr,
 		remotePubKey:    remotePubKey,

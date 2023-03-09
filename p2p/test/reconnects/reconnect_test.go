@@ -37,6 +37,7 @@ func TestReconnect5(t *testing.T) {
 			h, err := bhost.NewHost(swarmt.GenSwarm(t, swarmOpt), nil)
 			require.NoError(t, err)
 			defer h.Close()
+			h.Start()
 			hosts = append(hosts, h)
 			h.SetStreamHandler(protocol.TestingID, EchoStreamHandler)
 		}

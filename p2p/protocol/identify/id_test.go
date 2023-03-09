@@ -2,6 +2,7 @@ package identify_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	coretest "github.com/libp2p/go-libp2p/core/test"
+	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
@@ -891,6 +893,46 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 			}
 			return true
 		}, 5*time.Second, 200*time.Millisecond)
+	}
+}
+
+func TestOutOfOrderConnectedNotifs(t *testing.T) {
+	h1, err := libp2p.New(libp2p.NoListenAddrs)
+	require.NoError(t, err)
+	h2, err := libp2p.New(libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")))
+	require.NoError(t, err)
+
+	doneCh := make(chan struct{})
+	errCh := make(chan error)
+
+	// This callback may be called before identify's Connnected callback completes. If it does, the IdentifyWait should still finish successfully.
+	h1.Network().Notify(&network.NotifyBundle{
+		ConnectedF: func(n network.Network, c network.Conn) {
+			bh1 := h1.(*basichost.BasicHost)
+			idChan := bh1.IDService().IdentifyWait(c)
+			go func() {
+				<-idChan
+				protos, err := bh1.Peerstore().GetProtocols(h2.ID())
+				if err != nil {
+					errCh <- err
+				}
+				if len(protos) == 0 {
+					errCh <- errors.New("no protocols found. Identify did not complete")
+				}
+
+				close(doneCh)
+			}()
+		},
+	})
+
+	h1.Connect(context.Background(), peer.AddrInfo{ID: h2.ID(), Addrs: h2.Addrs()})
+
+	select {
+	case <-doneCh:
+	case err := <-errCh:
+		t.Fatalf("err: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatalf("identify wait never completed")
 	}
 }
 

@@ -40,9 +40,11 @@ func TestHostSimple(t *testing.T) {
 	h1, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
 	defer h1.Close()
+	h1.Start()
 	h2, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
 	defer h2.Close()
+	h2.Start()
 
 	h2pi := h2.Peerstore().PeerInfo(h2.ID())
 	require.NoError(t, h1.Connect(ctx, h2pi))
@@ -447,8 +449,10 @@ func TestNewDialOld(t *testing.T) {
 func TestNewStreamResolve(t *testing.T) {
 	h1, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	h1.Start()
 	h2, err := NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
+	h2.Start()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

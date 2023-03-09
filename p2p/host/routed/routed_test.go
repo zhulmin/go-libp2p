@@ -28,6 +28,7 @@ func TestRoutedHostConnectToObsoleteAddresses(t *testing.T) {
 	h1, err := basic.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
 	defer h1.Close()
+	h1.Start()
 
 	h2, err := basic.NewHost(swarmt.GenSwarm(t), nil)
 	require.NoError(t, err)
