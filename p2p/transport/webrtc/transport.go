@@ -414,7 +414,6 @@ func (t *WebRTCTransport) dial(
 		t,
 		scope,
 		t.localPeerId,
-		t.privKey,
 		localAddr,
 		p,
 		nil,

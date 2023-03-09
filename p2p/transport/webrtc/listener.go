@@ -273,7 +273,6 @@ func (l *listener) setupConnection(
 		l.transport,
 		scope,
 		l.transport.localPeerId,
-		l.transport.privKey,
 		l.localMultiaddr,
 		"",  // remotePeer
 		nil, // remoteKey

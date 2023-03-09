@@ -41,7 +41,6 @@ type connection struct {
 	scope     network.ConnManagementScope
 
 	localPeer      peer.ID
-	privKey        ic.PrivKey
 	localMultiaddr ma.Multiaddr
 
 	remotePeer      peer.ID
@@ -65,7 +64,6 @@ func newConnection(
 	scope network.ConnManagementScope,
 
 	localPeer peer.ID,
-	privKey ic.PrivKey,
 	localMultiaddr ma.Multiaddr,
 
 	remotePeer peer.ID,
@@ -83,7 +81,6 @@ func newConnection(
 		scope:     scope,
 
 		localPeer:      localPeer,
-		privKey:        privKey,
 		localMultiaddr: localMultiaddr,
 
 		remotePeer:      remotePeer,
@@ -214,10 +211,6 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 // implement network.ConnSecurity
 func (c *connection) LocalPeer() peer.ID {
 	return c.localPeer
-}
-
-func (c *connection) LocalPrivateKey() ic.PrivKey {
-	return c.privKey
 }
 
 func (c *connection) RemotePeer() peer.ID {
