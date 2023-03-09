@@ -4,6 +4,7 @@
     "transports": [
         "tcp",
         "ws",
+        "wss",
         "quic",
         "quic-v1",
         "webtransport"
