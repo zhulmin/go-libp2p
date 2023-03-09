@@ -134,24 +134,32 @@ func (l *listener) inFlightWorker() {
 			return
 
 		case addr := <-l.inFlightInputQueue:
-			ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
-			defer cancel()
-
-			conn, err := l.handleCandidate(ctx, &addr)
-			if err != nil {
-				log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
+			if !l.handleInFlightInput(&addr) {
 				return
-			}
-			select {
-			case <-ctx.Done():
-				log.Warn("could not push connection: ctx done")
-				conn.Close()
-			case l.acceptQueue <- conn:
-				// block until the connection is accepted,
-				// or until we are done, this effectively blocks our in flight from continuing to progress
 			}
 		}
 	}
+}
+
+func (l *listener) handleInFlightInput(addr *candidateAddr) bool {
+	ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
+	defer cancel()
+
+	conn, err := l.handleCandidate(ctx, addr)
+	if err != nil {
+		log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		log.Warn("could not push connection: ctx done")
+		conn.Close()
+	case l.acceptQueue <- conn:
+		// block until the connection is accepted,
+		// or until we are done, this effectively blocks our in flight from continuing to progress
+	}
+
+	return true
 }
 
 func (l *listener) handleCandidate(ctx context.Context, addr *candidateAddr) (tpt.CapableConn, error) {

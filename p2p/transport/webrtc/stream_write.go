@@ -52,7 +52,7 @@ func (s *webRTCStream) spawnControlMessageReader() {
 		// zero the read deadline, so read call only returns
 		// when the underlying datachannel closes or there is
 		// a message on the channel
-		s.rwc.SetReadDeadline(time.Time{})
+		s.dataChannel.SetReadDeadline(time.Time{})
 		var msg pb.Message
 		for {
 			if s.stateHandler.Closed() {
@@ -103,7 +103,7 @@ func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 			writeDeadlineTimer.Reset(time.Until(writeDeadline))
 		}
 
-		bufferedAmount := int(s.rwc.BufferedAmount())
+		bufferedAmount := int(s.dataChannel.BufferedAmount())
 		addedBuffer := bufferedAmount + varintOverhead + proto.Size(msg)
 		if addedBuffer > maxBufferedAmount {
 			select {

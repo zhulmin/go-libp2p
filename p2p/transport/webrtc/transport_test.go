@@ -685,7 +685,7 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 	tr, listeningPeer := getTransport(
 		t,
-		WithPeerConnectionIceTimeouts(IceTimeouts{
+		WithPeerConnectionIceTimeouts(ICETimeouts{
 			Disconnect: 2 * time.Second,
 			Failed:     3 * time.Second,
 			Keepalive:  time.Second,
@@ -698,7 +698,7 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 
 	tr1, connectingPeer := getTransport(
 		t,
-		WithPeerConnectionIceTimeouts(IceTimeouts{
+		WithPeerConnectionIceTimeouts(ICETimeouts{
 			Disconnect: 2 * time.Second,
 			Failed:     3 * time.Second,
 			Keepalive:  time.Second,
@@ -750,7 +750,7 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	count := uint32(3)
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),
-		WithPeerConnectionIceTimeouts(IceTimeouts{
+		WithPeerConnectionIceTimeouts(ICETimeouts{
 			Disconnect: 8 * time.Second,
 			Failed:     10 * time.Second,
 			Keepalive:  5 * time.Second,
@@ -777,7 +777,7 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 			defer wg.Done()
 			dialer, _ := getTransport(
 				t,
-				WithPeerConnectionIceTimeouts(IceTimeouts{
+				WithPeerConnectionIceTimeouts(ICETimeouts{
 					Disconnect: 8 * time.Second,
 					Failed:     10 * time.Second,
 					Keepalive:  5 * time.Second,

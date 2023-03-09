@@ -78,7 +78,7 @@ func (s *webRTCStream) readMessageFromDataChannel(msg *pb.Message) error {
 }
 
 func (s *webRTCStream) SetReadDeadline(t time.Time) error {
-	return s.rwc.SetReadDeadline(t)
+	return s.dataChannel.SetReadDeadline(t)
 }
 
 func (s *webRTCStream) CloseRead() error {

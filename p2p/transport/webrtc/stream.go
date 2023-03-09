@@ -73,9 +73,9 @@ type webRTCStream struct {
 
 	stateHandler webRTCStreamState
 
-	conn *connection
-	id   uint16
-	rwc  *datachannel.DataChannel
+	conn        *connection
+	id          uint16
+	dataChannel *datachannel.DataChannel
 
 	laddr net.Addr
 	raddr net.Addr
@@ -105,9 +105,9 @@ func newStream(
 		reader: pbio.NewDelimitedReader(reader, maxMessageSize),
 		writer: pbio.NewDelimitedWriter(rwc),
 
-		conn: connection,
-		id:   *channel.ID(),
-		rwc:  rwc.(*datachannel.DataChannel),
+		conn:        connection,
+		id:          *channel.ID(),
+		dataChannel: rwc.(*datachannel.DataChannel),
 
 		laddr: laddr,
 		raddr: raddr,
@@ -177,7 +177,7 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		s.cancel()
 		// close the channel. We do not care about the error message in
 		// this case
-		err = s.rwc.Close()
+		err = s.dataChannel.Close()
 		if notifyConnection && s.conn != nil {
 			s.conn.removeStream(s.id)
 		}

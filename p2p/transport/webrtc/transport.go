@@ -66,7 +66,7 @@ type WebRTCTransport struct {
 	localPeerId  peer.ID
 
 	// timeouts
-	peerConnectionTimeouts IceTimeouts
+	peerConnectionTimeouts ICETimeouts
 
 	// in-flight connections
 	maxInFlightConnections uint32
@@ -76,14 +76,14 @@ var _ tpt.Transport = &WebRTCTransport{}
 
 type Option func(*WebRTCTransport) error
 
-type IceTimeouts struct {
+type ICETimeouts struct {
 	Disconnect time.Duration
 	Failed     time.Duration
 	Keepalive  time.Duration
 }
 
 // WithPeerConnectionIceTimeouts sets the ice disconnect, failure and keepalive timeouts
-func WithPeerConnectionIceTimeouts(timeouts IceTimeouts) Option {
+func WithPeerConnectionIceTimeouts(timeouts ICETimeouts) Option {
 	return func(t *WebRTCTransport) error {
 		if timeouts.Disconnect == 0 {
 			timeouts.Disconnect = t.peerConnectionTimeouts.Disconnect
@@ -167,7 +167,7 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		noiseTpt:     noiseTpt,
 		localPeerId:  localPeerID,
 
-		peerConnectionTimeouts: IceTimeouts{
+		peerConnectionTimeouts: ICETimeouts{
 			Disconnect: DefaultDisconnectedTimeout,
 			Failed:     DefaultFailedTimeout,
 			Keepalive:  DefaultKeepaliveTimeout,
