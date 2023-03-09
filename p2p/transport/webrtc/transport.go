@@ -43,11 +43,11 @@ const (
 	// A constant is used since the `DataChannelInit` struct takes
 	// references instead of values.
 	handshakeChannelNegotiated = true
-	// handshakeChannelId is the agreed ID for the handshake data
+	// handshakeChannelID is the agreed ID for the handshake data
 	// channel. A constant is used since the `DataChannelInit` struct takes
 	// references instead of values. We specify the type here as this
 	// value is only ever copied and passed by reference
-	handshakeChannelId = uint16(0)
+	handshakeChannelID = uint16(0)
 )
 
 // timeout values for the peerconnection
@@ -342,7 +342,7 @@ func (t *WebRTCTransport) dial(
 	errC := awaitPeerConnectionOpen(ufrag, pc)
 	// We need to set negotiated = true for this channel on both
 	// the client and server to avoid DCEP errors.
-	negotiated, id := handshakeChannelNegotiated, handshakeChannelId
+	negotiated, id := handshakeChannelNegotiated, handshakeChannelID
 	rawHandshakeChannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: &negotiated,
 		ID:         &id,
@@ -362,12 +362,12 @@ func (t *WebRTCTransport) dial(
 		return nil, fmt.Errorf("set local description: %w", err)
 	}
 
-	answerSdpString, err := internal.RenderServerSDP(raddr, ufrag, *remoteMultihash)
+	answerSDPString, err := internal.RenderServerSDP(raddr, ufrag, *remoteMultihash)
 	if err != nil {
 		return nil, fmt.Errorf("render server SDP: %w", err)
 	}
 
-	answer := webrtc.SessionDescription{SDP: answerSdpString, Type: webrtc.SDPTypeAnswer}
+	answer := webrtc.SessionDescription{SDP: answerSDPString, Type: webrtc.SDPTypeAnswer}
 	err = pc.SetRemoteDescription(answer)
 	if err != nil {
 		return nil, fmt.Errorf("set remote description: %w", err)

@@ -57,7 +57,7 @@ type listener struct {
 	// and a noise connection which is expensive. We therefore limit
 	// the number of in-flight connection requests. A connection
 	// is considered to be in flight from the instant it is handled
-	// until it is dequed by a call to Accept, or errors out in some
+	// until it is dequeued by a call to Accept, or errors out in some
 	// way.
 	inFlightInputQueue     chan candidateAddr
 	maxInFlightConnections uint32
@@ -222,7 +222,7 @@ func (l *listener) setupConnection(
 		return nil, err
 	}
 
-	negotiated, id := handshakeChannelNegotiated, handshakeChannelId
+	negotiated, id := handshakeChannelNegotiated, handshakeChannelID
 	rawDatachannel, err := pc.CreateDataChannel("", &webrtc.DataChannelInit{
 		Negotiated: &negotiated,
 		ID:         &id,
@@ -328,7 +328,7 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 }
 
 func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan error {
-	errC := make(chan error)
+	errC := make(chan error, 1)
 	var once sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		switch state {
@@ -336,14 +336,8 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 			once.Do(func() { close(errC) })
 		case webrtc.PeerConnectionStateFailed:
 			once.Do(func() {
-				// this ensures that we don't block this routine if the
-				// listener goes away
-				select {
-				case errC <- fmt.Errorf("peerconnection failed: %s", ufrag):
-					close(errC)
-				default:
-					log.Error("could not signal peerconnection failure")
-				}
+				errC <- fmt.Errorf("peerconnection failed: %s", ufrag)
+				close(errC)
 			})
 		case webrtc.PeerConnectionStateDisconnected:
 			// the connection can move to a disconnected state and back to a connected state without ICE renegotiation.
