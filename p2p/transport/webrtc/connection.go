@@ -242,6 +242,18 @@ func (c *connection) Transport() tpt.Transport {
 func (c *connection) addStream(stream *webRTCStream) {
 	c.m.Lock()
 	defer c.m.Unlock()
+	// This is a private function called from the same object only when a
+	//   1) new stream is initiated by the remote
+	//   or 2) we create a new stream.
+	// In case 1 the stream ID is extracted from the incoming datachannel,
+	// so it is guaranteed to exist. In case 2, we get the id from the sidAllocator which already
+	// performs the odd even check, and addStream is only called after a datachannel is created with the new stream ID.
+	//
+	// Finally, since this function is called for both outgoing and incoming streams,
+	// we need not perform an odd-even check here since it has been done by the stream ID allocator.
+	// If such a check must be performed (and it should), it should be done when the remote creates a new datachannel.
+	//
+	// In both cases, the stream ID is guaranteed not to exist yet.
 	c.streams[stream.id] = stream
 }
 
@@ -264,6 +276,21 @@ func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
 
 // detachChannel detaches an outgoing channel by taking into account the context
 // passed to `OpenStream` as well the closure of the underlying peerconnection
+//
+// The underlying SCTP stream for a datachannel implements a net.Conn interface.
+// However, the datachannel creates a goroutine which continuously reads from
+// the SCTP stream and surfaces the data using an OnMessage callback.
+//
+// The actual abstractions are as follows: webrtc.DataChannel
+// wraps pion.DataChannel, which wraps sctp.Stream.
+//
+// The goroutine for reading, Detach method,
+// and the OnMessage callback are present at the webrtc.DataChannel level.
+// Detach provides us abstracted access to the underlying pion.DataChannel,
+// which allows us to issue Read calls to the datachannel.
+// This was desired because it was not feasible to introduce backpressure
+// with the OnMessage callbacks. The tradeoff is a change in the semantics of
+// the OnOpen callback, and having to force close Read locally.
 func (c *connection) detachChannel(ctx context.Context, dc *webrtc.DataChannel) (rwc datachannel.ReadWriteCloser, err error) {
 	done := make(chan struct{})
 	// OnOpen will return immediately for detached datachannels

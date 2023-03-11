@@ -145,6 +145,12 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 	// Implementation note: Testing with the browser,
 	// it seems like Chromium only supports ECDSA P-256 or RSA key signatures in the webrtc TLS certificate.
 	// We tried using P-228 and P-384 which caused the DTLS handshake to fail with Illegal Parameter
+	//
+	// Please refer to this is a list of suggested algorithms for the WebCrypto API.
+	// The algorithm for generating a certificate for an RTCPeerConnection
+	// must adhere to the WebCrpyto API. From my observation,
+	// RSA and ECDSA P-256 is supported on almost all browsers.
+	// Ed25519 is not present on the list.
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate key for cert: %w", err)
@@ -316,7 +322,7 @@ func (t *WebRTCTransport) dial(
 	// The only requirement here is that the ufrag and password
 	// must be equal, which will allow the server to determine
 	// the password using the STUN message.
-	ufrag := internal.GenUfrag(32)
+	ufrag := genUfrag()
 
 	settingEngine := webrtc.SettingEngine{}
 	// suppress pion logs
@@ -429,6 +435,24 @@ func (t *WebRTCTransport) dial(
 	}
 	conn.setRemotePublicKey(secConn.RemotePublicKey())
 	return conn, nil
+}
+
+func genUfrag() string {
+	const (
+		uFragAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+		uFragPrefix   = "libp2p+webrtc+v1/"
+		uFragIdLength = 32
+		uFragIdOffset = len(uFragPrefix)
+		uFragLength   = uFragIdOffset + uFragIdLength
+	)
+
+	b := make([]byte, uFragLength)
+	copy(b[:], uFragPrefix[:])
+	rand.Read(b[uFragIdOffset:])
+	for i := uFragIdOffset; i < uFragLength; i++ {
+		b[i] = uFragAlphabet[int(b[i])%len(uFragAlphabet)]
+	}
+	return string(b)
 }
 
 func (t *WebRTCTransport) getCertificateFingerprint() (webrtc.DTLSFingerprint, error) {
