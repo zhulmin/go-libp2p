@@ -88,10 +88,6 @@ func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 		if !s.stateHandler.AllowWrite() {
 			return io.ErrClosedPipe
 		}
-		// prepare waiting for writeAvailable signal
-		// if write is blocked
-		deadlineUpdated := s.writerDeadlineUpdated.Wait()
-		writeAvailable := s.writeAvailable.Wait()
 
 		writeDeadline, hasWriteDeadline := s.getWriteDeadline()
 		if !hasWriteDeadline {
@@ -109,11 +105,11 @@ func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 			select {
 			case <-writeDeadlineTimer.C:
 				return os.ErrDeadlineExceeded
-			case <-writeAvailable:
+			case <-s.writeAvailable:
 				return s.writeMessageToWriter(msg)
 			case <-s.ctx.Done():
 				return io.ErrClosedPipe
-			case <-deadlineUpdated:
+			case <-s.writerDeadlineUpdated:
 			}
 		} else {
 			return s.writeMessageToWriter(msg)
@@ -131,7 +127,10 @@ func (s *webRTCStream) SetWriteDeadline(t time.Time) error {
 	s.writerDeadlineMux.Lock()
 	defer s.writerDeadlineMux.Unlock()
 	s.writerDeadline = t
-	s.writerDeadlineUpdated.Signal()
+	select {
+	case s.writerDeadlineUpdated <- struct{}{}:
+	default:
+	}
 	return nil
 }
 
@@ -156,7 +155,10 @@ func (s *webRTCStream) CloseWrite() error {
 		// if successfully written, process the outgoing flag
 		state := s.stateHandler.CloseRead()
 		// unblock and fail any ongoing writes
-		s.writeAvailable.Signal()
+		select {
+		case s.writeAvailable <- struct{}{}:
+		default:
+		}
 		// check if closure required
 		if state == stateClosed {
 			s.close(false, true)

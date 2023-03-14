@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/internal/async"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	"github.com/pion/datachannel"
@@ -66,8 +65,8 @@ type webRTCStream struct {
 	writerDeadline    time.Time
 	writerDeadlineMux sync.Mutex
 
-	writerDeadlineUpdated async.CondVar
-	writeAvailable        async.CondVar
+	writerDeadlineUpdated chan struct{}
+	writeAvailable        chan struct{}
 
 	readLoopOnce sync.Once
 
@@ -105,6 +104,9 @@ func newStream(
 		reader: pbio.NewDelimitedReader(reader, maxMessageSize),
 		writer: pbio.NewDelimitedWriter(rwc),
 
+		writerDeadlineUpdated: make(chan struct{}, 1),
+		writeAvailable:        make(chan struct{}, 1),
+
 		conn:        connection,
 		id:          *channel.ID(),
 		dataChannel: rwc.(*datachannel.DataChannel),
@@ -117,7 +119,12 @@ func newStream(
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
-	channel.OnBufferedAmountLow(result.writeAvailable.Signal)
+	channel.OnBufferedAmountLow(func() {
+		select {
+		case result.writeAvailable <- struct{}{}:
+		default:
+		}
+	})
 
 	return result
 }
