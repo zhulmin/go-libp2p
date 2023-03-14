@@ -258,7 +258,7 @@ func (l *listener) setupConnection(
 
 	}
 
-	rwc, err := internal.GetDetachedChannel(ctx, rawDatachannel)
+	rwc, err := getDetachedChannel(ctx, rawDatachannel)
 	if err != nil {
 		return nil, err
 	}

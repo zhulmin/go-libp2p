@@ -389,7 +389,7 @@ func (t *WebRTCTransport) dial(
 		return nil, errors.New("peerconnection opening timed out")
 	}
 
-	detached, err := internal.GetDetachedChannel(ctx, rawHandshakeChannel)
+	detached, err := getDetachedChannel(ctx, rawHandshakeChannel)
 	if err != nil {
 		return nil, err
 	}
