@@ -310,6 +310,21 @@ func (c *connection) detachChannel(ctx context.Context, dc *webrtc.DataChannel) 
 	return
 }
 
+// A note on these setters and why they are needed:
+//
+// The connection object sets up receiving datachannels (streams) from the remote peer.
+// Please consider the XX noise handshake pattern from a peer A to peer B as described at:
+// https://noiseexplorer.com/patterns/XX/
+//
+// The initiator A completes the noise handshake before B.
+// This would allow A to create new datachannels before B has set up the callbacks to process incoming datachannels.
+// This would create a situation where A has successfully created a stream but B is not aware of it.
+// Moving the construction of the connection object before the noise handshake eliminates this issue,
+// as callbacks have been set up for both peers.
+//
+// This could lead to a case where streams are created during the noise handshake,
+// and the handshake fails. In this case, we would close the underlying peerconnection.
+
 // only used during connection setup
 func (c *connection) setRemotePeer(id peer.ID) {
 	c.remotePeer = id
