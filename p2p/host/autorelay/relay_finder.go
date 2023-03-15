@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -89,7 +90,6 @@ type relayFinder struct {
 	//   - Wait for a value from the workTimer channel.
 	//   - Run scheduled tasks, then reset the workTimer to the next scheduled run.
 	//   - If the above happens after the last step in Goroutine A, then we reset the timer to end time + duration rather than "now" + duration.
-
 	maybeRunBackgroundTasks chan struct{}
 }
 
@@ -136,21 +136,24 @@ func (rf *relayFinder) background(ctx context.Context) {
 		rf.handleNewCandidates(ctx)
 	}()
 
-	go func() {
-		ticker := time.Ticker{}
-		ticker.Reset(time.Second)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
+	// Workaround for mock clock so we don't miss scheduled background work. See
+	// the comment around maybeRunBackgroundTasks.
+	if _, ok := rf.conf.clock.(*clock.Mock); ok {
+		go func() {
+			ticker := time.NewTicker(time.Second)
+			for {
 				select {
-				case rf.maybeRunBackgroundTasks <- struct{}{}:
-				default:
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					select {
+					case rf.maybeRunBackgroundTasks <- struct{}{}:
+					default:
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 
 	subConnectedness, err := rf.host.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged), eventbus.Name("autorelay (relay finder)"))
 	if err != nil {
