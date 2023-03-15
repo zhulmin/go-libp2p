@@ -168,7 +168,7 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 
 	var err error
 	s.closeOnce.Do(func() {
-		log.Debug("closing: reset: %v, notify: %v", isReset, notifyConnection)
+		log.Debugf("closing stream %d: reset: %t, notify: %t", s.id, isReset, notifyConnection)
 		s.stateHandler.Close()
 		// force close reads
 		s.SetReadDeadline(time.Now()) // pion ignores zero times
