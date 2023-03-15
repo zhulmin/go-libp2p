@@ -205,6 +205,7 @@ func (rf *relayFinder) clearCachedAddrsAndSignalAddressChange() {
 }
 
 func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, scheduledWork *scheduledWorkTimes, peerSourceRateLimiter chan<- struct{}) time.Time {
+	log.Debugw("running scheduled work", "now", now)
 	nextTime := now.Add(scheduledWork.leastFrequentInterval)
 
 	if now.After(scheduledWork.nextRefresh) {
@@ -268,7 +269,7 @@ func (rf *relayFinder) clearOldCandidates(now time.Time) time.Time {
 			}
 		} else {
 			deleted = true
-			log.Debugw("deleting candidate due to age", "id", id)
+			log.Debugw("deleting candidate due to age", "id", id, "now", now, "added", cand.added, "expiry", expiry)
 			delete(rf.candidates, id)
 
 		}
@@ -328,6 +329,7 @@ func (rf *relayFinder) findNodes(ctx context.Context, peerSourceRateLimiter <-ch
 		case <-rf.maybeRequestNewCandidates:
 			continue
 		case pi, ok := <-peerChan:
+			log.Debugw("got node from peer source", "id", pi.ID, "ok", ok, "now", rf.conf.clock.Now())
 			if !ok {
 				wg.Wait()
 				peerChan = nil
@@ -387,6 +389,7 @@ func (rf *relayFinder) notifyNewCandidate() {
 // If a peer does, it is added to the candidates map.
 // Note that just supporting the protocol doesn't guarantee that we can also obtain a reservation.
 func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) (added bool) {
+	log.Debugw("handleNewNode", "id", pi.ID, "now", rf.conf.clock.Now())
 	rf.relayMx.Lock()
 	relayInUse := rf.usingRelay(pi.ID)
 	rf.relayMx.Unlock()
@@ -406,7 +409,7 @@ func (rf *relayFinder) handleNewNode(ctx context.Context, pi peer.AddrInfo) (add
 		rf.candidateMx.Unlock()
 		return false
 	}
-	log.Debugw("node supports relay protocol", "peer", pi.ID, "supports circuit v2", supportsV2)
+	log.Debugw("node supports relay protocol", "peer", pi.ID, "supports circuit v2", supportsV2, "now", rf.conf.clock.Now())
 	rf.candidates[pi.ID] = &candidate{
 		added:           rf.conf.clock.Now(),
 		ai:              pi,
@@ -483,16 +486,21 @@ func (rf *relayFinder) handleNewCandidates(ctx context.Context) {
 }
 
 func (rf *relayFinder) maybeConnectToRelay(ctx context.Context) {
+	log.Debug("maybeConnectToRelay")
 	rf.relayMx.Lock()
 	numRelays := len(rf.relays)
 	rf.relayMx.Unlock()
 	// We're already connected to our desired number of relays. Nothing to do here.
 	if numRelays == rf.conf.desiredRelays {
+		log.Debug("We got the numRelays we want")
 		return
 	}
+	log.Debug("Need to connect to relay")
 
 	rf.candidateMx.Lock()
+	log.Debug("maybeConnectToRelay: got candidate lock")
 	if len(rf.relays) == 0 && len(rf.candidates) < rf.conf.minCandidates && rf.conf.clock.Since(rf.bootTime) < rf.conf.bootDelay {
+		log.Debug("In startup phase, not connecting to relay yet")
 		// During the startup phase, we don't want to connect to the first candidate that we find.
 		// Instead, we wait until we've found at least minCandidates, and then select the best of those.
 		// However, if that takes too long (longer than bootDelay), we still go ahead.
@@ -500,10 +508,12 @@ func (rf *relayFinder) maybeConnectToRelay(ctx context.Context) {
 		return
 	}
 	if len(rf.candidates) == 0 {
+		log.Debug("maybeConnectToRelay: no candidates")
 		rf.candidateMx.Unlock()
 		return
 	}
 	candidates := rf.selectCandidates()
+	log.Debug("maybeConnectToRelay: selected candidates")
 	rf.candidateMx.Unlock()
 
 	// We now iterate over the candidates, attempting (sequentially) to get reservations with them, until
@@ -514,12 +524,14 @@ func (rf *relayFinder) maybeConnectToRelay(ctx context.Context) {
 		usingRelay := rf.usingRelay(id)
 		rf.relayMx.Unlock()
 		if usingRelay {
+			log.Debugw("maybeConnectToRelay: already using relay", "id", id)
 			rf.candidateMx.Lock()
 			delete(rf.candidates, id)
 			rf.candidateMx.Unlock()
 			rf.notifyMaybeNeedNewCandidates()
 			continue
 		}
+		log.Debug("Making rsvp to relay", "id", id)
 		rsvp, err := rf.connectToRelay(ctx, cand)
 		if err != nil {
 			log.Debugw("failed to connect to relay", "peer", id, "error", err)
@@ -556,7 +568,9 @@ func (rf *relayFinder) connectToRelay(ctx context.Context, cand *candidate) (*ci
 
 	// make sure we're still connected.
 	if rf.host.Network().Connectedness(id) != network.Connected {
+		log.Debugw("We aren't connected to the relay. Connecting...", "id", id)
 		if err := rf.host.Connect(ctx, cand.ai); err != nil {
+			log.Debugw("failed to connect to the relay.", "id", id, "err", err)
 			rf.candidateMx.Lock()
 			delete(rf.candidates, cand.ai.ID)
 			rf.candidateMx.Unlock()
@@ -564,15 +578,20 @@ func (rf *relayFinder) connectToRelay(ctx context.Context, cand *candidate) (*ci
 		}
 	}
 
+	log.Debugw("Connected to relay", "id", id)
+
 	rf.candidateMx.Lock()
 	rf.backoff[id] = rf.conf.clock.Now()
 	rf.candidateMx.Unlock()
 	var err error
 	if cand.supportsRelayV2 {
+		log.Debugw("reserving relay", "id", id)
 		rsvp, err = circuitv2.Reserve(ctx, rf.host, cand.ai)
 		if err != nil {
+			log.Debugw("failed reserved relay", "id", id, "err", err)
 			err = fmt.Errorf("failed to reserve slot: %w", err)
 		}
+		log.Debugw("reserved relay", "id", id)
 	}
 	rf.candidateMx.Lock()
 	delete(rf.candidates, id)

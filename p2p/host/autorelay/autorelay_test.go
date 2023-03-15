@@ -2,6 +2,7 @@ package autorelay_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -370,8 +371,10 @@ func TestMaxAge(t *testing.T) {
 	require.Eventually(t, func() bool {
 		relays = usedRelays(h)
 		if len(relays) != 1 {
+			fmt.Println("not 1 relay", relays)
 			return false
 		}
+		fmt.Println("old relay is", oldRelay, "new relay is", relays[0])
 		return relays[0] != oldRelay
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -381,6 +384,8 @@ func TestMaxAge(t *testing.T) {
 		ids = append(ids, r.ID())
 	}
 	require.Contains(t, ids, relays[0])
+	cl.Add(11 * time.Minute)
+	time.Sleep(time.Second)
 }
 
 func TestReconnectToStaticRelays(t *testing.T) {
