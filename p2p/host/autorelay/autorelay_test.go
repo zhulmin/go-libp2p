@@ -330,7 +330,7 @@ func TestMaxAge(t *testing.T) {
 		autorelay.WithBootDelay(0),
 		autorelay.WithMaxCandidateAge(20*time.Minute),
 		autorelay.WithClock(cl),
-		autorelay.WithMinInterval(time.Second),
+		autorelay.WithMinInterval(30*time.Second),
 	)
 	defer h.Close()
 
@@ -340,9 +340,8 @@ func TestMaxAge(t *testing.T) {
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
 
+	cl.Add(time.Minute)
 	require.Eventually(t, func() bool {
-		// we don't know exactly when the timer is reset, just advance our timer multiple times if necessary
-		cl.Add(30 * time.Second)
 		return len(peerChans) == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
