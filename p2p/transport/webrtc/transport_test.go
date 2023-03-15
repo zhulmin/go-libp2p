@@ -15,7 +15,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	tpt "github.com/libp2p/go-libp2p/core/transport"
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
@@ -25,7 +24,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func getTransport(t *testing.T, opts ...Option) (tpt.Transport, peer.ID) {
+func getTransport(t *testing.T, opts ...Option) (*WebRTCTransport, peer.ID) {
 	t.Helper()
 	privKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	require.NoError(t, err)
@@ -683,27 +682,20 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 }
 
 func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
-	tr, listeningPeer := getTransport(
-		t,
-		WithPeerConnectionIceTimeouts(ICETimeouts{
-			Disconnect: 2 * time.Second,
-			Failed:     3 * time.Second,
-			Keepalive:  time.Second,
-		}),
-	)
+	tr, listeningPeer := getTransport(t)
+	tr.peerConnectionTimeouts.Disconnect = 2 * time.Second
+	tr.peerConnectionTimeouts.Failed = 3 * time.Second
+	tr.peerConnectionTimeouts.Keepalive = time.Second
+
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
 	lsnr, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
 
-	tr1, connectingPeer := getTransport(
-		t,
-		WithPeerConnectionIceTimeouts(ICETimeouts{
-			Disconnect: 2 * time.Second,
-			Failed:     3 * time.Second,
-			Keepalive:  time.Second,
-		}),
-	)
+	tr1, connectingPeer := getTransport(t)
+	tr1.peerConnectionTimeouts.Disconnect = 2 * time.Second
+	tr1.peerConnectionTimeouts.Failed = 3 * time.Second
+	tr1.peerConnectionTimeouts.Keepalive = time.Second
 
 	done := make(chan struct{})
 	go func() {
@@ -749,12 +741,10 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 	count := uint32(3)
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),
-		WithPeerConnectionIceTimeouts(ICETimeouts{
-			Disconnect: 8 * time.Second,
-			Failed:     10 * time.Second,
-			Keepalive:  5 * time.Second,
-		}),
 	)
+	tr.peerConnectionTimeouts.Disconnect = 8 * time.Second
+	tr.peerConnectionTimeouts.Failed = 10 * time.Second
+	tr.peerConnectionTimeouts.Keepalive = 5 * time.Second
 	listenMultiaddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/udp/0/webrtc", listenerIp))
 	require.NoError(t, err)
 	listener, err := tr.Listen(listenMultiaddr)
@@ -774,14 +764,10 @@ func TestTransportWebRTC_MaxInFlightRequests(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			dialer, _ := getTransport(
-				t,
-				WithPeerConnectionIceTimeouts(ICETimeouts{
-					Disconnect: 8 * time.Second,
-					Failed:     10 * time.Second,
-					Keepalive:  5 * time.Second,
-				}),
-			)
+			dialer, _ := getTransport(t)
+			dialer.peerConnectionTimeouts.Disconnect = 8 * time.Second
+			dialer.peerConnectionTimeouts.Failed = 10 * time.Second
+			dialer.peerConnectionTimeouts.Keepalive = 5 * time.Second
 			ready <- struct{}{}
 			<-start
 			_, err := dialer.Dial(ctx, listener.Multiaddr(), listeningPeer)

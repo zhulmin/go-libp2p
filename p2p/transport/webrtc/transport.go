@@ -53,9 +53,9 @@ const (
 // timeout values for the peerconnection
 // https://github.com/pion/webrtc/blob/v3.1.50/settingengine.go#L102-L109
 const (
-	DefaultDisconnectedTimeout = 5 * time.Second
-	DefaultFailedTimeout       = 25 * time.Second
-	DefaultKeepaliveTimeout    = 2 * time.Second
+	DefaultDisconnectedTimeout = 20 * time.Second
+	DefaultFailedTimeout       = 30 * time.Second
+	DefaultKeepaliveTimeout    = 15 * time.Second
 )
 
 type WebRTCTransport struct {
@@ -66,7 +66,7 @@ type WebRTCTransport struct {
 	localPeerId  peer.ID
 
 	// timeouts
-	peerConnectionTimeouts ICETimeouts
+	peerConnectionTimeouts iceTimeouts
 
 	// in-flight connections
 	maxInFlightConnections uint32
@@ -76,46 +76,10 @@ var _ tpt.Transport = &WebRTCTransport{}
 
 type Option func(*WebRTCTransport) error
 
-type ICETimeouts struct {
+type iceTimeouts struct {
 	Disconnect time.Duration
 	Failed     time.Duration
 	Keepalive  time.Duration
-}
-
-// WithPeerConnectionIceTimeouts sets the ice disconnect, failure and keepalive timeouts
-func WithPeerConnectionIceTimeouts(timeouts ICETimeouts) Option {
-	return func(t *WebRTCTransport) error {
-		if timeouts.Disconnect == 0 {
-			timeouts.Disconnect = t.peerConnectionTimeouts.Disconnect
-		}
-		if timeouts.Failed == 0 {
-			timeouts.Failed = t.peerConnectionTimeouts.Failed
-		}
-		if timeouts.Keepalive == 0 {
-			timeouts.Keepalive = t.peerConnectionTimeouts.Keepalive
-		}
-		// 0 is not treated as a default, and instead disables the respective check
-		// (eg. if keepalive interval is 0, no keepalives are sent, or if disconnected timeout is 0, the connection never enters a disconnected state).
-		// Refer here: https://github.com/pion/ice/blob/v2.3.0/agent_config.go#L73-L85
-		//
-		// The timeouts are only set to their default values if they are not set in the settingEngine.
-		// Refer here: https://github.com/pion/ice/blob/67f28cf23a8ae59a38e0128390ccdad27b5526be/agent_config.go#L213-L224
-		//
-		// Our implementation requires that the values be set (explicitly or implicitly)
-		// so that we can fail connections are free up resources if a remote disconnects abruptly,
-		// therefore 0 values are not acceptable. We also need to enforce that Failed timeout > disconnected timeout,
-		// and failed timeout > keepalive interval. (We currently enforce keepalive interval <= disconnected interval)
-		if timeouts.Disconnect != 0 {
-			if timeouts.Failed != 0 && timeouts.Failed < timeouts.Disconnect {
-				return fmt.Errorf("disconnect timeout cannot be greater than failed timeout")
-			}
-			if timeouts.Keepalive != 0 && timeouts.Disconnect <= timeouts.Keepalive {
-				return fmt.Errorf("keepalive timeout cannot be greater than or equal to failed timeout")
-			}
-		}
-		t.peerConnectionTimeouts = timeouts
-		return nil
-	}
 }
 
 // WithListenerMaxInFlightConnections sets the maximum number of connections that are in-flight, i.e
@@ -173,7 +137,7 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		noiseTpt:     noiseTpt,
 		localPeerId:  localPeerID,
 
-		peerConnectionTimeouts: ICETimeouts{
+		peerConnectionTimeouts: iceTimeouts{
 			Disconnect: DefaultDisconnectedTimeout,
 			Failed:     DefaultFailedTimeout,
 			Keepalive:  DefaultKeepaliveTimeout,
