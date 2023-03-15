@@ -77,6 +77,20 @@ type relayFinder struct {
 
 	cachedAddrs       []ma.Multiaddr
 	cachedAddrsExpiry time.Time
+
+	// A channel that may trigger a run of scheduled background tasks. Needed to
+	// avoid race conditions with the background task loop and the mock clock.
+	// For example:
+	// We may `.Add` some time to the mock clock which triggers the workTimer. The results in work in two goroutines
+	// Goroutine A (inside the mock clock):
+	//   - Go through each each registered timer and `Tick` anything that happened before out next end time. `Tick` simply puts a value on the timer's channel.
+	//   - If there are no more registered timers, set the final end time and return.
+	// Goroutine B (our background task loop):
+	//   - Wait for a value from the workTimer channel.
+	//   - Run scheduled tasks, then reset the workTimer to the next scheduled run.
+	//   - If the above happens after the last step in Goroutine A, then we reset the timer to end time + duration rather than "now" + duration.
+
+	maybeRunBackgroundTasks chan struct{}
 }
 
 func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) *relayFinder {
@@ -94,6 +108,7 @@ func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) 
 		candidateFound:             make(chan struct{}, 1),
 		maybeConnectToRelayTrigger: make(chan struct{}, 1),
 		maybeRequestNewCandidates:  make(chan struct{}, 1),
+		maybeRunBackgroundTasks:    make(chan struct{}, 1),
 		relays:                     make(map[peer.ID]*circuitv2.Reservation),
 		relayUpdated:               make(chan struct{}, 1),
 	}
@@ -119,6 +134,22 @@ func (rf *relayFinder) background(ctx context.Context) {
 	go func() {
 		defer rf.refCount.Done()
 		rf.handleNewCandidates(ctx)
+	}()
+
+	go func() {
+		ticker := time.Ticker{}
+		ticker.Reset(time.Second)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				select {
+				case rf.maybeRunBackgroundTasks <- struct{}{}:
+				default:
+				}
+			}
+		}
 	}()
 
 	subConnectedness, err := rf.host.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged), eventbus.Name("autorelay (relay finder)"))
@@ -191,6 +222,9 @@ func (rf *relayFinder) background(ctx context.Context) {
 			now := rf.conf.clock.Now()
 			nextTime := rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter)
 			workTimer.Reset(nextTime.Sub(now))
+		case <-rf.maybeRunBackgroundTasks:
+			// Ignore the next time because we aren't scheduling any future work here
+			_ = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, peerSourceRateLimiter)
 		case <-ctx.Done():
 			return
 		}
