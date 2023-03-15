@@ -70,7 +70,6 @@ func newConnection(
 	remoteKey ic.PubKey,
 	remoteMultiaddr ma.Multiaddr,
 ) (*connection, error) {
-	// this will be incremented before use
 	idAllocator := newSidAllocator(direction)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -105,13 +104,12 @@ func newConnection(
 				log.Warnf("could not detach datachannel: id: %d", *dc.ID())
 				return
 			}
-			w := msgio.NewWriter(rwc)
 			select {
 			case conn.acceptQueue <- acceptStream{rwc, dc}:
 			default:
 				log.Warnf("connection busy, rejecting stream")
-				// reject stream without instantiating a delimited writer
 				b, _ := proto.Marshal(&pb.Message{Flag: pb.Message_RESET.Enum()})
+				w := msgio.NewWriter(rwc)
 				w.WriteMsg(b)
 				rwc.Close()
 			}
