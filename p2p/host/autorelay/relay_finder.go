@@ -222,10 +222,18 @@ func (rf *relayFinder) background(ctx context.Context) {
 			rf.notifyMaybeConnectToRelay()
 		case <-rf.relayUpdated:
 			rf.clearCachedAddrsAndSignalAddressChange()
-		case <-workTimer.C:
-			now := rf.conf.clock.Now()
+		case now := <-workTimer.C:
+			// Note: `now` is not guaranteed to be the current time. It's the time
+			// that the timer was fired. This is okay because we'll schedule
+			// future work relative the true current time. Which we need to do
+			// to make up for possibly being late here.
+			// We use the time from the timer to avoid a race condition with
+			// mock clock. We want the time we were scheduled to run. If we were
+			// to call clock.Now(), we may end up with some other future time
+			// depending if we got the lock before or after the mock clock
+			// worker goroutine.
 			nextTime := rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter)
-			workTimer.Reset(nextTime.Sub(now))
+			workTimer.Reset(nextTime.Sub(rf.conf.clock.Now()))
 		case <-rf.maybeRunBackgroundTasks:
 			// Ignore the next time because we aren't scheduling any future work here
 			_ = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, peerSourceRateLimiter)
