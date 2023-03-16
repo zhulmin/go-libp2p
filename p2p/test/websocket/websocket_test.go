@@ -2,7 +2,6 @@ package websocket_test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"testing"
 
@@ -38,7 +37,6 @@ func TestReadLimit(t *testing.T) {
 			errCh <- err
 			return
 		}
-		fmt.Println("Done reading")
 		_, err = s.Write(buf)
 		if err != nil {
 			errCh <- err
@@ -63,7 +61,6 @@ func TestReadLimit(t *testing.T) {
 		require.NoError(t, <-errCh)
 	})
 
-	fmt.Println("Allocs:", allocs)
 	// Make sure we aren't doing some crazy allocs when transferring big blocks
 	require.Less(t, allocs, 8*1024.0)
 }
