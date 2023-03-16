@@ -116,7 +116,6 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case l.incoming <- conn{
-
 		Conn: ws.NetConn(context.Background(), c, ws.MessageBinary),
 		localAddr: addrWrapper{&url.URL{
 			Host:   r.Context().Value(http.LocalAddrContextKey).(net.Addr).String(),
