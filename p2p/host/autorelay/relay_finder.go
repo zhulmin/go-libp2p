@@ -168,14 +168,19 @@ func (rf *relayFinder) background(ctx context.Context) {
 
 	// This is the least frequent event. It's our fallback timer if we don't have any other work to do.
 	leastFrequentInterval := rf.conf.minInterval
-	if rf.conf.backoff > leastFrequentInterval {
+	// Check if leastFrequentInterval is 0 to avoid busy looping
+	if rf.conf.backoff > leastFrequentInterval || leastFrequentInterval == 0 {
 		leastFrequentInterval = rf.conf.backoff
 	}
-	if rf.conf.maxCandidateAge > leastFrequentInterval {
+	if rf.conf.maxCandidateAge > leastFrequentInterval || leastFrequentInterval == 0 {
 		leastFrequentInterval = rf.conf.maxCandidateAge
 	}
-	if rsvpRefreshInterval > leastFrequentInterval {
-		leastFrequentInterval = rf.conf.maxCandidateAge
+	if rsvpRefreshInterval > leastFrequentInterval || leastFrequentInterval == 0 {
+		leastFrequentInterval = rsvpRefreshInterval
+	}
+	if leastFrequentInterval == 0 {
+		// fallback to avoid busy looping in case the config is set to all 0s
+		leastFrequentInterval = time.Hour
 	}
 
 	now := rf.conf.clock.Now()
@@ -261,9 +266,12 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 	}
 
 	if now.After(scheduledWork.nextAllowedCallToPeerSource) {
-		scheduledWork.nextAllowedCallToPeerSource = scheduledWork.nextAllowedCallToPeerSource.Add(rf.conf.minInterval)
 		select {
 		case peerSourceRateLimiter <- struct{}{}:
+			scheduledWork.nextAllowedCallToPeerSource = now.Add(rf.conf.minInterval)
+			if scheduledWork.nextAllowedCallToPeerSource.Before(nextTime) {
+				nextTime = scheduledWork.nextAllowedCallToPeerSource
+			}
 		default:
 		}
 	}
@@ -277,9 +285,6 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 	}
 	if scheduledWork.nextOldCandidateCheck.Before(nextTime) {
 		nextTime = scheduledWork.nextOldCandidateCheck
-	}
-	if scheduledWork.nextAllowedCallToPeerSource.Before(nextTime) {
-		nextTime = scheduledWork.nextAllowedCallToPeerSource
 	}
 	if nextTime == now {
 		// Only happens in CI with a mock clock
@@ -357,6 +362,10 @@ func (rf *relayFinder) findNodes(ctx context.Context, peerSourceRateLimiter <-ch
 			select {
 			case <-peerSourceRateLimiter:
 				peerChan = rf.peerSource(ctx, rf.conf.maxCandidates)
+				select {
+				case rf.maybeRunBackgroundTasks <- struct{}{}:
+				default:
+				}
 			case <-ctx.Done():
 				return
 			}

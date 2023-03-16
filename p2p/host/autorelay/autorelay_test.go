@@ -443,9 +443,9 @@ func TestMinInterval(t *testing.T) {
 	)
 	defer h.Close()
 
-	cl.Add(500 * time.Millisecond)
+	cl.Add(400 * time.Millisecond)
 	// The second call to peerSource should happen after 1 second
 	require.Never(t, func() bool { return numRelays(h) > 0 }, 500*time.Millisecond, 100*time.Millisecond)
 	cl.Add(500 * time.Millisecond)
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 }
