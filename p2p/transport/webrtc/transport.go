@@ -61,9 +61,11 @@ const (
 type WebRTCTransport struct {
 	webrtcConfig webrtc.Configuration
 	rcmgr        network.ResourceManager
-	privKey      ic.PrivKey
-	noiseTpt     *noise.Transport
-	localPeerId  peer.ID
+	// TODO: make use of this
+	gater       connmgr.ConnectionGater
+	privKey     ic.PrivKey
+	noiseTpt    *noise.Transport
+	localPeerId peer.ID
 
 	// timeouts
 	peerConnectionTimeouts iceTimeouts
@@ -132,6 +134,7 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 	}
 	transport := &WebRTCTransport{
 		rcmgr:        rcmgr,
+		gater:        gater,
 		webrtcConfig: config,
 		privKey:      privKey,
 		noiseTpt:     noiseTpt,

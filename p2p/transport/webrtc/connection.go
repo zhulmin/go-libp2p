@@ -252,6 +252,7 @@ func (c *connection) addStream(stream *webRTCStream) {
 	// If such a check must be performed (and it should), it should be done when the remote creates a new datachannel.
 	//
 	// In both cases, the stream ID is guaranteed not to exist yet.
+	// TODO: this assumption cannot be made (e.g. in case of malicious user)
 	c.streams[stream.id] = stream
 }
 

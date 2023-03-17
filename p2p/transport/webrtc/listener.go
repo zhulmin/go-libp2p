@@ -59,6 +59,10 @@ type listener struct {
 	// is considered to be in flight from the instant it is handled
 	// until it is dequeued by a call to Accept, or errors out in some
 	// way.
+	// TODO: improve this code, we do want to limit the number of in flight
+	// cons as it is needed for Pion usage, but at the same time we need
+	// to not consume too many open resources for it and do allow multiple
+	// conns to be accepted at once
 	inFlightInputQueue     chan candidateAddr
 	maxInFlightConnections uint32
 
@@ -206,6 +210,7 @@ func (l *listener) setupConnection(
 	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
 	settingEngine.SetLite(true)
 	settingEngine.SetICEUDPMux(l.mux)
+	// TODO: explain this one
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.DisableCertificateFingerprintVerification(true)
 	settingEngine.SetICETimeouts(
