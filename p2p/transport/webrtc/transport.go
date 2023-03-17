@@ -304,6 +304,7 @@ func (t *WebRTCTransport) dial(
 		t.peerConnectionTimeouts.Failed,
 		t.peerConnectionTimeouts.Keepalive,
 	)
+	// TODO: explain this one
 	settingEngine.SetIncludeLoopbackCandidate(true)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
