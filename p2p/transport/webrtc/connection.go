@@ -37,7 +37,7 @@ type connection struct {
 	// debug identifier for the connection
 	dbgId     int
 	pc        *webrtc.PeerConnection
-	transport *WebRTCTransport
+	transport tpt.Transport
 	scope     network.ConnManagementScope
 
 	localPeer      peer.ID
@@ -60,7 +60,7 @@ type connection struct {
 func newConnection(
 	direction network.Direction,
 	pc *webrtc.PeerConnection,
-	transport *WebRTCTransport,
+	transport tpt.Transport,
 	scope network.ConnManagementScope,
 
 	localPeer peer.ID,
