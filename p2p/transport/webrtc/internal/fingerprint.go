@@ -7,7 +7,7 @@ import (
 )
 
 // Fingerprint is forked from pion to avoid bytes to string alloc,
-// and to avoid the entire hex interpersing when we do not need it anyway
+// and to avoid the entire hex interspersing when we do not need it anyway
 
 var (
 	errHashUnavailable = errors.New("fingerprint: hash algorithm is not linked into the binary")
@@ -19,8 +19,8 @@ func Fingerprint(cert *x509.Certificate, algo crypto.Hash) ([]byte, error) {
 		return nil, errHashUnavailable
 	}
 	h := algo.New()
-	h.Write(cert.Raw)
 	// Hash.Writer is specified to be never returning an error.
 	// https://golang.org/pkg/hash/#Hash
+	h.Write(cert.Raw)
 	return h.Sum(nil), nil
 }

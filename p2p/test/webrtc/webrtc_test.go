@@ -2,7 +2,6 @@ package webrtc_test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -21,11 +20,16 @@ func TestWebRTCStream(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	type WriteResult struct {
+		data string
+		err  error
+	}
+	writeResultCh := make(chan WriteResult, 1)
+
 	const proto = "/testing"
 	h1.SetStreamHandler(proto, func(str network.Stream) {
 		data, err := io.ReadAll(str)
-		require.NoError(t, err)
-		fmt.Println("read:", string(data))
+		writeResultCh <- WriteResult{string(data), err}
 	})
 
 	h2, err := libp2p.New(
@@ -46,4 +50,14 @@ func TestWebRTCStream(t *testing.T) {
 
 	_, err = str.Write([]byte("foobar"))
 	require.NoError(t, err)
+
+	var writeResult WriteResult
+	select {
+	case writeResult = <-writeResultCh:
+		// ok
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout")
+	}
+	require.NoError(t, writeResult.err)
+	require.Equal(t, "foobar", writeResult.data)
 }

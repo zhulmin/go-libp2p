@@ -100,7 +100,7 @@ func RenderServerSDP(addr *net.UDPAddr, ufrag string, fingerprint multihash.Deco
 
 // GetSupportedSDPHash converts a multihash code to the
 // corresponding crypto.Hash for supported protocols. If a
-// crypto.Hash cannot be found, it returns `(crypto.SHA256, false)`
+// crypto.Hash cannot be found, it returns `(0, false)`
 func GetSupportedSDPHash(code uint64) (crypto.Hash, bool) {
 	switch code {
 	case multihash.MD5:

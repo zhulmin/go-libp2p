@@ -436,7 +436,7 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	}
 
 	// NOTE: should we want we can fork the cert code as well to avoid
-	// all the extra allocations due to unneeded string interpersing (hex)
+	// all the extra allocations due to unneeded string interspersing (hex)
 	localFp, err := t.getCertificateFingerprint()
 	if err != nil {
 		return nil, err

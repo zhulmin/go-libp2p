@@ -6,7 +6,6 @@ import (
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
 
-	// "github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
 )
 

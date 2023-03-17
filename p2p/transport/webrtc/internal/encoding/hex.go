@@ -1,5 +1,11 @@
 package encoding
 
+// The code in this file is adapted from the Go standard library's hex package.
+// As found in https://cs.opensource.google/go/go/+/refs/tags/go1.20.2:src/encoding/hex/hex.go
+//
+// The reason we adapted the original code is to allow us to deal with interspersed requirements
+// while at the same time hex encoding/decoding, without having to do so in two passes.
+
 import (
 	"encoding/hex"
 	"errors"
@@ -53,7 +59,7 @@ func DecodeInterspersedHex(src []byte) ([]byte, error) {
 		p := src[j-1]
 		q := src[j]
 		if j+1 < len(src) && src[j+1] != ':' {
-			return nil, errUnexpectedInterperseHexChar
+			return nil, errUnexpectedIntersperseHexChar
 		}
 
 		a := reverseHexTable[p]
@@ -101,7 +107,7 @@ func DecodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
 		p := src[j-1]
 		q := src[j]
 		if j+1 < len(src) && src[j+1] != ':' {
-			return nil, errUnexpectedInterperseHexChar
+			return nil, errUnexpectedIntersperseHexChar
 		}
 
 		a := reverseHexTable[p]
@@ -130,7 +136,7 @@ func DecodeInterpersedHexFromASCIIString(src string) ([]byte, error) {
 }
 
 var (
-	errUnexpectedInterperseHexChar = errors.New("unexpected character in interspersed hex string")
+	errUnexpectedIntersperseHexChar = errors.New("unexpected character in interspersed hex string")
 )
 
 const (
