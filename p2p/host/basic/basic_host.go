@@ -1,11 +1,13 @@
 package basichost
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -809,18 +811,24 @@ func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	return addr
 }
 
-// mergeAddrs merges input address lists, leave only unique addresses
-func dedupAddrs(addrs []ma.Multiaddr) (uniqueAddrs []ma.Multiaddr) {
-	exists := make(map[string]bool)
-	for _, addr := range addrs {
-		k := string(addr.Bytes())
-		if exists[k] {
-			continue
-		}
-		exists[k] = true
-		uniqueAddrs = append(uniqueAddrs, addr)
+// dedupAddrs deduplicates addresses in place, leave only unique addresses.
+// It doesn't allocate.
+func dedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
+	if len(addrs) == 0 {
+		return addrs
 	}
-	return uniqueAddrs
+	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) <= 0 })
+	idx := 1
+	for i := 1; i < len(addrs); i++ {
+		if !addrs[i-1].Equal(addrs[i]) {
+			addrs[idx] = addrs[i]
+			idx++
+		}
+	}
+	for i := idx; i < len(addrs); i++ {
+		addrs[i] = nil
+	}
+	return addrs[:idx]
 }
 
 // AllAddrs returns all the addresses of BasicHost at this moment in time.
