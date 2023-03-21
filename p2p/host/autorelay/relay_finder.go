@@ -148,10 +148,6 @@ func (rf *relayFinder) background(ctx context.Context) {
 	if rsvpRefreshInterval > leastFrequentInterval || leastFrequentInterval == 0 {
 		leastFrequentInterval = rsvpRefreshInterval
 	}
-	if leastFrequentInterval == 0 {
-		// fallback to avoid busy looping in case the config is set to all 0s
-		leastFrequentInterval = time.Hour
-	}
 
 	scheduledWork := &scheduledWorkTimes{
 		leastFrequentInterval:       leastFrequentInterval,
