@@ -9,9 +9,10 @@ import (
 )
 
 type mockClock struct {
-	mu     sync.Mutex
-	now    time.Time
-	timers []*mockInstantTimer
+	mu           sync.Mutex
+	now          time.Time
+	timers       []*mockInstantTimer
+	advanceBySem chan struct{}
 }
 
 type mockInstantTimer struct {
@@ -51,7 +52,7 @@ var _ autorelay.InstantTimer = &mockInstantTimer{}
 var _ autorelay.ClockWithInstantTimer = &mockClock{}
 
 func NewMockClock() *mockClock {
-	return &mockClock{now: time.Unix(0, 0)}
+	return &mockClock{now: time.Unix(0, 0), advanceBySem: make(chan struct{}, 1)}
 }
 
 // InstantTimer implements autorelay.ClockWithInstantTimer
@@ -82,9 +83,13 @@ func (c *mockClock) Now() time.Time {
 }
 
 func (c *mockClock) AdvanceBy(dur time.Duration) {
+	c.advanceBySem <- struct{}{}
+	defer func() { <-c.advanceBySem }()
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	now := c.now
 	endTime := c.now.Add(dur)
+	c.mu.Unlock()
 
 	// sort timers by when
 	if len(c.timers) > 1 {
@@ -103,14 +108,18 @@ func (c *mockClock) AdvanceBy(dur time.Duration) {
 			t.mu.Unlock()
 			continue
 		}
-		if !t.when.After(c.now) {
+		if !t.when.After(now) {
 			t.active = false
 			t.mu.Unlock()
 			// This may block if the channel is full, but that's intended. This way our mock clock never gets too far ahead of consumer.
 			// This also prevents us from dropping times because we're advancing too fast.
-			t.ch <- c.now
+			t.ch <- now
 		} else if !t.when.After(endTime) {
-			c.now = t.when
+			now = t.when
+			c.mu.Lock()
+			c.now = now
+			c.mu.Unlock()
+
 			t.active = false
 			t.mu.Unlock()
 			// This may block if the channel is full, but that's intended. See comment above
@@ -119,5 +128,7 @@ func (c *mockClock) AdvanceBy(dur time.Duration) {
 			t.mu.Unlock()
 		}
 	}
+	c.mu.Lock()
 	c.now = endTime
+	c.mu.Unlock()
 }
