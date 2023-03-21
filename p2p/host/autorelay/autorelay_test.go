@@ -575,3 +575,34 @@ func TestMinInterval(t *testing.T) {
 	cl.advanceBy(600 * time.Millisecond)
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 }
+
+func TestNoBusyLoop0MinInterval(t *testing.T) {
+	var calledTimes uint64
+	cl := newMockClock()
+	h := newPrivateNode(t,
+		func(context.Context, int) <-chan peer.AddrInfo {
+			atomic.AddUint64(&calledTimes, 1)
+			peerChan := make(chan peer.AddrInfo, 1)
+			defer close(peerChan)
+			r1 := newRelay(t)
+			t.Cleanup(func() { r1.Close() })
+			peerChan <- peer.AddrInfo{ID: r1.ID(), Addrs: r1.Addrs()}
+			return peerChan
+		},
+		autorelay.WithClock(cl),
+		autorelay.WithMinCandidates(1),
+		autorelay.WithMaxCandidates(1),
+		autorelay.WithNumRelays(0),
+		autorelay.WithBootDelay(time.Hour),
+		autorelay.WithMinInterval(time.Millisecond),
+	)
+	defer h.Close()
+
+	require.Never(t, func() bool {
+		cl.advanceBy(time.Second)
+		val := atomic.LoadUint64(&calledTimes)
+		return val >= 2
+	}, 500*time.Millisecond, 100*time.Millisecond)
+	val := atomic.LoadUint64(&calledTimes)
+	require.Less(t, val, uint64(2))
+}
