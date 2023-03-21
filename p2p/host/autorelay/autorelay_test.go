@@ -202,8 +202,8 @@ func TestBackoff(t *testing.T) {
 	defer r.Close()
 	var reservations atomic.Int32
 	r.SetStreamHandler(protoIDv2, func(str network.Stream) {
-		reservations.Add(1)
-		str.Reset()
+		defer reservations.Add(1)
+		str.Close()
 	})
 
 	var counter atomic.Int32
@@ -219,14 +219,26 @@ func TestBackoff(t *testing.T) {
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(0),
 		autorelay.WithBackoff(backoff),
+		autorelay.WithMinCandidates(1),
+		autorelay.WithMaxCandidateAge(1),
 		autorelay.WithClock(cl),
-		autorelay.WithMinInterval(time.Second),
+		autorelay.WithMinInterval(0),
 	)
 	defer h.Close()
 
 	require.Eventually(t, func() bool {
 		return reservations.Load() == 1
-	}, 10*time.Second, 20*time.Millisecond, "reservations load should be 1 was %d", reservations.Load())
+	}, 3*time.Second, 20*time.Millisecond, "reservations load should be 1")
+	// We need to wait
+
+	cl.AdvanceBy(1) // Increment the time a little so we can make another peer source call
+	require.Eventually(t, func() bool {
+		// The reservation will fail, and autorelay will ask the peer source for
+		// more candidates.  Wait until it does so, this way we know that client
+		// knows the relay connection has failed before we advance the time.
+		return counter.Load() > 1
+	}, 2*time.Second, 100*time.Millisecond, "counter load should be 2")
+
 	// make sure we don't add any relays yet
 	for i := 0; i < 2; i++ {
 		cl.AdvanceBy(backoff / 3)
@@ -235,8 +247,8 @@ func TestBackoff(t *testing.T) {
 	cl.AdvanceBy(backoff)
 	require.Eventually(t, func() bool {
 		return reservations.Load() == 2
-	}, 10*time.Second, 100*time.Millisecond, "reservations load should be 2 was %d", reservations.Load())
-	require.Less(t, int(counter.Load()), 300) // just make sure we're not busy-looping
+	}, 3*time.Second, 100*time.Millisecond, "reservations load should be 2")
+	require.Less(t, int(counter.Load()), 5) // just make sure we're not busy-looping
 	require.Equal(t, 2, int(reservations.Load()))
 }
 
