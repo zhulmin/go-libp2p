@@ -81,7 +81,7 @@ var transportsToTest = []TransportTestCase{
 		},
 	},
 	{
-		Name: "Webtransport",
+		Name: "WebTransport",
 		HostGenerator: func(t *testing.T, opts TranspotTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
 			if opts.NoListen {
@@ -96,7 +96,7 @@ var transportsToTest = []TransportTestCase{
 	},
 }
 
-func TestSmallStream(t *testing.T) {
+func TestPing(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TranspotTestCaseOpts{})
@@ -118,7 +118,7 @@ func TestBigPing(t *testing.T) {
 	// 64k buffers
 	sendBuf := make([]byte, 64<<10)
 	recvBuf := make([]byte, 64<<10)
-	totalSends := 64
+	const totalSends = 64
 
 	// Fill with random bytes
 	_, err := rand.Read(sendBuf)
@@ -176,7 +176,7 @@ func TestBigPing(t *testing.T) {
 }
 
 func TestManyStreams(t *testing.T) {
-	streamCount := 128
+	const streamCount = 128
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TranspotTestCaseOpts{NoRcmgr: true})
@@ -254,7 +254,7 @@ func TestListenerStreamResets(t *testing.T) {
 				return
 			}
 
-			_, err = s.Read([]byte("hello"))
+			_, err = s.Read([]byte{0})
 			require.ErrorIs(t, err, network.ErrReset)
 		})
 	}
