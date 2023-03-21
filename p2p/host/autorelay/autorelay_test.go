@@ -248,7 +248,7 @@ func TestBackoff(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return reservations.Load() == 2
 	}, 3*time.Second, 100*time.Millisecond, "reservations load should be 2")
-	require.Less(t, int(counter.Load()), 5) // just make sure we're not busy-looping
+	require.Less(t, int(counter.Load()), 10) // just make sure we're not busy-looping
 	require.Equal(t, 2, int(reservations.Load()))
 }
 

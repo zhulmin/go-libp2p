@@ -4,8 +4,6 @@ import (
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 )
 
 type mockClock struct {
@@ -48,15 +46,11 @@ func (t *mockInstantTimer) Stop() bool {
 	return wasActive
 }
 
-var _ autorelay.InstantTimer = &mockInstantTimer{}
-var _ autorelay.ClockWithInstantTimer = &mockClock{}
-
 func NewMockClock() *mockClock {
 	return &mockClock{now: time.Unix(0, 0), advanceBySem: make(chan struct{}, 1)}
 }
 
-// InstantTimer implements autorelay.ClockWithInstantTimer
-func (c *mockClock) InstantTimer(when time.Time) autorelay.InstantTimer {
+func (c *mockClock) InstantTimer(when time.Time) *mockInstantTimer {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	t := &mockInstantTimer{
