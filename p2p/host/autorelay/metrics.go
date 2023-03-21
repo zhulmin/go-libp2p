@@ -77,6 +77,14 @@ var (
 		[]string{"work_type"},
 	)
 
+	desiredReservations = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "desired_reservations",
+			Help:      "Desired Reservations",
+		},
+	)
+
 	collectors = []prometheus.Collector{
 		status,
 		reservationsOpenedTotal,
@@ -87,6 +95,7 @@ var (
 		candidatesCircuitV2SupportTotal,
 		candidatesTotal,
 		scheduledWorkTime,
+		desiredReservations,
 	}
 )
 
@@ -105,6 +114,8 @@ type MetricsTracer interface {
 	CandidateRemoved()
 
 	ScheduledWorkUpdated(scheduledWork *scheduledWorkTimes)
+
+	DesiredReservations(int)
 }
 
 type metricsTracer struct{}
@@ -230,6 +241,10 @@ func (mt *metricsTracer) ScheduledWorkUpdated(scheduledWork *scheduledWorkTimes)
 	scheduledWorkTime.WithLabelValues(*tags...).Set(float64(scheduledWork.nextOldCandidateCheck.Unix()))
 }
 
+func (mt *metricsTracer) DesiredReservations(cnt int) {
+	desiredReservations.Set(float64(cnt))
+}
+
 // wrappedMetricsTracer wraps MetricsTracer and ignores all calls when mt is nil
 type wrappedMetricsTracer struct {
 	mt MetricsTracer
@@ -238,10 +253,8 @@ type wrappedMetricsTracer struct {
 var _ MetricsTracer = &wrappedMetricsTracer{}
 
 func (mt *wrappedMetricsTracer) RelayFinderStatus(isActive bool) {
-	if isActive {
-		status.Set(1)
-	} else {
-		status.Set(2)
+	if mt.mt != nil {
+		mt.mt.RelayFinderStatus(isActive)
 	}
 }
 
@@ -290,5 +303,11 @@ func (mt *wrappedMetricsTracer) CandidateRemoved() {
 func (mt *wrappedMetricsTracer) ScheduledWorkUpdated(scheduledWork *scheduledWorkTimes) {
 	if mt.mt != nil {
 		mt.mt.ScheduledWorkUpdated(scheduledWork)
+	}
+}
+
+func (mt *wrappedMetricsTracer) DesiredReservations(cnt int) {
+	if mt.mt != nil {
+		mt.mt.DesiredReservations(cnt)
 	}
 }

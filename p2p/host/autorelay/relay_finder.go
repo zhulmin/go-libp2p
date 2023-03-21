@@ -138,6 +138,8 @@ func (rf *relayFinder) background(ctx context.Context) {
 	bootDelayTimer := rf.conf.clock.InstantTimer(now.Add(rf.conf.bootDelay))
 	defer bootDelayTimer.Stop()
 
+	rf.metricsTracer.DesiredReservations(rf.conf.desiredRelays)
+
 	// This is the least frequent event. It's our fallback timer if we don't have any other work to do.
 	leastFrequentInterval := rf.conf.minInterval
 	// Check if leastFrequentInterval is 0 to avoid busy looping
@@ -619,7 +621,7 @@ func (rf *relayFinder) refreshReservations(ctx context.Context, now time.Time) b
 		p := p
 		g.Go(func() error {
 			err := rf.refreshRelayReservation(ctx, p)
-			rf.metricsTracer.ReservationRequestFinished(true, err != nil)
+			rf.metricsTracer.ReservationRequestFinished(true, err == nil)
 
 			return err
 		})
