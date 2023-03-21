@@ -267,13 +267,32 @@
           },
           "editorMode": "code",
           "expr": "libp2p_autorelay_desired_reservations",
-          "hide": true,
+          "hide": false,
           "legendFormat": "__auto",
           "range": true,
-          "refId": "B"
+          "refId": "config-query"
         }
       ],
       "title": "Current Reservations",
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "applyTo": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "configRefId": "config-query",
+            "mappings": [
+              {
+                "fieldName": "{__name__=\"libp2p_autorelay_desired_reservations\", instance=\"localhost:5001\", job=\"kubo\"}",
+                "handlerKey": "max",
+                "reducerId": "lastNotNull"
+              }
+            ]
+          }
+        }
+      ],
       "type": "gauge"
     },
     {
@@ -856,13 +875,13 @@
     "list": []
   },
   "time": {
-    "from": "now-5m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "libp2p Autorelay",
   "uid": "deQ_uf-4k",
-  "version": 2,
+  "version": 5,
   "weekStart": ""
 }
