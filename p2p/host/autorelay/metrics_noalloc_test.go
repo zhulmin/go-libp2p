@@ -6,6 +6,9 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
 )
 
 func getRandScheduledWork() scheduledWorkTimes {
@@ -26,11 +29,16 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		scheduledWork = append(scheduledWork, getRandScheduledWork())
 	}
+	errs := []error{
+		client.ReservationError{Status: pbv2.Status_MALFORMED_MESSAGE},
+		client.ReservationError{Status: pbv2.Status_MALFORMED_MESSAGE},
+		nil,
+	}
 	tr := NewMetricsTracer()
 	tests := map[string]func(){
 		"RelayFinderStatus":          func() { tr.RelayFinderStatus(rand.Intn(2) == 1) },
 		"ReservationEnded":           func() { tr.ReservationEnded() },
-		"ReservationRequestFinished": func() { tr.ReservationRequestFinished(rand.Intn(2) == 1, rand.Intn(2) == 1) },
+		"ReservationRequestFinished": func() { tr.ReservationRequestFinished(rand.Intn(2) == 1, errs[rand.Intn(len(errs))]) },
 		"RelayAddressCount":          func() { tr.RelayAddressCount(rand.Intn(10)) },
 		"RelayAddressUpdated":        func() { tr.RelayAddressUpdated() },
 		"CandidateChecked":           func() { tr.CandidateChecked(rand.Intn(2) == 1) },

@@ -549,7 +549,7 @@ func (rf *relayFinder) maybeConnectToRelay(ctx context.Context) {
 		if err != nil {
 			log.Debugw("failed to connect to relay", "peer", id, "error", err)
 			rf.notifyMaybeNeedNewCandidates()
-			rf.metricsTracer.ReservationRequestFinished(false, false)
+			rf.metricsTracer.ReservationRequestFinished(false, err)
 			continue
 		}
 		log.Debugw("adding new relay", "id", id)
@@ -566,7 +566,7 @@ func (rf *relayFinder) maybeConnectToRelay(ctx context.Context) {
 		default:
 		}
 
-		rf.metricsTracer.ReservationRequestFinished(false, true)
+		rf.metricsTracer.ReservationRequestFinished(false, nil)
 
 		if numRelays >= rf.conf.desiredRelays {
 			break
@@ -621,7 +621,7 @@ func (rf *relayFinder) refreshReservations(ctx context.Context, now time.Time) b
 		p := p
 		g.Go(func() error {
 			err := rf.refreshRelayReservation(ctx, p)
-			rf.metricsTracer.ReservationRequestFinished(true, err == nil)
+			rf.metricsTracer.ReservationRequestFinished(true, err)
 
 			return err
 		})

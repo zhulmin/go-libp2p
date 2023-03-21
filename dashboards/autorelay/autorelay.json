@@ -21,7 +21,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "9.3.6"
+      "version": "9.4.1"
     },
     {
       "type": "panel",
@@ -247,7 +247,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.3.6",
+      "pluginVersion": "9.4.1",
       "targets": [
         {
           "datasource": {
@@ -350,22 +350,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "refresh reservation: failed"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "new reservation: success"
+              "options": "new: success"
             },
             "properties": [
               {
@@ -380,28 +365,13 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "refresh reservation: success"
+              "options": "refresh: success"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "blue",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "new reservation: failed"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
+                  "fixedColor": "super-light-green",
                   "mode": "fixed"
                 }
               }
@@ -440,7 +410,7 @@
           "format": "time_series",
           "instant": false,
           "interval": "",
-          "legendFormat": "{{request_type}} reservation: {{outcome}}",
+          "legendFormat": "{{request_type}}: {{outcome}}",
           "range": true,
           "refId": "A"
         }
@@ -506,7 +476,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.3.6",
+      "pluginVersion": "9.4.1",
       "targets": [
         {
           "datasource": {
@@ -667,7 +637,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.3.6",
+      "pluginVersion": "9.4.1",
       "targets": [
         {
           "datasource": {
@@ -742,7 +712,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.3.6",
+      "pluginVersion": "9.4.1",
       "targets": [
         {
           "datasource": {
@@ -868,20 +838,22 @@
       "type": "timeseries"
     }
   ],
-  "schemaVersion": 37,
+  "refresh": "",
+  "revision": 1,
+  "schemaVersion": 38,
   "style": "dark",
   "tags": [],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-5m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "libp2p Autorelay",
   "uid": "deQ_uf-4k",
-  "version": 5,
+  "version": 3,
   "weekStart": ""
 }

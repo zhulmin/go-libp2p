@@ -1,7 +1,11 @@
 package autorelay
 
 import (
+	"errors"
+
 	"github.com/libp2p/go-libp2p/p2p/metricshelper"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
+	pbv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/pb"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -104,7 +108,7 @@ type MetricsTracer interface {
 	RelayFinderStatus(isActive bool)
 
 	ReservationEnded()
-	ReservationRequestFinished(isRefresh bool, success bool)
+	ReservationRequestFinished(isRefresh bool, err error)
 
 	RelayAddressCount(int)
 	RelayAddressUpdated()
@@ -146,9 +150,7 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 	// Initialise these counters to 0 otherwise the first reservation requests aren't handled
 	// correctly when using promql increse function
 	reservationRequestsOutcomeTotal.WithLabelValues("refresh", "success")
-	reservationRequestsOutcomeTotal.WithLabelValues("refresh", "failed")
 	reservationRequestsOutcomeTotal.WithLabelValues("new", "success")
-	reservationRequestsOutcomeTotal.WithLabelValues("new", "failed")
 	candidatesCircuitV2SupportTotal.WithLabelValues("yes")
 	candidatesCircuitV2SupportTotal.WithLabelValues("no")
 	return &metricsTracer{}
@@ -166,7 +168,7 @@ func (mt *metricsTracer) ReservationEnded() {
 	reservationsClosedTotal.Inc()
 }
 
-func (mt *metricsTracer) ReservationRequestFinished(isRefresh bool, success bool) {
+func (mt *metricsTracer) ReservationRequestFinished(isRefresh bool, err error) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 
@@ -175,15 +177,10 @@ func (mt *metricsTracer) ReservationRequestFinished(isRefresh bool, success bool
 	} else {
 		*tags = append(*tags, "new")
 	}
-
-	if success {
-		*tags = append(*tags, "success")
-	} else {
-		*tags = append(*tags, "failed")
-	}
+	*tags = append(*tags, getReservationRequestStatus(err))
 	reservationRequestsOutcomeTotal.WithLabelValues(*tags...).Inc()
 
-	if !isRefresh && success {
+	if !isRefresh && err == nil {
 		reservationsOpenedTotal.Inc()
 	}
 }
@@ -245,6 +242,30 @@ func (mt *metricsTracer) DesiredReservations(cnt int) {
 	desiredReservations.Set(float64(cnt))
 }
 
+func getReservationRequestStatus(err error) string {
+	if err == nil {
+		return "success"
+	}
+
+	status := "err other"
+	var re client.ReservationError
+	if errors.As(err, &re) {
+		switch re.Status {
+		case pbv2.Status_CONNECTION_FAILED:
+			return "connection failed"
+		case pbv2.Status_MALFORMED_MESSAGE:
+			return "malformed message"
+		case pbv2.Status_RESERVATION_REFUSED:
+			return "reservation refused"
+		case pbv2.Status_PERMISSION_DENIED:
+			return "permission denied"
+		case pbv2.Status_RESOURCE_LIMIT_EXCEEDED:
+			return "resource limit exceeded"
+		}
+	}
+	return status
+}
+
 // wrappedMetricsTracer wraps MetricsTracer and ignores all calls when mt is nil
 type wrappedMetricsTracer struct {
 	mt MetricsTracer
@@ -264,9 +285,9 @@ func (mt *wrappedMetricsTracer) ReservationEnded() {
 	}
 }
 
-func (mt *wrappedMetricsTracer) ReservationRequestFinished(isRefresh bool, success bool) {
+func (mt *wrappedMetricsTracer) ReservationRequestFinished(isRefresh bool, err error) {
 	if mt.mt != nil {
-		mt.mt.ReservationRequestFinished(isRefresh, success)
+		mt.mt.ReservationRequestFinished(isRefresh, err)
 	}
 }
 
