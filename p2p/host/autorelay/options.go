@@ -160,12 +160,15 @@ func WithMaxCandidateAge(d time.Duration) Option {
 	}
 }
 
+// InstantTimer is a timer that triggers at some instant rather than some duration
 type InstantTimer interface {
 	Reset(d time.Time) bool
 	Stop() bool
 	Ch() <-chan time.Time
 }
 
+// ClockWithInstantTimer is a clock that can create timers that trigger at some
+// instant rather than some duration
 type ClockWithInstantTimer interface {
 	Now() time.Time
 	Since(t time.Time) time.Duration
