@@ -10,7 +10,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/benbjohnson/clock"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -79,19 +78,8 @@ type relayFinder struct {
 	cachedAddrs       []ma.Multiaddr
 	cachedAddrsExpiry time.Time
 
-	// A channel that may trigger a run of scheduled background tasks. Needed to
-	// avoid flaky test failures due to a race condition with the background
-	// task loop and the mock clock.
-	// For example:
-	// We may `.Add` some time to the mock clock which triggers the workTimer. The results in work in two goroutines:
-	// Goroutine A (inside the mock clock):
-	//   - Go through each each registered timer and `Tick` anything that happened before out next end time. `Tick` simply puts a value on the timer's channel.
-	//   - If there are no more registered timers, set the final end time and return.
-	// Goroutine B (our background task loop):
-	//   - Wait for a value from the workTimer channel.
-	//   - Run scheduled tasks, then reset the workTimer to the next scheduled run by reseting with duration = nextScheduledRun - "now".
-	//   - If the above happens after the last step in Goroutine A, then we reset the timer to end time + duration rather than "now" + duration.
-	maybeRunBackgroundTasks chan struct{}
+	// A channel that triggers a run of `runScheduledWork`.
+	triggerRunScheduledWork chan struct{}
 }
 
 func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) *relayFinder {
@@ -109,7 +97,7 @@ func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) 
 		candidateFound:             make(chan struct{}, 1),
 		maybeConnectToRelayTrigger: make(chan struct{}, 1),
 		maybeRequestNewCandidates:  make(chan struct{}, 1),
-		maybeRunBackgroundTasks:    make(chan struct{}, 1),
+		triggerRunScheduledWork:    make(chan struct{}, 1),
 		relays:                     make(map[peer.ID]*circuitv2.Reservation),
 		relayUpdated:               make(chan struct{}, 1),
 	}
@@ -137,25 +125,6 @@ func (rf *relayFinder) background(ctx context.Context) {
 		rf.handleNewCandidates(ctx)
 	}()
 
-	// Workaround for mock clock so we don't miss scheduled background work. See
-	// the comment around maybeRunBackgroundTasks.
-	if _, ok := rf.conf.clock.(*clock.Mock); ok {
-		go func() {
-			ticker := time.NewTicker(time.Second)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					select {
-					case rf.maybeRunBackgroundTasks <- struct{}{}:
-					default:
-					}
-				}
-			}
-		}()
-	}
-
 	subConnectedness, err := rf.host.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged), eventbus.Name("autorelay (relay finder)"))
 	if err != nil {
 		log.Error("failed to subscribe to the EvtPeerConnectednessChanged")
@@ -163,7 +132,8 @@ func (rf *relayFinder) background(ctx context.Context) {
 	}
 	defer subConnectedness.Close()
 
-	bootDelayTimer := rf.conf.clock.Timer(rf.conf.bootDelay)
+	now := rf.conf.clock.Now()
+	bootDelayTimer := rf.conf.clock.InstantTimer(now.Add(rf.conf.bootDelay))
 	defer bootDelayTimer.Stop()
 
 	// This is the least frequent event. It's our fallback timer if we don't have any other work to do.
@@ -183,17 +153,15 @@ func (rf *relayFinder) background(ctx context.Context) {
 		leastFrequentInterval = time.Hour
 	}
 
-	now := rf.conf.clock.Now()
-
 	scheduledWork := &scheduledWorkTimes{
 		leastFrequentInterval:       leastFrequentInterval,
 		nextRefresh:                 now.Add(rsvpRefreshInterval),
-		nextBackoff:                 now.Add(rf.conf.backoff / 5),
-		nextOldCandidateCheck:       now.Add(rf.conf.maxCandidateAge / 5),
+		nextBackoff:                 now.Add(rf.conf.backoff),
+		nextOldCandidateCheck:       now.Add(rf.conf.maxCandidateAge),
 		nextAllowedCallToPeerSource: now.Add(-time.Second), // allow immediately
 	}
 
-	workTimer := rf.conf.clock.Timer(rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter).Sub(now))
+	workTimer := rf.conf.clock.InstantTimer(rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter))
 	defer workTimer.Stop()
 
 	for {
@@ -223,15 +191,23 @@ func (rf *relayFinder) background(ctx context.Context) {
 			}
 		case <-rf.candidateFound:
 			rf.notifyMaybeConnectToRelay()
-		case <-bootDelayTimer.C:
+		case <-bootDelayTimer.Ch():
 			rf.notifyMaybeConnectToRelay()
 		case <-rf.relayUpdated:
 			rf.clearCachedAddrsAndSignalAddressChange()
-		case <-workTimer.C:
-			now := rf.conf.clock.Now()
+		case now := <-workTimer.Ch():
+			// Note: `now` is not guaranteed to be the current time. It's the time
+			// that the timer was fired. This is okay because we'll schedule
+			// future work relative the true current time. Which we need to do
+			// to make up for possibly being late here.
+			// We use the time from the timer to avoid a race condition with
+			// mock clock. We want the time we were scheduled to run. If we were
+			// to call clock.Now(), we may end up with some other future time
+			// depending if we got the lock before or after the mock clock
+			// worker goroutine.
 			nextTime := rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter)
-			workTimer.Reset(nextTime.Sub(now))
-		case <-rf.maybeRunBackgroundTasks:
+			workTimer.Reset(nextTime)
+		case <-rf.triggerRunScheduledWork:
 			// Ignore the next time because we aren't scheduling any future work here
 			_ = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, peerSourceRateLimiter)
 		case <-ctx.Done():
@@ -368,7 +344,7 @@ func (rf *relayFinder) findNodes(ctx context.Context, peerSourceRateLimiter <-ch
 			case <-peerSourceRateLimiter:
 				peerChan = rf.peerSource(ctx, rf.conf.maxCandidates)
 				select {
-				case rf.maybeRunBackgroundTasks <- struct{}{}:
+				case rf.triggerRunScheduledWork <- struct{}{}:
 				default:
 				}
 			case <-ctx.Done():

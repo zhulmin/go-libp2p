@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-
-	"github.com/benbjohnson/clock"
 )
 
 // AutoRelay will call this function when it needs new candidates because it is
@@ -24,7 +22,7 @@ import (
 type PeerSource func(ctx context.Context, num int) <-chan peer.AddrInfo
 
 type config struct {
-	clock      clock.Clock
+	clock      ClockWithInstantTimer
 	peerSource PeerSource
 	// minimum interval used to call the peerSource callback
 	minInterval time.Duration
@@ -45,7 +43,7 @@ type config struct {
 }
 
 var defaultConfig = config{
-	clock:           clock.New(),
+	clock:           RealClock{},
 	minCandidates:   4,
 	maxCandidates:   20,
 	bootDelay:       3 * time.Minute,
@@ -162,7 +160,50 @@ func WithMaxCandidateAge(d time.Duration) Option {
 	}
 }
 
-func WithClock(cl clock.Clock) Option {
+type InstantTimer interface {
+	Reset(d time.Time) bool
+	Stop() bool
+	Ch() <-chan time.Time
+}
+
+type ClockWithInstantTimer interface {
+	Now() time.Time
+	Since(t time.Time) time.Duration
+	InstantTimer(when time.Time) InstantTimer
+}
+
+type RealTimer struct{ t *time.Timer }
+
+var _ InstantTimer = (*RealTimer)(nil)
+
+func (t RealTimer) Ch() <-chan time.Time {
+	return t.t.C
+}
+
+func (t RealTimer) Reset(d time.Time) bool {
+	return t.t.Reset(time.Until(d))
+}
+
+func (t RealTimer) Stop() bool {
+	return t.t.Stop()
+}
+
+type RealClock struct{}
+
+var _ ClockWithInstantTimer = RealClock{}
+
+func (RealClock) Now() time.Time {
+	return time.Now()
+}
+func (RealClock) Since(t time.Time) time.Duration {
+	return time.Since(t)
+}
+func (RealClock) InstantTimer(when time.Time) InstantTimer {
+	t := time.NewTimer(time.Until(when))
+	return &RealTimer{t}
+}
+
+func WithClock(cl ClockWithInstantTimer) Option {
 	return func(c *config) error {
 		c.clock = cl
 		return nil

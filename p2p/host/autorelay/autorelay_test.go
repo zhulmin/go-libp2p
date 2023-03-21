@@ -2,7 +2,10 @@ package autorelay_test
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
-	"github.com/benbjohnson/clock"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -182,7 +184,7 @@ func TestWaitForCandidates(t *testing.T) {
 
 func TestBackoff(t *testing.T) {
 	const backoff = 20 * time.Second
-	cl := clock.NewMock()
+	cl := newMockClock()
 	r, err := libp2p.New(
 		libp2p.DisableRelay(),
 		libp2p.ForceReachabilityPublic(),
@@ -228,10 +230,10 @@ func TestBackoff(t *testing.T) {
 	}, 10*time.Second, 20*time.Millisecond, "reservations load should be 1 was %d", reservations.Load())
 	// make sure we don't add any relays yet
 	for i := 0; i < 2; i++ {
-		cl.Add(backoff / 3)
+		cl.advanceBy(backoff / 3)
 		require.Equal(t, 1, int(reservations.Load()))
 	}
-	cl.Add(backoff)
+	cl.advanceBy(backoff)
 	require.Eventually(t, func() bool {
 		return reservations.Load() == 2
 	}, 10*time.Second, 100*time.Millisecond, "reservations load should be 2 was %d", reservations.Load())
@@ -294,8 +296,122 @@ func TestConnectOnDisconnect(t *testing.T) {
 	require.NotEqualf(t, oldRelay, relaysInUse[0], "old relay should not be used again")
 }
 
+type mockClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	timers []*mockInstantTimer
+}
+
+var _ autorelay.ClockWithInstantTimer = &mockClock{}
+
+type mockInstantTimer struct {
+	c      *mockClock
+	mu     sync.Mutex
+	when   time.Time
+	active bool
+	ch     chan time.Time
+}
+
+// Ch implements autorelay.InstantTimer
+func (t *mockInstantTimer) Ch() <-chan time.Time {
+	return t.ch
+}
+
+// Reset implements autorelay.InstantTimer
+func (t *mockInstantTimer) Reset(d time.Time) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	wasActive := t.active
+	t.active = true
+	t.when = d
+
+	// Schedule any timers that need to run. This will run this timer if t.when is before c.now
+	go t.c.advanceBy(0)
+
+	return wasActive
+}
+
+// Stop implements autorelay.InstantTimer
+func (t *mockInstantTimer) Stop() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	wasActive := t.active
+	t.active = false
+	return wasActive
+}
+
+var _ autorelay.InstantTimer = &mockInstantTimer{}
+
+func newMockClock() *mockClock {
+	return &mockClock{now: time.Unix(0, 0)}
+}
+
+// InstantTimer implements autorelay.ClockWithInstantTimer
+func (c *mockClock) InstantTimer(when time.Time) autorelay.InstantTimer {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := &mockInstantTimer{
+		c:      c,
+		when:   when,
+		ch:     make(chan time.Time, 1),
+		active: true,
+	}
+	c.timers = append(c.timers, t)
+	return t
+}
+
+// Since implements autorelay.ClockWithInstantTimer
+func (c *mockClock) Since(t time.Time) time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now.Sub(t)
+}
+
+func (c *mockClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *mockClock) advanceBy(dur time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	endTime := c.now.Add(dur)
+
+	// sort timers by when
+	if len(c.timers) > 1 {
+		sort.Slice(c.timers, func(i, j int) bool {
+			return c.timers[i].when.Before(c.timers[j].when)
+		})
+	}
+
+	for _, t := range c.timers {
+		t.mu.Lock()
+		if !t.active {
+			t.mu.Unlock()
+			continue
+		}
+		if !t.when.After(c.now) {
+			t.active = false
+			t.mu.Unlock()
+			// This may block if the channel is full, but that's intended. This way our mock clock never gets too far ahead of consumer.
+			// This also prevents us from dropping times because we're advancing too fast.
+			t.ch <- c.now
+		} else if !t.when.After(endTime) {
+			c.now = t.when
+			t.active = false
+			t.mu.Unlock()
+			// This may block if the channel is full, but that's intended. See comment above
+			t.ch <- c.now
+		} else {
+			t.mu.Unlock()
+		}
+	}
+	c.now = endTime
+}
+
 func TestMaxAge(t *testing.T) {
-	cl := clock.NewMock()
+	cl := newMockClock()
 
 	const num = 4
 	peerChan1 := make(chan peer.AddrInfo, num)
@@ -340,16 +456,16 @@ func TestMaxAge(t *testing.T) {
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
 
-	cl.Add(time.Minute)
+	cl.advanceBy(time.Minute)
 	require.Eventually(t, func() bool {
 		return len(peerChans) == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	cl.Add(10 * time.Minute)
+	cl.advanceBy(10 * time.Minute)
 	for _, r := range relays2 {
 		peerChan2 <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
 	}
-	cl.Add(11 * time.Minute)
+	cl.advanceBy(11 * time.Minute)
 
 	require.Eventually(t, func() bool {
 		relays = usedRelays(h)
@@ -380,11 +496,21 @@ func TestMaxAge(t *testing.T) {
 	for _, r := range relays2 {
 		ids = append(ids, r.ID())
 	}
+
+	require.Eventually(t, func() bool {
+		for _, id := range ids {
+			if id == relays[0] {
+				return true
+			}
+		}
+		fmt.Println("waiting for", ids, "to contain", relays[0])
+		return false
+	}, 3*time.Second, 100*time.Millisecond)
 	require.Contains(t, ids, relays[0])
 }
 
 func TestReconnectToStaticRelays(t *testing.T) {
-	cl := clock.NewMock()
+	cl := newMockClock()
 	var staticRelays []peer.AddrInfo
 	const numStaticRelays = 1
 	relays := make([]host.Host, 0, numStaticRelays)
@@ -402,7 +528,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	)
 	defer h.Close()
 
-	cl.Add(time.Minute)
+	cl.advanceBy(time.Minute)
 	require.Eventually(t, func() bool {
 		return numRelays(h) == 1
 	}, 10*time.Second, 100*time.Millisecond)
@@ -418,14 +544,14 @@ func TestReconnectToStaticRelays(t *testing.T) {
 		return numRelays(h) == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	cl.Add(time.Hour)
+	cl.advanceBy(time.Hour)
 	require.Eventually(t, func() bool {
 		return numRelays(h) == 1
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestMinInterval(t *testing.T) {
-	cl := clock.NewMock()
+	cl := newMockClock()
 	h := newPrivateNode(t,
 		func(context.Context, int) <-chan peer.AddrInfo {
 			peerChan := make(chan peer.AddrInfo, 1)
@@ -443,9 +569,9 @@ func TestMinInterval(t *testing.T) {
 	)
 	defer h.Close()
 
-	cl.Add(400 * time.Millisecond)
+	cl.advanceBy(400 * time.Millisecond)
 	// The second call to peerSource should happen after 1 second
 	require.Never(t, func() bool { return numRelays(h) > 0 }, 500*time.Millisecond, 100*time.Millisecond)
-	cl.Add(500 * time.Millisecond)
+	cl.advanceBy(600 * time.Millisecond)
 	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
 }
