@@ -89,6 +89,10 @@ func (c *mockClock) AdvanceBy(dur time.Duration) {
 	// sort timers by when
 	if len(c.timers) > 1 {
 		sort.Slice(c.timers, func(i, j int) bool {
+			c.timers[i].mu.Lock()
+			c.timers[j].mu.Lock()
+			defer c.timers[i].mu.Unlock()
+			defer c.timers[j].mu.Unlock()
 			return c.timers[i].when.Before(c.timers[j].when)
 		})
 	}
