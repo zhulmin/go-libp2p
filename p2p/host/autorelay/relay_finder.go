@@ -274,6 +274,11 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 			}
 		default:
 		}
+	} else {
+		// We still need to schedule this work if it's sooner than nextTime
+		if scheduledWork.nextAllowedCallToPeerSource.Before(nextTime) {
+			nextTime = scheduledWork.nextAllowedCallToPeerSource
+		}
 	}
 
 	// Find the next time we need to run scheduled work.
