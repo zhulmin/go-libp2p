@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type mockClock struct {
+type MockClock struct {
 	mu           sync.Mutex
 	now          time.Time
 	timers       []*mockInstantTimer
@@ -14,7 +14,7 @@ type mockClock struct {
 }
 
 type mockInstantTimer struct {
-	c      *mockClock
+	c      *MockClock
 	mu     sync.Mutex
 	when   time.Time
 	active bool
@@ -46,11 +46,11 @@ func (t *mockInstantTimer) Stop() bool {
 	return wasActive
 }
 
-func NewMockClock() *mockClock {
-	return &mockClock{now: time.Unix(0, 0), advanceBySem: make(chan struct{}, 1)}
+func NewMockClock() *MockClock {
+	return &MockClock{now: time.Unix(0, 0), advanceBySem: make(chan struct{}, 1)}
 }
 
-func (c *mockClock) InstantTimer(when time.Time) *mockInstantTimer {
+func (c *MockClock) InstantTimer(when time.Time) *mockInstantTimer {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	t := &mockInstantTimer{
@@ -64,19 +64,19 @@ func (c *mockClock) InstantTimer(when time.Time) *mockInstantTimer {
 }
 
 // Since implements autorelay.ClockWithInstantTimer
-func (c *mockClock) Since(t time.Time) time.Duration {
+func (c *MockClock) Since(t time.Time) time.Duration {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.now.Sub(t)
 }
 
-func (c *mockClock) Now() time.Time {
+func (c *MockClock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.now
 }
 
-func (c *mockClock) AdvanceBy(dur time.Duration) {
+func (c *MockClock) AdvanceBy(dur time.Duration) {
 	c.advanceBySem <- struct{}{}
 	defer func() { <-c.advanceBySem }()
 

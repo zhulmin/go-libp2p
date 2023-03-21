@@ -22,6 +22,20 @@ import (
 
 const protoIDv2 = circuitv2_proto.ProtoIDv2Hop
 
+type mockClock struct {
+	*test.MockClock
+}
+
+func (c mockClock) InstantTimer(when time.Time) autorelay.InstantTimer {
+	return c.MockClock.InstantTimer(when)
+}
+
+func newMockClock() mockClock {
+	return mockClock{MockClock: test.NewMockClock()}
+}
+
+var _ autorelay.ClockWithInstantTimer = mockClock{}
+
 func numRelays(h host.Host) int {
 	return len(usedRelays(h))
 }
@@ -183,7 +197,7 @@ func TestWaitForCandidates(t *testing.T) {
 
 func TestBackoff(t *testing.T) {
 	const backoff = 20 * time.Second
-	cl := test.NewMockClock()
+	cl := newMockClock()
 	r, err := libp2p.New(
 		libp2p.DisableRelay(),
 		libp2p.ForceReachabilityPublic(),
@@ -308,7 +322,7 @@ func TestConnectOnDisconnect(t *testing.T) {
 }
 
 func TestMaxAge(t *testing.T) {
-	cl := test.NewMockClock()
+	cl := newMockClock()
 
 	const num = 4
 	peerChan1 := make(chan peer.AddrInfo, num)
@@ -407,7 +421,7 @@ func TestMaxAge(t *testing.T) {
 }
 
 func TestReconnectToStaticRelays(t *testing.T) {
-	cl := test.NewMockClock()
+	cl := newMockClock()
 	var staticRelays []peer.AddrInfo
 	const numStaticRelays = 1
 	relays := make([]host.Host, 0, numStaticRelays)
@@ -448,7 +462,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 }
 
 func TestMinInterval(t *testing.T) {
-	cl := test.NewMockClock()
+	cl := newMockClock()
 	h := newPrivateNode(t,
 		func(context.Context, int) <-chan peer.AddrInfo {
 			peerChan := make(chan peer.AddrInfo, 1)
@@ -475,7 +489,7 @@ func TestMinInterval(t *testing.T) {
 
 func TestNoBusyLoop0MinInterval(t *testing.T) {
 	var calledTimes uint64
-	cl := test.NewMockClock()
+	cl := newMockClock()
 	h := newPrivateNode(t,
 		func(context.Context, int) <-chan peer.AddrInfo {
 			atomic.AddUint64(&calledTimes, 1)
