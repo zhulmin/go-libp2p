@@ -216,6 +216,7 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -224,7 +225,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "unit": "none"
         },
         "overrides": []
       },
@@ -255,9 +257,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
+          "exemplar": false,
           "expr": "libp2p_autorelay_reservations_opened_total -  libp2p_autorelay_reservations_closed_total",
+          "instant": true,
           "legendFormat": "current reservations",
-          "range": true,
+          "range": false,
           "refId": "A"
         },
         {
@@ -266,10 +270,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
+          "exemplar": false,
           "expr": "libp2p_autorelay_desired_reservations",
+          "format": "time_series",
           "hide": false,
-          "legendFormat": "__auto",
-          "range": true,
+          "instant": true,
+          "legendFormat": "desired",
+          "range": false,
           "refId": "config-query"
         }
       ],
@@ -285,9 +292,12 @@
             "configRefId": "config-query",
             "mappings": [
               {
-                "fieldName": "{__name__=\"libp2p_autorelay_desired_reservations\", instance=\"localhost:5001\", job=\"kubo\"}",
-                "handlerKey": "max",
-                "reducerId": "lastNotNull"
+                "fieldName": "desired",
+                "handlerKey": "max"
+              },
+              {
+                "fieldName": "Time",
+                "handlerKey": "__ignore"
               }
             ]
           }
@@ -847,7 +857,7 @@
     "list": []
   },
   "time": {
-    "from": "now-5m",
+    "from": "now-1m",
     "to": "now"
   },
   "timepicker": {},
