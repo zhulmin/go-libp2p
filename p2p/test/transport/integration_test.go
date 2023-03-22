@@ -6,8 +6,10 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
@@ -323,6 +325,42 @@ func TestDialerStreamResets(t *testing.T) {
 			<-acceptedCh
 			s.Reset()
 			require.ErrorIs(t, <-errCh, network.ErrReset)
+		})
+	}
+}
+
+func TestStreamReadDeadline(t *testing.T) {
+	for _, tc := range transportsToTest {
+		t.Run(tc.Name, func(t *testing.T) {
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+
+			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
+				ID:    h1.ID(),
+				Addrs: h1.Addrs(),
+			}))
+
+			h1.SetStreamHandler("echo", func(s network.Stream) {
+				io.Copy(s, s)
+			})
+
+			s, err := h2.NewStream(context.Background(), h1.ID(), "echo")
+			require.NoError(t, err)
+			require.NoError(t, s.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
+			_, err = s.Read([]byte{0})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "deadline")
+			nerr, ok := err.(net.Error)
+			require.True(t, ok, "expected a net.Error")
+			require.True(t, nerr.Timeout(), "expected net.Error.Timeout() == true")
+			// now test that the stream is still usable
+			s.SetReadDeadline(time.Time{})
+			_, err = s.Write([]byte("foobar"))
+			require.NoError(t, err)
+			b := make([]byte, 6)
+			_, err = s.Read(b)
+			require.Equal(t, "foobar", string(b))
+			require.NoError(t, err)
 		})
 	}
 }
