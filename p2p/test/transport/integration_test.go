@@ -14,21 +14,25 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/muxer/mplex"
+	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/stretchr/testify/require"
 )
 
 type TransportTestCase struct {
 	Name          string
-	HostGenerator func(t *testing.T, opts TranspotTestCaseOpts) host.Host
+	HostGenerator func(t *testing.T, opts TransportTestCaseOpts) host.Host
 }
 
-type TranspotTestCaseOpts struct {
+type TransportTestCaseOpts struct {
 	NoListen bool
 	NoRcmgr  bool
 }
 
-func transformOpts(opts TranspotTestCaseOpts) []config.Option {
+func transformOpts(opts TransportTestCaseOpts) []config.Option {
 	var libp2pOpts []libp2p.Option
 
 	if opts.NoRcmgr {
@@ -39,9 +43,43 @@ func transformOpts(opts TranspotTestCaseOpts) []config.Option {
 
 var transportsToTest = []TransportTestCase{
 	{
-		Name: "TCP",
-		HostGenerator: func(t *testing.T, opts TranspotTestCaseOpts) host.Host {
+		Name: "TCP / Noise / Yamux",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(noise.ID, noise.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP / TLS / Yamux",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
+			if opts.NoListen {
+				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
+			} else {
+				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+			}
+			h, err := libp2p.New(libp2pOpts...)
+			require.NoError(t, err)
+			return h
+		},
+	},
+	{
+		Name: "TCP / Noise / mplex",
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
+			libp2pOpts := transformOpts(opts)
+			libp2pOpts = append(libp2pOpts, libp2p.Security(noise.ID, noise.New))
+			libp2pOpts = append(libp2pOpts, libp2p.Muxer(mplex.ID, mplex.DefaultTransport))
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
@@ -54,7 +92,7 @@ var transportsToTest = []TransportTestCase{
 	},
 	{
 		Name: "WebSocket",
-		HostGenerator: func(t *testing.T, opts TranspotTestCaseOpts) host.Host {
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -68,7 +106,7 @@ var transportsToTest = []TransportTestCase{
 	},
 	{
 		Name: "QUIC",
-		HostGenerator: func(t *testing.T, opts TranspotTestCaseOpts) host.Host {
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -82,7 +120,7 @@ var transportsToTest = []TransportTestCase{
 	},
 	{
 		Name: "WebTransport",
-		HostGenerator: func(t *testing.T, opts TranspotTestCaseOpts) host.Host {
+		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
 			libp2pOpts := transformOpts(opts)
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
@@ -99,8 +137,8 @@ var transportsToTest = []TransportTestCase{
 func TestPing(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			h1 := tc.HostGenerator(t, TranspotTestCaseOpts{})
-			h2 := tc.HostGenerator(t, TranspotTestCaseOpts{NoListen: true})
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -126,8 +164,8 @@ func TestBigPing(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			h1 := tc.HostGenerator(t, TranspotTestCaseOpts{})
-			h2 := tc.HostGenerator(t, TranspotTestCaseOpts{NoListen: true})
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -179,8 +217,8 @@ func TestManyStreams(t *testing.T) {
 	const streamCount = 128
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			h1 := tc.HostGenerator(t, TranspotTestCaseOpts{NoRcmgr: true})
-			h2 := tc.HostGenerator(t, TranspotTestCaseOpts{NoListen: true, NoRcmgr: true})
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -236,8 +274,8 @@ func TestManyStreams(t *testing.T) {
 func TestListenerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			h1 := tc.HostGenerator(t, TranspotTestCaseOpts{})
-			h2 := tc.HostGenerator(t, TranspotTestCaseOpts{NoListen: true})
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -263,8 +301,8 @@ func TestListenerStreamResets(t *testing.T) {
 func TestDialerStreamResets(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			h1 := tc.HostGenerator(t, TranspotTestCaseOpts{})
-			h2 := tc.HostGenerator(t, TranspotTestCaseOpts{NoListen: true})
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
