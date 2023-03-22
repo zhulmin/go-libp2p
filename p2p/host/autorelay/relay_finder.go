@@ -291,6 +291,7 @@ func (rf *relayFinder) clearOldCandidates(now time.Time) time.Time {
 			}
 		} else {
 			log.Debugw("deleting candidate due to age", "id", id)
+			deleted = true
 			rf.removeCandidate(id)
 		}
 	}
@@ -337,6 +338,8 @@ func (rf *relayFinder) findNodes(ctx context.Context, peerSourceRateLimiter <-ch
 		rf.candidateMx.Unlock()
 
 		if peerChan == nil && numCandidates < rf.conf.minCandidates {
+			rf.metricsTracer.CandidateLoopState(peerSourceRateLimited)
+
 			select {
 			case <-peerSourceRateLimiter:
 				peerChan = rf.peerSource(ctx, rf.conf.maxCandidates)
@@ -347,6 +350,12 @@ func (rf *relayFinder) findNodes(ctx context.Context, peerSourceRateLimiter <-ch
 			case <-ctx.Done():
 				return
 			}
+		}
+
+		if peerChan == nil {
+			rf.metricsTracer.CandidateLoopState(waitingForTrigger)
+		} else {
+			rf.metricsTracer.CandidateLoopState(waitingOnPeerChan)
 		}
 
 		select {
@@ -381,6 +390,7 @@ func (rf *relayFinder) findNodes(ctx context.Context, peerSourceRateLimiter <-ch
 				}
 			}()
 		case <-ctx.Done():
+			rf.metricsTracer.CandidateLoopState(stopped)
 			return
 		}
 	}

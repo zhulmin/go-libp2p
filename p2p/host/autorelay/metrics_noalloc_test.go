@@ -45,6 +45,8 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		"CandidateAdded":             func() { tr.CandidateAdded() },
 		"CandidateRemoved":           func() { tr.CandidateRemoved() },
 		"ScheduledWorkUpdated":       func() { tr.ScheduledWorkUpdated(&scheduledWork[rand.Intn(len(scheduledWork))]) },
+		"DesiredReservations":        func() { tr.DesiredReservations(rand.Intn(10)) },
+		"CandidateLoopState":         func() { tr.CandidateLoopState(candidateLoopState(rand.Intn(10))) },
 	}
 	for method, f := range tests {
 		allocs := testing.AllocsPerRun(1000, f)

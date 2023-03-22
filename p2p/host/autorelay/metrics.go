@@ -71,6 +71,13 @@ var (
 		},
 		[]string{"type"},
 	)
+	candLoopState = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: metricNamespace,
+			Name:      "candidate_loop_state",
+			Help:      "Candidate Loop State",
+		},
+	)
 
 	scheduledWorkTime = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -98,9 +105,19 @@ var (
 		relayAddressesCount,
 		candidatesCircuitV2SupportTotal,
 		candidatesTotal,
+		candLoopState,
 		scheduledWorkTime,
 		desiredReservations,
 	}
+)
+
+type candidateLoopState int
+
+const (
+	peerSourceRateLimited candidateLoopState = iota
+	waitingOnPeerChan
+	waitingForTrigger
+	stopped
 )
 
 // MetricsTracer is the interface for tracking metrics for autorelay
@@ -116,6 +133,7 @@ type MetricsTracer interface {
 	CandidateChecked(supportsCircuitV2 bool)
 	CandidateAdded()
 	CandidateRemoved()
+	CandidateLoopState(state candidateLoopState)
 
 	ScheduledWorkUpdated(scheduledWork *scheduledWorkTimes)
 
@@ -216,6 +234,10 @@ func (mt *metricsTracer) CandidateRemoved() {
 	defer metricshelper.PutStringSlice(tags)
 	*tags = append(*tags, "removed")
 	candidatesTotal.WithLabelValues(*tags...).Inc()
+}
+
+func (mt *metricsTracer) CandidateLoopState(state candidateLoopState) {
+	candLoopState.Set(float64(state))
 }
 
 func (mt *metricsTracer) ScheduledWorkUpdated(scheduledWork *scheduledWorkTimes) {
@@ -330,5 +352,11 @@ func (mt *wrappedMetricsTracer) ScheduledWorkUpdated(scheduledWork *scheduledWor
 func (mt *wrappedMetricsTracer) DesiredReservations(cnt int) {
 	if mt.mt != nil {
 		mt.mt.DesiredReservations(cnt)
+	}
+}
+
+func (mt *wrappedMetricsTracer) CandidateLoopState(state candidateLoopState) {
+	if mt.mt != nil {
+		mt.mt.CandidateLoopState(state)
 	}
 }
