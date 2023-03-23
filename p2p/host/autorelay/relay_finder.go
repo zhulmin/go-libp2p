@@ -77,6 +77,9 @@ type relayFinder struct {
 
 	cachedAddrs       []ma.Multiaddr
 	cachedAddrsExpiry time.Time
+
+	// A channel that triggers a run of `runScheduledWork`.
+	triggerRunScheduledWork chan struct{}
 }
 
 func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) *relayFinder {
@@ -94,6 +97,7 @@ func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) 
 		candidateFound:             make(chan struct{}, 1),
 		maybeConnectToRelayTrigger: make(chan struct{}, 1),
 		maybeRequestNewCandidates:  make(chan struct{}, 1),
+		triggerRunScheduledWork:    make(chan struct{}, 1),
 		relays:                     make(map[peer.ID]*circuitv2.Reservation),
 		relayUpdated:               make(chan struct{}, 1),
 	}
@@ -128,32 +132,32 @@ func (rf *relayFinder) background(ctx context.Context) {
 	}
 	defer subConnectedness.Close()
 
-	bootDelayTimer := rf.conf.clock.Timer(rf.conf.bootDelay)
+	now := rf.conf.clock.Now()
+	bootDelayTimer := rf.conf.clock.InstantTimer(now.Add(rf.conf.bootDelay))
 	defer bootDelayTimer.Stop()
 
 	// This is the least frequent event. It's our fallback timer if we don't have any other work to do.
 	leastFrequentInterval := rf.conf.minInterval
-	if rf.conf.backoff > leastFrequentInterval {
+	// Check if leastFrequentInterval is 0 to avoid busy looping
+	if rf.conf.backoff > leastFrequentInterval || leastFrequentInterval == 0 {
 		leastFrequentInterval = rf.conf.backoff
 	}
-	if rf.conf.maxCandidateAge > leastFrequentInterval {
+	if rf.conf.maxCandidateAge > leastFrequentInterval || leastFrequentInterval == 0 {
 		leastFrequentInterval = rf.conf.maxCandidateAge
 	}
-	if rsvpRefreshInterval > leastFrequentInterval {
-		leastFrequentInterval = rf.conf.maxCandidateAge
+	if rsvpRefreshInterval > leastFrequentInterval || leastFrequentInterval == 0 {
+		leastFrequentInterval = rsvpRefreshInterval
 	}
-
-	now := rf.conf.clock.Now()
 
 	scheduledWork := &scheduledWorkTimes{
 		leastFrequentInterval:       leastFrequentInterval,
 		nextRefresh:                 now.Add(rsvpRefreshInterval),
-		nextBackoff:                 now.Add(rf.conf.backoff / 5),
-		nextOldCandidateCheck:       now.Add(rf.conf.maxCandidateAge / 5),
+		nextBackoff:                 now.Add(rf.conf.backoff),
+		nextOldCandidateCheck:       now.Add(rf.conf.maxCandidateAge),
 		nextAllowedCallToPeerSource: now.Add(-time.Second), // allow immediately
 	}
 
-	workTimer := rf.conf.clock.Timer(rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter).Sub(now))
+	workTimer := rf.conf.clock.InstantTimer(rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter))
 	defer workTimer.Stop()
 
 	for {
@@ -183,14 +187,19 @@ func (rf *relayFinder) background(ctx context.Context) {
 			}
 		case <-rf.candidateFound:
 			rf.notifyMaybeConnectToRelay()
-		case <-bootDelayTimer.C:
+		case <-bootDelayTimer.Ch():
 			rf.notifyMaybeConnectToRelay()
 		case <-rf.relayUpdated:
 			rf.clearCachedAddrsAndSignalAddressChange()
-		case <-workTimer.C:
-			now := rf.conf.clock.Now()
+		case now := <-workTimer.Ch():
+			// Note: `now` is not guaranteed to be the current time. It's the time
+			// that the timer was fired. This is okay because we'll schedule
+			// future work at a specific time.
 			nextTime := rf.runScheduledWork(ctx, now, scheduledWork, peerSourceRateLimiter)
-			workTimer.Reset(nextTime.Sub(now))
+			workTimer.Reset(nextTime)
+		case <-rf.triggerRunScheduledWork:
+			// Ignore the next time because we aren't scheduling any future work here
+			_ = rf.runScheduledWork(ctx, rf.conf.clock.Now(), scheduledWork, peerSourceRateLimiter)
 		case <-ctx.Done():
 			return
 		}
@@ -223,10 +232,18 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 	}
 
 	if now.After(scheduledWork.nextAllowedCallToPeerSource) {
-		scheduledWork.nextAllowedCallToPeerSource = scheduledWork.nextAllowedCallToPeerSource.Add(rf.conf.minInterval)
 		select {
 		case peerSourceRateLimiter <- struct{}{}:
+			scheduledWork.nextAllowedCallToPeerSource = now.Add(rf.conf.minInterval)
+			if scheduledWork.nextAllowedCallToPeerSource.Before(nextTime) {
+				nextTime = scheduledWork.nextAllowedCallToPeerSource
+			}
 		default:
+		}
+	} else {
+		// We still need to schedule this work if it's sooner than nextTime
+		if scheduledWork.nextAllowedCallToPeerSource.Before(nextTime) {
+			nextTime = scheduledWork.nextAllowedCallToPeerSource
 		}
 	}
 
@@ -239,9 +256,6 @@ func (rf *relayFinder) runScheduledWork(ctx context.Context, now time.Time, sche
 	}
 	if scheduledWork.nextOldCandidateCheck.Before(nextTime) {
 		nextTime = scheduledWork.nextOldCandidateCheck
-	}
-	if scheduledWork.nextAllowedCallToPeerSource.Before(nextTime) {
-		nextTime = scheduledWork.nextAllowedCallToPeerSource
 	}
 	if nextTime == now {
 		// Only happens in CI with a mock clock
@@ -319,6 +333,10 @@ func (rf *relayFinder) findNodes(ctx context.Context, peerSourceRateLimiter <-ch
 			select {
 			case <-peerSourceRateLimiter:
 				peerChan = rf.peerSource(ctx, rf.conf.maxCandidates)
+				select {
+				case rf.triggerRunScheduledWork <- struct{}{}:
+				default:
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -465,19 +483,12 @@ func (rf *relayFinder) tryNode(ctx context.Context, pi peer.AddrInfo) (supportsR
 // This function makes sure that we only run one instance of maybeConnectToRelay at once, and buffers
 // exactly one more trigger event to run maybeConnectToRelay.
 func (rf *relayFinder) handleNewCandidates(ctx context.Context) {
-	sem := make(chan struct{}, 1)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-rf.maybeConnectToRelayTrigger:
-			select {
-			case <-ctx.Done():
-				return
-			case sem <- struct{}{}:
-			}
 			rf.maybeConnectToRelay(ctx)
-			<-sem
 		}
 	}
 }

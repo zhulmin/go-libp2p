@@ -2,6 +2,7 @@ package autorelay_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -11,15 +12,29 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	circuitv2_proto "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/proto"
 
-	"github.com/benbjohnson/clock"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
 const protoIDv2 = circuitv2_proto.ProtoIDv2Hop
+
+type mockClock struct {
+	*test.MockClock
+}
+
+func (c mockClock) InstantTimer(when time.Time) autorelay.InstantTimer {
+	return c.MockClock.InstantTimer(when)
+}
+
+func newMockClock() mockClock {
+	return mockClock{MockClock: test.NewMockClock()}
+}
+
+var _ autorelay.ClockWithInstantTimer = mockClock{}
 
 func numRelays(h host.Host) int {
 	return len(usedRelays(h))
@@ -182,7 +197,7 @@ func TestWaitForCandidates(t *testing.T) {
 
 func TestBackoff(t *testing.T) {
 	const backoff = 20 * time.Second
-	cl := clock.NewMock()
+	cl := newMockClock()
 	r, err := libp2p.New(
 		libp2p.DisableRelay(),
 		libp2p.ForceReachabilityPublic(),
@@ -201,8 +216,8 @@ func TestBackoff(t *testing.T) {
 	defer r.Close()
 	var reservations atomic.Int32
 	r.SetStreamHandler(protoIDv2, func(str network.Stream) {
-		reservations.Add(1)
-		str.Reset()
+		defer reservations.Add(1)
+		str.Close()
 	})
 
 	var counter atomic.Int32
@@ -218,24 +233,36 @@ func TestBackoff(t *testing.T) {
 		autorelay.WithNumRelays(1),
 		autorelay.WithBootDelay(0),
 		autorelay.WithBackoff(backoff),
+		autorelay.WithMinCandidates(1),
+		autorelay.WithMaxCandidateAge(1),
 		autorelay.WithClock(cl),
-		autorelay.WithMinInterval(time.Second),
+		autorelay.WithMinInterval(0),
 	)
 	defer h.Close()
 
 	require.Eventually(t, func() bool {
 		return reservations.Load() == 1
-	}, 10*time.Second, 20*time.Millisecond, "reservations load should be 1 was %d", reservations.Load())
+	}, 3*time.Second, 20*time.Millisecond, "reservations load should be 1")
+	// We need to wait
+
+	cl.AdvanceBy(1) // Increment the time a little so we can make another peer source call
+	require.Eventually(t, func() bool {
+		// The reservation will fail, and autorelay will ask the peer source for
+		// more candidates.  Wait until it does so, this way we know that client
+		// knows the relay connection has failed before we advance the time.
+		return counter.Load() > 1
+	}, 2*time.Second, 100*time.Millisecond, "counter load should be 2")
+
 	// make sure we don't add any relays yet
 	for i := 0; i < 2; i++ {
-		cl.Add(backoff / 3)
+		cl.AdvanceBy(backoff / 3)
 		require.Equal(t, 1, int(reservations.Load()))
 	}
-	cl.Add(backoff)
+	cl.AdvanceBy(backoff)
 	require.Eventually(t, func() bool {
 		return reservations.Load() == 2
-	}, 10*time.Second, 100*time.Millisecond, "reservations load should be 2 was %d", reservations.Load())
-	require.Less(t, int(counter.Load()), 300) // just make sure we're not busy-looping
+	}, 3*time.Second, 100*time.Millisecond, "reservations load should be 2")
+	require.Less(t, int(counter.Load()), 10) // just make sure we're not busy-looping
 	require.Equal(t, 2, int(reservations.Load()))
 }
 
@@ -295,7 +322,7 @@ func TestConnectOnDisconnect(t *testing.T) {
 }
 
 func TestMaxAge(t *testing.T) {
-	cl := clock.NewMock()
+	cl := newMockClock()
 
 	const num = 4
 	peerChan1 := make(chan peer.AddrInfo, num)
@@ -330,7 +357,7 @@ func TestMaxAge(t *testing.T) {
 		autorelay.WithBootDelay(0),
 		autorelay.WithMaxCandidateAge(20*time.Minute),
 		autorelay.WithClock(cl),
-		autorelay.WithMinInterval(time.Second),
+		autorelay.WithMinInterval(30*time.Second),
 	)
 	defer h.Close()
 
@@ -340,17 +367,16 @@ func TestMaxAge(t *testing.T) {
 	relays := usedRelays(h)
 	require.Len(t, relays, 1)
 
+	cl.AdvanceBy(time.Minute)
 	require.Eventually(t, func() bool {
-		// we don't know exactly when the timer is reset, just advance our timer multiple times if necessary
-		cl.Add(30 * time.Second)
 		return len(peerChans) == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	cl.Add(10 * time.Minute)
+	cl.AdvanceBy(10 * time.Minute)
 	for _, r := range relays2 {
 		peerChan2 <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
 	}
-	cl.Add(11 * time.Minute)
+	cl.AdvanceBy(11 * time.Minute)
 
 	require.Eventually(t, func() bool {
 		relays = usedRelays(h)
@@ -381,11 +407,21 @@ func TestMaxAge(t *testing.T) {
 	for _, r := range relays2 {
 		ids = append(ids, r.ID())
 	}
+
+	require.Eventually(t, func() bool {
+		for _, id := range ids {
+			if id == relays[0] {
+				return true
+			}
+		}
+		fmt.Println("waiting for", ids, "to contain", relays[0])
+		return false
+	}, 3*time.Second, 100*time.Millisecond)
 	require.Contains(t, ids, relays[0])
 }
 
 func TestReconnectToStaticRelays(t *testing.T) {
-	cl := clock.NewMock()
+	cl := newMockClock()
 	var staticRelays []peer.AddrInfo
 	const numStaticRelays = 1
 	relays := make([]host.Host, 0, numStaticRelays)
@@ -403,7 +439,7 @@ func TestReconnectToStaticRelays(t *testing.T) {
 	)
 	defer h.Close()
 
-	cl.Add(time.Minute)
+	cl.AdvanceBy(time.Minute)
 	require.Eventually(t, func() bool {
 		return numRelays(h) == 1
 	}, 10*time.Second, 100*time.Millisecond)
@@ -419,14 +455,14 @@ func TestReconnectToStaticRelays(t *testing.T) {
 		return numRelays(h) == 0
 	}, 10*time.Second, 100*time.Millisecond)
 
-	cl.Add(time.Hour)
+	cl.AdvanceBy(time.Hour)
 	require.Eventually(t, func() bool {
 		return numRelays(h) == 1
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestMinInterval(t *testing.T) {
-	cl := clock.NewMock()
+	cl := newMockClock()
 	h := newPrivateNode(t,
 		func(context.Context, int) <-chan peer.AddrInfo {
 			peerChan := make(chan peer.AddrInfo, 1)
@@ -444,9 +480,40 @@ func TestMinInterval(t *testing.T) {
 	)
 	defer h.Close()
 
-	cl.Add(500 * time.Millisecond)
+	cl.AdvanceBy(400 * time.Millisecond)
 	// The second call to peerSource should happen after 1 second
 	require.Never(t, func() bool { return numRelays(h) > 0 }, 500*time.Millisecond, 100*time.Millisecond)
-	cl.Add(500 * time.Millisecond)
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
+	cl.AdvanceBy(600 * time.Millisecond)
+	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 3*time.Second, 100*time.Millisecond)
+}
+
+func TestNoBusyLoop0MinInterval(t *testing.T) {
+	var calledTimes uint64
+	cl := newMockClock()
+	h := newPrivateNode(t,
+		func(context.Context, int) <-chan peer.AddrInfo {
+			atomic.AddUint64(&calledTimes, 1)
+			peerChan := make(chan peer.AddrInfo, 1)
+			defer close(peerChan)
+			r1 := newRelay(t)
+			t.Cleanup(func() { r1.Close() })
+			peerChan <- peer.AddrInfo{ID: r1.ID(), Addrs: r1.Addrs()}
+			return peerChan
+		},
+		autorelay.WithClock(cl),
+		autorelay.WithMinCandidates(1),
+		autorelay.WithMaxCandidates(1),
+		autorelay.WithNumRelays(0),
+		autorelay.WithBootDelay(time.Hour),
+		autorelay.WithMinInterval(time.Millisecond),
+	)
+	defer h.Close()
+
+	require.Never(t, func() bool {
+		cl.AdvanceBy(time.Second)
+		val := atomic.LoadUint64(&calledTimes)
+		return val >= 2
+	}, 500*time.Millisecond, 100*time.Millisecond)
+	val := atomic.LoadUint64(&calledTimes)
+	require.Less(t, val, uint64(2))
 }
