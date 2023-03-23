@@ -14,6 +14,7 @@ import (
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	webrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,6 +47,7 @@ var DefaultTransports = ChainOptions(
 	Transport(quic.NewTransport),
 	Transport(ws.New),
 	Transport(webtransport.New),
+	Transport(webrtc.New),
 )
 
 // DefaultPrivateTransports are the default libp2p transports when a PSK is supplied.
