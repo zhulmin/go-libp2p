@@ -83,6 +83,8 @@ type relayFinder struct {
 	metricsTracer           MetricsTracer
 }
 
+var errAlreadyRunning = errors.New("relayFinder already running")
+
 func newRelayFinder(host *basic.BasicHost, peerSource PeerSource, conf *config) *relayFinder {
 	if peerSource == nil {
 		panic("Can not create a new relayFinder. Need a Peer Source fn or a list of static relays. Refer to the documentation around `libp2p.EnableAutoRelay`")
@@ -754,7 +756,7 @@ func (rf *relayFinder) Start() error {
 	rf.ctxCancelMx.Lock()
 	defer rf.ctxCancelMx.Unlock()
 	if rf.ctxCancel != nil {
-		return errors.New("relayFinder already running")
+		return errAlreadyRunning
 	}
 	log.Debug("starting relay finder")
 	ctx, cancel := context.WithCancel(context.Background())

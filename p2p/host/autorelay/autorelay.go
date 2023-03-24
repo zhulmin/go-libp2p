@@ -2,6 +2,7 @@ package autorelay
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/event"
@@ -83,7 +84,10 @@ func (r *AutoRelay) background() {
 			evt := ev.(event.EvtLocalReachabilityChanged)
 			switch evt.Reachability {
 			case network.ReachabilityPrivate, network.ReachabilityUnknown:
-				if err := r.relayFinder.Start(); err != nil {
+				err := r.relayFinder.Start()
+				if errors.Is(err, errAlreadyRunning) {
+					log.Debug("tried to start already running relay finder")
+				} else if err != nil {
 					log.Errorw("failed to start relay finder", "error", err)
 				} else {
 					r.metricsTracer.RelayFinderStatus(true)
