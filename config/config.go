@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -123,6 +124,8 @@ type Config struct {
 
 	DisableMetrics       bool
 	PrometheusRegisterer prometheus.Registerer
+
+	HTTPHandler http.Handler
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -306,6 +309,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		RelayServiceOpts:     cfg.RelayServiceOpts,
 		EnableMetrics:        !cfg.DisableMetrics,
 		PrometheusRegisterer: cfg.PrometheusRegisterer,
+		HTTPHandler:          cfg.HTTPHandler,
 	})
 	if err != nil {
 		swrm.Close()

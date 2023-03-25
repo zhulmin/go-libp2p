@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
+	p2phttp "github.com/libp2p/go-libp2p/p2p/http"
 	inat "github.com/libp2p/go-libp2p/p2p/net/nat"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -100,6 +102,8 @@ type BasicHost struct {
 	caBook                  peerstore.CertifiedAddrBook
 
 	autoNat autonat.AutoNAT
+
+	httpHandler http.Handler
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -159,6 +163,8 @@ type HostOpts struct {
 	EnableMetrics bool
 	// PrometheusRegisterer is the PrometheusRegisterer used for metrics
 	PrometheusRegisterer prometheus.Registerer
+
+	HTTPHandler http.Handler
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -188,6 +194,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 		ctx:                     hostCtx,
 		ctxCancel:               cancel,
 		disableSignedPeerRecord: opts.DisableSignedPeerRecord,
+		httpHandler:             opts.HTTPHandler,
 	}
 
 	h.updateLocalIpAddr()
@@ -382,7 +389,18 @@ func (h *BasicHost) Start() {
 	h.psManager.Start()
 	h.refCount.Add(1)
 	h.ids.Start()
+	if h.httpHandler != nil {
+		h.registerHTTPHandler()
+	}
 	go h.background()
+}
+
+func (h *BasicHost) registerHTTPHandler() {
+	const libp2pHttpProtoID = "/libp2p-http"
+	h.SetStreamHandler(libp2pHttpProtoID, func(s network.Stream) {
+		p2phttp.ServeReadWriter(s, h.httpHandler)
+		s.Close()
+	})
 }
 
 // newStreamHandler is the remote-opened stream handler for network.Network

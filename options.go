@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"time"
 
@@ -571,6 +572,13 @@ func PrometheusRegisterer(reg prometheus.Registerer) Option {
 			return errors.New("registerer cannot be nil")
 		}
 		cfg.PrometheusRegisterer = reg
+		return nil
+	}
+}
+
+func WithHTTPHandler(h http.Handler) Option {
+	return func(cfg *Config) error {
+		cfg.HTTPHandler = h
 		return nil
 	}
 }
