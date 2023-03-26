@@ -203,7 +203,7 @@ func (m mockTransport) Dial(context.Context, ma.Multiaddr, peer.ID) (transport.C
 	panic("implement me")
 }
 
-func (m mockTransport) CanDial(ma.Multiaddr) bool                       { panic("implement me") }
+func (m mockTransport) CanDial(ma.Multiaddr) bool                       { return false }
 func (m mockTransport) Listen(ma.Multiaddr) (transport.Listener, error) { panic("implement me") }
 func (m mockTransport) Protocols() []int                                { return []int{1337} }
 func (m mockTransport) Proxy() bool                                     { panic("implement me") }
