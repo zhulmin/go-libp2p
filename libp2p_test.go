@@ -17,8 +17,10 @@ import (
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 
 	ma "github.com/multiformats/go-multiaddr"
+	mc "github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -195,6 +197,44 @@ func TestTransportConstructorQUIC(t *testing.T) {
 	err = h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), swarm.ErrNoTransport.Error())
+}
+
+func TestTransportConstructorWebTransport(t *testing.T) {
+	h, err := New(
+		Transport(webtransport.New),
+		DisableRelay(),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")))
+	err = h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), swarm.ErrNoTransport.Error())
+}
+
+func TestTransportCustomAddressWebTransport(t *testing.T) {
+	customAddr, err := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1/webtransport")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := New(
+		Transport(webtransport.New),
+		DisableRelay(),
+		AddrsFactory(func(multiaddrs []ma.Multiaddr) []ma.Multiaddr {
+			return []ma.Multiaddr{customAddr}
+		}),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")))
+	addrs := h.Addrs()
+	require.Len(t, addrs, 1)
+	require.NotEqual(t, addrs[0], customAddr)
+	restOfAddr, lastComp := ma.SplitLast(addrs[0])
+	restOfAddr, secondToLastComp := ma.SplitLast(restOfAddr)
+	require.Equal(t, lastComp.Protocol().Code, int(mc.Certhash))
+	require.Equal(t, secondToLastComp.Protocol().Code, int(mc.Certhash))
+	require.True(t, restOfAddr.Equal(customAddr))
 }
 
 type mockTransport struct{}
