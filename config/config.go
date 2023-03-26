@@ -37,6 +37,7 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	mc "github.com/multiformats/go-multicodec"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 )
@@ -326,6 +327,50 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	if err := cfg.addTransports(h); err != nil {
 		h.Close()
 		return nil, err
+	}
+
+	type netTptForDialinger interface {
+		TransportForDialing(a ma.Multiaddr) transport.Transport
+	}
+	if n, ok := h.Network().(netTptForDialinger); ok {
+		bogusWebTransportMa, err := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1/webtransport")
+		if err != nil {
+			panic(fmt.Errorf("builtin constant test webtransport address no longer parses"))
+		}
+		if foundTpt := n.TransportForDialing(bogusWebTransportMa); foundTpt != nil {
+			oldFactory := h.AddrsFactory
+			h.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+				processedAddrs := oldFactory(addrs)
+				var indicesForIncompleteWebTransportMultiaddrs []int
+				for i := 0; i < len(processedAddrs); i++ {
+					protos := processedAddrs[i].Protocols()
+					lastProto := protos[len(protos)-1]
+					if lastProto.Code == int(mc.Webtransport) {
+						indicesForIncompleteWebTransportMultiaddrs = append(indicesForIncompleteWebTransportMultiaddrs, i)
+					}
+				}
+				// Found some webtransport addresses that do not have certhashes attached
+				if len(indicesForIncompleteWebTransportMultiaddrs) > 0 {
+					// get the certhashes
+					// we could get them from the webtransport code ourselves but that's inaccessible from here
+					// so instead we use the roundabout method
+					for _, a := range addrs {
+						comps := ma.Split(a)
+						nc := len(comps)
+						if nc > 3 && comps[nc-1].Protocols()[0].Code == int(mc.Certhash) &&
+							comps[nc-2].Protocols()[0].Code == int(mc.Certhash) &&
+							comps[nc-3].Protocols()[0].Code == int(mc.Webtransport) {
+							// we found some certhashes to use, let's use them
+							for _, idxToModify := range indicesForIncompleteWebTransportMultiaddrs {
+								processedAddrs[idxToModify] = processedAddrs[idxToModify].Encapsulate(comps[nc-2]).Encapsulate(comps[nc-1])
+							}
+							break
+						}
+					}
+				}
+				return processedAddrs
+			}
+		}
 	}
 
 	// TODO: This method succeeds if listening on one address succeeds. We
