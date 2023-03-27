@@ -760,6 +760,7 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 // Addrs returns listening addresses that are safe to announce to the network.
 // The output is the same as AllAddrs, but processed by AddrsFactory.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
+	h.Network()
 	return h.AddrsFactory(h.AllAddrs())
 }
 

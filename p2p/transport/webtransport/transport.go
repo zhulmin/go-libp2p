@@ -286,23 +286,13 @@ func decodeCertHashesFromProtobuf(b [][]byte) ([]multihash.DecodedMultihash, err
 }
 
 func (t *transport) CanDial(addr ma.Multiaddr) bool {
-	var numHashes int
-	ma.ForEach(addr, func(c ma.Component) bool {
-		if c.Protocol().Code == ma.P_CERTHASH {
-			numHashes++
-		}
-		return true
-	})
-	// Remove the /certhash components from the multiaddr.
-	// If the multiaddr doesn't contain any certhashes, the node might have a CA-signed certificate.
-	for i := 0; i < numHashes; i++ {
-		addr, _ = ma.SplitLast(addr)
-	}
-	return webtransportMatcher.Matches(addr)
+	ok, _ := IsWebtransportMultiaddr(addr)
+	return ok
 }
 
 func (t *transport) Listen(laddr ma.Multiaddr) (tpt.Listener, error) {
-	if !webtransportMatcher.Matches(laddr) {
+	isWebTransport, _ := IsWebtransportMultiaddr(laddr)
+	if !isWebTransport {
 		return nil, fmt.Errorf("cannot listen on non-WebTransport addr: %s", laddr)
 	}
 	if t.staticTLSConf == nil {

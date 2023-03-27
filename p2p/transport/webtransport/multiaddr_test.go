@@ -103,3 +103,51 @@ func TestWebtransportResolve(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestIsWebtransportMultiaddrWithCerthash(t *testing.T) {
+	fooHash := encodeCertHash(t, []byte("foo"), multihash.SHA2_256, multibase.Base58BTC)
+	barHash := encodeCertHash(t, []byte("bar"), multihash.SHA2_256, multibase.Base58BTC)
+
+	testCases := []struct {
+		addr          string
+		want          bool
+		certhashCount int
+	}{
+		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport", want: true},
+		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport/certhash/" + fooHash, want: true, certhashCount: 1},
+		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport/certhash/" + fooHash + "/certhash/" + barHash, want: true, certhashCount: 2},
+		{addr: "/dns4/example.com/udp/60042/quic-v1/webtransport/certhash/" + fooHash, want: true, certhashCount: 1},
+		{addr: "/dns4/example.com/udp/60042/webrtc/certhash/" + fooHash, want: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.addr, func(t *testing.T) {
+			got, n := IsWebtransportMultiaddr(ma.StringCast(tc.addr))
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.certhashCount, n)
+			require.Equal(t, tc.want && n > 0, IsWebtransportMultiaddrWithCerthash(ma.StringCast(tc.addr)))
+		})
+	}
+}
+
+func TestCopyCerthashes(t *testing.T) {
+	fooHash := ma.StringCast("/certhash/" + encodeCertHash(t, []byte("foo"), multihash.SHA2_256, multibase.Base58BTC)).String()
+	barHash := ma.StringCast("/certhash/" + encodeCertHash(t, []byte("bar"), multihash.SHA2_256, multibase.Base58BTC)).String()
+
+	testCases := []struct {
+		addr string
+		want string
+	}{
+		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport", want: "/ip4/4.3.2.1/udp/24006/quic-v1/webtransport"},
+		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport" + fooHash, want: "/ip4/4.3.2.1/udp/24006/quic-v1/webtransport" + fooHash},
+		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport" + fooHash + barHash, want: "/ip4/4.3.2.1/udp/24006/quic-v1/webtransport" + fooHash + barHash},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.addr, func(t *testing.T) {
+			got := CopyCerthashes(ma.StringCast(tc.addr), ma.StringCast("/ip4/4.3.2.1/udp/24006/quic-v1/webtransport"))
+			require.Equal(t, tc.want, got.String())
+		})
+	}
+
+}
