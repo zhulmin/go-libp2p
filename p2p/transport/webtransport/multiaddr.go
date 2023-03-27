@@ -80,10 +80,10 @@ func addrComponentForCert(hash []byte) (ma.Multiaddr, error) {
 // well formed webtransport multiaddr. Returns the number of certhashes found.
 func IsWebtransportMultiaddr(multiaddr ma.Multiaddr) (bool, int) {
 	const (
-		init              = iota
-		foundUDP          = iota
-		foundQuicV1       = iota
-		foundWebTransport = iota
+		init = iota
+		foundUDP
+		foundQuicV1
+		foundWebTransport
 	)
 	state := init
 	certhashCount := 0
@@ -118,7 +118,7 @@ func IsWebtransportMultiaddrWithCerthash(multiaddr ma.Multiaddr) bool {
 // unchanged.  Otherwise a new multiaddr is returned with certhashes appeneded
 // to it
 func CopyCerthashes(existingMultiaddrWithCerthashes, multiaddrWithoutCerthashes ma.Multiaddr) ma.Multiaddr {
-	var certhashComponents []ma.Component
+	certhashComponents := make([]ma.Component, 0, 2) // 2 is the common case
 	ma.ForEach(existingMultiaddrWithCerthashes, func(c ma.Component) bool {
 		if c.Protocol().Code == ma.P_CERTHASH {
 			certhashComponents = append(certhashComponents, c)
