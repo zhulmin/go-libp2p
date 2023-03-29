@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"time"
 
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -27,6 +28,7 @@ import (
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -262,7 +264,51 @@ func AddrsFactory(factory config.AddrsFactory) Option {
 		if cfg.AddrsFactory != nil {
 			return fmt.Errorf("cannot specify multiple address factories")
 		}
-		cfg.AddrsFactory = factory
+		if factory == nil {
+			return fmt.Errorf("cannot specify a nil address factory")
+		}
+
+		var log = logging.Logger("addrs-factory")
+
+		cfg.AddrsFactory = func(in []ma.Multiaddr) []ma.Multiaddr {
+			// This wrapper does the following:
+			// - If the user returns a webtransport multiaddr that doesn't have
+			//   a certhash, and all our known addrs have a certhash, copy the
+			//   certhash over.
+			//   - If we only have a webtransport multiaddr without a certhash
+			//     (client passed a static tls config), don't copy.
+			//   - If we have both, log a warning and don't copy the certhash.
+
+			out := factory(in)
+			var multiaddrWithCerthash ma.Multiaddr
+			foundInMultiaddrWithoutCerthash := false
+
+			for i, a := range out {
+				// Any webtransport addresses that need us to fill in a certhash?
+				if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(a); ok && n == 0 {
+					if multiaddrWithCerthash == nil {
+						for _, inMultiaddr := range in {
+							if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(inMultiaddr); ok && n > 0 {
+								// This will give us the certhash. All certhashes across all listening addresses.
+								multiaddrWithCerthash = inMultiaddr
+							} else if ok && n == 0 {
+								// This is possible if we are listening with a valid static TLS cert.
+								foundInMultiaddrWithoutCerthash = true
+							}
+						}
+					}
+					if multiaddrWithCerthash != nil {
+						out[i] = libp2pwebtransport.CopyCerthashes(multiaddrWithCerthash, a)
+					}
+				}
+			}
+
+			if multiaddrWithCerthash != nil && foundInMultiaddrWithoutCerthash {
+				log.Warn("Ambigous mapping in AddrsFactory. Not sure we if should fill in a certhash in output multiaddrs since we have both a multiaddr with and without a certhash in the input.")
+			}
+			return out
+		}
+
 		return nil
 	}
 }

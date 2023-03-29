@@ -313,14 +313,7 @@ func TestTransportCustomAddressWebTransport(t *testing.T) {
 		Transport(webtransport.New),
 		DisableRelay(),
 		AddrsFactory(func(multiaddrs []ma.Multiaddr) []ma.Multiaddr {
-			customAddrWithCertHash := customAddr
-			for _, addr := range multiaddrs {
-				if webtransport.IsWebtransportMultiaddrWithCerthash(addr) {
-					customAddrWithCertHash = webtransport.CopyCerthashes(addr, customAddrWithCertHash)
-					break
-				}
-			}
-			return []ma.Multiaddr{customAddrWithCertHash}
+			return []ma.Multiaddr{customAddr}
 		}),
 	)
 	require.NoError(t, err)
