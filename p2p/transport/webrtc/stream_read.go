@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
@@ -28,6 +30,9 @@ func (s *webRTCStream) Read(b []byte) (int, error) {
 			return 0, io.ErrClosedPipe
 		}
 		read, readErr = s.readMessage(b)
+	}
+	if errors.Is(readErr, os.ErrDeadlineExceeded) {
+		return read, ErrTimeout
 	}
 	return read, readErr
 }
@@ -54,7 +59,7 @@ func (s *webRTCStream) readMessage(b []byte) (int, error) {
 		// without writing a FIN message
 		if errors.Is(err, io.EOF) {
 			s.Reset()
-			return read, io.ErrClosedPipe
+			return read, network.ErrReset
 		}
 		return read, err
 	}

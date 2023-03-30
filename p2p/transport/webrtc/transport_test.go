@@ -382,12 +382,12 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 		// deadline set to the past
 		stream.SetReadDeadline(time.Now().Add(-200 * time.Millisecond))
 		_, err = stream.Read([]byte{0, 0})
-		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		require.ErrorIs(t, err, ErrTimeout)
 
 		// future deadline exceeded
 		stream.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		_, err = stream.Read([]byte{0, 0})
-		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		require.ErrorIs(t, err, ErrTimeout)
 	})
 
 	t.Run("SetWriteDeadline", func(t *testing.T) {
@@ -407,7 +407,7 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 		stream.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
 		largeBuffer := make([]byte, 2*1024*1024)
 		_, err = stream.Write(largeBuffer)
-		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		require.ErrorIs(t, err, ErrTimeout)
 	})
 }
 
@@ -448,8 +448,8 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 		}()
 	}
 
-	require.ErrorIs(t, <-errC, os.ErrDeadlineExceeded)
-	require.ErrorIs(t, <-errC, os.ErrDeadlineExceeded)
+	require.ErrorIs(t, <-errC, ErrTimeout)
+	require.ErrorIs(t, <-errC, ErrTimeout)
 
 }
 
@@ -649,7 +649,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 		})
 
 		_, err = stream.Read(make([]byte, 19))
-		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		require.ErrorIs(t, err, ErrTimeout)
 
 		select {
 		case <-done:
@@ -814,7 +814,7 @@ func TestTransportWebRTC_StreamResetOnPeerConnectionFailure(t *testing.T) {
 		for {
 			_, err := stream.Write([]byte("test"))
 			if err != nil {
-				assert.ErrorIs(t, err, os.ErrDeadlineExceeded)
+				assert.ErrorIs(t, err, ErrTimeout)
 				close(done)
 				return
 			}

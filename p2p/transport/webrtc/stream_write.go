@@ -37,6 +37,9 @@ func (s *webRTCStream) Write(b []byte) (int, error) {
 		n += end
 		b = b[end:]
 		if err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				err = ErrTimeout
+			}
 			return n, err
 		}
 	}
@@ -153,7 +156,7 @@ func (s *webRTCStream) CloseWrite() error {
 			return
 		}
 		// if successfully written, process the outgoing flag
-		state := s.stateHandler.CloseRead()
+		state := s.stateHandler.CloseWrite()
 		// unblock and fail any ongoing writes
 		select {
 		case s.writeAvailable <- struct{}{}:
