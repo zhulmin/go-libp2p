@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/network"
 	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
@@ -44,6 +43,9 @@ func (s *webRTCStream) readMessage(b []byte) (int, error) {
 
 	if remaining == 0 && !s.stateHandler.AllowRead() {
 		log.Debug("[2] stream has no more data to read")
+		if read != 0 {
+			return read, nil
+		}
 		return read, io.EOF
 	}
 
@@ -59,7 +61,10 @@ func (s *webRTCStream) readMessage(b []byte) (int, error) {
 		// without writing a FIN message
 		if errors.Is(err, io.EOF) {
 			s.Reset()
-			return read, network.ErrReset
+			if read != 0 {
+				return read, nil
+			}
+			return read, io.EOF
 		}
 		return read, err
 	}

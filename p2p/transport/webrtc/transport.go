@@ -143,7 +143,7 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 }
 
 func (t *WebRTCTransport) Protocols() []int {
-	return []int{ma.P_WEBRTC}
+	return []int{ma.P_P2P_WEBRTC_DIRECT}
 }
 
 func (t *WebRTCTransport) Proxy() bool {
