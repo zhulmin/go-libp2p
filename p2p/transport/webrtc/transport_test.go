@@ -683,7 +683,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 		err = stream.SetReadDeadline(time.Now().Add(2 * time.Second))
 		require.NoError(t, err)
 		_, err = stream.Read(buf)
-		require.ErrorIs(t, err, io.ErrClosedPipe)
+		require.ErrorIs(t, err, network.ErrReset)
 
 		wg.Wait()
 	})
