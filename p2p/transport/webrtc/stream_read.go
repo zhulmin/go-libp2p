@@ -33,6 +33,12 @@ func (s *webRTCStream) Read(b []byte) (int, error) {
 	if errors.Is(readErr, os.ErrDeadlineExceeded) {
 		return read, ErrTimeout
 	}
+	if read == 0 && readErr == nil {
+		return 0, io.EOF
+	}
+	if read != 0 && errors.Is(readErr, io.EOF) {
+		return 0, nil
+	}
 	return read, readErr
 }
 
@@ -78,6 +84,7 @@ func (s *webRTCStream) readMessage(b []byte) (int, error) {
 	if msg.Flag != nil {
 		s.processIncomingFlag(msg.GetFlag())
 	}
+
 	return read, nil
 }
 
