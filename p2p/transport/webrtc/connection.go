@@ -185,7 +185,11 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 		nil,
 		nil,
 	)
-	c.addStream(stream)
+	err = c.addStream(stream)
+	if err != nil {
+		stream.Close()
+		return nil, err
+	}
 	return stream, nil
 }
 
@@ -201,7 +205,10 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 			nil,
 			nil,
 		)
-		c.addStream(stream)
+		if err := c.addStream(stream); err != nil {
+			stream.Close()
+			return nil, err
+		}
 		return stream, nil
 	}
 }
@@ -237,23 +244,14 @@ func (c *connection) Transport() tpt.Transport {
 	return c.transport
 }
 
-func (c *connection) addStream(stream *webRTCStream) {
+func (c *connection) addStream(stream *webRTCStream) error {
 	c.m.Lock()
 	defer c.m.Unlock()
-	// This is a private function called from the same object only when a
-	//   1) new stream is initiated by the remote
-	//   or 2) we create a new stream.
-	// In case 1 the stream ID is extracted from the incoming datachannel,
-	// so it is guaranteed to exist. In case 2, we get the id from the sidAllocator which already
-	// performs the odd even check, and addStream is only called after a datachannel is created with the new stream ID.
-	//
-	// Finally, since this function is called for both outgoing and incoming streams,
-	// we need not perform an odd-even check here since it has been done by the stream ID allocator.
-	// If such a check must be performed (and it should), it should be done when the remote creates a new datachannel.
-	//
-	// In both cases, the stream ID is guaranteed not to exist yet.
-	// TODO: this assumption cannot be made (e.g. in case of malicious user)
+	if _, ok := c.streams[stream.id]; ok {
+		return errors.New("stream ID already exists")
+	}
 	c.streams[stream.id] = stream
+	return nil
 }
 
 func (c *connection) removeStream(id uint16) {
