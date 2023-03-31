@@ -61,11 +61,10 @@ const (
 type WebRTCTransport struct {
 	webrtcConfig webrtc.Configuration
 	rcmgr        network.ResourceManager
-	// TODO: make use of this
-	gater       connmgr.ConnectionGater
-	privKey     ic.PrivKey
-	noiseTpt    *noise.Transport
-	localPeerId peer.ID
+	gater        connmgr.ConnectionGater
+	privKey      ic.PrivKey
+	noiseTpt     *noise.Transport
+	localPeerId  peer.ID
 
 	// timeouts
 	peerConnectionTimeouts iceTimeouts
@@ -385,6 +384,11 @@ func (t *WebRTCTransport) dial(
 	localAddr, err := manet.FromNetAddr(channel.LocalAddr())
 	if err != nil {
 		return nil, err
+	}
+
+	// check with the gater if we can dial
+	if t.gater != nil && !t.gater.InterceptAddrDial(p, remoteMultiaddr) {
+		return nil, errors.New("not allowed to dial remote peer")
 	}
 
 	// we can only know the remote public key after the noise handshake,
