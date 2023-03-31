@@ -59,17 +59,11 @@ type listener struct {
 	// is considered to be in flight from the instant it is handled
 	// until it is dequeued by a call to Accept, or errors out in some
 	// way.
-	// TODO: improve this code, we do want to limit the number of in flight
-	// cons as it is needed for Pion usage, but at the same time we need
-	// to not consume too many open resources for it and do allow multiple
-	// conns to be accepted at once
-	inFlightInputQueue     chan candidateAddr
-	maxInFlightConnections uint32
+	inFlightInputQueue chan struct{}
 
 	// used to control the lifecycle of the listener
 	ctx    context.Context
 	cancel context.CancelFunc
-	wg     sync.WaitGroup
 }
 
 func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.PacketConn, config webrtc.Configuration) (*listener, error) {
@@ -91,79 +85,63 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		return nil, err
 	}
 
-	inFlightQueueCh := make(chan candidateAddr, 1)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {
-		// Push to the inFlightQueue asynchronously to avoid blocking the mux goroutine
-		// on candidates being processed. This can cause new connections to fail at high
-		// throughput but will allow packets for existing connections to be processed.
-		select {
-		case inFlightQueueCh <- candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}:
-			return true
-		default:
-			log.Debug("candidate chan full, dropping incoming candidate")
-			return false
-		}
-	})
+	inFlightQueueCh := make(chan struct{}, transport.maxInFlightConnections)
+	for i := uint32(0); i < transport.maxInFlightConnections; i++ {
+		inFlightQueueCh <- struct{}{}
+	}
 
 	l := &listener{
-		mux:                       mux,
 		transport:                 transport,
 		config:                    config,
 		localFingerprint:          localFingerprints[0],
 		localFingerprintMultibase: localFpMultibase,
 		localMultiaddr:            laddr,
-		ctx:                       ctx,
-		cancel:                    cancel,
 		localAddr:                 socket.LocalAddr(),
-		acceptQueue:               make(chan tpt.CapableConn, transport.maxInFlightConnections-1),
+		acceptQueue:               make(chan tpt.CapableConn),
 		inFlightInputQueue:        inFlightQueueCh,
-		maxInFlightConnections:    transport.maxInFlightConnections,
 	}
 
-	l.wg.Add(1)
-	go func() {
-		defer l.wg.Done()
-		l.inFlightWorker()
-	}()
-
-	return l, err
-}
-
-func (l *listener) inFlightWorker() {
-	for {
+	l.ctx, l.cancel = context.WithCancel(context.Background())
+	l.mux = udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {
 		select {
-		case <-l.ctx.Done():
-			return
+		case <-inFlightQueueCh:
+			// we have space to accept, Yihaa
+		default:
+			log.Debug("candidate chan full, dropping incoming candidate")
+			return false
+		}
 
-		case addr := <-l.inFlightInputQueue:
-			if !l.handleInFlightInput(&addr) {
+		go func() {
+			defer func() {
+				// free this spot once again
+				inFlightQueueCh <- struct{}{}
+			}()
+
+			ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
+			defer cancel()
+
+			candidateAddr := candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}
+			conn, err := l.handleCandidate(ctx, &candidateAddr)
+			if err != nil {
+				log.Debugf("could not accept connection: %s: %v", ufrag, err)
 				return
 			}
-		}
-	}
-}
 
-func (l *listener) handleInFlightInput(addr *candidateAddr) bool {
-	ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
-	defer cancel()
+			select {
+			case <-ctx.Done():
+				log.Warn("could not push connection: ctx done")
+				conn.Close()
 
-	conn, err := l.handleCandidate(ctx, addr)
-	if err != nil {
-		log.Debugf("could not accept connection: %s: %v", addr.ufrag, err)
-		return false
-	}
-	select {
-	case <-ctx.Done():
-		log.Warn("could not push connection: ctx done")
-		conn.Close()
-	case l.acceptQueue <- conn:
-		// block until the connection is accepted,
-		// or until we are done, this effectively blocks our in flight from continuing to progress
-	}
+			case l.acceptQueue <- conn:
+				// block until the connection is accepted,
+				// or until we are done, this effectively blocks our in flight from continuing to progress
+			}
+		}()
 
-	return true
+		return true
+	})
+
+	return l, err
 }
 
 func (l *listener) handleCandidate(ctx context.Context, addr *candidateAddr) (tpt.CapableConn, error) {
@@ -318,7 +296,6 @@ func (l *listener) Close() error {
 	case <-l.ctx.Done():
 	default:
 		l.cancel()
-		l.wg.Wait()
 	}
 	return nil
 }
