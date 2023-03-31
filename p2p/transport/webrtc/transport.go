@@ -304,7 +304,13 @@ func (t *WebRTCTransport) dial(
 		t.peerConnectionTimeouts.Failed,
 		t.peerConnectionTimeouts.Keepalive,
 	)
-	// TODO: explain this one
+	// By default, webrtc will not collect candidates on the loopback address.
+	// This is disallowed in the ICE specification. However, implementations
+	// do not strictly follow this, for eg. Chrome gathers TCP loopback candidates.
+	// If you run pion on a system with only the loopback interface UP,
+	// it will not connect to anything. However, if it has any other interface
+	// (even a private one, eg. 192.168.0.0/16), it will gather candidates on it and
+	// will be able to connect to other pion instances on the same interface.
 	settingEngine.SetIncludeLoopbackCandidate(true)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))

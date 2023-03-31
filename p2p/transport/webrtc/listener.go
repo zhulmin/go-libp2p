@@ -210,7 +210,6 @@ func (l *listener) setupConnection(
 	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
 	settingEngine.SetLite(true)
 	settingEngine.SetICEUDPMux(l.mux)
-	// TODO: explain this one
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.DisableCertificateFingerprintVerification(true)
 	settingEngine.SetICETimeouts(
