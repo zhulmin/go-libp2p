@@ -35,7 +35,7 @@ import (
 
 var log = logging.Logger("webrtc-transport")
 
-var dialMatcher = mafmt.And(mafmt.UDP, mafmt.Base(ma.P_WEBRTC), mafmt.Base(ma.P_CERTHASH))
+var dialMatcher = mafmt.And(mafmt.UDP, mafmt.Base(ma.P_P2P_WEBRTC_DIRECT), mafmt.Base(ma.P_CERTHASH))
 
 const (
 	// handshakeChannelNegotiated is used to specify that the
@@ -168,7 +168,7 @@ func (t *WebRTCTransport) CanDial(addr ma.Multiaddr) bool {
 	return dialMatcher.Matches(addr)
 }
 
-var webRTCMultiAddr = ma.StringCast("/webrtc")
+var webRTCMultiAddr = ma.StringCast("/p2p-webrtc-direct")
 
 func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	addr, wrtcComponent := ma.SplitLast(addr)
@@ -214,7 +214,7 @@ func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error
 		return nil, err
 	}
 
-	certMultiaddress, err := ma.NewMultiaddr(fmt.Sprintf("/webrtc/certhash/%s", encodedLocalFingerprint))
+	certMultiaddress, err := ma.NewMultiaddr(fmt.Sprintf("/p2p-webrtc-direct/certhash/%s", encodedLocalFingerprint))
 	if err != nil {
 		return nil, err
 	}

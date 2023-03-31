@@ -137,7 +137,7 @@ func (c *connection) resetStreams() {
 // ConnState implements transport.CapableConn
 func (c *connection) ConnState() network.ConnectionState {
 	return network.ConnectionState{
-		Transport: "webrtc",
+		Transport: "p2p-webrtc-direct",
 	}
 }
 
