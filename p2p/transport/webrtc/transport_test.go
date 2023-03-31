@@ -134,7 +134,19 @@ func TestTransportWebRTC_CanListenSingle(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.FailNow()
 	}
+}
 
+// WithListenerMaxInFlightConnections sets the maximum number of connections that are in-flight, i.e
+// they are being negotiated, or are waiting to be accepted.
+func WithListenerMaxInFlightConnections(m uint32) Option {
+	return func(t *WebRTCTransport) error {
+		if m == 0 {
+			t.maxInFlightConnections = DefaultMaxInFlightConnections
+		} else {
+			t.maxInFlightConnections = m
+		}
+		return nil
+	}
 }
 
 func TestTransportWebRTC_CanListenMultiple(t *testing.T) {

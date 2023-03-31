@@ -83,19 +83,6 @@ type iceTimeouts struct {
 	Keepalive  time.Duration
 }
 
-// WithListenerMaxInFlightConnections sets the maximum number of connections that are in-flight, i.e
-// they are being negotiated, or are waiting to be accepted.
-func WithListenerMaxInFlightConnections(m uint32) Option {
-	return func(t *WebRTCTransport) error {
-		if m == 0 {
-			t.maxInFlightConnections = DefaultMaxInFlightConnections
-		} else {
-			t.maxInFlightConnections = m
-		}
-		return nil
-	}
-}
-
 func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager, opts ...Option) (*WebRTCTransport, error) {
 	if psk != nil {
 		log.Error("WebRTC doesn't support private networks yet.")
