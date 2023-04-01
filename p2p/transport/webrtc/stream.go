@@ -93,7 +93,7 @@ func newStream(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	result := &webRTCStream{
-		reader: rwc,
+		reader: pbio.NewDelimitedReader(rwc, maxMessageSize),
 		writer: pbio.NewDelimitedWriter(rwc),
 
 		writerDeadlineUpdated: make(chan struct{}, 1),
