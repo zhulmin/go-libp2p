@@ -33,12 +33,6 @@ func (s *webRTCStream) Read(b []byte) (int, error) {
 	if errors.Is(readErr, os.ErrDeadlineExceeded) {
 		return read, ErrTimeout
 	}
-	if read == 0 && readErr == nil {
-		return 0, io.EOF
-	}
-	if read != 0 && errors.Is(readErr, io.EOF) {
-		return 0, nil
-	}
 	return read, readErr
 }
 
@@ -65,12 +59,9 @@ func (s *webRTCStream) readMessage(b []byte) (int, error) {
 	if err != nil {
 		// This case occurs when the remote node goes away
 		// without writing a FIN message
-		if errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) && read == 0 {
 			s.Reset()
-			if read != 0 {
-				return read, nil
-			}
-			return read, io.EOF
+			return 0, io.EOF
 		}
 		return read, err
 	}
