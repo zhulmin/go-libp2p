@@ -154,7 +154,7 @@ func (t *WebRTCTransport) CanDial(addr ma.Multiaddr) bool {
 	return dialMatcher.Matches(addr)
 }
 
-var webRTCMultiAddr = ma.StringCast("/p2p-webrtc-direct")
+var webRTCMultiAddr = ma.StringCast("/webrtc-direct")
 
 func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	addr, wrtcComponent := ma.SplitLast(addr)
@@ -200,7 +200,7 @@ func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error
 		return nil, err
 	}
 
-	certMultiaddress, err := ma.NewMultiaddr(fmt.Sprintf("/p2p-webrtc-direct/certhash/%s", encodedLocalFingerprint))
+	certMultiaddress, err := ma.NewMultiaddr(fmt.Sprintf("/webrtc-direct/certhash/%s", encodedLocalFingerprint))
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,7 @@ func TestWebRTCStream(t *testing.T) {
 	t.Skip("TODO: fix this e2e test")
 	h1, err := libp2p.New(
 		libp2p.Transport(libp2pwebrtc.New),
-		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/p2p-webrtc-direct"),
+		libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/webrtc-direct"),
 	)
 	require.NoError(t, err)
 
