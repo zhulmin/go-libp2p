@@ -271,13 +271,11 @@ func AddrsFactory(factory config.AddrsFactory) Option {
 		var log = logging.Logger("addrs-factory")
 
 		cfg.AddrsFactory = func(in []ma.Multiaddr) []ma.Multiaddr {
-			// This wrapper does the following:
-			// - If the user returns a webtransport multiaddr that doesn't have
-			//   a certhash, and all our known addrs have a certhash, copy the
-			//   certhash over.
-			//   - If we only have a webtransport multiaddr without a certhash
-			//     (client passed a static tls config), don't copy.
-			//   - If we have both, log a warning and don't copy the certhash.
+			// This wrapper checks fills in any missing webtransport certhashes
+			// in user provided webtransport addresses. It does this by getting
+			// the certhashes from the input multiaddrs. It's an error if we get
+			// see a webtransport multiaddr without a certhash since we don't
+			// support static TLS configs currently.
 
 			out := factory(in)
 			var multiaddrWithCerthash ma.Multiaddr
@@ -303,8 +301,8 @@ func AddrsFactory(factory config.AddrsFactory) Option {
 				}
 			}
 
-			if multiaddrWithCerthash != nil && foundInMultiaddrWithoutCerthash {
-				log.Warn("Ambigous mapping in AddrsFactory. Not sure we if should fill in a certhash in output multiaddrs since we have both a multiaddr with and without a certhash in the input.")
+			if foundInMultiaddrWithoutCerthash {
+				log.Error("Found a webtransport multiaddr without a certhash in the input to AddrsFactory. This shouldn't happen")
 			}
 			return out
 		}
