@@ -817,7 +817,7 @@ func dedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if len(addrs) == 0 {
 		return addrs
 	}
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) <= 0 })
+	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
 	idx := 1
 	for i := 1; i < len(addrs); i++ {
 		if !addrs[i-1].Equal(addrs[i]) {
