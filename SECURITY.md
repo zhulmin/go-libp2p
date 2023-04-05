@@ -1,6 +1,6 @@
 # Security Policy
 
-go-libp2p still in development. This means that there may be problems in our protocols,
+go-libp2p is still in development. This means that there may be problems in our protocols,
 or there may be mistakes in our implementations.
 We take security vulnerabilities very seriously. If you discover a security issue,
 please bring it to our attention right away!
