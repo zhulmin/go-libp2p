@@ -124,15 +124,16 @@ const (
 type MetricsTracer interface {
 	RelayFinderStatus(isActive bool)
 
-	ReservationEnded()
+	ReservationEnded(cnt int)
+	ReservationOpened(cnt int)
 	ReservationRequestFinished(isRefresh bool, err error)
 
 	RelayAddressCount(int)
 	RelayAddressUpdated()
 
 	CandidateChecked(supportsCircuitV2 bool)
-	CandidateAdded()
-	CandidateRemoved()
+	CandidateAdded(cnt int)
+	CandidateRemoved(cnt int)
 	CandidateLoopState(state candidateLoopState)
 
 	ScheduledWorkUpdated(scheduledWork *scheduledWorkTimes)
@@ -182,8 +183,12 @@ func (mt *metricsTracer) RelayFinderStatus(isActive bool) {
 	}
 }
 
-func (mt *metricsTracer) ReservationEnded() {
-	reservationsClosedTotal.Inc()
+func (mt *metricsTracer) ReservationEnded(cnt int) {
+	reservationsClosedTotal.Add(float64(cnt))
+}
+
+func (mt *metricsTracer) ReservationOpened(cnt int) {
+	reservationsOpenedTotal.Add(float64(cnt))
 }
 
 func (mt *metricsTracer) ReservationRequestFinished(isRefresh bool, err error) {
@@ -222,18 +227,18 @@ func (mt *metricsTracer) CandidateChecked(supportsCircuitV2 bool) {
 	candidatesCircuitV2SupportTotal.WithLabelValues(*tags...).Inc()
 }
 
-func (mt *metricsTracer) CandidateAdded() {
+func (mt *metricsTracer) CandidateAdded(cnt int) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 	*tags = append(*tags, "added")
-	candidatesTotal.WithLabelValues(*tags...).Inc()
+	candidatesTotal.WithLabelValues(*tags...).Add(float64(cnt))
 }
 
-func (mt *metricsTracer) CandidateRemoved() {
+func (mt *metricsTracer) CandidateRemoved(cnt int) {
 	tags := metricshelper.GetStringSlice()
 	defer metricshelper.PutStringSlice(tags)
 	*tags = append(*tags, "removed")
-	candidatesTotal.WithLabelValues(*tags...).Inc()
+	candidatesTotal.WithLabelValues(*tags...).Add(float64(cnt))
 }
 
 func (mt *metricsTracer) CandidateLoopState(state candidateLoopState) {
@@ -301,9 +306,15 @@ func (mt *wrappedMetricsTracer) RelayFinderStatus(isActive bool) {
 	}
 }
 
-func (mt *wrappedMetricsTracer) ReservationEnded() {
+func (mt *wrappedMetricsTracer) ReservationEnded(cnt int) {
 	if mt.mt != nil {
-		mt.mt.ReservationEnded()
+		mt.mt.ReservationEnded(cnt)
+	}
+}
+
+func (mt *wrappedMetricsTracer) ReservationOpened(cnt int) {
+	if mt.mt != nil {
+		mt.mt.ReservationOpened(cnt)
 	}
 }
 
@@ -331,15 +342,15 @@ func (mt *wrappedMetricsTracer) CandidateChecked(supportsCircuitV2 bool) {
 	}
 }
 
-func (mt *wrappedMetricsTracer) CandidateAdded() {
+func (mt *wrappedMetricsTracer) CandidateAdded(cnt int) {
 	if mt.mt != nil {
-		mt.mt.CandidateAdded()
+		mt.mt.CandidateAdded(cnt)
 	}
 }
 
-func (mt *wrappedMetricsTracer) CandidateRemoved() {
+func (mt *wrappedMetricsTracer) CandidateRemoved(cnt int) {
 	if mt.mt != nil {
-		mt.mt.CandidateRemoved()
+		mt.mt.CandidateRemoved(cnt)
 	}
 }
 

@@ -37,13 +37,14 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 	tr := NewMetricsTracer()
 	tests := map[string]func(){
 		"RelayFinderStatus":          func() { tr.RelayFinderStatus(rand.Intn(2) == 1) },
-		"ReservationEnded":           func() { tr.ReservationEnded() },
+		"ReservationEnded":           func() { tr.ReservationEnded(rand.Intn(10)) },
 		"ReservationRequestFinished": func() { tr.ReservationRequestFinished(rand.Intn(2) == 1, errs[rand.Intn(len(errs))]) },
 		"RelayAddressCount":          func() { tr.RelayAddressCount(rand.Intn(10)) },
 		"RelayAddressUpdated":        func() { tr.RelayAddressUpdated() },
+		"ReservationOpened":          func() { tr.ReservationOpened(rand.Intn(10)) },
 		"CandidateChecked":           func() { tr.CandidateChecked(rand.Intn(2) == 1) },
-		"CandidateAdded":             func() { tr.CandidateAdded() },
-		"CandidateRemoved":           func() { tr.CandidateRemoved() },
+		"CandidateAdded":             func() { tr.CandidateAdded(rand.Intn(10)) },
+		"CandidateRemoved":           func() { tr.CandidateRemoved(rand.Intn(10)) },
 		"ScheduledWorkUpdated":       func() { tr.ScheduledWorkUpdated(&scheduledWork[rand.Intn(len(scheduledWork))]) },
 		"DesiredReservations":        func() { tr.DesiredReservations(rand.Intn(10)) },
 		"CandidateLoopState":         func() { tr.CandidateLoopState(candidateLoopState(rand.Intn(10))) },

@@ -140,8 +140,6 @@ func (rf *relayFinder) background(ctx context.Context) {
 	bootDelayTimer := rf.conf.clock.InstantTimer(now.Add(rf.conf.bootDelay))
 	defer bootDelayTimer.Stop()
 
-	rf.metricsTracer.DesiredReservations(rf.conf.desiredRelays)
-
 	// This is the least frequent event. It's our fallback timer if we don't have any other work to do.
 	leastFrequentInterval := rf.conf.minInterval
 	// Check if leastFrequentInterval is 0 to avoid busy looping
@@ -190,7 +188,7 @@ func (rf *relayFinder) background(ctx context.Context) {
 
 			if push {
 				rf.clearCachedAddrsAndSignalAddressChange()
-				rf.metricsTracer.ReservationEnded()
+				rf.metricsTracer.ReservationEnded(1)
 			}
 		case <-rf.candidateFound:
 			rf.notifyMaybeConnectToRelay()
@@ -656,7 +654,7 @@ func (rf *relayFinder) refreshRelayReservation(ctx context.Context, p peer.ID) e
 		rf.host.ConnManager().Unprotect(p, autorelayTag)
 		rf.relayMx.Unlock()
 		if exists {
-			rf.metricsTracer.ReservationEnded()
+			rf.metricsTracer.ReservationEnded(1)
 		}
 		return err
 	}
@@ -678,7 +676,7 @@ func (rf *relayFinder) addCandidate(cand *candidate) {
 	_, exists := rf.candidates[cand.ai.ID]
 	rf.candidates[cand.ai.ID] = cand
 	if !exists {
-		rf.metricsTracer.CandidateAdded()
+		rf.metricsTracer.CandidateAdded(1)
 	}
 }
 
@@ -686,7 +684,7 @@ func (rf *relayFinder) removeCandidate(id peer.ID) {
 	_, exists := rf.candidates[id]
 	if exists {
 		delete(rf.candidates, id)
-		rf.metricsTracer.CandidateRemoved()
+		rf.metricsTracer.CandidateRemoved(1)
 	}
 }
 
@@ -759,6 +757,9 @@ func (rf *relayFinder) Start() error {
 		return errAlreadyRunning
 	}
 	log.Debug("starting relay finder")
+
+	rf.initMetrics()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	rf.ctxCancel = cancel
 	rf.refCount.Add(1)
@@ -778,5 +779,32 @@ func (rf *relayFinder) Stop() error {
 	}
 	rf.refCount.Wait()
 	rf.ctxCancel = nil
+
+	rf.resetMetrics()
 	return nil
+}
+
+func (rf *relayFinder) initMetrics() {
+	rf.metricsTracer.DesiredReservations(rf.conf.desiredRelays)
+
+	rf.relayMx.Lock()
+	rf.metricsTracer.ReservationOpened(len(rf.relays))
+	rf.relayMx.Unlock()
+
+	rf.candidateMx.Lock()
+	rf.metricsTracer.CandidateAdded(len(rf.candidates))
+	rf.candidateMx.Unlock()
+}
+
+func (rf *relayFinder) resetMetrics() {
+	rf.relayMx.Lock()
+	rf.metricsTracer.ReservationEnded(len(rf.relays))
+	rf.relayMx.Unlock()
+
+	rf.candidateMx.Lock()
+	rf.metricsTracer.CandidateRemoved(len(rf.candidates))
+	rf.candidateMx.Unlock()
+
+	rf.metricsTracer.RelayAddressCount(0)
+	rf.metricsTracer.ScheduledWorkUpdated(&scheduledWorkTimes{})
 }
