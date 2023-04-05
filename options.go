@@ -262,7 +262,6 @@ func AddrsFactory(factory config.AddrsFactory) Option {
 		if cfg.AddrsFactory != nil {
 			return fmt.Errorf("cannot specify multiple address factories")
 		}
-
 		cfg.AddrsFactory = factory
 		return nil
 	}
