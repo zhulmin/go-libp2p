@@ -692,12 +692,12 @@
           "mappings": [
             {
               "options": {
-                "from": null,
+                "from": -9223372036854776000,
                 "result": {
                   "index": 0,
                   "text": "-"
                 },
-                "to": 0
+                "to": -86400
               },
               "type": "range"
             }
@@ -769,7 +769,7 @@
           "mappings": [
             {
               "options": {
-                "from": -86400,
+                "from": -86399,
                 "result": {
                   "index": 0,
                   "text": "immediately"
@@ -780,7 +780,7 @@
             },
             {
               "options": {
-                "from": null,
+                "from": -9223372036854776000,
                 "result": {
                   "index": 1,
                   "text": "-"
@@ -1043,6 +1043,6 @@
   "timezone": "",
   "title": "libp2p Autorelay",
   "uid": "deQ_uf-4k",
-  "version": 14,
+  "version": 6,
   "weekStart": ""
 }
