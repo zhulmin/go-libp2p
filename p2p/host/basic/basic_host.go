@@ -34,7 +34,6 @@ import (
 	"github.com/libp2p/go-netroute"
 
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/multiformats/go-multiaddr"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -794,15 +793,11 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 // If the multiaddr is a webtransport component, it removes the certhashes.
 func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n > 0 {
-		var firstCerthash ma.Multiaddr
-		multiaddr.ForEach(addr, func(c ma.Component) bool {
-			if c.Protocol().Code == ma.P_CERTHASH {
-				firstCerthash = &c
-				return false
-			}
-			return true
-		})
-		return addr.Decapsulate(firstCerthash)
+		out := addr
+		for i := 0; i < n; i++ {
+			out, _ = ma.SplitLast(out)
+		}
+		return out
 	}
 	return addr
 }

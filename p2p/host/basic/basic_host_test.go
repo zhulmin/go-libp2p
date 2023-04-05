@@ -816,3 +816,11 @@ func peerRecordFromEnvelope(t *testing.T, ev *record.Envelope) *peer.PeerRecord 
 	}
 	return peerRec
 }
+
+func TestNormalizeMultiaddr(t *testing.T) {
+	h1, err := NewHost(swarmt.GenSwarm(t), nil)
+	require.NoError(t, err)
+	defer h1.Close()
+
+	require.Equal(t, "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport", h1.NormalizeMultiaddr(ma.StringCast("/ip4/1.2.3.4/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")).String())
+}
