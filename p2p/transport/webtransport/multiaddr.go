@@ -76,8 +76,8 @@ func addrComponentForCert(hash []byte) (ma.Multiaddr, error) {
 	return ma.NewComponent(ma.ProtocolWithCode(ma.P_CERTHASH).Name, certStr)
 }
 
-// IsWebtransportMultiaddrWithCerthash returns true if the given multiaddr is a
-// well formed webtransport multiaddr. Returns the number of certhashes found.
+// IsWebtransportMultiaddr returns true if the given multiaddr is a well formed
+// webtransport multiaddr. Returns the number of certhashes found.
 func IsWebtransportMultiaddr(multiaddr ma.Multiaddr) (bool, int) {
 	const (
 		init = iota
@@ -104,11 +104,4 @@ func IsWebtransportMultiaddr(multiaddr ma.Multiaddr) (bool, int) {
 		return true
 	})
 	return state == foundWebTransport, certhashCount
-}
-
-// IsWebtransportMultiaddrWithCerthash returns true if the given multiaddr is a
-// well formed webtransport multiaddr with a certificate hash.
-func IsWebtransportMultiaddrWithCerthash(multiaddr ma.Multiaddr) bool {
-	ok, n := IsWebtransportMultiaddr(multiaddr)
-	return ok && n > 0
 }

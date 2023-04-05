@@ -104,7 +104,7 @@ func TestWebtransportResolve(t *testing.T) {
 	})
 }
 
-func TestIsWebtransportMultiaddrWithCerthash(t *testing.T) {
+func TestIsWebtransportMultiaddr(t *testing.T) {
 	fooHash := encodeCertHash(t, []byte("foo"), multihash.SHA2_256, multibase.Base58BTC)
 	barHash := encodeCertHash(t, []byte("bar"), multihash.SHA2_256, multibase.Base58BTC)
 
@@ -125,7 +125,6 @@ func TestIsWebtransportMultiaddrWithCerthash(t *testing.T) {
 			got, n := IsWebtransportMultiaddr(ma.StringCast(tc.addr))
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.certhashCount, n)
-			require.Equal(t, tc.want && n > 0, IsWebtransportMultiaddrWithCerthash(ma.StringCast(tc.addr)))
 		})
 	}
 }
