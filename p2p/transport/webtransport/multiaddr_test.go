@@ -129,25 +129,3 @@ func TestIsWebtransportMultiaddrWithCerthash(t *testing.T) {
 		})
 	}
 }
-
-func TestCopyCerthashes(t *testing.T) {
-	fooHash := ma.StringCast("/certhash/" + encodeCertHash(t, []byte("foo"), multihash.SHA2_256, multibase.Base58BTC)).String()
-	barHash := ma.StringCast("/certhash/" + encodeCertHash(t, []byte("bar"), multihash.SHA2_256, multibase.Base58BTC)).String()
-
-	testCases := []struct {
-		addr string
-		want string
-	}{
-		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport", want: "/ip4/4.3.2.1/udp/24006/quic-v1/webtransport"},
-		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport" + fooHash, want: "/ip4/4.3.2.1/udp/24006/quic-v1/webtransport" + fooHash},
-		{addr: "/ip4/1.2.3.4/udp/60042/quic-v1/webtransport" + fooHash + barHash, want: "/ip4/4.3.2.1/udp/24006/quic-v1/webtransport" + fooHash + barHash},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.addr, func(t *testing.T) {
-			got := CopyCerthashes(ma.StringCast(tc.addr), ma.StringCast("/ip4/4.3.2.1/udp/24006/quic-v1/webtransport"))
-			require.Equal(t, tc.want, got.String())
-		})
-	}
-
-}

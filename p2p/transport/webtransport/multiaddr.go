@@ -112,22 +112,3 @@ func IsWebtransportMultiaddrWithCerthash(multiaddr ma.Multiaddr) bool {
 	ok, n := IsWebtransportMultiaddr(multiaddr)
 	return ok && n > 0
 }
-
-// CopyCerthashes copies the certificate hashes from the first multiaddr to the
-// second. If there are no multiaddrs in the first, the second is returned
-// unchanged.  Otherwise a new multiaddr is returned with certhashes appeneded
-// to it
-func CopyCerthashes(existingMultiaddrWithCerthashes, multiaddrWithoutCerthashes ma.Multiaddr) ma.Multiaddr {
-	certhashComponents := make([]ma.Component, 0, 2) // 2 is the common case
-	ma.ForEach(existingMultiaddrWithCerthashes, func(c ma.Component) bool {
-		if c.Protocol().Code == ma.P_CERTHASH {
-			certhashComponents = append(certhashComponents, c)
-		}
-		return true
-	})
-	out := multiaddrWithoutCerthashes
-	for _, certComponent := range certhashComponents {
-		out = out.Encapsulate(&certComponent)
-	}
-	return out
-}

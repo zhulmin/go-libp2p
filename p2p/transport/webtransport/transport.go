@@ -400,3 +400,10 @@ func (t *transport) Resolve(_ context.Context, maddr ma.Multiaddr) ([]ma.Multiad
 	}
 	return []ma.Multiaddr{beforeQuicMA.Encapsulate(quicComponent).Encapsulate(sniComponent).Encapsulate(afterQuicMA)}, nil
 }
+
+func (t *transport) AddCertHashes(m ma.Multiaddr) ma.Multiaddr {
+	if t.certManager == nil {
+		return m
+	}
+	return m.Encapsulate(t.certManager.AddrComponent())
+}
