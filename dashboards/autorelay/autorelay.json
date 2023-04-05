@@ -21,7 +21,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "9.4.1"
+      "version": "9.4.7"
     },
     {
       "type": "panel",
@@ -236,7 +236,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.4.1",
+      "pluginVersion": "9.4.7",
       "targets": [
         {
           "datasource": {
@@ -567,7 +567,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.1",
+      "pluginVersion": "9.4.7",
       "targets": [
         {
           "datasource": {
@@ -689,17 +689,25 @@
             "fixedColor": "blue",
             "mode": "fixed"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "from": null,
+                "result": {
+                  "index": 0,
+                  "text": "-"
+                },
+                "to": 0
+              },
+              "type": "range"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           },
@@ -716,9 +724,9 @@
       "id": 26,
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -728,7 +736,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.1",
+      "pluginVersion": "9.4.7",
       "targets": [
         {
           "datasource": {
@@ -736,9 +744,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
+          "exemplar": false,
           "expr": "libp2p_autorelay_scheduled_work_time{work_type=\"old candidate check\"} * 1000\n",
+          "instant": true,
           "legendFormat": "__auto",
-          "range": true,
+          "range": false,
           "refId": "A"
         }
       ],
@@ -753,18 +763,29 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "purple",
+            "fixedColor": "blue",
             "mode": "fixed"
           },
           "mappings": [
             {
               "options": {
+                "from": -86400,
                 "result": {
-                  "color": "blue",
-                  "index": 1,
+                  "index": 0,
                   "text": "immediately"
                 },
                 "to": 0
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": null,
+                "result": {
+                  "index": 1,
+                  "text": "-"
+                },
+                "to": -86400
               },
               "type": "range"
             }
@@ -803,7 +824,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.1",
+      "pluginVersion": "9.4.7",
       "targets": [
         {
           "datasource": {
@@ -880,7 +901,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.1",
+      "pluginVersion": "9.4.7",
       "targets": [
         {
           "datasource": {
@@ -1022,6 +1043,6 @@
   "timezone": "",
   "title": "libp2p Autorelay",
   "uid": "deQ_uf-4k",
-  "version": 9,
+  "version": 14,
   "weekStart": ""
 }
