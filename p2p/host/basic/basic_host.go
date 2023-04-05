@@ -795,16 +795,7 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 // If the multiaddr is a webtransport component, it removes the certhashes.
 func (h *BasicHost) NormalizeMultiaddr(addr ma.Multiaddr) ma.Multiaddr {
 	if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n > 0 {
-		// Clone this to own the underlying bytes. Otherwise the race detector tests
-		addrBytes := addr.Bytes()
-		copyBytes := make([]byte, len(addrBytes))
-		copy(copyBytes, addrBytes)
-
-		// This won't fail since we got this from a multiaddr.
-		out, err := ma.NewMultiaddrBytes(copyBytes)
-		if err != nil {
-			return addr
-		}
+		out := addr
 		for i := 0; i < n; i++ {
 			out, _ = ma.SplitLast(out)
 		}
