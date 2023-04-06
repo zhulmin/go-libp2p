@@ -305,12 +305,13 @@ func TestTransportConstructorWebTransport(t *testing.T) {
 }
 
 func TestTransportCustomAddressWebTransport(t *testing.T) {
-	customAddr, err := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1/webtransport")
+	customAddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1/webtransport")
 	if err != nil {
 		t.Fatal(err)
 	}
 	h, err := New(
 		Transport(webtransport.New),
+		ListenAddrs(customAddr),
 		DisableRelay(),
 		AddrsFactory(func(multiaddrs []ma.Multiaddr) []ma.Multiaddr {
 			return []ma.Multiaddr{customAddr}
