@@ -13,6 +13,7 @@ Please **DO NOT file a public issue**.
 
 If the issue is an implementation weakness that cannot be immediately exploited or
 something not yet deployed, just discuss it openly.
+If you need assistance, please reach out to [security@libp2p.io](mailto:security@libp2p.io).
 
 ## Reporting a non security bug
 
