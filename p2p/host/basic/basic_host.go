@@ -778,6 +778,11 @@ func (h *BasicHost) Addrs() []ma.Multiaddr {
 		return addrs
 	}
 
+	// Copy addrs slice since we'll be modifying it.
+	addrsOld := addrs
+	addrs = make([]ma.Multiaddr, len(addrsOld))
+	copy(addrs, addrsOld)
+
 	for i, addr := range addrs {
 		if ok, n := libp2pwebtransport.IsWebtransportMultiaddr(addr); ok && n == 0 {
 			t := s.TransportForListening(addr)
