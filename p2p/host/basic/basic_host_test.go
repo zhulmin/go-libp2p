@@ -397,7 +397,6 @@ func TestHostProtoPreknowledge(t *testing.T) {
 		protos, err := h1.Peerstore().GetProtocols(h2.ID())
 		require.NoError(t, err)
 		for _, p := range protos {
-			fmt.Println("proto: ", p)
 			if p == "/foo" {
 				return true
 			}
