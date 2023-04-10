@@ -391,7 +391,15 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 	if canNormalize {
 		local = normalizer.NormalizeMultiaddr(local)
 	}
-	if !ma.Contains(ifaceaddrs, local) && !ma.Contains(oas.host.Network().ListenAddresses(), local) {
+
+	listenAddrs := oas.host.Network().ListenAddresses()
+	if canNormalize {
+		for i, a := range listenAddrs {
+			listenAddrs[i] = normalizer.NormalizeMultiaddr(a)
+		}
+	}
+
+	if !ma.Contains(ifaceaddrs, local) && !ma.Contains(listenAddrs, local) {
 		// not in our list
 		return
 	}
@@ -400,12 +408,6 @@ func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observ
 	if canNormalize {
 		for i, a := range hostAddrs {
 			hostAddrs[i] = normalizer.NormalizeMultiaddr(a)
-		}
-	}
-	listenAddrs := oas.host.Network().ListenAddresses()
-	if canNormalize {
-		for i, a := range listenAddrs {
-			listenAddrs[i] = normalizer.NormalizeMultiaddr(a)
 		}
 	}
 
