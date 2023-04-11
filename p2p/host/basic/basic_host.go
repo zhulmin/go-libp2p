@@ -30,7 +30,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -1007,25 +1006,54 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		}
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
-	finalAddrs = h.webtransportAddrsFromQuicAddrs(finalAddrs)
+	finalAddrs = inferWebtransportAddrsFromQuic(finalAddrs)
 
 	return dedupAddrs(finalAddrs)
 }
 
 var wtComponent = ma.StringCast("/webtransport")
-var quicV1Component = ma.StringCast("/quic-v1")
 
-func (h *BasicHost) webtransportAddrsFromQuicAddrs(in []ma.Multiaddr) []ma.Multiaddr {
-	quicAddrs := 0
-	webtransportAddrs := map[string]struct{}{}
+// inferWebtransportAddrsFromQuic infers more webtransport addresses from QUIC addresses.
+// This is useful when we discover our public QUIC address, but haven't discovered our public WebTransport addrs.
+// If we see that we are listening on the same port for QUIC and WebTransport,
+// we can be pretty sure that the WebTransport addr will be reachable if the
+// QUIC one is.
+func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
+	// We need to check if we are listening on the same ip+port for QUIC and WebTransport.
+	// If not, there's nothing to do since we can't infer anything.
+	quicAddrCount := 0
 	for _, addr := range in {
 		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
-			quicAddrs++
+			quicAddrCount++
 		}
-		isWebtransport, _ := libp2pwebtransport.IsWebtransportMultiaddr(addr)
+	}
+	quicOrWebtransportAddrs := make(map[string]struct{}, quicAddrCount)
+	webtransportAddrs := make(map[string]struct{}, quicAddrCount)
+	foundSameListeningAddr := false
+	for _, addr := range in {
+		isWebtransport, numCertHashes := libp2pwebtransport.IsWebtransportMultiaddr(addr)
 		if isWebtransport {
+			for i := 0; i < numCertHashes; i++ {
+				// Remove certhashes
+				addr, _ = ma.SplitLast(addr)
+			}
 			webtransportAddrs[addr.String()] = struct{}{}
+			// Remove webtransport component, now it's a multiaddr that ends in /quic-v1
+			addr, _ = ma.SplitLast(addr)
 		}
+
+		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
+			addrStr := addr.String()
+			if _, ok := quicOrWebtransportAddrs[addrStr]; ok {
+				foundSameListeningAddr = true
+			} else {
+				quicOrWebtransportAddrs[addrStr] = struct{}{}
+			}
+		}
+	}
+
+	if !foundSameListeningAddr {
+		return in
 	}
 
 	if len(webtransportAddrs) == 0 {
@@ -1034,51 +1062,18 @@ func (h *BasicHost) webtransportAddrsFromQuicAddrs(in []ma.Multiaddr) []ma.Multi
 		return in
 	}
 
-	if len(webtransportAddrs) == quicAddrs {
-		// Nothing new, we have parity
-		return in
-	}
-
-	// Check if we are reusing the same underlying connection manager
-	s, ok := h.Network().(transportForListeninger)
-	if !ok {
-		return in
-	}
-
-	wtTransport := s.TransportForListening(wtComponent)
-	quicTransport := s.TransportForListening(quicV1Component)
-	if wtTransport == nil || quicTransport == nil {
-		return in
-	}
-
-	type connManagerer interface {
-		ConnManager() *quicreuse.ConnManager
-	}
-
-	cmFromQuic, ok := quicTransport.(connManagerer)
-	if !ok {
-		return in
-	}
-	cmFromWt, ok := wtTransport.(connManagerer)
-	if !ok {
-		return in
-	}
-
-	if cmFromQuic.ConnManager() != cmFromWt.ConnManager() {
-		// We aren't reusing the underlying connection manager, so we can't assign quic-v1 addrs to webtransport
-		return in
-	}
-
-	out := make([]ma.Multiaddr, 0, len(in)+(quicAddrs-len(webtransportAddrs)))
+	out := make([]ma.Multiaddr, 0, len(in)+(quicAddrCount-len(webtransportAddrs)))
 	for _, addr := range in {
+		// Add all the original addresses
 		out = append(out, addr)
 		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
+			// Convert quic to webtransport
 			addr = addr.Encapsulate(wtComponent)
 			if _, ok := webtransportAddrs[addr.String()]; ok {
 				// We already have this address
 				continue
 			}
-			// Convert quic to webtransport
+			// Add the new inferred address
 			out = append(out, addr)
 		}
 	}

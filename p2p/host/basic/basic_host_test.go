@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -848,4 +849,74 @@ func TestDedupAddrs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInferWebtransportAddrsFromQuic(t *testing.T) {
+	type testCase struct {
+		name string
+		in   []string
+		out  []string
+	}
+
+	testCases := []testCase{
+		{
+			name: "Happy Path",
+			in:   []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1"},
+			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport"},
+		},
+		{
+			name: "Already discovered",
+			in:   []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport"},
+			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport"},
+		},
+		{
+			name: "Infer Many",
+			in:   []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/4.3.2.1/udp/9999/quic-v1"},
+			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/9999/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1", "/ip4/4.3.2.1/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1/webtransport", "/ip4/4.3.2.1/udp/9999/quic-v1/webtransport"},
+		},
+		{
+			name: "No Common listeners",
+			in:   []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/1111/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1"},
+			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/0.0.0.0/udp/1111/quic-v1/webtransport", "/ip4/1.2.3.4/udp/9999/quic-v1"},
+		},
+		{
+			name: "No WebTransport",
+			in:   []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1"},
+			out:  []string{"/ip4/0.0.0.0/udp/9999/quic-v1", "/ip4/1.2.3.4/udp/9999/quic-v1"},
+		},
+	}
+
+	// Make sure the testCases are all valid multiaddrs
+	for _, tc := range testCases {
+		for _, addr := range tc.in {
+			_, err := ma.NewMultiaddr(addr)
+			require.NoError(t, err)
+		}
+		for _, addr := range tc.out {
+			_, err := ma.NewMultiaddr(addr)
+			require.NoError(t, err)
+		}
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			sort.StringSlice(tc.in).Sort()
+			sort.StringSlice(tc.out).Sort()
+			min := make([]ma.Multiaddr, 0, len(tc.in))
+			sort.Slice(tc.in, func(i, j int) bool {
+				return tc.in[i] < tc.in[j]
+			})
+			for _, addr := range tc.in {
+				min = append(min, ma.StringCast(addr))
+			}
+			outMa := inferWebtransportAddrsFromQuic(min)
+			outStr := make([]string, 0, len(tc.out))
+			for _, addr := range outMa {
+				outStr = append(outStr, addr.String())
+			}
+			require.Equal(t, tc.out, outStr)
+		})
+
+	}
+
 }
