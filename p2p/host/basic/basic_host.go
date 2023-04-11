@@ -761,15 +761,15 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 	return h.cmgr
 }
 
-// This is a temporary workaround/hack that fixes #2233. Once we have a
-// proper address pipeline, rework this. See the issue for more context.
-type transportForListeninger interface {
-	TransportForListening(a ma.Multiaddr) transport.Transport
-}
-
 // Addrs returns listening addresses that are safe to announce to the network.
 // The output is the same as AllAddrs, but processed by AddrsFactory.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
+	// This is a temporary workaround/hack that fixes #2233. Once we have a
+	// proper address pipeline, rework this. See the issue for more context.
+	type transportForListeninger interface {
+		TransportForListening(a ma.Multiaddr) transport.Transport
+	}
+
 	type addCertHasher interface {
 		AddCertHashes(m ma.Multiaddr) ma.Multiaddr
 	}
