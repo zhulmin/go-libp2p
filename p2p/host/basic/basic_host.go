@@ -1021,6 +1021,8 @@ var wtComponent = ma.StringCast("/webtransport")
 func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 	// We need to check if we are listening on the same ip+port for QUIC and WebTransport.
 	// If not, there's nothing to do since we can't infer anything.
+
+	// Count the number of QUIC addrs, this will let us allocate just once at the beginning.
 	quicAddrCount := 0
 	for _, addr := range in {
 		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {

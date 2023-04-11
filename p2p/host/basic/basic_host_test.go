@@ -910,7 +910,7 @@ func TestInferWebtransportAddrsFromQuic(t *testing.T) {
 				min = append(min, ma.StringCast(addr))
 			}
 			outMa := inferWebtransportAddrsFromQuic(min)
-			outStr := make([]string, 0, len(tc.out))
+			outStr := make([]string, 0, len(outMa))
 			for _, addr := range outMa {
 				outStr = append(outStr, addr.String())
 			}
