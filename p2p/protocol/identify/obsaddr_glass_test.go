@@ -36,3 +36,70 @@ func TestObservedAddrGroupKey(t *testing.T) {
 	require.Equal(t, oa6.groupKey(), oa7.groupKey())
 	require.NotEqual(t, oa7.groupKey(), oa8.groupKey())
 }
+
+type mockHost struct {
+	addrs            []ma.Multiaddr
+	listenAddrs      []ma.Multiaddr
+	ifaceListenAddrs []ma.Multiaddr
+}
+
+// InterfaceListenAddresses implements listenAddrsProvider
+func (h *mockHost) InterfaceListenAddresses() ([]ma.Multiaddr, error) {
+	return h.ifaceListenAddrs, nil
+}
+
+// ListenAddresses implements listenAddrsProvider
+func (h *mockHost) ListenAddresses() []ma.Multiaddr {
+	return h.listenAddrs
+}
+
+// Addrs implements addrsProvider
+func (h *mockHost) Addrs() []ma.Multiaddr {
+	return h.addrs
+}
+
+// NormalizeMultiaddr implements normalizeMultiaddrer
+func (h *mockHost) NormalizeMultiaddr(m ma.Multiaddr) ma.Multiaddr {
+	original := m
+	for {
+		rest, tail := ma.SplitLast(m)
+		if rest == nil {
+			return original
+		}
+		if tail.Protocol().Code == ma.P_WEBTRANSPORT {
+			return m
+		}
+		m = rest
+	}
+}
+
+type mockConn struct {
+	local, remote ma.Multiaddr
+}
+
+// LocalMultiaddr implements connMultiaddrProvider
+func (c *mockConn) LocalMultiaddr() ma.Multiaddr {
+	return c.local
+}
+
+// RemoteMultiaddr implements connMultiaddrProvider
+func (c *mockConn) RemoteMultiaddr() ma.Multiaddr {
+	return c.remote
+}
+
+func TestShouldRecordObservationWithWebTransport(t *testing.T) {
+	listenAddr := ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1/webtransport/certhash/uEgNmb28")
+	ifaceAddr := ma.StringCast("/ip4/10.0.0.2/udp/9999/quic-v1/webtransport/certhash/uEgNmb28")
+	h := &mockHost{
+		listenAddrs:      []ma.Multiaddr{listenAddr},
+		ifaceListenAddrs: []ma.Multiaddr{ifaceAddr},
+		addrs:            []ma.Multiaddr{listenAddr},
+	}
+	c := &mockConn{
+		local:  listenAddr,
+		remote: ma.StringCast("/ip4/1.2.3.6/udp/1236/quic-v1/webtransport"),
+	}
+	observedAddr := ma.StringCast("/ip4/1.2.3.4/udp/1231/quic-v1/webtransport")
+
+	require.True(t, shouldRecordObservation(h, h, c, observedAddr))
+}
