@@ -30,6 +30,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -761,14 +762,15 @@ func (h *BasicHost) ConnManager() connmgr.ConnManager {
 	return h.cmgr
 }
 
+// This is a temporary workaround/hack that fixes #2233. Once we have a
+// proper address pipeline, rework this. See the issue for more context.
+type transportForListeninger interface {
+	TransportForListening(a ma.Multiaddr) transport.Transport
+}
+
 // Addrs returns listening addresses that are safe to announce to the network.
 // The output is the same as AllAddrs, but processed by AddrsFactory.
 func (h *BasicHost) Addrs() []ma.Multiaddr {
-	// This is a temporary workaround/hack that fixes #2233. Once we have a
-	// proper address pipeline, rework this. See the issue for more context.
-	type transportForListeninger interface {
-		TransportForListening(a ma.Multiaddr) transport.Transport
-	}
 	type addCertHasher interface {
 		AddCertHashes(m ma.Multiaddr) ma.Multiaddr
 	}
@@ -1005,8 +1007,83 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		}
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
+	finalAddrs = h.webtransportAddrsFromQuicAddrs(finalAddrs)
 
 	return dedupAddrs(finalAddrs)
+}
+
+var wtComponent = ma.StringCast("/webtransport")
+var quicV1Component = ma.StringCast("/quic-v1")
+
+func (h *BasicHost) webtransportAddrsFromQuicAddrs(in []ma.Multiaddr) []ma.Multiaddr {
+	quicAddrs := 0
+	webtransportAddrs := map[string]struct{}{}
+	for _, addr := range in {
+		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
+			quicAddrs++
+		}
+		isWebtransport, _ := libp2pwebtransport.IsWebtransportMultiaddr(addr)
+		if isWebtransport {
+			webtransportAddrs[addr.String()] = struct{}{}
+		}
+	}
+
+	if len(webtransportAddrs) == 0 {
+		// No webtransport addresses, we aren't listening on any webtransport
+		// address, so we shouldn't add any.
+		return in
+	}
+
+	if len(webtransportAddrs) == quicAddrs {
+		// Nothing new, we have parity
+		return in
+	}
+
+	// Check if we are reusing the same underlying connection manager
+	s, ok := h.Network().(transportForListeninger)
+	if !ok {
+		return in
+	}
+
+	wtTransport := s.TransportForListening(wtComponent)
+	quicTransport := s.TransportForListening(quicV1Component)
+	if wtTransport == nil || quicTransport == nil {
+		return in
+	}
+
+	type connManagerer interface {
+		ConnManager() *quicreuse.ConnManager
+	}
+
+	cmFromQuic, ok := quicTransport.(connManagerer)
+	if !ok {
+		return in
+	}
+	cmFromWt, ok := wtTransport.(connManagerer)
+	if !ok {
+		return in
+	}
+
+	if cmFromQuic.ConnManager() != cmFromWt.ConnManager() {
+		// We aren't reusing the underlying connection manager, so we can't assign quic-v1 addrs to webtransport
+		return in
+	}
+
+	out := make([]ma.Multiaddr, 0, len(in)+(quicAddrs-len(webtransportAddrs)))
+	for _, addr := range in {
+		out = append(out, addr)
+		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
+			addr = addr.Encapsulate(wtComponent)
+			if _, ok := webtransportAddrs[addr.String()]; ok {
+				// We already have this address
+				continue
+			}
+			// Convert quic to webtransport
+			out = append(out, addr)
+		}
+	}
+
+	return out
 }
 
 // SetAutoNat sets the autonat service for the host.

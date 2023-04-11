@@ -412,3 +412,7 @@ func (t *transport) AddCertHashes(m ma.Multiaddr) ma.Multiaddr {
 	}
 	return m.Encapsulate(t.certManager.AddrComponent())
 }
+
+func (t *transport) ConnManager() *quicreuse.ConnManager {
+	return t.connManager
+}

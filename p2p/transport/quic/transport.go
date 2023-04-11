@@ -392,3 +392,7 @@ func (t *transport) CloseVirtualListener(l *virtualListener) error {
 	return nil
 
 }
+
+func (t *transport) ConnManager() *quicreuse.ConnManager {
+	return t.connManager
+}
