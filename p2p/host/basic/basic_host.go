@@ -1006,9 +1006,10 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		}
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
+	finalAddrs = dedupAddrs(finalAddrs)
 	finalAddrs = inferWebtransportAddrsFromQuic(finalAddrs)
 
-	return dedupAddrs(finalAddrs)
+	return finalAddrs
 }
 
 var wtComponent = ma.StringCast("/webtransport")
@@ -1018,6 +1019,7 @@ var wtComponent = ma.StringCast("/webtransport")
 // If we see that we are listening on the same port for QUIC and WebTransport,
 // we can be pretty sure that the WebTransport addr will be reachable if the
 // QUIC one is.
+// We assume the input is deduped.
 func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 	// We need to check if we are listening on the same ip+port for QUIC and WebTransport.
 	// If not, there's nothing to do since we can't infer anything.
