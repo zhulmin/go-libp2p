@@ -363,17 +363,13 @@ type normalizeMultiaddrer interface {
 type addrsProvider interface {
 	Addrs() []ma.Multiaddr
 }
+
 type listenAddrsProvider interface {
 	ListenAddresses() []ma.Multiaddr
 	InterfaceListenAddresses() ([]ma.Multiaddr, error)
 }
 
-type connMultiaddrProvider interface {
-	RemoteMultiaddr() ma.Multiaddr
-	LocalMultiaddr() ma.Multiaddr
-}
-
-func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, conn connMultiaddrProvider, observed ma.Multiaddr) bool {
+func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, conn network.ConnMultiaddrs, observed ma.Multiaddr) bool {
 	// First, determine if this observation is even worth keeping...
 
 	// Ignore observations from loopback nodes. We already know our loopback
