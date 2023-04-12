@@ -28,6 +28,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 func main() {
@@ -201,7 +202,14 @@ func main() {
 		}
 		fmt.Println(string(testResultJSON))
 	} else {
-		_, err := rClient.RPush(ctx, "listenerAddr", host.Addrs()[0].Encapsulate(ma.StringCast("/p2p/"+host.ID().String())).String()).Result()
+		var listenAddr ma.Multiaddr
+		for _, addr := range host.Addrs() {
+			if !manet.IsIPLoopback(addr) {
+				listenAddr = addr
+				break
+			}
+		}
+		_, err := rClient.RPush(ctx, "listenerAddr", listenAddr.Encapsulate(ma.StringCast("/p2p/"+host.ID().String())).String()).Result()
 		if err != nil {
 			log.Fatal("Failed to send listener address")
 		}
