@@ -1029,15 +1029,10 @@ func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 			quicAddrCount++
 		}
 	}
-	seenAddr := make(map[string]struct{}, len(in))
 	quicOrWebtransportAddrs := make(map[string]struct{}, quicAddrCount)
 	webtransportAddrs := make(map[string]struct{}, quicAddrCount)
 	foundSameListeningAddr := false
 	for _, addr := range in {
-		if _, ok := seenAddr[addr.String()]; ok {
-			continue
-		}
-		seenAddr[addr.String()] = struct{}{}
 		isWebtransport, numCertHashes := libp2pwebtransport.IsWebtransportMultiaddr(addr)
 		if isWebtransport {
 			for i := 0; i < numCertHashes; i++ {
@@ -1069,15 +1064,8 @@ func inferWebtransportAddrsFromQuic(in []ma.Multiaddr) []ma.Multiaddr {
 		return in
 	}
 
-	// Dedup the output, because why not
-	seenAddr = make(map[string]struct{}, len(in))
 	out := make([]ma.Multiaddr, 0, len(in)+(quicAddrCount-len(webtransportAddrs)))
 	for _, addr := range in {
-		if _, ok := seenAddr[addr.String()]; ok {
-			continue
-		}
-		seenAddr[addr.String()] = struct{}{}
-
 		// Add all the original addresses
 		out = append(out, addr)
 		if _, lastComponent := ma.SplitLast(addr); lastComponent.Protocol().Code == ma.P_QUIC_V1 {
