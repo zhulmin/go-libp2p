@@ -127,6 +127,9 @@ func (s *Swarm) AddListenAddr(a ma.Multiaddr) error {
 		for {
 			c, err := list.Accept()
 			if err != nil {
+				if err != transport.ErrListenerClosed {
+					log.Error("swarm listener accept error: ", err)
+				}
 				return
 			}
 			canonicallog.LogPeerStatus(100, c.RemotePeer(), c.RemoteMultiaddr(), "connection_status", "established", "dir", "inbound")
