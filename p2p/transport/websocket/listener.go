@@ -20,9 +20,6 @@ import (
 type listener struct {
 	nl     net.Listener
 	server http.Server
-	// The Go standard library sets the http.Server.TLSConfig no matter if this is a WS or WSS,
-	// so we can't rely on checking if server.TLSConfig is set.
-	isWss bool
 
 	laddr ma.Multiaddr
 
@@ -84,7 +81,6 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 	}
 	ln.server = http.Server{Handler: ln}
 	if parsed.isWSS {
-		ln.isWss = true
 		ln.server.TLSConfig = tlsConf
 	}
 	return ln, nil
@@ -92,7 +88,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 
 func (l *listener) serve() {
 	defer close(l.closed)
-	if !l.isWss {
+	if l.server.TLSConfig == nil {
 		l.server.Serve(l.nl)
 	} else {
 		l.server.ServeTLS(l.nl, "", "")
@@ -101,7 +97,7 @@ func (l *listener) serve() {
 
 func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	scheme := "ws"
-	if l.isWss {
+	if l.server.TLSConfig != nil {
 		scheme = "wss"
 	}
 

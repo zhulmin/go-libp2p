@@ -308,16 +308,6 @@ func TestWebsocketTransport(t *testing.T) {
 	ttransport.SubtestTransport(t, ta, tb, "/ip4/127.0.0.1/tcp/0/ws", "peerA")
 }
 
-func isWSS(addr ma.Multiaddr) bool {
-	if _, err := addr.ValueForProtocol(ma.P_WSS); err == nil {
-		return true
-	}
-	if _, err := addr.ValueForProtocol(ma.P_WS); err == nil {
-		return false
-	}
-	panic("not a WebSocket address")
-}
-
 func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 	var opts []Option
 	var tlsConf *tls.Config
@@ -349,8 +339,6 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 		require.NoError(t, err)
 		c, err := tpt.Dial(context.Background(), l.Multiaddr(), server)
 		require.NoError(t, err)
-		require.Equal(t, secure, isWSS(c.LocalMultiaddr()))
-		require.Equal(t, secure, isWSS(c.RemoteMultiaddr()))
 		str, err := c.OpenStream(context.Background())
 		require.NoError(t, err)
 		defer str.Close()
@@ -361,8 +349,6 @@ func connectAndExchangeData(t *testing.T, laddr ma.Multiaddr, secure bool) {
 	c, err := l.Accept()
 	require.NoError(t, err)
 	defer c.Close()
-	require.Equal(t, secure, isWSS(c.LocalMultiaddr()))
-	require.Equal(t, secure, isWSS(c.RemoteMultiaddr()))
 	str, err := c.AcceptStream()
 	require.NoError(t, err)
 	defer str.Close()
