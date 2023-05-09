@@ -1,19 +1,15 @@
 package websocket
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 
 	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
-
-	ws "nhooyr.io/websocket"
 )
 
 type listener struct {
@@ -23,7 +19,7 @@ type listener struct {
 	laddr ma.Multiaddr
 
 	closed   chan struct{}
-	incoming chan net.Conn
+	incoming chan *Conn
 }
 
 func (pwma *parsedWebsocketMultiaddr) toMultiaddr() ma.Multiaddr {
@@ -75,7 +71,7 @@ func newListener(a ma.Multiaddr, tlsConf *tls.Config) (*listener, error) {
 	ln := &listener{
 		nl:       nl,
 		laddr:    parsed.toMultiaddr(),
-		incoming: make(chan net.Conn),
+		incoming: make(chan *Conn),
 		closed:   make(chan struct{}),
 	}
 	ln.server = http.Server{Handler: ln}
@@ -95,34 +91,16 @@ func (l *listener) serve() {
 }
 
 func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	scheme := "ws"
-	if l.server.TLSConfig != nil {
-		scheme = "wss"
-	}
-
-	c, err := ws.Accept(w, r, &ws.AcceptOptions{
-		// Allow requests from *all* origins.
-		InsecureSkipVerify: true,
-	})
+	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// The upgrader writes a response for us.
 		return
 	}
 
 	select {
-	case l.incoming <- conn{
-		Conn: ws.NetConn(context.Background(), c, ws.MessageBinary),
-		localAddr: addrWrapper{&url.URL{
-			Host:   r.Context().Value(http.LocalAddrContextKey).(net.Addr).String(),
-			Scheme: scheme,
-		}},
-		remoteAddr: addrWrapper{&url.URL{
-			Host:   r.RemoteAddr,
-			Scheme: scheme,
-		}},
-	}:
+	case l.incoming <- NewConn(c, false):
 	case <-l.closed:
-		c.Close(ws.StatusNormalClosure, "closed")
+		c.Close()
 	}
 	// The connection has been hijacked, it's safe to return.
 }
