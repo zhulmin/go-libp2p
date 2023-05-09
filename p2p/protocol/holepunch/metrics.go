@@ -56,9 +56,7 @@ type MetricsTracer interface {
 	DirectDialFinished(success bool)
 }
 
-type metricsTracer struct {
-	addrCounts map[string]map[string]int
-}
+type metricsTracer struct{}
 
 var _ MetricsTracer = &metricsTracer{}
 
@@ -82,11 +80,7 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 		opt(setting)
 	}
 	metricshelper.RegisterCollectors(setting.reg, collectors...)
-	addrCounts := make(map[string]map[string]int)
-	for _, ipv := range []string{"ip4", "ip6", "unknown"} {
-		addrCounts[ipv] = make(map[string]int)
-	}
-	return &metricsTracer{addrCounts: addrCounts}
+	return &metricsTracer{}
 }
 
 func (mt *metricsTracer) HolePunchFinished(side string, numAttempts int,
@@ -99,13 +93,6 @@ func (mt *metricsTracer) HolePunchFinished(side string, numAttempts int,
 	if directConn != nil {
 		dipv = metricshelper.GetIPVersion(directConn.LocalMultiaddr())
 		dtransport = metricshelper.GetTransport(directConn.LocalMultiaddr())
-	}
-
-	// Refresh Address Counts
-	for _, m := range mt.addrCounts {
-		for transport := range m {
-			m[transport] = 0
-		}
 	}
 
 	match := false
@@ -128,34 +115,20 @@ func (mt *metricsTracer) HolePunchFinished(side string, numAttempts int,
 				break
 			}
 		}
-		mt.addrCounts[lipv][ltransport]++
 	}
 
 	if !match {
 		*tags = (*tags)[:1]
 		holePunchNoSuitableAddressTotal.WithLabelValues(*tags...).Inc()
 	}
-
-	for ipv, m := range mt.addrCounts {
-		for transport, cnt := range m {
-			*tags = (*tags)[:0]
-			*tags = append(*tags, ipv, transport)
-			publicAddrsCount.WithLabelValues(*tags...).Set(float64(cnt))
-		}
-	}
 }
 
 func getNumAttemptString(numAttempt int) string {
-	switch numAttempt {
-	case 1:
-		return "1"
-	case 2:
-		return "2"
-	case 3:
-		return "3"
-	default:
-		return ">=4"
+	var attemptStr = [...]string{"0", "1", "2", "3", "4", "5"}
+	if numAttempt > 5 {
+		return "> 5"
 	}
+	return attemptStr[numAttempt]
 }
 
 func (mt *metricsTracer) DirectDialFinished(success bool) {
