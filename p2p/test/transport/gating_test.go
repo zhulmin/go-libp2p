@@ -10,6 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 
+	"github.com/libp2p/go-libp2p-testing/race"
+
 	"github.com/golang/mock/gomock"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -28,6 +30,9 @@ func stripCertHash(addr ma.Multiaddr) ma.Multiaddr {
 }
 
 func TestInterceptPeerDial(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("The upgrader spawns a new Go routine, which leads to race conditions when using GoMock.")
+	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -47,6 +52,9 @@ func TestInterceptPeerDial(t *testing.T) {
 }
 
 func TestInterceptAddrDial(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("The upgrader spawns a new Go routine, which leads to race conditions when using GoMock.")
+	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -69,6 +77,9 @@ func TestInterceptAddrDial(t *testing.T) {
 }
 
 func TestInterceptSecuredOutgoing(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("The upgrader spawns a new Go routine, which leads to race conditions when using GoMock.")
+	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -98,6 +109,9 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 }
 
 func TestInterceptUpgradedOutgoing(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("The upgrader spawns a new Go routine, which leads to race conditions when using GoMock.")
+	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -129,6 +143,9 @@ func TestInterceptUpgradedOutgoing(t *testing.T) {
 }
 
 func TestInterceptAccept(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("The upgrader spawns a new Go routine, which leads to race conditions when using GoMock.")
+	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -155,6 +172,9 @@ func TestInterceptAccept(t *testing.T) {
 }
 
 func TestInterceptSecuredIncoming(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("The upgrader spawns a new Go routine, which leads to race conditions when using GoMock.")
+	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -183,6 +203,9 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 }
 
 func TestInterceptUpgradedIncoming(t *testing.T) {
+	if race.WithRace() {
+		t.Skip("The upgrader spawns a new Go routine, which leads to race conditions when using GoMock.")
+	}
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
