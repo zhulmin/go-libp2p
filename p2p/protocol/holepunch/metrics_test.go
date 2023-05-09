@@ -3,6 +3,7 @@ package holepunch
 import (
 	"testing"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -20,64 +21,67 @@ func getCounterValue(t *testing.T, counter *prometheus.CounterVec, labels ...str
 }
 
 func TestHolePunchOutcomeCounter(t *testing.T) {
-	tcpAddr1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
-	tcpAddr2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
-	quicAddr1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
-	quicAddr2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic")
-	quicV1Addr := ma.StringCast("/ip6/1:2:3:4:5:6:7:8/udp/1/quic-v1")
-	quicV2Addr := ma.StringCast("/ip6/11:22:33:44:55:66:77:88/udp/2/quic-v1")
+	t1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
+	t2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+
+	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
+	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic")
+
+	q1v1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 
 	type testcase struct {
 		name       string
 		theirAddrs []ma.Multiaddr
 		ourAddrs   []ma.Multiaddr
-		conn       *mockConnMultiaddrs
+		conn       network.ConnMultiaddrs
 		result     map[[3]string]int
 	}
 	testcases := []testcase{
 		{
-			name:       "same address connection success",
-			theirAddrs: []ma.Multiaddr{tcpAddr1},
-			ourAddrs:   []ma.Multiaddr{tcpAddr2},
-			conn:       &mockConnMultiaddrs{local: tcpAddr1, remote: tcpAddr2},
+			name:       "connection success",
+			theirAddrs: []ma.Multiaddr{t1, q1},
+			ourAddrs:   []ma.Multiaddr{t2, q2},
+			conn:       &mockConnMultiaddrs{local: t1, remote: t2},
 			result: map[[3]string]int{
-				[...]string{"ip4", "tcp", "success"}: 1,
+				[...]string{"ip4", "tcp", "success"}:    1,
+				[...]string{"ip4", "quic", "cancelled"}: 1,
 			},
 		},
 		{
-			name:       "multiple similars address should increment correct transport conn",
-			theirAddrs: []ma.Multiaddr{tcpAddr1, quicAddr1},
-			ourAddrs:   []ma.Multiaddr{tcpAddr2, quicAddr2},
-			conn:       &mockConnMultiaddrs{local: quicAddr1, remote: quicAddr2},
+			name:       "connection failed",
+			theirAddrs: []ma.Multiaddr{t1},
+			ourAddrs:   []ma.Multiaddr{t2, q2},
+			conn:       nil,
 			result: map[[3]string]int{
-				[...]string{"ip4", "tcp", "failed"}:   1,
-				[...]string{"ip4", "quic", "success"}: 1,
+				[...]string{"ip4", "tcp", "failed"}:               1,
+				[...]string{"ip4", "quic", "no_suitable_address"}: 1,
 			},
 		},
 		{
-			name:       "dissimilar addresses shouldn't count",
-			theirAddrs: []ma.Multiaddr{tcpAddr1, quicAddr1},
-			ourAddrs:   []ma.Multiaddr{tcpAddr2, quicAddr2},
-			conn:       &mockConnMultiaddrs{local: quicV1Addr, remote: quicV2Addr},
+			name:       "no_suitable_address",
+			theirAddrs: []ma.Multiaddr{t1, q1},
+			ourAddrs:   []ma.Multiaddr{t2, q2, q1v1},
+			conn:       &mockConnMultiaddrs{local: q1, remote: q2},
 			result: map[[3]string]int{
-				[...]string{"ip4", "tcp", "failed"}:   1,
-				[...]string{"ip4", "quic", "failed"}:  1,
-				[...]string{"ip4", "quic", "success"}: 0,
-				[...]string{"ip4", "tcp", "success"}:  0,
+				[...]string{"ip4", "tcp", "cancelled"}:               1,
+				[...]string{"ip4", "quic", "failed"}:                 0,
+				[...]string{"ip4", "quic", "success"}:                1,
+				[...]string{"ip4", "tcp", "success"}:                 0,
+				[...]string{"ip4", "quic-v1", "no_suitable_address"}: 1,
 			},
 		},
 	}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
-			holePunchOutcomesTotal.Reset()
+			hpAddressOutcomesTotal.Reset()
 			mt := NewMetricsTracer(WithRegisterer(reg))
 			for _, side := range []string{"receiver", "initiator"} {
 				mt.HolePunchFinished(side, 1, tc.theirAddrs, tc.ourAddrs, tc.conn)
 				for labels, value := range tc.result {
-					v := getCounterValue(t, holePunchOutcomesTotal, side, "1", labels[0], labels[1], labels[2])
+					v := getCounterValue(t, hpAddressOutcomesTotal, side, "1", labels[0], labels[1], labels[2])
 					if v != value {
-						t.Errorf("Invalid metric value: expected: %d got: %d", value, v)
+						t.Errorf("Invalid metric value %s: expected: %d got: %d", labels, value, v)
 					}
 				}
 			}

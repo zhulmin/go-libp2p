@@ -18,36 +18,27 @@ var (
 		},
 		[]string{"outcome"},
 	)
-	holePunchOutcomesTotal = prometheus.NewCounterVec(
+	hpAddressOutcomesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricNamespace,
-			Name:      "outcomes_total",
+			Name:      "address_outcomes_total",
 			Help:      "Hole Punch Outcomes",
 		},
 		[]string{"side", "num_attempts", "ipv", "transport", "outcome"},
 	)
-	holePunchNoSuitableAddressTotal = prometheus.NewCounterVec(
+	hpOutcomesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricNamespace,
-			Name:      "no_suitable_address_total",
+			Name:      "outcomes_total",
 			Help:      "Hole Punch Failures because address mismatch",
 		},
-		[]string{"side"},
-	)
-	publicAddrsCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: metricNamespace,
-			Name:      "local_addresses_count",
-			Help:      "Public Address Count for ipversion, transport",
-		},
-		[]string{"ipv", "transport"},
+		[]string{"side", "num_attempts", "outcome"},
 	)
 
 	collectors = []prometheus.Collector{
 		directDialsTotal,
-		holePunchOutcomesTotal,
-		holePunchNoSuitableAddressTotal,
-		publicAddrsCount,
+		hpAddressOutcomesTotal,
+		hpOutcomesTotal,
 	}
 )
 
@@ -83,6 +74,20 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 	return &metricsTracer{}
 }
 
+// HolePunchFinished tracks metrics completion of a holepunch. Metrics are tracked on
+// a holepunch attempt level and on individual addresses involved in a holepunch.
+//
+// outcome for an address is computed as:
+//
+//   - success:
+//     A direct connection was established with the peer using this address
+//   - cancelled:
+//     A direct connection was established with the peer but not using this address
+//   - failed:
+//     No direct connection was made to the peer and the peer reported an address
+//     with the same transport as this address
+//   - no_suitable_address:
+//     The peer reported no address with the same transport as this address
 func (mt *metricsTracer) HolePunchFinished(side string, numAttempts int,
 	remoteAddrs []ma.Multiaddr, localAddrs []ma.Multiaddr, directConn network.ConnMultiaddrs) {
 	tags := metricshelper.GetStringSlice()
@@ -95,32 +100,54 @@ func (mt *metricsTracer) HolePunchFinished(side string, numAttempts int,
 		dtransport = metricshelper.GetTransport(directConn.LocalMultiaddr())
 	}
 
-	match := false
+	matchingAddressCount := 0
+	// calculate holepunch outcome for all the addresses involved
 	for _, la := range localAddrs {
 		lipv := metricshelper.GetIPVersion(la)
 		ltransport := metricshelper.GetTransport(la)
+
+		matchingAddress := false
 		for _, ra := range remoteAddrs {
 			ripv := metricshelper.GetIPVersion(ra)
 			rtransport := metricshelper.GetTransport(ra)
 			if ripv == lipv && rtransport == ltransport {
-				match = true
+				// the peer reported an address with the same transport
+				matchingAddress = true
+				matchingAddressCount++
+
 				*tags = append(*tags, ripv, rtransport)
 				if directConn != nil && dipv == ripv && dtransport == rtransport {
+					// the connection was made using this address
 					*tags = append(*tags, "success")
+				} else if directConn != nil {
+					// connection was made but not using this address
+					*tags = append(*tags, "cancelled")
 				} else {
+					// no connection was made
 					*tags = append(*tags, "failed")
 				}
-				holePunchOutcomesTotal.WithLabelValues(*tags...).Inc()
-				*tags = (*tags)[:2]
+				hpAddressOutcomesTotal.WithLabelValues(*tags...).Inc()
+				*tags = (*tags)[:2] // 2 because we want to keep (side, numAttempts)
 				break
 			}
 		}
+		if !matchingAddress {
+			*tags = append(*tags, lipv, ltransport, "no_suitable_address")
+			hpAddressOutcomesTotal.WithLabelValues(*tags...).Inc()
+			*tags = (*tags)[:2] // 2 because we want to keep (side, numAttempts)
+		}
 	}
 
-	if !match {
-		*tags = (*tags)[:1]
-		holePunchNoSuitableAddressTotal.WithLabelValues(*tags...).Inc()
+	outcome := "failed"
+	if directConn != nil {
+		outcome = "success"
+	} else if matchingAddressCount == 0 {
+		// there were no matching addresses, this attempt was going to fail
+		outcome = "no_suitable_address"
 	}
+
+	*tags = append(*tags, outcome)
+	hpOutcomesTotal.WithLabelValues(*tags...).Inc()
 }
 
 func getNumAttemptString(numAttempt int) string {
