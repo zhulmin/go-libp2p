@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -109,10 +108,6 @@ func (l *listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The upgrader writes a response for us.
 		return
 	}
-
-	// Set an arbitrarily large read limit since we don't actually want to limit the message size here.
-	// See https://github.com/nhooyr/websocket/issues/382 for details.
-	c.SetReadLimit(math.MaxInt64 - 1) // -1 because the library adds a byte for the fin frame
 
 	select {
 	case l.incoming <- conn{
