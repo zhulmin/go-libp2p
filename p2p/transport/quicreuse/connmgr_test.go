@@ -153,7 +153,7 @@ func TestAcceptErrorGetCleanedUp(t *testing.T) {
 	require.NoError(t, err)
 	defer l.Close()
 	_, err = l.Accept(context.Background())
-	require.Equal(t, err, transport.ErrListenerClosed)
+	require.ErrorIs(t, err, transport.ErrListenerClosed)
 }
 
 // The connection passed to quic-go needs to be type-assertable to a net.UDPConn,

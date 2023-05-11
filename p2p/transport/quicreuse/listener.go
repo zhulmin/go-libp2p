@@ -136,7 +136,7 @@ func (l *connListener) Run() error {
 	for {
 		conn, err := l.l.Accept(context.Background())
 		if err != nil {
-			if err == quic.ErrServerClosed || strings.Contains(err.Error(), "use of closed network connection") {
+			if errors.Is(err, quic.ErrServerClosed) || strings.Contains(err.Error(), "use of closed network connection") {
 				return transport.ErrListenerClosed
 			}
 			return err
