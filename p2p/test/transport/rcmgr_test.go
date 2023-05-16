@@ -22,10 +22,10 @@ func TestResourceManagerIsUsed(t *testing.T) {
 			for _, testDialer := range []bool{true, false} {
 				t.Run(tc.Name+fmt.Sprintf(" test_dialer=%v", testDialer), func(t *testing.T) {
 
-					reservedMemory := atomic.Uint32{}
-					releasedMemory := atomic.Uint32{}
+					var reservedMemory, releasedMemory atomic.Int32
 					defer func() {
 						require.Equal(t, reservedMemory.Load(), releasedMemory.Load())
+						require.NotEqual(t, 0, reservedMemory.Load())
 					}()
 
 					ctrl := gomock.NewController(t)
@@ -58,10 +58,10 @@ func TestResourceManagerIsUsed(t *testing.T) {
 
 					peerScope := mocknetwork.NewMockPeerScope(ctrl)
 					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, pri uint8) {
-						reservedMemory.Add(uint32(amount))
+						reservedMemory.Add(int32(amount))
 					})
 					peerScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes().Do(func(amount int) {
-						releasedMemory.Add(uint32(amount))
+						releasedMemory.Add(int32(amount))
 					})
 					peerScope.EXPECT().BeginSpan().AnyTimes().DoAndReturn(func() (network.ResourceScopeSpan, error) {
 						s := mocknetwork.NewMockResourceScopeSpan(ctrl)
@@ -71,7 +71,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						s.EXPECT().Done()
 						return s, nil
 					})
-					calledSetPeer := atomic.Bool{}
+					var calledSetPeer atomic.Bool
 
 					connScope := mocknetwork.NewMockConnManagementScope(ctrl)
 					connScope.EXPECT().SetPeer(expectedPeer).Do(func(peer.ID) {
@@ -99,7 +99,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						})
 						streamScope.EXPECT().Done()
 
-						streamScope.EXPECT().SetService(gomock.Any()).MinTimes(0).MaxTimes(1)
+						streamScope.EXPECT().SetService(gomock.Any()).MaxTimes(1)
 						streamScope.EXPECT().SetProtocol(gomock.Any())
 						return streamScope, nil
 					})
