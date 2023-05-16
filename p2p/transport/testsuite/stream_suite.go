@@ -180,22 +180,30 @@ func SubtestStress(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr,
 		fullClose(t, s)
 	}
 
+	var l transport.Listener
+	startListening := &sync.Once{}
+	defer func() {
+		if l != nil {
+			l.Close()
+		}
+	}()
+
 	openConnAndRW := func() {
 		var wg sync.WaitGroup
 		defer wg.Wait()
 
-		l, err := ta.Listen(maddr)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		defer l.Close()
+		startListening.Do(func() {
+			var err error
+			l, err = ta.Listen(maddr)
+			if err != nil {
+				t.Error(err)
+				return
+			}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			serve(t, l)
-		}()
+			go func() {
+				serve(t, l)
+			}()
+		})
 
 		c, err := tb.Dial(context.Background(), l.Multiaddr(), peerA)
 		if err != nil {

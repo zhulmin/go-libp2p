@@ -22,6 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,9 +32,10 @@ type TransportTestCase struct {
 }
 
 type TransportTestCaseOpts struct {
-	NoListen  bool
-	NoRcmgr   bool
-	ConnGater connmgr.ConnectionGater
+	NoListen             bool
+	DisableQuicReuseport bool
+	NoRcmgr              bool
+	ConnGater            connmgr.ConnectionGater
 }
 
 func transformOpts(opts TransportTestCaseOpts) []config.Option {
@@ -44,6 +46,10 @@ func transformOpts(opts TransportTestCaseOpts) []config.Option {
 	}
 	if opts.ConnGater != nil {
 		libp2pOpts = append(libp2pOpts, libp2p.ConnectionGater(opts.ConnGater))
+	}
+
+	if opts.DisableQuicReuseport {
+		libp2pOpts = append(libp2pOpts, libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.DisableReuseport()))
 	}
 	return libp2pOpts
 }
