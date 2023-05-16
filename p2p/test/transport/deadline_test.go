@@ -68,6 +68,11 @@ func TestReadWriteDeadlines(t *testing.T) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "deadline")
 				require.Less(t, time.Since(start), 100*time.Millisecond)
+
+				if strings.Contains(tc.Name, "mplex") {
+					// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
+					s.Reset()
+				}
 			})
 
 			t.Run("WriteDeadline", func(t *testing.T) {
@@ -86,6 +91,35 @@ func TestReadWriteDeadlines(t *testing.T) {
 				if strings.Contains(tc.Name, "mplex") {
 					// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
 					s.Reset()
+				}
+			})
+
+			t.Run("Deadline for", func(t *testing.T) {
+				for _, op := range []string{"Read", "Write"} {
+					t.Run(op, func(t *testing.T) {
+						s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall/1")
+						require.NoError(t, err)
+						defer s.Close()
+
+						// Set a deadline
+						s.SetDeadline(time.Now().Add(10 * time.Millisecond))
+						start := time.Now()
+
+						if op == "Read" {
+							buf := make([]byte, 1)
+							_, err = s.Read(buf)
+						} else {
+							_, err = s.Write(sendBuf)
+						}
+						require.Error(t, err)
+						require.Contains(t, err.Error(), "deadline")
+						require.Less(t, time.Since(start), 100*time.Millisecond)
+
+						if strings.Contains(tc.Name, "mplex") {
+							// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
+							s.Reset()
+						}
+					})
 				}
 			})
 		})
