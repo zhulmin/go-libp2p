@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -220,6 +223,71 @@ func TestBigPing(t *testing.T) {
 	}
 }
 
+func TestManyBigPings(t *testing.T) {
+	// 64k buffer
+	sendBuf := make([]byte, 64<<10)
+	const totalSends = 512
+	const parallel = 16
+	// Total sends are > 20MiB
+	require.Greater(t, len(sendBuf)*totalSends, 20<<20)
+
+	// Fill with random bytes
+	_, err := rand.Read(sendBuf)
+	require.NoError(t, err)
+
+	for _, tc := range transportsToTest {
+		t.Run(tc.Name, func(t *testing.T) {
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+
+			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
+				ID:    h1.ID(),
+				Addrs: h1.Addrs(),
+			}))
+
+			h1.SetStreamHandler("/BIG-ping/1.0.0", func(s network.Stream) {
+				io.Copy(s, s)
+				s.Close()
+			})
+
+			allocs := testing.AllocsPerRun(10, func() {
+				sem := make(chan struct{}, parallel)
+				var wg sync.WaitGroup
+				for i := 0; i < totalSends; i++ {
+					wg.Add(1)
+					sem <- struct{}{}
+					go func() {
+						defer wg.Done()
+						recvBuf := make([]byte, len(sendBuf))
+						defer func() { <-sem }()
+
+						s, err := h2.NewStream(context.Background(), h1.ID(), "/BIG-ping/1.0.0")
+						require.NoError(t, err)
+						defer s.Close()
+
+						_, err = s.Write(sendBuf)
+						require.NoError(t, err)
+						s.CloseWrite()
+
+						_, err = io.ReadFull(s, recvBuf)
+						require.NoError(t, err)
+						require.Equal(t, sendBuf, recvBuf)
+
+						_, err = s.Read([]byte{0})
+						require.ErrorIs(t, err, io.EOF)
+					}()
+				}
+
+				wg.Wait()
+			})
+
+			if int(allocs) > (len(sendBuf)*totalSends)/4 {
+				t.Logf("Expected fewer allocs, got: %f", allocs)
+			}
+		})
+	}
+}
+
 func TestManyStreams(t *testing.T) {
 	const streamCount = 128
 	for _, tc := range transportsToTest {
@@ -274,6 +342,102 @@ func TestManyStreams(t *testing.T) {
 			for _, s := range streams {
 				require.NoError(t, s.Close())
 			}
+		})
+	}
+}
+
+func TestManyMoreStreams(t *testing.T) {
+	const streamCount = 1024
+	for _, tc := range transportsToTest {
+		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "mplex") {
+				t.Skip("fixme: mplex hangs on waiting for data.")
+				return
+			}
+			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
+			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+
+			require.NoError(t, dialer.Connect(context.Background(), peer.AddrInfo{
+				ID:    listener.ID(),
+				Addrs: listener.Addrs(),
+			}))
+
+			var handledStreams atomic.Int32
+			listener.SetStreamHandler("echo", func(s network.Stream) {
+				io.Copy(s, s)
+				s.Close()
+				handledStreams.Add(1)
+			})
+
+			wg := sync.WaitGroup{}
+			wg.Add(streamCount)
+			errCh := make(chan error, 1)
+			var completedStreams atomic.Int32
+			for i := 0; i < streamCount; i++ {
+				go func() {
+					defer wg.Done()
+					defer completedStreams.Add(1)
+
+					var s network.Stream
+					var err error
+					maxRetries := streamCount * 4
+					shouldRetry := func(err error) bool {
+						maxRetries--
+						if maxRetries == 0 || len(errCh) > 0 {
+							select {
+							case errCh <- errors.New("max retries exceeded"):
+							default:
+							}
+							return false
+						}
+						return true
+					}
+
+					for {
+						s, err = dialer.NewStream(context.Background(), listener.ID(), "echo")
+						if err != nil {
+							if shouldRetry(err) {
+								time.Sleep(50 * time.Millisecond)
+								continue
+							}
+						}
+						err = func(s network.Stream) error {
+							defer s.Close()
+							_, err = s.Write([]byte("hello"))
+							if err != nil {
+								return err
+							}
+
+							err = s.CloseWrite()
+							if err != nil {
+								return err
+							}
+
+							b, err := io.ReadAll(s)
+							if err != nil {
+								return err
+							}
+							if !bytes.Equal(b, []byte("hello")) {
+								return errors.New("received data does not match sent data")
+							}
+
+							return nil
+						}(s)
+						if err != nil {
+							if shouldRetry(err) {
+								time.Sleep(50 * time.Millisecond)
+								continue
+							}
+						}
+						return
+					}
+				}()
+			}
+			wg.Wait()
+			close(errCh)
+
+			require.NoError(t, <-errCh)
+			require.Equal(t, streamCount, int(handledStreams.Load()))
 		})
 	}
 }
