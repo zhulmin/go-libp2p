@@ -8,7 +8,6 @@ import (
 	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 	libp2pwebtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	ma "github.com/multiformats/go-multiaddr"
-	multiaddr "github.com/multiformats/go-multiaddr"
 )
 
 func TestWithSuite(t *testing.T) {
@@ -18,14 +17,14 @@ func TestWithSuite(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			// We use this host just to get a valid multiaddr for this transport.
 			hostToGetAddr := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
-			a := multiaddr.StringCast(portMatcher.ReplaceAllString(hostToGetAddr.Addrs()[0].String(), "$1/0"))
+			a := ma.StringCast(portMatcher.ReplaceAllString(hostToGetAddr.Addrs()[0].String(), "$1/0"))
 			hostToGetAddr.Close()
 
 			if tc.Name == "WebTransport" {
 				// Remove certhash components
 				_, n := libp2pwebtransport.IsWebtransportMultiaddr(a)
 				for i := 0; i < n; i++ {
-					a, _ = multiaddr.SplitLast(a)
+					a, _ = ma.SplitLast(a)
 				}
 			}
 
