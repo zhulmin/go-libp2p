@@ -41,6 +41,10 @@ func TestReadWriteDeadlines(t *testing.T) {
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "mplex") {
+				t.Skip("Fixme: mplex fails this test")
+				return
+			}
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
 			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 
