@@ -88,10 +88,16 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					connScope.EXPECT().Done()
 
 					var allStreamsDone sync.WaitGroup
+					var expectedStreams atomic.Int32
+					// 1 for ping
+					// 1 for outbound identify
+					// 1 for inbound identify
+					expectedStreams.Store(3)
+					allStreamsDone.Add(int(expectedStreams.Load()))
 
 					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
 					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
-						allStreamsDone.Add(1)
+						expectedStreams.Add(-1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
 						// No need to track these memory reservations since we assert that Done is called
 						streamScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes()
@@ -125,6 +131,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					<-ping.Ping(context.Background(), dialer, listener.ID())
 					dialer.Network().ClosePeer(listener.ID())
 					allStreamsDone.Wait()
+					require.Zero(t, expectedStreams.Load())
 					dialer.Close()
 					listener.Close()
 				})
