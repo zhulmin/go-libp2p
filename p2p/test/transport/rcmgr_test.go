@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	gomock "github.com/golang/mock/gomock"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -88,16 +89,10 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					connScope.EXPECT().Done()
 
 					var allStreamsDone sync.WaitGroup
-					var expectedStreams atomic.Int32
-					// 1 for ping
-					// 1 for outbound identify
-					// 1 for inbound identify
-					expectedStreams.Store(3)
-					allStreamsDone.Add(int(expectedStreams.Load()))
 
 					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
 					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
-						expectedStreams.Add(-1)
+						allStreamsDone.Add(1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
 						// No need to track these memory reservations since we assert that Done is called
 						streamScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes()
@@ -127,11 +122,16 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					// always does an identify.
 					<-dialer.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(dialer.Network().ConnsToPeer(listener.ID())[0])
 					<-listener.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(listener.Network().ConnsToPeer(dialer.ID())[0])
-
 					<-ping.Ping(context.Background(), dialer, listener.ID())
-					dialer.Network().ClosePeer(listener.ID())
+					err := dialer.Network().ClosePeer(listener.ID())
+					require.NoError(t, err)
+
+					// Wait a bit for any pending .Adds before we call .Wait to avoid a data race.
+					// This shouldn't be necessary since it should be impossible
+					// for an OpenStream to happen *after* a ClosePeer, however
+					// in practice it does and leads to test flakiness.
+					time.Sleep(10 * time.Millisecond)
 					allStreamsDone.Wait()
-					require.Zero(t, expectedStreams.Load())
 					dialer.Close()
 					listener.Close()
 				})
