@@ -225,20 +225,26 @@ func TestBigPing(t *testing.T) {
 
 func TestManyBigPings(t *testing.T) {
 	// 64k buffer
-	sendBuf := make([]byte, 64<<10)
-	const totalSends = 512
-	const parallel = 16
+	const bufSize = 64 << 10
+	sendBuf := [bufSize]byte{}
+	const totalStreams = 512
+	const parallel = 8
 	// Total sends are > 20MiB
-	require.Greater(t, len(sendBuf)*totalSends, 20<<20)
+	require.Greater(t, len(sendBuf)*totalStreams, 20<<20)
+	t.Log("Total sends:", len(sendBuf)*totalStreams)
 
 	// Fill with random bytes
-	_, err := rand.Read(sendBuf)
+	_, err := rand.Read(sendBuf[:])
 	require.NoError(t, err)
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			start := time.Now()
+			defer func() {
+				t.Log("Total time:", time.Since(start))
+			}()
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -253,23 +259,23 @@ func TestManyBigPings(t *testing.T) {
 			allocs := testing.AllocsPerRun(10, func() {
 				sem := make(chan struct{}, parallel)
 				var wg sync.WaitGroup
-				for i := 0; i < totalSends; i++ {
+				for i := 0; i < totalStreams; i++ {
 					wg.Add(1)
 					sem <- struct{}{}
 					go func() {
 						defer wg.Done()
-						recvBuf := make([]byte, len(sendBuf))
+						recvBuf := [bufSize]byte{}
 						defer func() { <-sem }()
 
 						s, err := h2.NewStream(context.Background(), h1.ID(), "/BIG-ping/1.0.0")
 						require.NoError(t, err)
 						defer s.Close()
 
-						_, err = s.Write(sendBuf)
+						_, err = s.Write(sendBuf[:])
 						require.NoError(t, err)
 						s.CloseWrite()
 
-						_, err = io.ReadFull(s, recvBuf)
+						_, err = io.ReadFull(s, recvBuf[:])
 						require.NoError(t, err)
 						require.Equal(t, sendBuf, recvBuf)
 
@@ -281,7 +287,7 @@ func TestManyBigPings(t *testing.T) {
 				wg.Wait()
 			})
 
-			if int(allocs) > (len(sendBuf)*totalSends)/4 {
+			if int(allocs) > (len(sendBuf)*totalStreams)/4 {
 				t.Logf("Expected fewer allocs, got: %f", allocs)
 			}
 		})
