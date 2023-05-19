@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	mocknetwork "github.com/libp2p/go-libp2p/core/network/mocks"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/stretchr/testify/require"
 )
@@ -85,8 +87,11 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					})
 					connScope.EXPECT().Done()
 
+					var allStreamsDone sync.WaitGroup
+
 					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
 					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+						allStreamsDone.Add(1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
 						// No need to track these memory reservations since we assert that Done is called
 						streamScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes()
@@ -97,10 +102,13 @@ func TestResourceManagerIsUsed(t *testing.T) {
 							s.EXPECT().Done()
 							return s, nil
 						})
-						streamScope.EXPECT().Done()
 
 						streamScope.EXPECT().SetService(gomock.Any()).MaxTimes(1)
 						streamScope.EXPECT().SetProtocol(gomock.Any())
+
+						streamScope.EXPECT().Done().Do(func() {
+							allStreamsDone.Done()
+						})
 						return streamScope, nil
 					})
 
@@ -108,7 +116,15 @@ func TestResourceManagerIsUsed(t *testing.T) {
 						ID:    listener.ID(),
 						Addrs: listener.Addrs(),
 					}))
+					// Wait for any in progress identifies to finish.
+					// We shouldn't have to do this, but basic host currently
+					// always does an identify.
+					<-dialer.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(dialer.Network().ConnsToPeer(listener.ID())[0])
+					<-listener.(interface{ IDService() identify.IDService }).IDService().IdentifyWait(listener.Network().ConnsToPeer(dialer.ID())[0])
+
 					<-ping.Ping(context.Background(), dialer, listener.ID())
+					dialer.Network().ClosePeer(listener.ID())
+					allStreamsDone.Wait()
 					dialer.Close()
 					listener.Close()
 				})
