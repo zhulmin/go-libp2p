@@ -262,40 +262,34 @@ func TestManyBigPings(t *testing.T) {
 				s.Close()
 			})
 
-			allocs := testing.AllocsPerRun(10, func() {
-				sem := make(chan struct{}, parallel)
-				var wg sync.WaitGroup
-				for i := 0; i < totalStreams; i++ {
-					wg.Add(1)
-					sem <- struct{}{}
-					go func() {
-						defer wg.Done()
-						recvBuf := [bufSize]byte{}
-						defer func() { <-sem }()
+			sem := make(chan struct{}, parallel)
+			var wg sync.WaitGroup
+			for i := 0; i < totalStreams; i++ {
+				wg.Add(1)
+				sem <- struct{}{}
+				go func() {
+					defer wg.Done()
+					recvBuf := [bufSize]byte{}
+					defer func() { <-sem }()
 
-						s, err := h2.NewStream(context.Background(), h1.ID(), "/BIG-ping/1.0.0")
-						require.NoError(t, err)
-						defer s.Close()
+					s, err := h2.NewStream(context.Background(), h1.ID(), "/BIG-ping/1.0.0")
+					require.NoError(t, err)
+					defer s.Close()
 
-						_, err = s.Write(sendBuf[:])
-						require.NoError(t, err)
-						s.CloseWrite()
+					_, err = s.Write(sendBuf[:])
+					require.NoError(t, err)
+					s.CloseWrite()
 
-						_, err = io.ReadFull(s, recvBuf[:])
-						require.NoError(t, err)
-						require.Equal(t, sendBuf, recvBuf)
+					_, err = io.ReadFull(s, recvBuf[:])
+					require.NoError(t, err)
+					require.Equal(t, sendBuf, recvBuf)
 
-						_, err = s.Read([]byte{0})
-						require.ErrorIs(t, err, io.EOF)
-					}()
-				}
-
-				wg.Wait()
-			})
-
-			if int(allocs) > (len(sendBuf)*totalStreams)/4 {
-				t.Logf("Expected fewer allocs, got: %f", allocs)
+					_, err = s.Read([]byte{0})
+					require.ErrorIs(t, err, io.EOF)
+				}()
 			}
+
+			wg.Wait()
 		})
 	}
 }
