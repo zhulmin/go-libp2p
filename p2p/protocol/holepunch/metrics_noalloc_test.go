@@ -11,16 +11,22 @@ import (
 )
 
 func TestNoCoverNoAllocMetrics(t *testing.T) {
-	addrs1 := []ma.Multiaddr{
-		ma.StringCast("/ip4/0.0.0.0/tcp/1"),
-		ma.StringCast("/ip4/1.2.3.4/udp/2/quic"),
+	addrs1 := [][]ma.Multiaddr{
+		{
+			ma.StringCast("/ip4/0.0.0.0/tcp/1"),
+			ma.StringCast("/ip4/1.2.3.4/udp/2/quic"),
+		},
+		nil,
 	}
-	addrs2 := []ma.Multiaddr{
-		ma.StringCast("/ip4/1.2.3.4/tcp/3"),
-		ma.StringCast("/ip4/1.2.3.4/udp/4/quic"),
+	addrs2 := [][]ma.Multiaddr{
+		{
+			ma.StringCast("/ip4/1.2.3.4/tcp/3"),
+			ma.StringCast("/ip4/1.2.3.4/udp/4/quic"),
+		},
+		nil,
 	}
 	conns := []network.ConnMultiaddrs{
-		&mockConnMultiaddrs{local: addrs1[0], remote: addrs2[0]},
+		&mockConnMultiaddrs{local: addrs1[0][0], remote: addrs2[0][0]},
 		nil,
 	}
 	sides := []string{"initiator", "receiver"}
@@ -28,7 +34,8 @@ func TestNoCoverNoAllocMetrics(t *testing.T) {
 	testcases := map[string]func(){
 		"DirectDialFinished": func() { mt.DirectDialFinished(rand.Intn(2) == 1) },
 		"HolePunchFinished": func() {
-			mt.HolePunchFinished(sides[rand.Intn(len(sides))], rand.Intn(maxRetries), addrs1, addrs2, conns[rand.Intn(len(conns))])
+			mt.HolePunchFinished(sides[rand.Intn(len(sides))], rand.Intn(maxRetries), addrs1[rand.Intn(len(addrs1))],
+				addrs2[rand.Intn(len(addrs2))], conns[rand.Intn(len(conns))])
 		},
 	}
 	for method, f := range testcases {

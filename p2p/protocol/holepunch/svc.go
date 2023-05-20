@@ -268,9 +268,7 @@ func (s *Service) handleNewStream(str network.Stream) {
 	log.Debugw("starting hole punch", "peer", rp)
 	start := time.Now()
 	s.tracer.HolePunchAttempt(pi.ID)
-
 	err = holePunchConnect(s.ctx, s.host, pi, false)
-
 	dt := time.Since(start)
 	s.tracer.EndHolePunch(rp, dt, err)
 	s.tracer.HolePunchFinished("receiver", 1, addrs, ownAddrs, getDirectConnection(s.host, rp))

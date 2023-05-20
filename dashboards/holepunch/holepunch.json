@@ -170,7 +170,7 @@
           "refId": "A"
         }
       ],
-      "title": "Hole Punches: TCP",
+      "title": "Hole punches: TCP",
       "type": "piechart"
     },
     {
@@ -264,7 +264,7 @@
           "refId": "A"
         }
       ],
-      "title": "Hole Punches: QUIC",
+      "title": "Hole punches: QUIC",
       "type": "piechart"
     },
     {
@@ -367,13 +367,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (outcome) (increase(libp2p_holepunch_outcomes_total{side=\"initiator\"}[$__range]))",
+          "expr": "sum by (outcome) (increase(libp2p_holepunch_outcomes_total{side=\"initiator\",instance=~\"$instance\"}[$__range]))",
           "legendFormat": "{{outcome}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Hole Punches: Total",
+      "title": "Hole punches: Total",
       "type": "piechart"
     },
     {
@@ -490,13 +490,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "increase(libp2p_holepunch_direct_dials_total[$__rate_interval])",
+          "expr": "increase(libp2p_holepunch_direct_dials_total{instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "{{outcome}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Direct Dials ",
+      "title": "Direct dials",
       "type": "timeseries"
     },
     {
@@ -628,13 +628,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (outcome) (libp2p_holepunch_outcomes_total{side=\"initiator\"}) - (sum by (outcome)(libp2p_holepunch_outcomes_total{side=\"initiator\"} offset $__interval) or vector(0))",
+          "expr": "sum by (outcome) (libp2p_holepunch_outcomes_total{side=\"initiator\",instance=~\"$instance\"}) - (sum by (outcome)(libp2p_holepunch_outcomes_total{side=\"initiator\",instance=~\"$instance\"} offset $__interval) or vector(0))",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Holepunches",
+      "title": "Hole punches",
       "type": "timeseries"
     },
     {
@@ -741,7 +741,7 @@
           "refId": "A"
         }
       ],
-      "title": "Hole Punches: QUIC ",
+      "title": "Hole punches: QUIC ",
       "type": "piechart"
     },
     {
@@ -835,7 +835,7 @@
           "refId": "A"
         }
       ],
-      "title": "Hole Punches: TCP",
+      "title": "Hole punches: TCP",
       "type": "piechart"
     },
     {
@@ -938,13 +938,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (outcome) (increase(libp2p_holepunch_outcomes_total{side=\"receiver\"}[$__range]))",
+          "expr": "sum by (outcome) (increase(libp2p_holepunch_outcomes_total{side=\"receiver\",instance=~\"$instance\"}[$__range]))",
           "legendFormat": "{{outcome}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Hole Punches: Total",
+      "title": "Hole punches: Total",
       "type": "piechart"
     },
     {
@@ -1076,13 +1076,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum by (outcome) (libp2p_holepunch_outcomes_total{side=\"receiver\"})) - (sum by (outcome)(libp2p_holepunch_outcomes_total{side=\"receiver\"} offset $__interval) or vector(0))",
+          "expr": "(sum by (outcome) (libp2p_holepunch_outcomes_total{side=\"receiver\",instance=~\"$instance\"})) - (sum by (outcome)(libp2p_holepunch_outcomes_total{side=\"receiver\",instance=~\"$instance\"} offset $__interval) or vector(0))",
           "legendFormat": "{{outcome}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Holepunches",
+      "title": "Hole punches",
       "type": "timeseries"
     }
   ],
@@ -1092,16 +1092,35 @@
   "style": "dark",
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "definition": "label_values(instance)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "libp2p Hole Punch",
+  "title": "libp2p Hole Punches",
   "uid": "Ao24vOBVk",
-  "version": 31,
+  "version": 6,
   "weekStart": ""
 }

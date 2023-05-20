@@ -168,7 +168,6 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			hp.tracer.HolePunchFinished("initiator", maxRetries, addrs, obsAddrs, nil)
 		}
 	}
-
 	return fmt.Errorf("all retries for hole punch with peer %s failed", rp)
 }
 
