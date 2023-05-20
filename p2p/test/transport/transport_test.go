@@ -149,6 +149,8 @@ func TestPing(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -176,6 +178,8 @@ func TestBigPing(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -241,6 +245,8 @@ func TestManyBigPings(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 			start := time.Now()
 			defer func() {
 				t.Log("Total time:", time.Since(start))
@@ -300,6 +306,8 @@ func TestManyStreams(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoRcmgr: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
+			defer h1.Close()
+			defer h2.Close()
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -362,6 +370,8 @@ func TestManyMoreStreams(t *testing.T) {
 			}
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
 			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer listener.Close()
+			defer dialer.Close()
 
 			require.NoError(t, dialer.Connect(context.Background(), peer.AddrInfo{
 				ID:    listener.ID(),
@@ -453,6 +463,8 @@ func TestListenerStreamResets(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -480,6 +492,8 @@ func TestDialerStreamResets(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
@@ -509,6 +523,8 @@ func TestStreamReadDeadline(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 
 			require.NoError(t, h2.Connect(context.Background(), peer.AddrInfo{
 				ID:    h1.ID(),
