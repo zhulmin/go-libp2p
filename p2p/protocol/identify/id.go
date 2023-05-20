@@ -42,8 +42,6 @@ const (
 	IDPush = "/ipfs/id/push/1.0.0"
 )
 
-const DefaultProtocolVersion = "ipfs/0.1.0"
-
 const ServiceName = "libp2p.identify"
 
 const maxPushConcurrency = 32
@@ -189,16 +187,11 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		userAgent = cfg.userAgent
 	}
 
-	protocolVersion := DefaultProtocolVersion
-	if cfg.protocolVersion != "" {
-		protocolVersion = cfg.protocolVersion
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &idService{
 		Host:                    h,
 		UserAgent:               userAgent,
-		ProtocolVersion:         protocolVersion,
+		ProtocolVersion:         cfg.protocolVersion,
 		ctx:                     ctx,
 		ctxCancel:               cancel,
 		conns:                   make(map[network.Conn]entry),
