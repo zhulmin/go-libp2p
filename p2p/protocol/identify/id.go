@@ -766,10 +766,14 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 
 	// add signed addrs if we have them and the peerstore supports them
 	cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore())
-	if ok && signedPeerRecord != nil {
-		_, addErr := cab.ConsumePeerRecord(signedPeerRecord, ttl)
-		if addErr != nil {
-			log.Debugf("error adding signed addrs to peerstore: %v", addErr)
+	if ok && signedPeerRecord != nil && signedPeerRecord.PublicKey != nil {
+		id, err := peer.IDFromPublicKey(signedPeerRecord.PublicKey)
+		if err != nil {
+			log.Debugf("failed to derive peer ID from peer record: %s", err)
+		} else if id != c.RemotePeer() {
+			log.Debugf("received signed peer record for unexpected peer ID. expected %s, got %s", c.RemotePeer(), id)
+		} else if _, err := cab.ConsumePeerRecord(signedPeerRecord, ttl); err != nil {
+			log.Debugf("error adding signed addrs to peerstore: %v", err)
 		}
 	} else {
 		ids.Host.Peerstore().AddAddrs(p, lmaddrs, ttl)
