@@ -105,7 +105,6 @@ func TestDedupAddrsForDial(t *testing.T) {
 
 	ctx := context.Background()
 	mas, err := s.addrsForDial(ctx, otherPeer)
-	fmt.Println(mas)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, len(mas))
