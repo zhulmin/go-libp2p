@@ -843,7 +843,7 @@ func TestDedupAddrs(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(fmt.Sprintf("test %d", i), func(t *testing.T) {
-			deduped := dedupAddrs(tc.in)
+			deduped := network.DedupAddrs(tc.in)
 			for _, a := range tc.out {
 				require.Contains(t, deduped, a)
 			}
