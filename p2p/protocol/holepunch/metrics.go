@@ -22,7 +22,7 @@ var (
 		prometheus.CounterOpts{
 			Namespace: metricNamespace,
 			Name:      "address_outcomes_total",
-			Help:      "Hole Punch Outcomes",
+			Help:      "Hole Punch outcomes by Transport",
 		},
 		[]string{"side", "num_attempts", "ipv", "transport", "outcome"},
 	)
@@ -30,7 +30,7 @@ var (
 		prometheus.CounterOpts{
 			Namespace: metricNamespace,
 			Name:      "outcomes_total",
-			Help:      "Hole Punch Failures because address mismatch",
+			Help:      "Hole Punch outcomes overall",
 		},
 		[]string{"side", "num_attempts", "outcome"},
 	)
@@ -71,6 +71,23 @@ func NewMetricsTracer(opts ...MetricsTracerOption) MetricsTracer {
 		opt(setting)
 	}
 	metricshelper.RegisterCollectors(setting.reg, collectors...)
+	// initialise metrics's labels so that the first data point is handled correctly
+	for _, side := range []string{"initiator", "receiver"} {
+		for _, numAttempts := range []string{"1", "2", "3", "4"} {
+			for _, outcome := range []string{"success", "failed", "cancelled", "no_suitable_address"} {
+				for _, ipv := range []string{"ip4", "ip6"} {
+					for _, transport := range []string{"quic", "quic-v1", "tcp", "webtransport"} {
+						hpAddressOutcomesTotal.WithLabelValues(side, numAttempts, ipv, transport, outcome)
+					}
+				}
+				if outcome == "cancelled" {
+					// not a valid outcome for the overall holepunch metric
+					continue
+				}
+				hpOutcomesTotal.WithLabelValues(side, numAttempts, outcome)
+			}
+		}
+	}
 	return &metricsTracer{}
 }
 
