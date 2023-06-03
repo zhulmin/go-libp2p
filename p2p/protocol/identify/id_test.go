@@ -37,18 +37,18 @@ import (
 
 func testKnowsAddrs(t *testing.T, h host.Host, p peer.ID, expected []ma.Multiaddr) {
 	t.Helper()
-	require.True(t, assert.ElementsMatchf(t, expected, h.Peerstore().Addrs(context.Background(), p), fmt.Sprintf("%s did not have addr for %s", h.ID(), p)))
+	require.True(t, assert.ElementsMatchf(t, expected, h.Peerstore().Addrs(p), fmt.Sprintf("%s did not have addr for %s", h.ID(), p)))
 }
 
 func testHasAgentVersion(t *testing.T, h host.Host, p peer.ID) {
-	v, err := h.Peerstore().Get(context.Background(), p, "AgentVersion")
+	v, err := h.Peerstore().Get(p, "AgentVersion")
 	if v.(string) != "github.com/libp2p/go-libp2p" { // this is the default user agent
 		t.Error("agent version mismatch", err)
 	}
 }
 
 func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) {
-	k := h.Peerstore().PubKey(context.Background(), p)
+	k := h.Peerstore().PubKey(p)
 	if k == nil {
 		t.Error("no public key")
 		return
@@ -73,7 +73,7 @@ func testHasPublicKey(t *testing.T, h host.Host, p peer.ID, shouldBe ic.PubKey) 
 func emitAddrChangeEvt(t *testing.T, h host.Host) {
 	t.Helper()
 
-	key := h.Peerstore().PrivKey(context.Background(), h.ID())
+	key := h.Peerstore().PrivKey(h.ID())
 	if key == nil {
 		t.Fatal("no private key for host")
 	}
@@ -88,7 +88,7 @@ func emitAddrChangeEvt(t *testing.T, h host.Host) {
 
 	cab, ok := peerstore.GetCertifiedAddrBook(h.Peerstore())
 	require.True(t, ok)
-	_, err = cab.ConsumePeerRecord(context.Background(), signed, peerstore.PermanentAddrTTL)
+	_, err = cab.ConsumePeerRecord(signed, peerstore.PermanentAddrTTL)
 	require.NoError(t, err)
 
 	evt := event.EvtLocalAddressesUpdated{}
@@ -143,8 +143,8 @@ func TestIDService(t *testing.T) {
 	// forgotten and replaced by the addrs h1 sends.
 	forgetMe, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 
-	h2.Peerstore().AddAddr(context.Background(), h1p, forgetMe, peerstore.RecentlyConnectedAddrTTL)
-	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2p)
+	h2.Peerstore().AddAddr(h1p, forgetMe, peerstore.RecentlyConnectedAddrTTL)
+	h2pi := h2.Peerstore().PeerInfo(h2p)
 	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
 	h1t2c := h1.Network().ConnsToPeer(h2p)
@@ -157,7 +157,7 @@ func TestIDService(t *testing.T) {
 	t.Log("test peer1 has peer2 addrs correctly")
 	testKnowsAddrs(t, h1, h2p, h2.Addrs()) // has them
 	testHasAgentVersion(t, h1, h2p)
-	testHasPublicKey(t, h1, h2p, h2.Peerstore().PubKey(context.Background(), h2p)) // h1 should have h2's public key
+	testHasPublicKey(t, h1, h2p, h2.Peerstore().PubKey(h2p)) // h1 should have h2's public key
 
 	// now, this wait we do have to do. it's the wait for the Listening side
 	// to be done identifying the connection.
@@ -169,7 +169,7 @@ func TestIDService(t *testing.T) {
 	t.Log("test peer2 has peer1 addrs correctly")
 	testKnowsAddrs(t, h2, h1p, h1.Addrs()) // has them
 	testHasAgentVersion(t, h2, h1p)
-	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(context.Background(), h1p)) // h1 should have h2's public key
+	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p)) // h1 should have h2's public key
 
 	// Need both sides to actually notice that the connection has been closed.
 	sentDisconnect1 := waitForDisconnectNotification(swarm1)
@@ -229,7 +229,7 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	}
 	p1addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
 	p1addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/2345")
-	ps1.AddAddrs(context.Background(), id1, []ma.Multiaddr{p1addr1, p1addr2}, peerstore.PermanentAddrTTL)
+	ps1.AddAddrs(id1, []ma.Multiaddr{p1addr1, p1addr2}, peerstore.PermanentAddrTTL)
 	p1, err := mn.AddPeerWithPeerstore(id1, ps1)
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	p2addr1, _ := ma.NewMultiaddr("/ip4/1.2.3.5/tcp/1234")
 	p2addr2, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/3456")
 	p2addrs := []ma.Multiaddr{p2addr1, p2addr2}
-	ps2.AddAddrs(context.Background(), id2, p2addrs, peerstore.PermanentAddrTTL)
+	ps2.AddAddrs(id2, p2addrs, peerstore.PermanentAddrTTL)
 	p2, err := mn.AddPeerWithPeerstore(id2, ps2)
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +255,7 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 		t.Fatal(err)
 	}
 	p3addr1, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/4567")
-	ps3.AddAddrs(context.Background(), id3, []ma.Multiaddr{p3addr1}, peerstore.PermanentAddrTTL)
+	ps3.AddAddrs(id3, []ma.Multiaddr{p3addr1}, peerstore.PermanentAddrTTL)
 	p3, err := mn.AddPeerWithPeerstore(id3, ps3)
 	if err != nil {
 		t.Fatal(err)
@@ -298,7 +298,7 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	}
 	conn := conns[0]
 	ids2.IdentifyConn(conn)
-	addrs := p2.Peerstore().Addrs(context.Background(), id1)
+	addrs := p2.Peerstore().Addrs(id1)
 	if len(addrs) != 1 {
 		t.Fatalf("expected one addr, found %s", addrs)
 	}
@@ -309,7 +309,7 @@ func TestLocalhostAddrFiltering(t *testing.T) {
 	}
 	conn = conns[0]
 	ids3.IdentifyConn(conn)
-	addrs = p3.Peerstore().Addrs(context.Background(), id2)
+	addrs = p3.Peerstore().Addrs(id2)
 	if len(addrs) != 2 {
 		t.Fatalf("expected 2 addrs for %s, found %d: %s", id2, len(addrs), addrs)
 	}
@@ -413,7 +413,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{}) // nothing
 
-	require.NoError(t, h1.Connect(ctx, h2.Peerstore().PeerInfo(context.Background(), h2p)))
+	require.NoError(t, h1.Connect(ctx, h2.Peerstore().PeerInfo(h2p)))
 	// h1 should immediately see a connection from h2
 	require.NotEmpty(t, h1.Network().ConnsToPeer(h2p))
 	// wait for h2 to Identify itself so we are sure h2 has seen the connection.
@@ -423,8 +423,8 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	require.NotEmpty(t, h2.Network().ConnsToPeer(h1p))
 	ids2.IdentifyConn(h2.Network().ConnsToPeer(h1p)[0])
 
-	testKnowsAddrs(t, h1, h2p, h2.Peerstore().Addrs(context.Background(), h2p))
-	testKnowsAddrs(t, h2, h1p, h1.Peerstore().Addrs(context.Background(), h1p))
+	testKnowsAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
+	testKnowsAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
 
 	// change addr on host 1 and ensure host2 gets a push
 	lad := ma.StringCast("/ip4/127.0.0.1/tcp/1234")
@@ -438,7 +438,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// Wait for h2 to process the new addr
 	waitForAddrInStream(t, h2AddrStream, lad, 10*time.Second, "h2 did not receive addr change")
 
-	require.True(t, ma.Contains(h2.Peerstore().Addrs(context.Background(), h1p), lad))
+	require.True(t, ma.Contains(h2.Peerstore().Addrs(h1p), lad))
 
 	// change addr on host2 and ensure host 1 gets a pus
 	lad = ma.StringCast("/ip4/127.0.0.1/tcp/1235")
@@ -450,7 +450,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// Wait for h1 to process the new addr
 	waitForAddrInStream(t, h1AddrStream, lad, 10*time.Second, "h1 did not receive addr change")
 
-	require.True(t, ma.Contains(h1.Peerstore().Addrs(context.Background(), h2p), lad))
+	require.True(t, ma.Contains(h1.Peerstore().Addrs(h2p), lad))
 
 	// change addr on host2 again
 	lad2 := ma.StringCast("/ip4/127.0.0.1/tcp/1236")
@@ -461,7 +461,7 @@ func TestIdentifyPushOnAddrChange(t *testing.T) {
 	// Wait for h1 to process the new addr
 	waitForAddrInStream(t, h1AddrStream, lad2, 10*time.Second, "h1 did not receive addr change")
 
-	require.True(t, ma.Contains(h1.Peerstore().Addrs(context.Background(), h2p), lad2))
+	require.True(t, ma.Contains(h1.Peerstore().Addrs(h2p), lad2))
 }
 
 func TestUserAgent(t *testing.T) {
@@ -484,7 +484,7 @@ func TestUserAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	av, err := h1.Peerstore().Get(context.Background(), h2.ID(), "AgentVersion")
+	av, err := h1.Peerstore().Get(h2.ID(), "AgentVersion")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,14 +547,14 @@ func TestSendPush(t *testing.T) {
 	// h1 starts listening on a new protocol and h2 finds out about that through a push
 	h1.SetStreamHandler("rand", func(network.Stream) {})
 	require.Eventually(t, func() bool {
-		sup, err := h2.Peerstore().SupportsProtocols(context.Background(), h1.ID(), []protocol.ID{"rand"}...)
+		sup, err := h2.Peerstore().SupportsProtocols(h1.ID(), []protocol.ID{"rand"}...)
 		return err == nil && len(sup) == 1 && sup[0] == "rand"
 	}, time.Second, 10*time.Millisecond)
 
 	// h1 stops listening on a protocol and h2 finds out about it via a push
 	h1.RemoveStreamHandler("rand")
 	require.Eventually(t, func() bool {
-		sup, err := h2.Peerstore().SupportsProtocols(context.Background(), h1.ID(), []protocol.ID{"rand"}...)
+		sup, err := h2.Peerstore().SupportsProtocols(h1.ID(), []protocol.ID{"rand"}...)
 		return err == nil && len(sup) == 0
 	}, time.Second, 10*time.Millisecond)
 }
@@ -601,9 +601,9 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	// (not via identify protocol). During the identify exchange, it will be
 	// forgotten and replaced by the addrs h1 sends.
 	forgetMe, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
-	h2.Peerstore().AddAddr(context.Background(), h1p, forgetMe, peerstore.RecentlyConnectedAddrTTL)
+	h2.Peerstore().AddAddr(h1p, forgetMe, peerstore.RecentlyConnectedAddrTTL)
 
-	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2p)
+	h2pi := h2.Peerstore().PeerInfo(h2p)
 	h2pi.Addrs = h2pi.Addrs[:1]
 	require.NoError(t, h1.Connect(context.Background(), h2pi))
 
@@ -617,7 +617,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	t.Log("test peer1 has peer2 addrs correctly")
 	testKnowsAddrs(t, h1, h2p, h2.Addrs()) // has them
 	testHasAgentVersion(t, h1, h2p)
-	testHasPublicKey(t, h1, h2p, h2.Peerstore().PubKey(context.Background(), h2p)) // h1 should have h2's public key
+	testHasPublicKey(t, h1, h2p, h2.Peerstore().PubKey(h2p)) // h1 should have h2's public key
 
 	// now, this wait we do have to do. it's the wait for the Listening side
 	// to be done identifying the connection.
@@ -631,7 +631,7 @@ func TestLargeIdentifyMessage(t *testing.T) {
 	t.Log("test peer2 has peer1 addrs correctly")
 	testKnowsAddrs(t, h2, h1p, h1.Addrs()) // has them
 	testHasAgentVersion(t, h2, h1p)
-	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(context.Background(), h1p)) // h1 should have h2's public key
+	testHasPublicKey(t, h2, h1p, h1.Peerstore().PubKey(h1p)) // h1 should have h2's public key
 
 	// Need both sides to actually notice that the connection has been closed.
 	sentDisconnect1 := waitForDisconnectNotification(swarm1)
@@ -696,7 +696,7 @@ func TestLargePushMessage(t *testing.T) {
 	testKnowsAddrs(t, h1, h2p, []ma.Multiaddr{}) // nothing
 	testKnowsAddrs(t, h2, h1p, []ma.Multiaddr{}) // nothing
 
-	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2p)
+	h2pi := h2.Peerstore().PeerInfo(h2p)
 	require.NoError(t, h1.Connect(ctx, h2pi))
 	// h1 should immediately see a connection from h2
 	require.NotEmpty(t, h1.Network().ConnsToPeer(h2p))
@@ -707,8 +707,8 @@ func TestLargePushMessage(t *testing.T) {
 	require.NotEmpty(t, h2.Network().ConnsToPeer(h1p))
 	ids2.IdentifyConn(h2.Network().ConnsToPeer(h1p)[0])
 
-	testKnowsAddrs(t, h1, h2p, h2.Peerstore().Addrs(context.Background(), h2p))
-	testKnowsAddrs(t, h2, h1p, h1.Peerstore().Addrs(context.Background(), h1p))
+	testKnowsAddrs(t, h1, h2p, h2.Peerstore().Addrs(h2p))
+	testKnowsAddrs(t, h2, h1p, h1.Peerstore().Addrs(h1p))
 
 	// change addr on host 1 and ensure host2 gets a push
 	lad := ma.StringCast("/ip4/127.0.0.1/tcp/1234")
@@ -717,7 +717,7 @@ func TestLargePushMessage(t *testing.T) {
 	emitAddrChangeEvt(t, h1)
 
 	require.Eventually(t, func() bool {
-		return ma.Contains(h2.Peerstore().Addrs(context.Background(), h1p), lad)
+		return ma.Contains(h2.Peerstore().Addrs(h1p), lad)
 	}, time.Second, 10*time.Millisecond)
 
 	// change addr on host2 and ensure host 1 gets a pus
@@ -727,7 +727,7 @@ func TestLargePushMessage(t *testing.T) {
 	emitAddrChangeEvt(t, h2)
 
 	require.Eventually(t, func() bool {
-		return ma.Contains(h1.Peerstore().Addrs(context.Background(), h2p), lad)
+		return ma.Contains(h1.Peerstore().Addrs(h2p), lad)
 	}, time.Second, 10*time.Millisecond)
 
 	// change addr on host2 again
@@ -737,7 +737,7 @@ func TestLargePushMessage(t *testing.T) {
 	emitAddrChangeEvt(t, h2)
 
 	require.Eventually(t, func() bool {
-		return ma.Contains(h1.Peerstore().Addrs(context.Background(), h2p), lad2)
+		return ma.Contains(h1.Peerstore().Addrs(h2p), lad2)
 	}, time.Second, 10*time.Millisecond)
 }
 
@@ -775,7 +775,7 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 	sub, err := ids1.Host.EventBus().Subscribe(new(event.EvtPeerIdentificationFailed))
 	require.NoError(t, err)
 
-	h2pi := h2.Peerstore().PeerInfo(context.Background(), h2p)
+	h2pi := h2.Peerstore().PeerInfo(h2p)
 	require.NoError(t, h1.Connect(ctx, h2pi))
 
 	select {
@@ -816,7 +816,7 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 		ids2.Start()
 
 		h2p := h2.ID()
-		h2pi := h2.Peerstore().PeerInfo(context.Background(), h2p)
+		h2pi := h2.Peerstore().PeerInfo(h2p)
 		require.NoError(t, h1.Connect(ctx, h2pi))
 
 		_, err = h1.NewStream(ctx, h2p, p)
@@ -850,7 +850,7 @@ func TestOutOfOrderConnectedNotifs(t *testing.T) {
 			idChan := bh1.IDService().IdentifyWait(c)
 			go func() {
 				<-idChan
-				protos, err := bh1.Peerstore().GetProtocols(context.Background(), h2.ID())
+				protos, err := bh1.Peerstore().GetProtocols(h2.ID())
 				if err != nil {
 					errCh <- err
 				}

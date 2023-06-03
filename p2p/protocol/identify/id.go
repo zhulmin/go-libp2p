@@ -523,7 +523,7 @@ func (ids *idService) handleIdentifyResponse(s network.Stream, isPush bool) erro
 	if !ok { // might already have disconnected
 		return nil
 	}
-	sup, err := ids.Host.Peerstore().SupportsProtocols(context.TODO(), c.RemotePeer(), IDPush)
+	sup, err := ids.Host.Peerstore().SupportsProtocols(c.RemotePeer(), IDPush)
 	if supportsIdentifyPush := err == nil && len(sup) > 0; supportsIdentifyPush {
 		e.PushSupport = identifyPushSupported
 	} else {
@@ -566,7 +566,7 @@ func (ids *idService) updateSnapshot() (updated bool) {
 
 	if !ids.disableSignedPeerRecord {
 		if cab, ok := peerstore.GetCertifiedAddrBook(ids.Host.Peerstore()); ok {
-			snapshot.record = cab.GetPeerRecord(context.TODO(), ids.Host.ID())
+			snapshot.record = cab.GetPeerRecord(ids.Host.ID())
 		}
 	}
 
@@ -625,13 +625,13 @@ func (ids *idService) createBaseIdentifyResponse(conn network.Conn, snapshot *id
 		mes.ListenAddrs = append(mes.ListenAddrs, addr.Bytes())
 	}
 	// set our public key
-	ownKey := ids.Host.Peerstore().PubKey(context.TODO(), ids.Host.ID())
+	ownKey := ids.Host.Peerstore().PubKey(ids.Host.ID())
 
 	// check if we even have a public key.
 	if ownKey == nil {
 		// public key is nil. We are either using insecure transport or something erratic happened.
 		// check if we're even operating in "secure mode"
-		if ids.Host.Peerstore().PrivKey(context.TODO(), ids.Host.ID()) != nil {
+		if ids.Host.Peerstore().PrivKey(ids.Host.ID()) != nil {
 			// private key is present. But NO public key. Something bad happened.
 			log.Errorf("did not have own public key in Peerstore")
 		}
@@ -699,10 +699,10 @@ func diff(a, b []protocol.ID) (added, removed []protocol.ID) {
 func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bool) {
 	p := c.RemotePeer()
 
-	supported, _ := ids.Host.Peerstore().GetProtocols(context.TODO(), p)
+	supported, _ := ids.Host.Peerstore().GetProtocols(p)
 	mesProtocols := protocol.ConvertFromStrings(mes.Protocols)
 	added, removed := diff(supported, mesProtocols)
-	ids.Host.Peerstore().SetProtocols(context.TODO(), p, mesProtocols...)
+	ids.Host.Peerstore().SetProtocols(p, mesProtocols...)
 	if isPush {
 		ids.emitters.evtPeerProtocolsUpdated.Emit(event.EvtPeerProtocolsUpdated{
 			Peer:    p,
@@ -755,7 +755,7 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 		peerstore.RecentlyConnectedAddrTTL,
 		peerstore.ConnectedAddrTTL,
 	} {
-		ids.Host.Peerstore().UpdateAddrs(context.TODO(), p, ttl, peerstore.TempAddrTTL)
+		ids.Host.Peerstore().UpdateAddrs(p, ttl, peerstore.TempAddrTTL)
 	}
 
 	var addrs []ma.Multiaddr
@@ -769,10 +769,10 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	} else {
 		addrs = lmaddrs
 	}
-	ids.Host.Peerstore().AddAddrs(context.TODO(), p, filterAddrs(addrs, c.RemoteMultiaddr()), ttl)
+	ids.Host.Peerstore().AddAddrs(p, filterAddrs(addrs, c.RemoteMultiaddr()), ttl)
 
 	// Finally, expire all temporary addrs.
-	ids.Host.Peerstore().UpdateAddrs(context.TODO(), p, peerstore.TempAddrTTL, 0)
+	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
 	ids.addrMu.Unlock()
 
 	log.Debugf("%s received listen addrs for %s: %s", c.LocalPeer(), c.RemotePeer(), lmaddrs)
@@ -781,8 +781,8 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	pv := mes.GetProtocolVersion()
 	av := mes.GetAgentVersion()
 
-	ids.Host.Peerstore().Put(context.TODO(), p, "ProtocolVersion", pv)
-	ids.Host.Peerstore().Put(context.TODO(), p, "AgentVersion", av)
+	ids.Host.Peerstore().Put(p, "ProtocolVersion", pv)
+	ids.Host.Peerstore().Put(p, "AgentVersion", av)
 
 	// get the key from the other side. we may not have it (no-auth transport)
 	ids.consumeReceivedPubKey(c, mes.PublicKey)
@@ -843,7 +843,7 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 
 		if rp == "" && np != "" {
 			// if local peerid is empty, then use the new, sent key.
-			err := ids.Host.Peerstore().AddPubKey(context.TODO(), rp, newKey)
+			err := ids.Host.Peerstore().AddPubKey(rp, newKey)
 			if err != nil {
 				log.Debugf("%s could not add key for %s to peerstore: %s", lp, rp, err)
 			}
@@ -855,10 +855,10 @@ func (ids *idService) consumeReceivedPubKey(c network.Conn, kb []byte) {
 		return
 	}
 
-	currKey := ids.Host.Peerstore().PubKey(context.TODO(), rp)
+	currKey := ids.Host.Peerstore().PubKey(rp)
 	if currKey == nil {
 		// no key? no auth transport. set this one.
-		err := ids.Host.Peerstore().AddPubKey(context.TODO(), rp, newKey)
+		err := ids.Host.Peerstore().AddPubKey(rp, newKey)
 		if err != nil {
 			log.Debugf("%s could not add key for %s to peerstore: %s", lp, rp, err)
 		}
@@ -980,7 +980,7 @@ func (nn *netNotifiee) Disconnected(_ network.Network, c network.Conn) {
 		// Undo the setting of addresses to peer.ConnectedAddrTTL we did
 		ids.addrMu.Lock()
 		defer ids.addrMu.Unlock()
-		ids.Host.Peerstore().UpdateAddrs(context.TODO(), c.RemotePeer(), peerstore.ConnectedAddrTTL, peerstore.RecentlyConnectedAddrTTL)
+		ids.Host.Peerstore().UpdateAddrs(c.RemotePeer(), peerstore.ConnectedAddrTTL, peerstore.RecentlyConnectedAddrTTL)
 	}
 }
 
