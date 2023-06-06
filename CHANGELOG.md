@@ -9,7 +9,7 @@
 - [v0.25.1](#v0251)
 - [v0.25.0](#v0250)
 
-# [v0.28.0]()
+# [v0.28.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.28.0)
 
 ## 🔦 Highlights <!-- omit in toc -->
 
@@ -17,8 +17,44 @@
 * When connecting to a peer we now do [happy eyeballs](https://www.rfc-editor.org/rfc/rfc8305) like dial prioritisation to prefer QUIC addresses over TCP addresses. We dial the QUIC address first and wait 250ms to dial the TCP address of the peer.
 * In our experiments we've seen little impact on latencies up to 80th percentile. 90th and 95th percentile latencies are impacted. For details see discussion on the [PR](https://github.com/libp2p/go-libp2p/pull/2260#issuecomment-1528848170).
 * For details of the address ranking logic see godoc for `swarm.DefaultDialRanker`.
-* To disable smart dialing and keep the old behaviour use the 
+* To disable smart dialing and keep the old behaviour use the
 `libp2p.NoDelayNetworkDialRanker` option.
+
+### More Metrics! <!-- omit in toc -->
+Since the last release, we've added metrics for:
+* [Holepunching](https://github.com/libp2p/go-libp2p/pull/2246)
+
+### WebTransport <!-- omit in toc -->
+* [#2251](https://github.com/libp2p/go-libp2p/pull/2251): Infer public WebTransport address from `quic-v1` addresses if both transports are using the same port for both quic-v1 and WebTransport addresses.
+* [#2271](https://github.com/libp2p/go-libp2p/pull/2271): Only add certificate hashes to WebTransport mulitaddress if listening on WebTransport
+* [#2298](https://github.com/libp2p/go-libp2p/pull/2298): Update webtransport-go to v0.5.3
+
+## Housekeeping updates <!-- omit in toc -->
+* Identify
+  * [#2303](https://github.com/libp2p/go-libp2p/pull/2303): Don't send default protocol version
+* WebSocket
+  * [#2280](https://github.com/libp2p/go-libp2p/pull/2280): Reverted back to the Gorilla library for WebSocket
+* PeerStore
+  * [#2312](https://github.com/libp2p/go-libp2p/pull/2312): Add context to PeerStore methods
+* NAT
+  * [#2248](https://github.com/libp2p/go-libp2p/pull/2248): Move NAT mapping logic out of the host
+
+## 🐞 Bugfixes <!-- omit in toc -->
+* Identify
+  * [#2325](https://github.com/libp2p/go-libp2p/pull/2325): Don't save signed peer records
+  * [#2300](https://github.com/libp2p/go-libp2p/pull/2300): Filter received addresses based on the node's remote address
+  * [Reject signed peer records on peer ID mismatch](https://github.com/libp2p/go-libp2p/commit/8d771355b41297623e05b04a865d029a2522a074)
+  * [#2299](https://github.com/libp2p/go-libp2p/pull/2299): Avoid spuriously pushing updates
+* Swarm
+  * [#2322](https://github.com/libp2p/go-libp2p/pull/2322): Dedup addresses to dial
+  * [#2284](https://github.com/libp2p/go-libp2p/pull/2284): Change maps with multiaddress keys to use strings
+  * [#2257](https://github.com/libp2p/go-libp2p/pull/2257): Remove unused variable in addrDial
+* QUIC
+  * [#2262](https://github.com/libp2p/go-libp2p/pull/2262): Prioritize listen connections for reuse
+  * [#2276](https://github.com/libp2p/go-libp2p/pull/2276): Don't panic when quic-go's accept call errors
+  * [#2263](https://github.com/libp2p/go-libp2p/pull/2263): Fix race condition when generating random holepunch packet
+
+**Full Changelog**: https://github.com/libp2p/go-libp2p/compare/v0.27.0...v0.28.0
 
 # [v0.27.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.27.0)
 
@@ -94,7 +130,7 @@ Since the last release, we've added additional metrics to different components.
 Metrics were added to:
 * [AutoNat](https://github.com/libp2p/go-libp2p/pull/2086): Current Reachability Status and Confidence, Client and Server DialResponses, Server DialRejections. The dashboard is [available here](https://github.com/libp2p/go-libp2p/blob/master/dashboards/autonat/autonat.json).
 * Swarm:
-  - [Early Muxer Selection](https://github.com/libp2p/go-libp2p/pull/2119): Added early_muxer label indicating whether a connection was established using early muxer selection. 
+  - [Early Muxer Selection](https://github.com/libp2p/go-libp2p/pull/2119): Added early_muxer label indicating whether a connection was established using early muxer selection.
   - [IP Version](https://github.com/libp2p/go-libp2p/pull/2114): Added ip_version label to connection metrics
 * Identify:
   - Metrics for Identify, IdentifyPush, PushesTriggered (https://github.com/libp2p/go-libp2p/pull/2069)
@@ -167,7 +203,7 @@ We therefore concluded that it's safe to drop this code path altogether, and the
 * Introduces a new `ResourceLimits` type which uses `LimitVal` instead of ints so it can encode the above for the resources.
 * Changes `LimitConfig` to `PartialLimitConfig` and uses `ResourceLimits`. This along with the marshalling changes means you can now marshal the fact that some resource limit is set to block all.
   * Because the default is to use the defaults, this avoids the footgun of initializing the resource manager with 0 limits (that would block everything).
-  
+
 In general, you can go from a resource config with defaults to a concrete one with `.Build()`. e.g. `ResourceLimits.Build() => BaseLimit`, `PartialLimitConfig.Build() => ConcreteLimitConfig`, `LimitVal.Build() => int`. See PR #2000 for more details.
 
 If you're using the defaults for the resource manager, there should be no changes needed.
