@@ -27,28 +27,25 @@ Since the last release, we've added metrics for:
 ### WebTransport <!-- omit in toc -->
 * [#2251](https://github.com/libp2p/go-libp2p/pull/2251): Infer public WebTransport address from `quic-v1` addresses if both transports are using the same port for both quic-v1 and WebTransport addresses.
 * [#2271](https://github.com/libp2p/go-libp2p/pull/2271): Only add certificate hashes to WebTransport mulitaddress if listening on WebTransport
-* [#2298](https://github.com/libp2p/go-libp2p/pull/2298): Update webtransport-go to v0.5.3
 
 ## Housekeeping updates <!-- omit in toc -->
 * Identify
   * [#2303](https://github.com/libp2p/go-libp2p/pull/2303): Don't send default protocol version
+  * Prevent polluting PeerStore with local addrs
+    * [#2325](https://github.com/libp2p/go-libp2p/pull/2325): Don't save signed peer records
+    * [#2300](https://github.com/libp2p/go-libp2p/pull/2300): Filter received addresses based on the node's remote address
 * WebSocket
   * [#2280](https://github.com/libp2p/go-libp2p/pull/2280): Reverted back to the Gorilla library for WebSocket
-* PeerStore
-  * [#2312](https://github.com/libp2p/go-libp2p/pull/2312): Add context to PeerStore methods
 * NAT
   * [#2248](https://github.com/libp2p/go-libp2p/pull/2248): Move NAT mapping logic out of the host
 
 ## 🐞 Bugfixes <!-- omit in toc -->
 * Identify
-  * [#2325](https://github.com/libp2p/go-libp2p/pull/2325): Don't save signed peer records
-  * [#2300](https://github.com/libp2p/go-libp2p/pull/2300): Filter received addresses based on the node's remote address
   * [Reject signed peer records on peer ID mismatch](https://github.com/libp2p/go-libp2p/commit/8d771355b41297623e05b04a865d029a2522a074)
   * [#2299](https://github.com/libp2p/go-libp2p/pull/2299): Avoid spuriously pushing updates
 * Swarm
   * [#2322](https://github.com/libp2p/go-libp2p/pull/2322): Dedup addresses to dial
   * [#2284](https://github.com/libp2p/go-libp2p/pull/2284): Change maps with multiaddress keys to use strings
-  * [#2257](https://github.com/libp2p/go-libp2p/pull/2257): Remove unused variable in addrDial
 * QUIC
   * [#2262](https://github.com/libp2p/go-libp2p/pull/2262): Prioritize listen connections for reuse
   * [#2276](https://github.com/libp2p/go-libp2p/pull/2276): Don't panic when quic-go's accept call errors
