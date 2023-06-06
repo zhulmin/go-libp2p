@@ -30,38 +30,46 @@ func noDelayRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 	return getAddrDelay(addrs, 0, 0, 0)
 }
 
-// DefaultDialRanker is the default ranking logic.
+// DefaultDialRanker determines the ranking of outgoing connection attempts.
 //
-// We rank private, public ip4, public ip6, relay addresses separately.
-// We do not prefer IPv6 over IPv4 as recommended by Happy Eyeballs RFC 8305. Currently there is no
-// mechanism to detect an IPv6 blackhole, so we dial both IPv4 and IPv6 addresses in parallel.
-// If direct addresses are present we delay all relay addresses by 500 millisecond
-
-// In each group we apply the following logic:
+// Addresses are grouped into four distinct groups:
 //
-// First we filter the addresses we don't want to dial. We are filtering these addresses because we
-// have an address that we prefer more than that address and which has the same reachability
+//   - private addresses (localhost and local networks (RFC 1918))
+//   - public IPv4 addresses
+//   - public IPv6 addresses
+//   - relay addresses
 //
-//	If a QUIC-v1 address is present we don't dial QUIC or webtransport address on the same (ip,port)
-//	combination. If a QUICDraft29 or webtransport address is reachable, QUIC-v1 will definitely be
-//	reachable. QUICDraft29 is deprecated in favour of QUIC-v1 and QUIC-v1 is more performant than
-//	webtransport
+// Within each group, the addresses are ranked according to the ranking logic described below.
+// We then dial addresses according to this ranking, with short timeouts applied between dial attempts.
+// This ranking logic dramatically reduces the number of simultaneous dial attempts, while introducing
+// no additional latency in the vast majority of cases.
 //
-//	If a TCP address is present we don't dial ws or wss address on the same (ip, port) combination.
-//	If a ws address is reachable, TCP will definitely be reachable and it'll be more performant
+// The private, public IPv4 and public IPv6 groups are dialed in parallel.
+// Dialing relay addresses is delayed by 500 ms, if we have any non-relay alternatives.
 //
-// Then we rank the addresses:
+// In a future iteration, IPv6 will be given a headstart over IPv4, as recommended by Happy Eyeballs RFC 8305.
+// This is not enabled yet, since some ISPs are still IPv4-only, and dialing IPv6 addresses will therefore
+// always fail.
+// The correct solution is to detect this situation, and not attempt to dial IPv6 addresses at all.
+// IPv6 blackhole detection is tracked in https://github.com/libp2p/go-libp2p/issues/1605.
 //
-//	If two QUIC addresses are present, we dial the QUIC address with the lowest port first. This is more
-//	likely to be the listen port. After this we dial the rest of the QUIC addresses delayed by QUICDelay.
+// Within each group (private, public IPv4, public IPv6, relay addresses) we apply the following logic:
 //
-//	If a QUIC or webtransport address is present, TCP address dials are delayed by TCPDelay relative to
-//	the last QUIC dial.
+// 1. Filter out addresses we don't want to dial:
+//  1. If a /quic-v1 address is present, filter out /quic and /webtransport address on the same 2-tuple:
+//     QUIC v1 is preferred over the deprecated QUIC draft-29, and given the choice, we prefer using
+//     raw QUIC over using WebTransport.
+//  2. If a /tcp address is present, filter out /ws or /wss addresses on the same 2-tuple:
+//     We prefer using raw TCP over using WebSocket.
 //
-//	TCPDelay for public ip4 and public ip6 is PublicTCPDelay
-//	TCPDelay for private addresses is PrivateTCPDelay
-//	QUICDelay for public addresses is PublicQUICDelay
-//	QUICDelay for private addresses is PrivateQUICDelay
+// 2. Rank addresses:
+//
+//  1. If two QUIC addresses are present,  dial the QUIC address with the lowest port first:
+//     This is more likely to be the listen port. After this we dial the rest of the QUIC addresses delayed by
+//     250ms (PublicQUICDelay) for public addresses, and 30ms (PrivateQUICDelay) for local addresses.
+//  2. If a QUIC or WebTransport address is present, TCP addresses dials are delayed relative to the last QUIC dial:
+//     We prefer to end up with a QUIC connection. For public addresses, the delay introduced is 250ms (PublicTCPDelay),
+//     and for private addresses 30ms (PrivateTCPDelay).
 func DefaultDialRanker(addrs []ma.Multiaddr) []network.AddrDelay {
 	relay, addrs := filterAddrs(addrs, isRelayAddr)
 	pvt, addrs := filterAddrs(addrs, manet.IsPrivateAddr)
