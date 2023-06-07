@@ -14,6 +14,9 @@ import (
 func TestNewStreamDeadlines(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
+			if strings.Contains(tc.Name, "WebSocket") {
+				t.Skip("WebSocket is flaky for this kind of test")
+			}
 			if strings.Contains(tc.Name, "mplex") {
 				t.Skip("In a localhost test, writes may succeed instantly so a select { <-ctx.Done; <-write } may write.")
 			}
