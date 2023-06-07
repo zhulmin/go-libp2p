@@ -186,14 +186,14 @@ func TestBigPing(t *testing.T) {
 				Addrs: h1.Addrs(),
 			}))
 
-			h1.SetStreamHandler("/BIG-ping/1.0.0", func(s network.Stream) {
+			h1.SetStreamHandler("/big-ping", func(s network.Stream) {
 				io.Copy(s, s)
 				s.Close()
 			})
 
 			errCh := make(chan error, 1)
 			allocs := testing.AllocsPerRun(10, func() {
-				s, err := h2.NewStream(context.Background(), h1.ID(), "/BIG-ping/1.0.0")
+				s, err := h2.NewStream(context.Background(), h1.ID(), "/big-ping")
 				require.NoError(t, err)
 				defer s.Close()
 
@@ -257,7 +257,7 @@ func TestManyBigPings(t *testing.T) {
 				Addrs: h1.Addrs(),
 			}))
 
-			h1.SetStreamHandler("/BIG-ping/1.0.0", func(s network.Stream) {
+			h1.SetStreamHandler("/big-ping", func(s network.Stream) {
 				io.Copy(s, s)
 				s.Close()
 			})
@@ -272,7 +272,7 @@ func TestManyBigPings(t *testing.T) {
 					recvBuf := [bufSize]byte{}
 					defer func() { <-sem }()
 
-					s, err := h2.NewStream(context.Background(), h1.ID(), "/BIG-ping/1.0.0")
+					s, err := h2.NewStream(context.Background(), h1.ID(), "/big-ping")
 					require.NoError(t, err)
 					defer s.Close()
 
