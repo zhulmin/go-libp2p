@@ -98,7 +98,8 @@ func TestReadWriteDeadlines(t *testing.T) {
 				}
 			})
 
-			t.Run("Deadline for", func(t *testing.T) {
+			// Like the above, but with SetDeadline
+			t.Run("SetDeadline", func(t *testing.T) {
 				for _, op := range []string{"Read", "Write"} {
 					t.Run(op, func(t *testing.T) {
 						s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall")
