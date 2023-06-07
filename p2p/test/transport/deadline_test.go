@@ -54,13 +54,13 @@ func TestReadWriteDeadlines(t *testing.T) {
 			}))
 
 			// This simply stalls
-			listener.SetStreamHandler("/stall/1", func(s network.Stream) {
+			listener.SetStreamHandler("/stall", func(s network.Stream) {
 				time.Sleep(60 * time.Second)
 				s.Close()
 			})
 
 			t.Run("ReadDeadline", func(t *testing.T) {
-				s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall/1")
+				s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall")
 				require.NoError(t, err)
 				defer s.Close()
 
@@ -80,7 +80,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 			})
 
 			t.Run("WriteDeadline", func(t *testing.T) {
-				s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall/1")
+				s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall")
 				require.NoError(t, err)
 				defer s.Close()
 
@@ -101,7 +101,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 			t.Run("Deadline for", func(t *testing.T) {
 				for _, op := range []string{"Read", "Write"} {
 					t.Run(op, func(t *testing.T) {
-						s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall/1")
+						s, err := dialer.NewStream(context.Background(), listener.ID(), "/stall")
 						require.NoError(t, err)
 						defer s.Close()
 
