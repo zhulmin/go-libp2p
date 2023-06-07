@@ -14,9 +14,6 @@ import (
 func TestNewStreamDeadlines(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			if strings.Contains(tc.Name, "WebSocket") || strings.Contains(tc.Name, "Yamux") {
-				t.Skip("Yamux does not adhere to deadlines: https://github.com/libp2p/go-yamux/issues/104")
-			}
 			if strings.Contains(tc.Name, "mplex") {
 				t.Skip("In a localhost test, writes may succeed instantly so a select { <-ctx.Done; <-write } may write.")
 			}
