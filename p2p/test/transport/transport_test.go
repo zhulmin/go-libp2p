@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -227,7 +228,13 @@ func TestBigPing(t *testing.T) {
 	}
 }
 
-func TestManyBigPings(t *testing.T) {
+// TestLotsOfDataManyStreams tests sending a lot of data on multiple streams.
+func TestLotsOfDataManyStreams(t *testing.T) {
+	// Skip on windows because of https://github.com/libp2p/go-libp2p/issues/2341
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on windows because ofhttps://github.com/libp2p/go-libp2p/issues/2341")
+	}
+
 	// 64k buffer
 	const bufSize = 64 << 10
 	sendBuf := [bufSize]byte{}
@@ -354,7 +361,12 @@ func TestManyStreams(t *testing.T) {
 	}
 }
 
-func TestManyMoreStreams(t *testing.T) {
+// TestMoreStreamsThanOurLimits tests handling more streams than our and the
+// peer's resource limits. It spawns 1024 Go routines that try to open a stream
+// and send and receive data. If they encounter an error they'll try again after
+// a sleep. If the transport is well behaved, eventually all Go routines will
+// have sent and received a message.
+func TestMoreStreamsThanOurLimits(t *testing.T) {
 	const streamCount = 1024
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -390,6 +402,7 @@ func TestManyMoreStreams(t *testing.T) {
 
 					var s network.Stream
 					var err error
+					// maxRetries is an arbitrary retry amount if there's any error.
 					maxRetries := streamCount * 4
 					shouldRetry := func(err error) bool {
 						maxRetries--
