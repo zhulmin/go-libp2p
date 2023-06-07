@@ -55,7 +55,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 
 			// This simply stalls
 			listener.SetStreamHandler("/stall", func(s network.Stream) {
-				time.Sleep(60 * time.Second)
+				time.Sleep(time.Hour)
 				s.Close()
 			})
 
