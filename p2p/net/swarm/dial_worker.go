@@ -295,8 +295,8 @@ loop:
 				ad.dialRankingDelay = now.Sub(ad.createdAt)
 				err := w.s.dialNextAddr(ad.ctx, w.peer, ad.addr, w.resch)
 				if err != nil {
-					// the actual dial happens in a different go routine. An err here
-					// only happens in case of backoff. handle that.
+					// Errored without attempting a dial. This happens in case of
+					// backoff or black hole.
 					w.dispatchError(ad, err)
 				} else {
 					// the dial was successful. update inflight dials
@@ -358,7 +358,8 @@ loop:
 			}
 
 			// it must be an error -- add backoff if applicable and dispatch
-			if res.Err != context.Canceled && !w.connected {
+			// ErrDialRefusedBlackHole shouldn't end up here, just a safety check
+			if res.Err != ErrDialRefusedBlackHole && res.Err != context.Canceled && !w.connected {
 				// we only add backoff if there has not been a successful connection
 				// for consistency with the old dialer behavior.
 				w.s.backf.AddBackoff(w.peer, res.Addr)

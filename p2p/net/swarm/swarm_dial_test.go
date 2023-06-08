@@ -330,3 +330,57 @@ func TestAddrsForDialFiltering(t *testing.T) {
 		})
 	}
 }
+
+func TestBlackHoledAddrBlocked(t *testing.T) {
+	resolver, err := madns.NewResolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestSwarmWithResolver(t, resolver)
+	defer s.Close()
+
+	n := 3
+	s.bhd.udp = &blackHoleFilter{n: n, minSuccessFraction: 0.5, name: "UDP"}
+
+	// all dials to the address will fail. RFC6666 Discard Prefix
+	addr := ma.StringCast("/ip6/0100::1/udp/54321/quic-v1")
+
+	p, err := test.RandPeerID()
+	if err != nil {
+		t.Error(err)
+	}
+	s.Peerstore().AddAddr(p, addr, peerstore.PermanentAddrTTL)
+
+	// do 1 extra dial to ensure that the blackHoleDetector state is updated since it
+	// happens in a different goroutine
+	for i := 0; i < n+1; i++ {
+		s.backf.Clear(p)
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		conn, err := s.DialPeer(ctx, p)
+		if err == nil || conn != nil {
+			t.Fatalf("expected dial to fail")
+		}
+		cancel()
+	}
+	s.backf.Clear(p)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	conn, err := s.DialPeer(ctx, p)
+	if conn != nil {
+		t.Fatalf("expected dial to be blocked")
+	}
+	dialError, ok := err.(*DialError)
+	if !ok {
+		t.Fatalf("expected to receive an error of type *DialError, got %T", err)
+	}
+	isBlackHoleErr := false
+	for _, err := range dialError.DialErrors {
+		if err.Cause == ErrDialRefusedBlackHole {
+			isBlackHoleErr = true
+			break
+		}
+	}
+	if !isBlackHoleErr {
+		t.Fatalf("expected to receive ErrDialRefusedBlackHole %s", err)
+	}
+}

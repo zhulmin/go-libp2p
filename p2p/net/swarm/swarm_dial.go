@@ -39,6 +39,9 @@ var (
 	// been dialed too frequently
 	ErrDialBackoff = errors.New("dial backoff")
 
+	// ErrDialRefusedBlackHole is returned when we are in a black holed environment
+	ErrDialRefusedBlackHole = errors.New("dial refused because of black hole")
+
 	// ErrDialToSelf is returned if we attempt to dial our own peer
 	ErrDialToSelf = errors.New("dial to self attempted")
 
@@ -393,6 +396,15 @@ func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, 
 		}
 	}
 
+	// Check if dial to the address is black holed.
+	// This is the best place to have this check since we want to ensure that periodic
+	// probes allowed by the black hole detector are actually dialed. If this check is
+	// done before the dial prioritisation logic, we might not dial the address because
+	// a higher priority address succeeded.
+	if !s.bhd.IsAllowed(addr) {
+		return ErrDialRefusedBlackHole
+	}
+
 	// start the dial
 	s.limitedDial(ctx, p, addr, resch)
 
@@ -484,6 +496,9 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 
 	start := time.Now()
 	connC, err := tpt.Dial(ctx, addr, p)
+
+	s.bhd.RecordOutcome(addr, err == nil)
+
 	if err != nil {
 		if s.metricsTracer != nil {
 			s.metricsTracer.FailedDialing(addr, err)
