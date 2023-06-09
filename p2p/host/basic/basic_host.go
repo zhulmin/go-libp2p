@@ -843,11 +843,10 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 	finalAddrs = network.DedupAddrs(finalAddrs)
 
-	// natmgr is nil if we do not use nat option;
-	if h.natmgr != nil {
+	// use nat mappings if we have them
+	if h.natmgr != nil && h.natmgr.HasNAT() {
 		// We have successfully mapped ports on our NAT. Use those
 		// instead of observed addresses (mostly).
-
 		// Next, apply this mapping to our addresses.
 		for _, listen := range listenAddrs {
 			extMaddr := h.natmgr.GetMapping(listen)
