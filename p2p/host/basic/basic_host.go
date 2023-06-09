@@ -845,13 +845,12 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 	// use nat mappings if we have them
 	if h.natmgr != nil && h.natmgr.HasNAT() {
-		// We have successfully mapped ports on our NAT. Use those
-		// instead of observed addresses (mostly).
-		// Next, apply this mapping to our addresses.
+		// Use nat mappings for our addresses, if we have them.
+		var unmapped []ma.Multiaddr
 		for _, listen := range listenAddrs {
 			extMaddr := h.natmgr.GetMapping(listen)
 			if extMaddr == nil {
-				// not mapped
+				unmapped = append(unmapped, listen)
 				continue
 			}
 
@@ -870,16 +869,18 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 			}
 
 			// No.
-			// in case the router gives us a wrong address or we're behind a double-NAT.
-			// also add observed addresses
-			resolved, err := manet.ResolveUnspecifiedAddress(listen, allIfaceAddrs)
+			// In case the router gives us a wrong address or we're behind a double-NAT,
+			// also add observed addresses. Check for both the listen address
+			// and the resolved addresses. It is important to check for the listen address
+			// as the local address on connections for some transports is unspecified.
+			addrs, err := manet.ResolveUnspecifiedAddress(listen, allIfaceAddrs)
 			if err != nil {
 				// This can happen if we try to resolve /ip6/::/...
 				// without any IPv6 interface addresses.
 				continue
 			}
-
-			for _, addr := range resolved {
+			addrs = append(addrs, listen)
+			for _, addr := range addrs {
 				// Now, check if we have any observed addresses that
 				// differ from the one reported by the router. Routers
 				// don't always give the most accurate information.
@@ -901,6 +902,19 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 					finalAddrs = append(finalAddrs, ma.Join(ip, extMaddrNoIP))
 				}
+			}
+		}
+		// Add observed addresses for umapped addresses
+		for _, listen := range unmapped {
+			addrs, err := manet.ResolveUnspecifiedAddress(listen, allIfaceAddrs)
+			if err != nil {
+				// This can happen if we try to resolve /ip6/::/...
+				// without any IPv6 interface addresses.
+				continue
+			}
+			addrs = append(addrs, listen)
+			for _, addr := range addrs {
+				finalAddrs = append(finalAddrs, h.ids.ObservedAddrsFor(addr)...)
 			}
 		}
 	} else {
