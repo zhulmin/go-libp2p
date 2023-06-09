@@ -19,9 +19,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
+	blhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
+	"github.com/libp2p/go-msgio/pbio"
 
 	ma "github.com/multiformats/go-multiaddr"
 
@@ -239,6 +242,94 @@ func TestAllAddrs(t *testing.T) {
 	require.Len(t, h.AllAddrs(), 3)
 	// Should still contain the original addr.
 	require.True(t, ma.Contains(h.AllAddrs(), firstAddr), "should still contain the original addr")
+}
+
+func TestAllAddrsIdentify(t *testing.T) {
+	oldThreshold := identify.ActivationThresh
+	identify.ActivationThresh = 1
+	defer func() { identify.ActivationThresh = oldThreshold }()
+
+	h1, err := NewHost(swarmt.GenSwarm(t, swarmt.OptDialOnly), nil)
+	require.NoError(t, err)
+	defer h1.Close()
+	laddr := ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1")
+	require.NoError(t, h1.Network().Listen(laddr))
+
+	h1.IDService().Start()
+	defer h1.IDService().Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	// inform the host that its address is 1.2.3.4:1234
+	obsAddr := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
+	idHandler := func(s network.Stream) {
+		msg := &pb.Identify{}
+		msg.ObservedAddr = obsAddr.Bytes()
+		writer := pbio.NewDelimitedWriter(s)
+		if err := writer.WriteMsg(msg); err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		wg.Done()
+	}
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h2.SetStreamHandler(identify.ID, idHandler)
+
+	err = h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
+	require.NoError(t, err)
+	wg.Wait()
+
+	require.Eventually(t,
+		func() bool { return ma.Contains(h1.AllAddrs(), obsAddr) },
+		5*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestAllAddrsNAT(t *testing.T) {
+	oldThreshold := identify.ActivationThresh
+	identify.ActivationThresh = 1
+	defer func() { identify.ActivationThresh = oldThreshold }()
+
+	h1, err := NewHost(swarmt.GenSwarm(t, swarmt.OptDialOnly), &HostOpts{
+		NATManager: func(net network.Network) NATManager { return NewNATManager(net) },
+	})
+	require.NoError(t, err)
+	defer h1.Close()
+
+	h1.IDService().Start()
+	defer h1.IDService().Close()
+
+	laddr := ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1")
+	require.NoError(t, h1.Network().Listen(laddr))
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// inform the host that its address is 1.2.3.4:1234
+	obsAddr := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
+	idHandler := func(s network.Stream) {
+		msg := &pb.Identify{}
+		msg.ObservedAddr = obsAddr.Bytes()
+		writer := pbio.NewDelimitedWriter(s)
+		if err := writer.WriteMsg(msg); err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		wg.Done()
+	}
+	h2 := blhost.NewBlankHost(swarmt.GenSwarm(t))
+	h2.SetStreamHandler(identify.ID, idHandler)
+	err = h2.Connect(context.Background(), peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()})
+	require.NoError(t, err)
+
+	wg.Wait()
+
+	require.Eventually(t,
+		func() bool { return ma.Contains(h1.AllAddrs(), obsAddr) },
+		5*time.Second,
+		100*time.Millisecond,
+	)
 }
 
 // getHostPair gets a new pair of hosts.
