@@ -75,33 +75,12 @@ const ConcurrentFdDials = 160
 // per peer
 var DefaultPerPeerRateLimit = 8
 
-// dialbackoff is a struct used to avoid over-dialing the same, dead peers.
-// Whenever we totally time out on a peer (all three attempts), we add them
-// to dialbackoff. Then, whenevers goroutines would _wait_ (dialsync), they
-// check dialbackoff. If it's there, they don't wait and exit promptly with
-// an error. (the single goroutine that is actually dialing continues to
-// dial). If a dial is successful, the peer is removed from backoff.
-// Example:
-//
-//  for {
-//  	if ok, wait := dialsync.Lock(p); !ok {
-//  		if backoff.Backoff(p) {
-//  			return errDialFailed
-//  		}
-//  		<-wait
-//  		continue
-//  	}
-//  	defer dialsync.Unlock(p)
-//  	c, err := actuallyDial(p)
-//  	if err != nil {
-//  		dialbackoff.AddBackoff(p)
-//  		continue
-//  	}
-//  	dialbackoff.Clear(p)
-//  }
-//
-
-// DialBackoff is a type for tracking peer dial backoffs.
+// DialBackoff is a type for tracking peer dial backoffs. Dialbackoff is used to
+// avoid over-dialing the same, dead peers. Whenever we totally time out on all
+// addresses of a peer, we add the addresses to DialBackoff. Then, whenever we
+// attempt to dial the peer again, we check each address for backoff. If it's on
+// backoff, we don't dial the address and exit promptly. If a dial is
+// successful, the peer and all its addresses are removed from backoff.
 //
 // * It's safe to use its zero value.
 // * It's thread-safe.
@@ -155,9 +134,7 @@ var BackoffCoef = time.Second
 // BackoffMax is the maximum backoff time (default: 5m).
 var BackoffMax = time.Minute * 5
 
-// AddBackoff lets other nodes know that we've entered backoff with
-// peer p, so dialers should not wait unnecessarily. We still will
-// attempt to dial with one goroutine, in case we get through.
+// AddBackoff adds peer's address to backoff.
 //
 // Backoff is not exponential, it's quadratic and computed according to the
 // following formula:
