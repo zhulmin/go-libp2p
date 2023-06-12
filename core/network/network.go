@@ -197,8 +197,7 @@ type AddrDelay struct {
 // DialRanker provides a schedule of dialing the provided addresses
 type DialRanker func([]ma.Multiaddr) []AddrDelay
 
-// DedupAddrs deduplicates addresses in place, leave only unique addresses.
-// It doesn't allocate.
+// DedupAddrs deduplicates addresses in place, leaving only unique addresses.
 func DedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if len(addrs) == 0 {
 		return addrs
