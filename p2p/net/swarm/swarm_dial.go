@@ -139,8 +139,8 @@ func (db *DialBackoff) background(ctx context.Context) {
 // Backoff returns whether the client should backoff from dialing
 // peer p at address addr
 func (db *DialBackoff) Backoff(p peer.ID, addr ma.Multiaddr) (backoff bool) {
-	db.lock.Lock()
-	defer db.lock.Unlock()
+	db.lock.RLock()
+	defer db.lock.RUnlock()
 
 	ap, found := db.entries[p][string(addr.Bytes())]
 	return found && time.Now().Before(ap.until)
