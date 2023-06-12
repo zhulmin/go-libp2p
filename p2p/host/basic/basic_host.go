@@ -844,7 +844,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 	finalAddrs = network.DedupAddrs(finalAddrs)
 
 	// use nat mappings if we have them
-	if h.natmgr != nil && h.natmgr.HasNAT() {
+	if h.natmgr != nil && h.natmgr.HasDiscoveredNAT() {
 		// We have successfully mapped ports on our NAT. Use those
 		// instead of observed addresses (mostly).
 		// Next, apply this mapping to our addresses.

@@ -21,7 +21,7 @@ import (
 // and tries to obtain port mappings for those.
 type NATManager interface {
 	GetMapping(ma.Multiaddr) ma.Multiaddr
-	HasNAT() bool
+	HasDiscoveredNAT() bool
 	io.Closer
 }
 
@@ -87,7 +87,7 @@ func (nmgr *natManager) Close() error {
 	return nil
 }
 
-func (nmgr *natManager) HasNAT() bool {
+func (nmgr *natManager) HasDiscoveredNAT() bool {
 	nmgr.natMx.RLock()
 	defer nmgr.natMx.RUnlock()
 	return nmgr.nat != nil
