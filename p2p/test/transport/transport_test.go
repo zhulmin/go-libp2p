@@ -232,7 +232,7 @@ func TestBigPing(t *testing.T) {
 func TestLotsOfDataManyStreams(t *testing.T) {
 	// Skip on windows because of https://github.com/libp2p/go-libp2p/issues/2341
 	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on windows because ofhttps://github.com/libp2p/go-libp2p/issues/2341")
+		t.Skip("Skipping on windows because of https://github.com/libp2p/go-libp2p/issues/2341")
 	}
 
 	// 64k buffer
