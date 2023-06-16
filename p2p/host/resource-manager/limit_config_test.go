@@ -134,7 +134,12 @@ func TestDefaultsDontChange(t *testing.T) {
 
 	defaultsFromFile, err := os.ReadFile("limit_config_test_default.json")
 	require.NoError(t, err)
-	require.Equal(t, defaultsFromFile, jsonBytes)
+
+	// replace crlf with lf because of windows
+	defaultsFromFile = bytes.ReplaceAll(defaultsFromFile, []byte("\r\n"), []byte("\n"))
+	jsonBytes = bytes.ReplaceAll(jsonBytes, []byte("\r\n"), []byte("\n"))
+
+	require.Equal(t, string(defaultsFromFile), string(jsonBytes))
 }
 
 func TestReadmeLimitConfigSerialization(t *testing.T) {
