@@ -7,18 +7,19 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-type outcome int
-
-const (
-	outcomeSuccess outcome = iota
-	outcomeFailed
-)
-
 type blackHoleState int
 
 const (
 	blackHoleStateAllowed blackHoleState = iota
 	blackHoleStateBlocked
+)
+
+type blackHoleResult int
+
+const (
+	blackHoleResultAllowed blackHoleResult = iota
+	blackHoleResultProbing
+	blackHoleResultBlocked
 )
 
 // blackHoleFilter provides black hole filtering logic for dials. On detecting a black holed
@@ -41,8 +42,8 @@ type blackHoleFilter struct {
 
 	// requests counts number of dial requests up to n. Resets to 0 every nth request.
 	requests int
-	// outcomes of the last `n` allowed dials
-	outcomes []outcome
+	// dialResults of the last `n` allowed dials. success is true.
+	dialResults []bool
 	// successes is the count of successful dials in outcomes
 	successes int
 	// failures is the count of failed dials in outcomes
@@ -54,14 +55,10 @@ type blackHoleFilter struct {
 	metricsTracer MetricsTracer
 }
 
-// RecordOutcome records the outcome of a dial. A successful dial will change the state
+// RecordResult records the outcome of a dial. A successful dial will change the state
 // of the filter to Allowed. A failed dial only blocks subsequent requests if the success
 // fraction over the last n outcomes is less than the minSuccessFraction of the filter.
-func (b *blackHoleFilter) RecordOutcome(success bool) {
-	if b == nil {
-		return
-	}
-
+func (b *blackHoleFilter) RecordResult(success bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -75,51 +72,54 @@ func (b *blackHoleFilter) RecordOutcome(success bool) {
 
 	if success {
 		b.successes++
-		b.outcomes = append(b.outcomes, outcomeSuccess)
 	} else {
 		b.failures++
-		b.outcomes = append(b.outcomes, outcomeFailed)
 	}
+	b.dialResults = append(b.dialResults, success)
 
-	if len(b.outcomes) > b.n {
-		if b.outcomes[0] == outcomeSuccess {
+	if len(b.dialResults) > b.n {
+		if b.dialResults[0] {
 			b.successes--
 		} else {
 			b.failures--
 		}
-		b.outcomes = b.outcomes[1 : b.n+1]
+		b.dialResults = b.dialResults[1 : b.n+1]
 	}
 
 	b.updateState()
 	b.trackMetrics()
 }
 
-func (b *blackHoleFilter) IsAllowed() (state blackHoleState, isAllowed bool) {
-	if b == nil {
-		return blackHoleStateAllowed, true
-	}
-
+// HandleRequest handles a new dial request for the filter. It returns a
+func (b *blackHoleFilter) HandleRequest() blackHoleResult {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	b.requests++
-	if b.requests == b.n {
-		b.requests = 0
-	}
+
 	b.trackMetrics()
-	return b.state, (b.state == blackHoleStateAllowed) || (b.requests == 0)
+
+	if b.state == blackHoleStateAllowed {
+		return blackHoleResultAllowed
+	} else if b.requests%b.n == 0 {
+		return blackHoleResultProbing
+	} else {
+		return blackHoleResultBlocked
+	}
 }
 
 func (b *blackHoleFilter) reset() {
 	b.successes = 0
 	b.failures = 0
-	b.outcomes = b.outcomes[:0]
+	b.dialResults = b.dialResults[:0]
+	b.requests = 0
 	b.updateState()
 }
 
 func (b *blackHoleFilter) updateState() {
 	st := b.state
 	successFraction := 0.0
-	if len(b.outcomes) < b.n {
+	if len(b.dialResults) < b.n {
 		b.state = blackHoleStateAllowed
 	} else {
 		successFraction = float64(b.successes) / float64(b.successes+b.failures)
@@ -146,10 +146,15 @@ func (b *blackHoleFilter) trackMetrics() {
 	if b.successes+b.failures != 0 {
 		successFraction = float64(b.successes) / float64(b.successes+b.failures)
 	}
+
+	nextRequestAllowedAfter := 0
+	if b.state == blackHoleStateBlocked {
+		nextRequestAllowedAfter = b.n - (b.requests % b.n)
+	}
 	b.metricsTracer.UpdatedBlackHoleFilterState(
 		b.name,
 		b.state,
-		b.n-b.requests,
+		nextRequestAllowedAfter,
 		successFraction,
 	)
 }
@@ -160,44 +165,47 @@ type blackHoleDetector struct {
 	udp, ipv6 *blackHoleFilter
 }
 
-func (d *blackHoleDetector) IsAllowed(addr ma.Multiaddr) bool {
+func (d *blackHoleDetector) HandleRequest(addr ma.Multiaddr) bool {
 	if !manet.IsPublicAddr(addr) {
 		return true
 	}
 
-	udpState, udpAllowed := blackHoleStateAllowed, true
+	udpres := blackHoleResultAllowed
 	if d.udp != nil && isProtocolAddr(addr, ma.P_UDP) {
-		udpState, udpAllowed = d.udp.IsAllowed()
+		udpres = d.udp.HandleRequest()
 	}
 
-	ipv6State, ipv6Allowed := blackHoleStateAllowed, true
+	ipv6res := blackHoleResultAllowed
 	if d.ipv6 != nil && isProtocolAddr(addr, ma.P_IP6) {
-		ipv6State, ipv6Allowed = d.ipv6.IsAllowed()
+		ipv6res = d.ipv6.HandleRequest()
 	}
 
 	// Allow all probes irrespective of the state of the other filter
-	if (udpState == blackHoleStateBlocked && udpAllowed) ||
-		(ipv6State == blackHoleStateBlocked && ipv6Allowed) {
+	if udpres == blackHoleResultProbing || ipv6res == blackHoleResultProbing {
 		return true
 	}
-	return (udpAllowed && ipv6Allowed)
+	return udpres != blackHoleResultBlocked && ipv6res != blackHoleResultBlocked
 }
 
-// RecordOutcome updates the state of the relevant `blackHoleFilter` for addr
-func (d *blackHoleDetector) RecordOutcome(addr ma.Multiaddr, success bool) {
+// RecordResult updates the state of the relevant `blackHoleFilter` for addr
+func (d *blackHoleDetector) RecordResult(addr ma.Multiaddr, success bool) {
 	if !manet.IsPublicAddr(addr) {
 		return
 	}
 	if d.udp != nil && isProtocolAddr(addr, ma.P_UDP) {
-		d.udp.RecordOutcome(success)
+		d.udp.RecordResult(success)
 	}
 	if d.ipv6 != nil && isProtocolAddr(addr, ma.P_IP6) {
-		d.ipv6.RecordOutcome(success)
+		d.ipv6.RecordResult(success)
 	}
 }
 
 func newBlackHoleDetector(detectUDP, detectIPv6 bool, mt MetricsTracer) *blackHoleDetector {
 	d := &blackHoleDetector{}
+
+	// A black hole is a binary property. On a network if UDP dials are blocked or there is
+	// no IPv6 connectivity, all dials will fail. So a low min success fraction like 0.01 is
+	// good enough.
 	if detectUDP {
 		d.udp = &blackHoleFilter{n: 100, minSuccessFraction: 0.01, name: "UDP", metricsTracer: mt}
 	}

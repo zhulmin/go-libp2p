@@ -401,7 +401,7 @@ func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, 
 	// probes allowed by the black hole detector are actually dialed. If this check is
 	// done before the dial prioritisation logic, we might not dial the address because
 	// a higher priority address succeeded.
-	if !s.bhd.IsAllowed(addr) {
+	if !s.bhd.HandleRequest(addr) {
 		return ErrDialRefusedBlackHole
 	}
 
@@ -497,7 +497,7 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 	start := time.Now()
 	connC, err := tpt.Dial(ctx, addr, p)
 
-	s.bhd.RecordOutcome(addr, err == nil)
+	s.bhd.RecordResult(addr, err == nil)
 
 	if err != nil {
 		if s.metricsTracer != nil {

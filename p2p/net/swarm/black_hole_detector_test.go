@@ -8,90 +8,91 @@ import (
 
 func TestBlackHoleFilterReset(t *testing.T) {
 	n := 10
-	bhd := &blackHoleFilter{n: n, minSuccessFraction: 0.05, name: "test"}
+	bhf := &blackHoleFilter{n: n, minSuccessFraction: 0.05, name: "test"}
 	var i = 0
 	// calls up to threshold should be allowed
 	for i = 1; i <= n; i++ {
-		if _, isAllowed := bhd.IsAllowed(); !isAllowed {
+		if bhf.HandleRequest() != blackHoleResultAllowed {
 			t.Fatalf("expected calls up to minDials to be allowed")
 		}
-		bhd.RecordOutcome(false)
+		bhf.RecordResult(false)
 	}
+
 	// after threshold calls every nth call should be allowed
 	for i = n + 1; i < 42; i++ {
-		_, isAllowed := bhd.IsAllowed()
-		if (i%n == 0 && !isAllowed) || (i%n != 0 && isAllowed) {
+		result := bhf.HandleRequest()
+		if (i%n == 0 && result != blackHoleResultProbing) || (i%n != 0 && result != blackHoleResultBlocked) {
 			t.Fatalf("expected every nth dial to be allowed")
 		}
 	}
 
-	bhd.RecordOutcome(true)
+	bhf.RecordResult(true)
 	// check if calls up to threshold are allowed after success
 	for i = 0; i < n; i++ {
-		if _, isAllowed := bhd.IsAllowed(); !isAllowed {
+		if bhf.HandleRequest() != blackHoleResultAllowed {
 			t.Fatalf("expected black hole detector state to reset after success")
 		}
-		bhd.RecordOutcome(false)
+		bhf.RecordResult(false)
 	}
 
 	// next call should be refused
-	if _, isAllowed := bhd.IsAllowed(); isAllowed {
+	if bhf.HandleRequest() != blackHoleResultBlocked {
 		t.Fatalf("expected dial to be blocked")
 	}
 }
 
-func TestBlackHoleDetector(t *testing.T) {
+func TestBlackHoleFilterSuccessFraction(t *testing.T) {
 	n := 10
-	bhd := &blackHoleFilter{n: n, minSuccessFraction: 0.4, name: "test"}
+	bhf := &blackHoleFilter{n: n, minSuccessFraction: 0.4, name: "test"}
 	var i = 0
 	// 5 success and 5 fails
 	for i = 1; i <= 5; i++ {
-		bhd.RecordOutcome(true)
+		bhf.RecordResult(true)
 	}
 	for i = 1; i <= 5; i++ {
-		bhd.RecordOutcome(false)
+		bhf.RecordResult(false)
 	}
 
-	if _, isAllowed := bhd.IsAllowed(); !isAllowed {
+	if bhf.HandleRequest() != blackHoleResultAllowed {
 		t.Fatalf("expected dial to be allowed")
 	}
 	// 4 success and 6 fails
-	bhd.RecordOutcome(false)
+	bhf.RecordResult(false)
 
-	if _, isAllowed := bhd.IsAllowed(); !isAllowed {
+	if bhf.HandleRequest() != blackHoleResultAllowed {
 		t.Fatalf("expected dial to be allowed")
 	}
 	// 3 success and 7 fails
-	bhd.RecordOutcome(false)
+	bhf.RecordResult(false)
 
 	// should be blocked
-	if _, isAllowed := bhd.IsAllowed(); isAllowed {
+	if bhf.HandleRequest() != blackHoleResultBlocked {
 		t.Fatalf("expected dial to be blocked")
 	}
 
-	bhd.RecordOutcome(true)
+	bhf.RecordResult(true)
 	// 5 success and 5 fails
 	for i = 1; i <= 5; i++ {
-		bhd.RecordOutcome(true)
+		bhf.RecordResult(true)
 	}
 	for i = 1; i <= 5; i++ {
-		bhd.RecordOutcome(false)
+		bhf.RecordResult(false)
 	}
 
-	if _, isAllowed := bhd.IsAllowed(); !isAllowed {
+	if bhf.HandleRequest() != blackHoleResultAllowed {
 		t.Fatalf("expected dial to be allowed")
 	}
 	// 4 success and 6 fails
-	bhd.RecordOutcome(false)
+	bhf.RecordResult(false)
 
-	if _, isAllowed := bhd.IsAllowed(); !isAllowed {
+	if bhf.HandleRequest() != blackHoleResultAllowed {
 		t.Fatalf("expected dial to be allowed")
 	}
 	// 3 success and 7 fails
-	bhd.RecordOutcome(false)
+	bhf.RecordResult(false)
 
 	// should be blocked
-	if _, isAllowed := bhd.IsAllowed(); isAllowed {
+	if bhf.HandleRequest() != blackHoleResultBlocked {
 		t.Fatalf("expected dial to be blocked")
 	}
 
@@ -101,10 +102,10 @@ func TestBlackHoleDetectorInApplicableAddress(t *testing.T) {
 	bhd := newBlackHoleDetector(true, true, nil)
 	addr := ma.StringCast("/ip4/127.0.0.1/tcp/1234")
 	for i := 0; i < 1000; i++ {
-		if !bhd.IsAllowed(addr) {
+		if !bhd.HandleRequest(addr) {
 			t.Fatalf("expect dials to inapplicable address to always be allowed")
 		}
-		bhd.RecordOutcome(addr, false)
+		bhd.RecordResult(addr, false)
 	}
 }
 
@@ -112,17 +113,17 @@ func TestBlackHoleDetectorUDP(t *testing.T) {
 	bhd := newBlackHoleDetector(true, true, nil)
 	addr := ma.StringCast("/ip4/1.2.3.4/udp/1234")
 	for i := 0; i < 100; i++ {
-		bhd.RecordOutcome(addr, false)
+		bhd.RecordResult(addr, false)
 	}
-	if bhd.IsAllowed(addr) {
+	if bhd.HandleRequest(addr) {
 		t.Fatalf("expect dial to be be blocked")
 	}
 
 	bhd = newBlackHoleDetector(false, true, nil)
 	for i := 0; i < 100; i++ {
-		bhd.RecordOutcome(addr, false)
+		bhd.RecordResult(addr, false)
 	}
-	if !bhd.IsAllowed(addr) {
+	if !bhd.HandleRequest(addr) {
 		t.Fatalf("expected dial to be be allowed when UDP detection is disabled")
 	}
 }
@@ -131,17 +132,17 @@ func TestBlackHoleDetectorIPv6(t *testing.T) {
 	bhd := newBlackHoleDetector(true, true, nil)
 	addr := ma.StringCast("/ip6/1::1/tcp/1234")
 	for i := 0; i < 100; i++ {
-		bhd.RecordOutcome(addr, false)
+		bhd.RecordResult(addr, false)
 	}
-	if bhd.IsAllowed(addr) {
+	if bhd.HandleRequest(addr) {
 		t.Fatalf("expect dial to be be blocked")
 	}
 
 	bhd = newBlackHoleDetector(true, false, nil)
 	for i := 0; i < 100; i++ {
-		bhd.RecordOutcome(addr, false)
+		bhd.RecordResult(addr, false)
 	}
-	if !bhd.IsAllowed(addr) {
+	if !bhd.HandleRequest(addr) {
 		t.Fatalf("expected dial to be be allowed when IPv6 detection is disabled")
 	}
 }
@@ -153,10 +154,10 @@ func TestBlackHoleDetectorProbes(t *testing.T) {
 	}
 	udp6Addr := ma.StringCast("/ip6/1::1/udp/1234/quic-v1")
 	for i := 0; i < 3; i++ {
-		bhd.RecordOutcome(udp6Addr, false)
+		bhd.RecordResult(udp6Addr, false)
 	}
 	for i := 1; i < 100; i++ {
-		isAllowed := bhd.IsAllowed(udp6Addr)
+		isAllowed := bhd.HandleRequest(udp6Addr)
 		if i%2 == 0 || i%3 == 0 {
 			if !isAllowed {
 				t.Fatalf("expected probe to be allowed irrespective of the state of other black hole filter")
