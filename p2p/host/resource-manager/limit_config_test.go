@@ -124,7 +124,7 @@ func TestLimitConfigRoundTrip(t *testing.T) {
 }
 
 func TestDefaultsDontChange(t *testing.T) {
-	concrete := DefaultLimits.AutoScale()
+	concrete := DefaultLimits.Scale(8<<30, 16<<10) // 8GB, 16k fds
 	jsonBytes, err := json.MarshalIndent(concrete.ToPartialLimitConfig(), "", "  ")
 	require.NoError(t, err)
 

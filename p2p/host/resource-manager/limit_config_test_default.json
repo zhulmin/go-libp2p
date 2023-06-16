@@ -6,7 +6,7 @@
     "Conns": 1152,
     "ConnsInbound": 576,
     "ConnsOutbound": 1152,
-    "FD": 122880,
+    "FD": 16384,
     "Memory": "8724152320"
   },
   "Transient": {
@@ -16,7 +16,7 @@
     "Conns": 320,
     "ConnsInbound": 160,
     "ConnsOutbound": 320,
-    "FD": 30720,
+    "FD": 4096,
     "Memory": "1107296256"
   },
   "AllowlistedSystem": {
@@ -26,7 +26,7 @@
     "Conns": 1152,
     "ConnsInbound": 576,
     "ConnsOutbound": 1152,
-    "FD": 122880,
+    "FD": 16384,
     "Memory": "8724152320"
   },
   "AllowlistedTransient": {
@@ -36,7 +36,7 @@
     "Conns": 320,
     "ConnsInbound": 160,
     "ConnsOutbound": 320,
-    "FD": 30720,
+    "FD": 4096,
     "Memory": "1107296256"
   },
   "ServiceDefault": {
@@ -86,7 +86,7 @@
     "Conns": 8,
     "ConnsInbound": 8,
     "ConnsOutbound": 8,
-    "FD": 1920,
+    "FD": 256,
     "Memory": "1140850688"
   },
   "Conn": {
