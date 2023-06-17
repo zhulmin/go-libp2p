@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -59,6 +60,9 @@ func (c *Conn) ID() string {
 // open notifications must finish before we can fire off the close
 // notifications).
 func (c *Conn) Close() error {
+	// Print the stack trace of the caller to help debug why we closed
+	debug.PrintStack()
+
 	c.closeOnce.Do(c.doClose)
 	return c.err
 }
