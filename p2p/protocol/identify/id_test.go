@@ -742,10 +742,10 @@ func TestLargePushMessage(t *testing.T) {
 }
 
 func TestIdentifyResponseReadTimeout(t *testing.T) {
-	timeout := identify.StreamReadTimeout
-	identify.StreamReadTimeout = 100 * time.Millisecond
+	timeout := identify.Timeout
+	identify.Timeout = 100 * time.Millisecond
 	defer func() {
-		identify.StreamReadTimeout = timeout
+		identify.Timeout = timeout
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -788,10 +788,10 @@ func TestIdentifyResponseReadTimeout(t *testing.T) {
 }
 
 func TestIncomingIDStreamsTimeout(t *testing.T) {
-	timeout := identify.StreamReadTimeout
-	identify.StreamReadTimeout = 100 * time.Millisecond
+	timeout := identify.Timeout
+	identify.Timeout = 100 * time.Millisecond
 	defer func() {
-		identify.StreamReadTimeout = timeout
+		identify.Timeout = timeout
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
