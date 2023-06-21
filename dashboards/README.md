@@ -25,7 +25,7 @@ Dashboards can be inspected locally by running
 docker-compose up
 ```
 
-and opening Grafana at http://localhost:3000 (user: admin, password: admin).
+and opening Grafana at http://localhost:3000.
 
 
 ### Making Dashboards usable with Provisioning
