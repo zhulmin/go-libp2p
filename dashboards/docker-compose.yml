@@ -22,6 +22,7 @@ services:
       - ./autonat/autonat.json:/var/lib/grafana/dashboards/autonat.json
       - ./autorelay/autorelay.json:/var/lib/grafana/dashboards/autorelay.json
       - ./eventbus/eventbus.json:/var/lib/grafana/dashboards/eventbus.json
+      - ./holepunch/holepunch.json:/var/lib/grafana/dashboards/holepunch.json
       - ./identify/identify.json:/var/lib/grafana/dashboards/identify.json
       - ./relaysvc/relaysvc.json:/var/lib/grafana/dashboards/relaysvc.json
       - ./swarm/swarm.json:/var/lib/grafana/dashboards/swarm.json
