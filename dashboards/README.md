@@ -33,4 +33,3 @@ and opening Grafana at http://localhost:3000 (user: admin, password: admin).
 The following section is only relevant for creators of dashboards.
 
 Due to a bug in Grafana, it's not possible to provision dashboards shared for external use directly. We need to apply the workaround described in https://github.com/grafana/grafana/issues/10786#issuecomment-568788499 (adding the a few lines in the dashboard JSON file).
->>>>>>> Stashed changes
