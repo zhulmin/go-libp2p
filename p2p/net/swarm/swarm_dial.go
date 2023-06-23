@@ -396,15 +396,6 @@ func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, 
 		}
 	}
 
-	// Check if dial to the address is black holed.
-	// This is the best place to have this check since we want to ensure that periodic
-	// probes allowed by the black hole detector are actually dialed. If this check is
-	// done before the dial prioritisation logic, we might not dial the address because
-	// a higher priority address succeeded.
-	if !s.bhd.HandleRequest(addr) {
-		return ErrDialRefusedBlackHole
-	}
-
 	// start the dial
 	s.limitedDial(ctx, p, addr, resch)
 
@@ -446,8 +437,12 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 
 	// filter addresses we cannot dial
 	addrs = ma.FilterAddrs(addrs, s.canDial)
+
 	// filter low priority addresses among the addresses we can dial
 	addrs = filterLowPriorityAddresses(addrs)
+
+	// remove black holed addrs
+	addrs = s.bhd.FilterAddrs(addrs)
 
 	return ma.FilterAddrs(addrs,
 		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
