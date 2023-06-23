@@ -26,7 +26,7 @@ import (
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	routed "github.com/libp2p/go-libp2p/p2p/host/routed"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
@@ -301,7 +301,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 	}
 
 	if !cfg.DisableMetrics {
-		rcmgrObs.MustRegisterWith(cfg.PrometheusRegisterer)
+		rcmgr.MustRegisterWith(cfg.PrometheusRegisterer)
 	}
 
 	h, err := bhost.NewHost(swrm, &bhost.HostOpts{

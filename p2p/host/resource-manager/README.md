@@ -48,8 +48,8 @@ limits := cfg.Build(scaledDefaultLimits)
 limiter := rcmgr.NewFixedLimiter(limits)
 
 // (Optional if you want metrics)
-rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)
-str, err := rcmgrObs.NewStatsTraceReporter()
+rcmgr.MustRegisterWith(prometheus.DefaultRegisterer)
+str, err := rcmgr.NewStatsTraceReporter()
 if err != nil {
   panic(err)
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
 
 	"github.com/stretchr/testify/require"
 )
@@ -319,7 +318,7 @@ func TestReadmeExample(t *testing.T) {
 	limiter := rcmgr.NewFixedLimiter(limits)
 
 	// (Optional if you want metrics) Construct the OpenCensus metrics reporter.
-	str, err := rcmgrObs.NewStatsTraceReporter()
+	str, err := rcmgr.NewStatsTraceReporter()
 	if err != nil {
 		panic(err)
 	}

@@ -14,13 +14,12 @@ option libp2p.PrometheusRegisterer. For example:
 import (
     // ...
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
     func SetupResourceManager() (network.ResourceManager, error) {
-        str, err := rcmgrObs.NewStatsTraceReporter()
+        str, err := rcmgr.NewStatsTraceReporter()
         if err != nil {
             return nil, err
         }
