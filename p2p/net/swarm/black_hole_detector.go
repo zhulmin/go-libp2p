@@ -245,13 +245,13 @@ func newBlackHoleDetector(detectUDP, detectIPv6 bool, mt MetricsTracer) *blackHo
 	d := &blackHoleDetector{}
 
 	// A black hole is a binary property. On a network if UDP dials are blocked or there is
-	// no IPv6 connectivity, all dials will fail. So a low success rate of 3 out 100 dials
+	// no IPv6 connectivity, all dials will fail. So a low success rate of 5 out 100 dials
 	// is good enough.
 	if detectUDP {
-		d.udp = &blackHoleFilter{n: 100, minSuccesses: 3, name: "UDP", metricsTracer: mt}
+		d.udp = &blackHoleFilter{n: 100, minSuccesses: 5, name: "UDP", metricsTracer: mt}
 	}
 	if detectIPv6 {
-		d.ipv6 = &blackHoleFilter{n: 100, minSuccesses: 3, name: "IPv6", metricsTracer: mt}
+		d.ipv6 = &blackHoleFilter{n: 100, minSuccesses: 5, name: "IPv6", metricsTracer: mt}
 	}
 	return d
 }
