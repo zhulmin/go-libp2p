@@ -3,6 +3,7 @@ package identify
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -375,6 +376,11 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 		return false
 	}
 
+	// Provided by NAT64 peers, these addresses are specific to the peer and not publicly routable
+	if isNAT64IPv4ConvertedIPv6Addr(observed) {
+		return false
+	}
+
 	// we should only use ObservedAddr when our connection's LocalAddr is one
 	// of our ListenAddrs. If we Dial out using an ephemeral addr, knowing that
 	// address's external mapping is not very useful because the port will not be
@@ -430,6 +436,20 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 	}
 
 	return true
+}
+
+// isNAT64IPv4ConvertedIPv6Addr returns whether addr is an IPv6 address that begins with
+// the well known prefix "64:ff9b" used for NAT64 Translation
+// see RFC 6052
+func isNAT64IPv4ConvertedIPv6Addr(addr ma.Multiaddr) bool {
+	ip, err := addr.ValueForProtocol(ma.P_IP6)
+	if err != nil {
+		return false
+	}
+	if strings.HasPrefix(ip, "64:ff9b::") {
+		return true
+	}
+	return false
 }
 
 func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observed ma.Multiaddr) {
