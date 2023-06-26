@@ -83,6 +83,8 @@ func TestDelayRankerQUICDelay(t *testing.T) {
 	q2v16 := ma.StringCast("/ip6/1::2/udp/2/quic-v1")
 	q3v16 := ma.StringCast("/ip6/1::2/udp/3/quic-v1")
 
+	q1N64 := ma.StringCast("/ip6/64:ff9b::1.2.3.4/udp/1234/quic")
+
 	testCase := []struct {
 		name   string
 		addrs  []ma.Multiaddr
@@ -142,6 +144,16 @@ func TestDelayRankerQUICDelay(t *testing.T) {
 				{Addr: wt1, Delay: 2 * PublicQUICDelay},
 				{Addr: q2v16, Delay: 2 * PublicQUICDelay},
 				{Addr: q3v16, Delay: 2 * PublicQUICDelay},
+			},
+		},
+		{
+			name:  "quic-nat64",
+			addrs: []ma.Multiaddr{q1v16, q2, wt1, q1N64},
+			output: []network.AddrDelay{
+				{Addr: q1v16, Delay: 0},
+				{Addr: q2, Delay: PublicQUICDelay},
+				{Addr: q1N64, Delay: 2 * PublicQUICDelay},
+				{Addr: wt1, Delay: 2 * PublicQUICDelay},
 			},
 		},
 	}

@@ -3,6 +3,7 @@ package swarm
 import (
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -132,37 +133,43 @@ func getAddrDelay(addrs []ma.Multiaddr, tcpDelay time.Duration, quicDelay time.D
 }
 
 // score scores a multiaddress for dialing delay. Lower is better.
+//
 // The lower 16 bits of the result are the port. Low ports are ranked higher because they're
 // more likely to be listen addresses.
 // The addresses are ranked as:
-// QUICv1 IPv6 > QUICdraft29 IPv6 > QUICv1 IPv4 > QUICdraft29 IPv4 >
-// WebTransport IPv6 > WebTransport IPv4 > TCP IPv6 > TCP IPv4
+// QUICv1 IPv6 > QUICdraft29 IPv6 > QUICv1 IPv4 > QUICdraft29 IPv4 > QUICv1 NAT64 > QUIC draft29 NAT64 >
+// WebTransport IPv6 > WebTransport IPv4 > WebTransport NAT64
+// TCP IPv6 > TCP IPv4 > TCP NAT64
 func score(a ma.Multiaddr) int {
 	ip4Weight := 0
 	if isProtocolAddr(a, ma.P_IP4) {
 		ip4Weight = (1 << 18)
 	}
 
+	nat64Weight := 0
+	if isNAT64IPv4ConvertedIPv6Addr(a) {
+		nat64Weight = (1 << 19)
+	}
+
+	portWeight := (1 << 16)
+	transportScore := (1 << 30)
 	if _, err := a.ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
 		p, _ := a.ValueForProtocol(ma.P_UDP)
-		pi, _ := strconv.Atoi(p)
-		return ip4Weight + (1 << 19) + pi
-	}
-	if _, err := a.ValueForProtocol(ma.P_QUIC); err == nil {
+		portWeight, _ = strconv.Atoi(p)
+		transportScore = (1 << 20)
+	} else if _, err := a.ValueForProtocol(ma.P_QUIC); err == nil {
 		p, _ := a.ValueForProtocol(ma.P_UDP)
-		pi, _ := strconv.Atoi(p)
-		return ip4Weight + pi + (1 << 17)
-	}
-	if _, err := a.ValueForProtocol(ma.P_QUIC_V1); err == nil {
+		portWeight, _ = strconv.Atoi(p)
+		transportScore = (1 << 17) + portWeight
+	} else if _, err := a.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 		p, _ := a.ValueForProtocol(ma.P_UDP)
-		pi, _ := strconv.Atoi(p)
-		return ip4Weight + pi
+		portWeight, _ = strconv.Atoi(p)
+		transportScore = portWeight
+	} else if p, err := a.ValueForProtocol(ma.P_TCP); err == nil {
+		portWeight, _ = strconv.Atoi(p)
+		transportScore = (1 << 21)
 	}
-	if p, err := a.ValueForProtocol(ma.P_TCP); err == nil {
-		pi, _ := strconv.Atoi(p)
-		return ip4Weight + pi + (1 << 20)
-	}
-	return (1 << 30)
+	return transportScore + nat64Weight + ip4Weight + portWeight
 }
 
 func isProtocolAddr(a ma.Multiaddr, p int) bool {
@@ -191,4 +198,18 @@ func filterAddrs(addrs []ma.Multiaddr, f func(a ma.Multiaddr) bool) (filtered, r
 		}
 	}
 	return addrs[:j], addrs[j:]
+}
+
+// isNAT64IPv4ConvertedIPv6Addr returns whether addr is an IPv6 address that begins with
+// the well known prefix "64:ff9b" used for NAT64 Translation
+// see RFC 6052
+func isNAT64IPv4ConvertedIPv6Addr(addr ma.Multiaddr) bool {
+	ip, err := addr.ValueForProtocol(ma.P_IP6)
+	if err != nil {
+		return false
+	}
+	if strings.HasPrefix(ip, "64:ff9b::") {
+		return true
+	}
+	return false
 }
