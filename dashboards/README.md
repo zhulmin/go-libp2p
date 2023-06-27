@@ -20,9 +20,13 @@ go func() {
 
 This exposes a metrics collection endpoint at http://localhost:5001/debug/metrics/prometheus. Note that this is the same endpoint that [Kubo](https://github.com/ipfs/kubo) uses, so if you want to gather metrics from Kubo, you can skip this step.
 
-Dashboards can be inspected locally by running
+On Linux, dashboards can be inspected locally by running:
 ```bash
-docker-compose up
+docker-compose -f docker-compose-linux.yml up
+```
+On OSX:
+```bash
+docker-compose -f docker-compose-osx.yml up
 ```
 
 and opening Grafana at http://localhost:3000.
@@ -32,4 +36,4 @@ and opening Grafana at http://localhost:3000.
 
 The following section is only relevant for creators of dashboards.
 
-Due to a bug in Grafana, it's not possible to provision dashboards shared for external use directly. We need to apply the workaround described in https://github.com/grafana/grafana/issues/10786#issuecomment-568788499 (adding the a few lines in the dashboard JSON file).
+Due to a bug in Grafana, it's not possible to provision dashboards shared for external use directly. We need to apply the workaround described in https://github.com/grafana/grafana/issues/10786#issuecomment-568788499 (adding a few lines in the dashboard JSON file).
