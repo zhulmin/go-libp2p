@@ -9,8 +9,9 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"sort"
 	"time"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
@@ -203,7 +204,8 @@ func DedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if len(addrs) == 0 {
 		return addrs
 	}
-	sort.Slice(addrs, func(i, j int) bool { return bytes.Compare(addrs[i].Bytes(), addrs[j].Bytes()) < 0 })
+	// Use the new slices package here, as the sort function doesn't allocate (sort.Slice does).
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) bool { return bytes.Compare(a.Bytes(), b.Bytes()) < 0 })
 	idx := 1
 	for i := 1; i < len(addrs); i++ {
 		if !addrs[i-1].Equal(addrs[i]) {
