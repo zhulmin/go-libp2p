@@ -160,6 +160,13 @@ func MustRegisterWith(reg prometheus.Registerer) {
 	)
 }
 
+func WithMetricsDisabled() Option {
+	return func(r *resourceManager) error {
+		r.disableMetrics = true
+		return nil
+	}
+}
+
 // StatsTraceReporter reports stats on the resource manager using its traces.
 type StatsTraceReporter struct{}
 
