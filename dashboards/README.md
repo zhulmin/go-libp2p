@@ -24,7 +24,7 @@ On Linux, dashboards can be inspected locally by running:
 ```bash
 docker-compose -f docker-compose-linux.yml up
 ```
-On OSX:
+On macOS:
 ```bash
 docker-compose -f docker-compose-osx.yml up
 ```
