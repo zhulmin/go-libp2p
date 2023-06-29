@@ -127,8 +127,7 @@ type Config struct {
 
 	DialRanker network.DialRanker
 
-	UDPBlackHoleConfig  *swarm.BlackHoleConfig
-	IPv6BlackHoleConfig *swarm.BlackHoleConfig
+	SwarmOpts []swarm.Option
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -163,7 +162,7 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 		return nil, err
 	}
 
-	opts := make([]swarm.Option, 0, 6)
+	opts := cfg.SwarmOpts
 	if cfg.Reporter != nil {
 		opts = append(opts, swarm.WithMetrics(cfg.Reporter))
 	}
@@ -186,12 +185,6 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	}
 	opts = append(opts, swarm.WithDialRanker(dialRanker))
 
-	if cfg.UDPBlackHoleConfig != nil {
-		opts = append(opts, swarm.WithUDPBlackHoleConfig(cfg.UDPBlackHoleConfig))
-	}
-	if cfg.IPv6BlackHoleConfig != nil {
-		opts = append(opts, swarm.WithIPv6BlackHoleConfig(cfg.IPv6BlackHoleConfig))
-	}
 	if enableMetrics {
 		opts = append(opts,
 			swarm.WithMetricsTracer(swarm.NewMetricsTracer(swarm.WithRegisterer(cfg.PrometheusRegisterer))))

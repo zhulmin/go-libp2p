@@ -589,24 +589,10 @@ func DialRanker(d network.DialRanker) Option {
 	}
 }
 
-// UDPBlackHoleConfig configures libp2p to use c as the config for UDP black hole detection
-func UDPBlackHoleConfig(c *swarm.BlackHoleConfig) Option {
+// SwarmOpts configures libp2p to use swarm with opts
+func SwarmOpts(opts ...swarm.Option) Option {
 	return func(cfg *Config) error {
-		if c == nil {
-			return errors.New("udp black hole config cannot be nil")
-		}
-		cfg.UDPBlackHoleConfig = c
-		return nil
-	}
-}
-
-// IPv6BlackHoleConfig configures libp2p to use c as the config for IPv6 black hole detection
-func IPv6BlackHoleConfig(c *swarm.BlackHoleConfig) Option {
-	return func(cfg *Config) error {
-		if c == nil {
-			return errors.New("ipv6 black hole config cannot be nil")
-		}
-		cfg.IPv6BlackHoleConfig = c
+		cfg.SwarmOpts = opts
 		return nil
 	}
 }

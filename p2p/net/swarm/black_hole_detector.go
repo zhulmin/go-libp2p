@@ -241,8 +241,8 @@ func (d *blackHoleDetector) RecordResult(addr ma.Multiaddr, success bool) {
 	}
 }
 
-// BlackHoleConfig is the config used for black hole detection
-type BlackHoleConfig struct {
+// blackHoleConfig is the config used for black hole detection
+type blackHoleConfig struct {
 	// Enabled enables black hole detection
 	Enabled bool
 	// N is the size of the sliding window used to evaluate black hole state
@@ -252,10 +252,10 @@ type BlackHoleConfig struct {
 	MinSuccesses int
 }
 
-func newBlackHoleDetector(udpConfig, ipv6Config *BlackHoleConfig, mt MetricsTracer) *blackHoleDetector {
+func newBlackHoleDetector(udpConfig, ipv6Config blackHoleConfig, mt MetricsTracer) *blackHoleDetector {
 	d := &blackHoleDetector{}
 
-	if udpConfig != nil && udpConfig.Enabled {
+	if udpConfig.Enabled {
 		d.udp = &blackHoleFilter{
 			n:             udpConfig.N,
 			minSuccesses:  udpConfig.MinSuccesses,
@@ -264,7 +264,7 @@ func newBlackHoleDetector(udpConfig, ipv6Config *BlackHoleConfig, mt MetricsTrac
 		}
 	}
 
-	if ipv6Config != nil && ipv6Config.Enabled {
+	if ipv6Config.Enabled {
 		d.ipv6 = &blackHoleFilter{
 			n:             ipv6Config.N,
 			minSuccesses:  ipv6Config.MinSuccesses,
