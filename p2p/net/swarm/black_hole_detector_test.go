@@ -75,7 +75,9 @@ func TestBlackHoleFilterSuccessFraction(t *testing.T) {
 }
 
 func TestBlackHoleDetectorInApplicableAddress(t *testing.T) {
-	bhd := newBlackHoleDetector(true, true, nil)
+	udpConfig := &BlackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
+	ipv6Config := &BlackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
+	bhd := newBlackHoleDetector(udpConfig, ipv6Config, nil)
 	addrs := []ma.Multiaddr{
 		ma.StringCast("/ip4/1.2.3.4/tcp/1234"),
 		ma.StringCast("/ip4/1.2.3.4/tcp/1233"),
@@ -92,7 +94,8 @@ func TestBlackHoleDetectorInApplicableAddress(t *testing.T) {
 }
 
 func TestBlackHoleDetectorUDPDisabled(t *testing.T) {
-	bhd := newBlackHoleDetector(false, true, nil)
+	ipv6Config := &BlackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
+	bhd := newBlackHoleDetector(nil, ipv6Config, nil)
 	publicAddr := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
 	privAddr := ma.StringCast("/ip4/192.168.1.5/udp/1234/quic-v1")
 	for i := 0; i < 100; i++ {
@@ -103,7 +106,8 @@ func TestBlackHoleDetectorUDPDisabled(t *testing.T) {
 }
 
 func TestBlackHoleDetectorIPv6Disabled(t *testing.T) {
-	bhd := newBlackHoleDetector(true, false, nil)
+	udpConfig := &BlackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
+	bhd := newBlackHoleDetector(udpConfig, nil, nil)
 	publicAddr := ma.StringCast("/ip6/1::1/tcp/1234")
 	privAddr := ma.StringCast("/ip6/::1/tcp/1234")
 	addrs := []ma.Multiaddr{publicAddr, privAddr}

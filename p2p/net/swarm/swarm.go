@@ -108,6 +108,28 @@ func WithDialRanker(d network.DialRanker) Option {
 	}
 }
 
+// WithUDPBlackHoleConfig configures swarm to use c as the config for UDP black hole detection
+func WithUDPBlackHoleConfig(c *BlackHoleConfig) Option {
+	return func(s *Swarm) error {
+		if c == nil {
+			return errors.New("udp black hole config cannot be nil")
+		}
+		s.udpBlackHoleConfig = c
+		return nil
+	}
+}
+
+// WithIPv6BlackHoleConfig configures swarm to use c as the config for IPv6 black hole detection
+func WithIPv6BlackHoleConfig(c *BlackHoleConfig) Option {
+	return func(s *Swarm) error {
+		if c == nil {
+			return errors.New("ipv6 black hole config cannot be nil")
+		}
+		s.ipv6BlackHoleConfig = c
+		return nil
+	}
+}
+
 // Swarm is a connection muxer, allowing connections to other peers to
 // be opened and closed, while still using the same Chan for all
 // communication. The Chan sends/receives Messages, which note the
@@ -174,7 +196,9 @@ type Swarm struct {
 
 	dialRanker network.DialRanker
 
-	bhd *blackHoleDetector
+	udpBlackHoleConfig  *BlackHoleConfig
+	ipv6BlackHoleConfig *BlackHoleConfig
+	bhd                 *blackHoleDetector
 }
 
 // NewSwarm constructs a Swarm.
@@ -194,6 +218,12 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 		dialTimeoutLocal: defaultDialTimeoutLocal,
 		maResolver:       madns.DefaultResolver,
 		dialRanker:       DefaultDialRanker,
+
+		// A black hole is a binary property. On a network if UDP dials are blocked or there is
+		// no IPv6 connectivity, all dials will fail. So a low success rate of 5 out 100 dials
+		// is good enough.
+		udpBlackHoleConfig:  &BlackHoleConfig{Enabled: true, N: 100, MinSuccesses: 5},
+		ipv6BlackHoleConfig: &BlackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5},
 	}
 
 	s.conns.m = make(map[peer.ID][]*Conn)
@@ -215,7 +245,7 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 	s.limiter = newDialLimiter(s.dialAddr)
 	s.backf.init(s.ctx)
 
-	s.bhd = newBlackHoleDetector(true, true, s.metricsTracer)
+	s.bhd = newBlackHoleDetector(s.udpBlackHoleConfig, s.ipv6BlackHoleConfig, s.metricsTracer)
 
 	return s, nil
 }

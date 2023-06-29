@@ -241,17 +241,36 @@ func (d *blackHoleDetector) RecordResult(addr ma.Multiaddr, success bool) {
 	}
 }
 
-func newBlackHoleDetector(detectUDP, detectIPv6 bool, mt MetricsTracer) *blackHoleDetector {
+// BlackHoleConfig is the config used for black hole detection
+type BlackHoleConfig struct {
+	// Enabled enables black hole detection
+	Enabled bool
+	// N is the size of the sliding window used to evaluate black hole state
+	N int
+	// MinSuccesses is the minimum number of successes out of N required to not
+	// block requests
+	MinSuccesses int
+}
+
+func newBlackHoleDetector(udpConfig, ipv6Config *BlackHoleConfig, mt MetricsTracer) *blackHoleDetector {
 	d := &blackHoleDetector{}
 
-	// A black hole is a binary property. On a network if UDP dials are blocked or there is
-	// no IPv6 connectivity, all dials will fail. So a low success rate of 5 out 100 dials
-	// is good enough.
-	if detectUDP {
-		d.udp = &blackHoleFilter{n: 100, minSuccesses: 5, name: "UDP", metricsTracer: mt}
+	if udpConfig != nil && udpConfig.Enabled {
+		d.udp = &blackHoleFilter{
+			n:             udpConfig.N,
+			minSuccesses:  udpConfig.MinSuccesses,
+			name:          "UDP",
+			metricsTracer: mt,
+		}
 	}
-	if detectIPv6 {
-		d.ipv6 = &blackHoleFilter{n: 100, minSuccesses: 5, name: "IPv6", metricsTracer: mt}
+
+	if ipv6Config != nil && ipv6Config.Enabled {
+		d.ipv6 = &blackHoleFilter{
+			n:             ipv6Config.N,
+			minSuccesses:  ipv6Config.MinSuccesses,
+			name:          "IPv6",
+			metricsTracer: mt,
+		}
 	}
 	return d
 }

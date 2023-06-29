@@ -126,6 +126,9 @@ type Config struct {
 	PrometheusRegisterer prometheus.Registerer
 
 	DialRanker network.DialRanker
+
+	UDPBlackHoleConfig  *swarm.BlackHoleConfig
+	IPv6BlackHoleConfig *swarm.BlackHoleConfig
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -176,11 +179,19 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	if cfg.MultiaddrResolver != nil {
 		opts = append(opts, swarm.WithMultiaddrResolver(cfg.MultiaddrResolver))
 	}
+
 	dialRanker := cfg.DialRanker
 	if dialRanker == nil {
 		dialRanker = swarm.NoDelayDialRanker
 	}
 	opts = append(opts, swarm.WithDialRanker(dialRanker))
+
+	if cfg.UDPBlackHoleConfig != nil {
+		opts = append(opts, swarm.WithUDPBlackHoleConfig(cfg.UDPBlackHoleConfig))
+	}
+	if cfg.IPv6BlackHoleConfig != nil {
+		opts = append(opts, swarm.WithIPv6BlackHoleConfig(cfg.IPv6BlackHoleConfig))
+	}
 	if enableMetrics {
 		opts = append(opts,
 			swarm.WithMetricsTracer(swarm.NewMetricsTracer(swarm.WithRegisterer(cfg.PrometheusRegisterer))))

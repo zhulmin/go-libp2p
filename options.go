@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
@@ -584,6 +585,28 @@ func DialRanker(d network.DialRanker) Option {
 			return errors.New("dial ranker already configured")
 		}
 		cfg.DialRanker = d
+		return nil
+	}
+}
+
+// UDPBlackHoleConfig configures libp2p to use c as the config for UDP black hole detection
+func UDPBlackHoleConfig(c *swarm.BlackHoleConfig) Option {
+	return func(cfg *Config) error {
+		if c == nil {
+			return errors.New("udp black hole config cannot be nil")
+		}
+		cfg.UDPBlackHoleConfig = c
+		return nil
+	}
+}
+
+// IPv6BlackHoleConfig configures libp2p to use c as the config for IPv6 black hole detection
+func IPv6BlackHoleConfig(c *swarm.BlackHoleConfig) Option {
+	return func(cfg *Config) error {
+		if c == nil {
+			return errors.New("ipv6 black hole config cannot be nil")
+		}
+		cfg.IPv6BlackHoleConfig = c
 		return nil
 	}
 }
