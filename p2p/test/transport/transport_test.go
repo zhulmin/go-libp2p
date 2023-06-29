@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,7 +20,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/muxer/mplex"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
@@ -80,22 +78,6 @@ var transportsToTest = []TransportTestCase{
 			libp2pOpts := transformOpts(opts)
 			libp2pOpts = append(libp2pOpts, libp2p.Security(tls.ID, tls.New))
 			libp2pOpts = append(libp2pOpts, libp2p.Muxer(yamux.ID, yamux.DefaultTransport))
-			if opts.NoListen {
-				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
-			} else {
-				libp2pOpts = append(libp2pOpts, libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
-			}
-			h, err := libp2p.New(libp2pOpts...)
-			require.NoError(t, err)
-			return h
-		},
-	},
-	{
-		Name: "TCP / Noise / mplex",
-		HostGenerator: func(t *testing.T, opts TransportTestCaseOpts) host.Host {
-			libp2pOpts := transformOpts(opts)
-			libp2pOpts = append(libp2pOpts, libp2p.Security(noise.ID, noise.New))
-			libp2pOpts = append(libp2pOpts, libp2p.Muxer(mplex.ID, mplex.DefaultTransport))
 			if opts.NoListen {
 				libp2pOpts = append(libp2pOpts, libp2p.NoListenAddrs)
 			} else {
@@ -375,10 +357,6 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 	const streamCount = 1024
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			if strings.Contains(tc.Name, "mplex") {
-				t.Skip("fixme: mplex hangs on waiting for data.")
-				return
-			}
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
 			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			defer listener.Close()
