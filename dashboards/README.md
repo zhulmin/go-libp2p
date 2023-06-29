@@ -22,11 +22,11 @@ This exposes a metrics collection endpoint at http://localhost:5001/debug/metric
 
 On macOS:
 ```bash
-docker-compose -f docker-compose.base.yml up
+docker compose -f docker-compose.base.yml up
 ```
 On Linux, dashboards can be inspected locally by running:
 ```bash
-docker-compose -f docker-compose.base.yml -f docker-compose-linux.yml up
+docker compose -f docker-compose.base.yml -f docker-compose-linux.yml up
 ```
 
 and opening Grafana at http://localhost:3000.
