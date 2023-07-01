@@ -14,7 +14,7 @@ import (
 	"github.com/pion/stun"
 )
 
-var log = logging.Logger("mux")
+var log = logging.Logger("webrtc-udpmux")
 
 const ReceiveMTU = 1500
 
