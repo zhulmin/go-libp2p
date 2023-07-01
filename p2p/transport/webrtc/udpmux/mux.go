@@ -193,11 +193,9 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 		log.Debug("could not find create conn: %w", err)
 		return err
 	}
-	if connCreated && mux.unknownUfragCallback != nil {
-		if !mux.unknownUfragCallback(ufrag, udpAddr) {
-			conn.Close()
-			return io.ErrClosedPipe
-		}
+	if connCreated && !mux.unknownUfragCallback(ufrag, udpAddr) {
+		conn.Close()
+		return io.ErrClosedPipe
 	}
 
 	if err := conn.Push(buf); err != nil {
