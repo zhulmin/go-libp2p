@@ -14,7 +14,6 @@ type packet struct {
 
 var (
 	errTooManyPackets    = errors.New("too many packets in queue; dropping")
-	errEmptyPacketQueue  = errors.New("packet queue is empty")
 	errPacketQueueClosed = errors.New("packet queue closed")
 )
 
@@ -35,14 +34,17 @@ func newPacketQueue() *packetQueue {
 // Pop reads a packet from the packetQueue or blocks until
 // either a packet becomes available or the queue is closed.
 func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, error) {
+start:
 	select {
 	case <-pq.packetsCh:
 		pq.packetsMux.Lock()
-		defer pq.packetsMux.Unlock()
 
 		if len(pq.packets) == 0 {
-			return 0, errEmptyPacketQueue
+			pq.packetsMux.Unlock()
+			goto start
 		}
+
+		defer pq.packetsMux.Unlock()
 		p := pq.packets[0]
 
 		n := copy(buf, p.buf)
