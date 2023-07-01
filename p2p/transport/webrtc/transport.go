@@ -35,6 +35,16 @@ var log = logging.Logger("webrtc-transport")
 
 var dialMatcher = mafmt.And(mafmt.UDP, mafmt.Base(ma.P_WEBRTC_DIRECT), mafmt.Base(ma.P_CERTHASH))
 
+var webrtcComponent *ma.Component
+
+func init() {
+	var err error
+	webrtcComponent, err = ma.NewComponent(ma.ProtocolWithCode(ma.P_WEBRTC_DIRECT).Name, "")
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 const (
 	// handshakeChannelNegotiated is used to specify that the
 	// handshake data channel does not need negotiation via DCEP.
@@ -152,11 +162,9 @@ func (t *WebRTCTransport) CanDial(addr ma.Multiaddr) bool {
 	return dialMatcher.Matches(addr)
 }
 
-var webRTCMultiAddr = ma.StringCast("/webrtc-direct")
-
 func (t *WebRTCTransport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	addr, wrtcComponent := ma.SplitLast(addr)
-	isWebrtc := wrtcComponent.Equal(webRTCMultiAddr)
+	isWebrtc := wrtcComponent.Equal(webrtcComponent)
 	if !isWebrtc {
 		return nil, fmt.Errorf("must listen on webrtc multiaddr")
 	}
@@ -198,12 +206,11 @@ func (t *WebRTCTransport) listenSocket(socket *net.UDPConn) (tpt.Listener, error
 		return nil, err
 	}
 
-	certMultiaddress, err := ma.NewMultiaddr(fmt.Sprintf("/p2p-webrtc-direct/certhash/%s", encodedLocalFingerprint))
+	certComp, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_CERTHASH).Name, encodedLocalFingerprint)
 	if err != nil {
 		return nil, err
 	}
-
-	listenerMultiaddr = listenerMultiaddr.Encapsulate(certMultiaddress)
+	listenerMultiaddr = listenerMultiaddr.Encapsulate(webrtcComponent).Encapsulate(certComp)
 
 	return newListener(
 		t,
