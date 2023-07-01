@@ -682,7 +682,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 	})
 }
 
-func TestTransportWebRTC_ReceiveFlagsAfterReadClosed(t *testing.T) {
+func TestReceiveFlagsAfterReadClosed(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP))
 	listener, err := tr.Listen(listenMultiaddr)
@@ -691,44 +691,44 @@ func TestTransportWebRTC_ReceiveFlagsAfterReadClosed(t *testing.T) {
 	tr1, connectingPeer := getTransport(t)
 	done := make(chan struct{})
 
-	var wg sync.WaitGroup
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
-
 		lconn, err := listener.Accept()
 		require.NoError(t, err)
-		t.Logf("listener accepted connection")
 		require.Equal(t, connectingPeer, lconn.RemotePeer())
 		stream, err := lconn.AcceptStream()
 		require.NoError(t, err)
-		n, err := stream.Read(make([]byte, 10))
+		b := make([]byte, 6)
+		n, err := stream.Read(b)
 		require.NoError(t, err)
-		require.Equal(t, 10, n)
+		require.Equal(t, []byte("foobar"), b[:n])
 		// stop reader
-		err = stream.Reset()
-		require.NoError(t, err)
+		require.NoError(t, stream.Reset())
 		done <- struct{}{}
 	}()
 
 	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 	require.NoError(t, err)
-	t.Logf("dialer opened connection")
 	stream, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)
 
-	err = stream.CloseRead()
-	require.NoError(t, err)
+	require.NoError(t, stream.CloseRead())
 	_, err = stream.Read([]byte{0})
 	require.ErrorIs(t, err, io.EOF)
-	_, err = stream.Write(make([]byte, 10))
+	_, err = stream.Write([]byte("foobar"))
 	require.NoError(t, err)
 	<-done
-	_, err = stream.Write(make([]byte, 2*1024*1024))
-	// can be an error closed or timeout
-	require.Error(t, err)
-
-	wg.Wait()
+	// at some point we should receive the stream reset
+	start := time.Now()
+	for {
+		if _, err := stream.Write([]byte{0x42}); err != nil {
+			require.ErrorIs(t, err, io.ErrClosedPipe)
+			break
+		}
+		if time.Since(start) > 3*time.Second {
+			require.Fail(t, "didn't receive stream reset")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
