@@ -12,10 +12,7 @@ type packet struct {
 	buf []byte
 }
 
-var (
-	errTooManyPackets    = errors.New("too many packets in queue; dropping")
-	errPacketQueueClosed = errors.New("packet queue closed")
-)
+var errTooManyPackets = errors.New("too many packets in queue; dropping")
 
 const maxPacketsInQueue = 128
 
@@ -57,7 +54,7 @@ start:
 		}
 		return n, nil
 	case <-ctx.Done():
-		return 0, errPacketQueueClosed
+		return 0, ctx.Err()
 	}
 }
 
