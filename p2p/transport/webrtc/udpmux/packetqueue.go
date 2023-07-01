@@ -45,26 +45,16 @@ start:
 
 		defer pq.packetsMux.Unlock()
 		p := pq.packets[0]
-
 		n := copy(buf, p.buf)
-		if n == len(p.buf) {
-			// only move packet from queue if we read all
-			pq.packets = pq.packets[1:]
-			pool.Put(p.buf)
-		} else {
-			// otherwise we need to keep the packet in the queue
-			// but do update the buf
-			pq.packets[0].buf = p.buf[n:]
+		if n < len(p.buf) {
+			log.Debugf("short read, had %d, read %d", len(p.buf), n)
 		}
-
+		pq.packets = pq.packets[1:]
+		pool.Put(p.buf)
 		if len(pq.packets) > 0 {
 			// to make sure a next pop call will work
-			select {
-			case pq.packetsCh <- struct{}{}:
-			default:
-			}
+			pq.notify()
 		}
-
 		return n, nil
 	case <-ctx.Done():
 		return 0, errPacketQueueClosed
@@ -81,10 +71,13 @@ func (pq *packetQueue) Push(buf []byte) error {
 	}
 
 	pq.packets = append(pq.packets, packet{buf})
+	pq.notify()
+	return nil
+}
+
+func (pq *packetQueue) notify() {
 	select {
 	case pq.packetsCh <- struct{}{}:
 	default:
 	}
-
-	return nil
 }
