@@ -16,52 +16,57 @@ var errAlreadyClosed = errors.New("already closed")
 // from which this connection (indexed by ufrag) received
 // data.
 type muxedConnection struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	pq     *packetQueue
-	ufrag  string
-	addr   net.Addr
-	mux    *udpMux
+	ctx     context.Context
+	cancel  context.CancelFunc
+	onClose func()
+	pq      *packetQueue
+	addr    net.Addr
+	mux     *udpMux
 }
 
 var _ net.PacketConn = (*muxedConnection)(nil)
 
-func newMuxedConnection(mux *udpMux, ufrag string, addr net.Addr) *muxedConnection {
+func newMuxedConnection(mux *udpMux, onClose func(), addr net.Addr) *muxedConnection {
 	ctx, cancel := context.WithCancel(mux.ctx)
 	return &muxedConnection{
-		ctx:    ctx,
-		cancel: cancel,
-		pq:     newPacketQueue(),
-		ufrag:  ufrag,
-		addr:   addr,
-		mux:    mux,
+		ctx:     ctx,
+		cancel:  cancel,
+		pq:      newPacketQueue(),
+		onClose: onClose,
+		addr:    addr,
+		mux:     mux,
 	}
 }
 
-func (conn *muxedConnection) Push(buf []byte) error {
-	return conn.pq.Push(buf)
+func (c *muxedConnection) Push(buf []byte) error {
+	return c.pq.Push(buf)
 }
 
 // Close implements net.PacketConn
-func (conn *muxedConnection) Close() error {
-	_ = conn.closeConnection()
-	conn.mux.RemoveConnByUfrag(conn.ufrag)
+func (c *muxedConnection) Close() error {
+	select {
+	case <-c.ctx.Done():
+		return errAlreadyClosed
+	default:
+	}
+	c.onClose()
+	c.cancel()
 	return nil
 }
 
 // LocalAddr implements net.PacketConn
-func (conn *muxedConnection) LocalAddr() net.Addr {
-	return conn.mux.socket.LocalAddr()
+func (c *muxedConnection) LocalAddr() net.Addr {
+	return c.mux.socket.LocalAddr()
 }
 
-func (conn *muxedConnection) Address() net.Addr {
-	return conn.addr
+func (c *muxedConnection) Address() net.Addr {
+	return c.addr
 }
 
 // ReadFrom implements net.PacketConn
-func (conn *muxedConnection) ReadFrom(p []byte) (int, net.Addr, error) {
-	n, err := conn.pq.Pop(conn.ctx, p)
-	return n, conn.addr, err
+func (c *muxedConnection) ReadFrom(p []byte) (int, net.Addr, error) {
+	n, err := c.pq.Pop(c.ctx, p)
+	return n, c.addr, err
 }
 
 // SetDeadline implements net.PacketConn
@@ -83,16 +88,6 @@ func (*muxedConnection) SetWriteDeadline(t time.Time) error {
 }
 
 // WriteTo implements net.PacketConn
-func (conn *muxedConnection) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	return conn.mux.writeTo(p, addr)
-}
-
-func (conn *muxedConnection) closeConnection() error {
-	select {
-	case <-conn.ctx.Done():
-		return errAlreadyClosed
-	default:
-	}
-	conn.cancel()
-	return nil
+func (c *muxedConnection) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	return c.mux.writeTo(p, addr)
 }

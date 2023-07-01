@@ -234,13 +234,16 @@ func newUDPMuxStorage() *udpMuxStorage {
 }
 
 func (s *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
+	s.removeConnByUfrag(ufrag, true)
+}
+
+func (s *udpMuxStorage) removeConnByUfrag(ufrag string, closeConn bool) {
 	s.Lock()
 	defer s.Unlock()
 
 	for _, isIPv6 := range [...]bool{true, false} {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		if conn, ok := s.ufragMap[key]; ok {
-			_ = conn.closeConnection()
 			delete(s.ufragMap, key)
 			delete(s.addrMap, conn.Address().String())
 		}
@@ -257,7 +260,7 @@ func (s *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *udpMux, 
 		return false, conn
 	}
 
-	conn := newMuxedConnection(mux, ufrag, addr)
+	conn := newMuxedConnection(mux, func() { s.removeConnByUfrag(ufrag, false) }, addr)
 	s.ufragMap[key] = conn
 	s.addrMap[addr.String()] = conn
 
