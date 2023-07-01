@@ -31,8 +31,7 @@ func newPacketQueue() *packetQueue {
 	}
 }
 
-// Pop reads a packet from the packetQueue or blocks until
-// either a packet becomes available or the queue is closed.
+// Pop reads a packet from the packetQueue.
 func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, error) {
 start:
 	select {
@@ -67,9 +66,6 @@ start:
 		}
 
 		return n, nil
-
-	// It is desired to allow reads of this channel even
-	// when pq.ctx.Done() is already closed.
 	case <-ctx.Done():
 		return 0, errPacketQueueClosed
 	}
