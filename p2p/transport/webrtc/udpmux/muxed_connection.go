@@ -39,7 +39,7 @@ func newMuxedConnection(mux *udpMux, ufrag string, addr net.Addr) *muxedConnecti
 }
 
 func (conn *muxedConnection) Push(buf []byte) error {
-	return conn.pq.Push(conn.ctx, buf)
+	return conn.pq.Push(buf)
 }
 
 // Close implements net.PacketConn

@@ -16,7 +16,6 @@ var sizes = []int{
 }
 
 func BenchmarkQueue(b *testing.B) {
-	ctx := context.Background()
 	for _, dequeue := range [...]bool{true, false} {
 		for _, input := range sizes {
 			testCase := fmt.Sprintf("enqueue_%d", input)
@@ -29,10 +28,10 @@ func BenchmarkQueue(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					for k := 0; k < input; k++ {
-						pq.Push(ctx, pool.Get(255))
+						pq.Push(pool.Get(255))
 					}
 					for k := 0; k < input; k++ {
-						pq.Pop(ctx, buf)
+						pq.Pop(context.Background(), buf)
 					}
 				}
 			})

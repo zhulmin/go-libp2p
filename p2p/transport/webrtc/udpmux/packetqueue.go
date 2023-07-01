@@ -74,7 +74,7 @@ func (pq *packetQueue) Pop(ctx context.Context, buf []byte) (int, error) {
 }
 
 // Push adds a packet to the packetQueue
-func (pq *packetQueue) Push(ctx context.Context, buf []byte) error {
+func (pq *packetQueue) Push(buf []byte) error {
 	pq.packetsMux.Lock()
 	defer pq.packetsMux.Unlock()
 
