@@ -3,7 +3,6 @@ package udpmux
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,10 +15,6 @@ import (
 )
 
 var log = logging.Logger("mux")
-
-var (
-	errConnNotFound = errors.New("connection not found")
-)
 
 const ReceiveMTU = 1500
 
@@ -115,8 +110,8 @@ func (mux *udpMux) getOrCreateConn(ufrag string, isIPv6 bool, addr net.Addr) (ne
 	case <-mux.ctx.Done():
 		return nil, io.ErrClosedPipe
 	default:
-		conn, _, err := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, addr)
-		return conn, err
+		_, conn := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, addr)
+		return conn, nil
 	}
 }
 
@@ -143,20 +138,17 @@ func (mux *udpMux) readLoop() {
 		}
 		buf = buf[:n]
 
-		// a non-nil error signifies that the packet was not
-		// passed on to any connection, and therefore the current
-		// function has ownership of the packet. Otherwise, the
-		// ownership of the packet is passed to a connection
-		if err := mux.processPacket(buf, addr); err != nil {
+		if processed := mux.processPacket(buf, addr); !processed {
 			pool.Put(buf)
 		}
 	}
 }
 
-func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
+func (mux *udpMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 	udpAddr, ok := addr.(*net.UDPAddr)
 	if !ok {
-		return fmt.Errorf("underlying connection did not return a UDP address")
+		log.Errorf("received a non-UDP address: %s", addr)
+		return false
 	}
 	isIPv6 := udpAddr.IP.To4() == nil
 
@@ -164,44 +156,41 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	// check if the remote address has a connection associated
 	// with it. If yes, we push the received packet to the connection
 	if conn, ok := mux.storage.GetConnByAddr(udpAddr); ok {
-		err := conn.Push(buf)
-		if err != nil {
+		if err := conn.Push(buf); err != nil {
 			log.Errorf("could not push packet: %v", err)
+			return false
 		}
-		return nil
+		return true
 	}
 
 	if !stun.IsMessage(buf) {
-		return errConnNotFound
+		log.Debug("incoming message is not a STUN message")
+		return false
 	}
 
 	msg := &stun.Message{Raw: buf}
 	if err := msg.Decode(); err != nil || msg.Type != stun.BindingRequest {
 		log.Debug("incoming message should be a STUN binding request")
-		return err
+		return false
 	}
 
 	ufrag, err := ufragFromSTUNMessage(msg)
 	if err != nil {
 		log.Debug("could not find STUN username: %w", err)
-		return err
+		return false
 	}
 
-	var connCreated bool
-	conn, connCreated, err := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, udpAddr)
-	if err != nil {
-		log.Debug("could not find create conn: %w", err)
-		return err
-	}
+	connCreated, conn := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, udpAddr)
 	if connCreated && !mux.unknownUfragCallback(ufrag, udpAddr) {
 		conn.Close()
-		return io.ErrClosedPipe
+		return false
 	}
 
 	if err := conn.Push(buf); err != nil {
 		log.Errorf("could not push packet: %v", err)
+		return false
 	}
-	return nil
+	return true
 }
 
 type ufragConnKey struct {
@@ -258,21 +247,21 @@ func (s *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
 	}
 }
 
-func (s *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *udpMux, addr net.Addr) (*muxedConnection, bool, error) {
+func (s *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *udpMux, addr net.Addr) (created bool, _ *muxedConnection) {
 	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 
 	s.Lock()
 	defer s.Unlock()
 
 	if conn, ok := s.ufragMap[key]; ok {
-		return conn, false, nil
+		return false, conn
 	}
 
 	conn := newMuxedConnection(mux, ufrag, addr)
 	s.ufragMap[key] = conn
 	s.addrMap[addr.String()] = conn
 
-	return conn, true, nil
+	return true, conn
 }
 
 func (s *udpMuxStorage) GetConnByAddr(addr *net.UDPAddr) (*muxedConnection, bool) {
