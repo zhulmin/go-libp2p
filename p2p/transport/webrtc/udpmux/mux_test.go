@@ -47,9 +47,11 @@ func (dummyPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return 0, nil
 }
 
-func hasConn(m *udpMux, ufrag string, isIPv6 bool) *muxedConnection {
-	conn, _ := m.storage.GetConn(ufrag, isIPv6)
-	return conn
+func hasConn(m *udpMux, ufrag string, isIPv6 bool) bool {
+	m.storage.Lock()
+	_, ok := m.storage.ufragMap[ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}]
+	m.storage.Unlock()
+	return ok
 }
 
 var (
@@ -59,12 +61,12 @@ var (
 
 func TestUDPMux_GetConn(t *testing.T) {
 	m := NewUDPMux(dummyPacketConn{}, nil)
-	require.Nil(t, hasConn(m, "test", false))
+	require.False(t, hasConn(m, "test", false))
 	conn, err := m.GetConn("test", &addrV4)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
-	require.Nil(t, hasConn(m, "test", true))
+	require.False(t, hasConn(m, "test", true))
 	connv6, err := m.GetConn("test", &addrV6)
 	require.NoError(t, err)
 	require.NotNil(t, connv6)
@@ -78,10 +80,10 @@ func TestUDPMux_RemoveConnectionOnClose(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
-	require.NotNil(t, hasConn(mux, "test", false))
+	require.True(t, hasConn(mux, "test", false))
 
 	err = conn.Close()
 	require.NoError(t, err)
 
-	require.Nil(t, hasConn(mux, "test", false))
+	require.False(t, hasConn(mux, "test", false))
 }

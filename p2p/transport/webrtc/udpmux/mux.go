@@ -23,13 +23,6 @@ var (
 
 const ReceiveMTU = 1500
 
-var _ ice.UDPMux = &udpMux{}
-
-type ufragConnKey struct {
-	ufrag  string
-	isIPv6 bool
-}
-
 // udpMux multiplexes multiple ICE connections over a single net.PacketConn,
 // generally a UDP socket.
 //
@@ -56,6 +49,8 @@ type udpMux struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 }
+
+var _ ice.UDPMux = &udpMux{}
 
 func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr) bool) *udpMux {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -211,6 +206,11 @@ func (mux *udpMux) processPacket(buf []byte, addr net.Addr) error {
 	return nil
 }
 
+type ufragConnKey struct {
+	ufrag  string
+	isIPv6 bool
+}
+
 // ufragFromSTUNMessage returns the local or ufrag
 // from the STUN username attribute. Local ufrag is the ufrag of the
 // peer which initiated the connectivity check, e.g in a connectivity
@@ -258,14 +258,6 @@ func (s *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
 			delete(s.addrMap, conn.Address().String())
 		}
 	}
-}
-
-func (s *udpMuxStorage) GetConn(ufrag string, isIPv6 bool) (*muxedConnection, bool) {
-	key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
-	s.Lock()
-	conn, ok := s.ufragMap[key]
-	s.Unlock()
-	return conn, ok
 }
 
 func (s *udpMuxStorage) GetOrCreateConn(ufrag string, isIPv6 bool, mux *udpMux, addr net.Addr) (*muxedConnection, bool, error) {
