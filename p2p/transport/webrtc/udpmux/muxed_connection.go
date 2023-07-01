@@ -2,14 +2,11 @@ package udpmux
 
 import (
 	"context"
-	"errors"
 	"net"
 	"time"
 )
 
 var _ net.PacketConn = &muxedConnection{}
-
-var errAlreadyClosed = errors.New("already closed")
 
 // muxedConnection provides a net.PacketConn abstraction
 // over packetQueue and adds the ability to store addresses
@@ -46,7 +43,7 @@ func (c *muxedConnection) Push(buf []byte) error {
 func (c *muxedConnection) Close() error {
 	select {
 	case <-c.ctx.Done():
-		return errAlreadyClosed
+		return nil
 	default:
 	}
 	c.onClose()
