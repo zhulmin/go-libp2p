@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
+	"net"
 	"sync"
 	"sync/atomic"
 
@@ -24,9 +24,15 @@ import (
 
 var _ tpt.CapableConn = &connection{}
 
-const (
-	maxAcceptQueueLen = 10
-)
+const maxAcceptQueueLen = 10
+
+type errConnectionTimeout struct{}
+
+var _ net.Error = &errConnectionTimeout{}
+
+func (errConnectionTimeout) Error() string   { return "connection timeout" }
+func (errConnectionTimeout) Timeout() bool   { return true }
+func (errConnectionTimeout) Temporary() bool { return false }
 
 type acceptStream struct {
 	stream  datachannel.ReadWriteCloser
@@ -40,6 +46,8 @@ type connection struct {
 	transport *WebRTCTransport
 	scope     network.ConnManagementScope
 
+	closeErr error
+
 	localPeer      peer.ID
 	localMultiaddr ma.Multiaddr
 
@@ -48,7 +56,7 @@ type connection struct {
 	remoteMultiaddr ma.Multiaddr
 
 	m       sync.Mutex
-	streams map[uint16]*webRTCStream
+	streams map[uint16]*stream
 
 	acceptQueue chan acceptStream
 	idAllocator *sidAllocator
@@ -87,7 +95,7 @@ func newConnection(
 		remoteMultiaddr: remoteMultiaddr,
 		ctx:             ctx,
 		cancel:          cancel,
-		streams:         make(map[uint16]*webRTCStream),
+		streams:         make(map[uint16]*stream),
 		idAllocator:     idAllocator,
 
 		acceptQueue: make(chan acceptStream, maxAcceptQueueLen),
@@ -119,26 +127,9 @@ func newConnection(
 	return conn, nil
 }
 
-func (c *connection) resetStreams() {
-	if c.IsClosed() {
-		return
-	}
-	c.m.Lock()
-	defer c.m.Unlock()
-	for k, stream := range c.streams {
-		// reset the streams, but we do not need to be notified
-		// of stream closure
-		stream.close(true, false)
-		delete(c.streams, k)
-	}
-
-}
-
 // ConnState implements transport.CapableConn
 func (c *connection) ConnState() network.ConnectionState {
-	return network.ConnectionState{
-		Transport: "p2p-webrtc-direct",
-	}
+	return network.ConnectionState{Transport: "p2p-webrtc-direct"}
 }
 
 // Close closes the underlying peerconnection.
@@ -148,6 +139,7 @@ func (c *connection) Close() error {
 	}
 
 	c.scope.Done()
+	c.closeErr = errors.New("connection closed")
 	c.cancel()
 	return c.pc.Close()
 }
@@ -163,7 +155,7 @@ func (c *connection) IsClosed() bool {
 
 func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error) {
 	if c.IsClosed() {
-		return nil, os.ErrClosed
+		return nil, c.closeErr
 	}
 
 	streamID, err := c.idAllocator.nextID()
@@ -178,25 +170,24 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 	if err != nil {
 		return nil, fmt.Errorf("open stream: %w", err)
 	}
-	stream := newStream(
+	str := newStream(
 		dc,
 		rwc,
 		nil,
 		nil,
 		func() { c.removeStream(*streamID) },
 	)
-	err = c.addStream(stream)
-	if err != nil {
-		stream.Close()
+	if err := c.addStream(str); err != nil {
+		str.Close()
 		return nil, err
 	}
-	return stream, nil
+	return str, nil
 }
 
 func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	select {
 	case <-c.ctx.Done():
-		return nil, os.ErrClosed
+		return nil, c.closeErr
 	case str := <-c.acceptQueue:
 		stream := newStream(
 			str.channel,
@@ -221,7 +212,7 @@ func (c *connection) RemoteMultiaddr() ma.Multiaddr { return c.remoteMultiaddr }
 func (c *connection) Scope() network.ConnScope      { return c.scope }
 func (c *connection) Transport() tpt.Transport      { return c.transport }
 
-func (c *connection) addStream(stream *webRTCStream) error {
+func (c *connection) addStream(stream *stream) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 	if _, ok := c.streams[stream.id]; ok {
@@ -238,10 +229,19 @@ func (c *connection) removeStream(id uint16) {
 }
 
 func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
-	log.Debugf("[%s][%d] handling peerconnection state: %s", c.localPeer, c.dbgId, state)
+	fmt.Printf("[%s][%d] handling peerconnection state: %s\n", c.localPeer, c.dbgId, state)
 	if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 		// reset any streams
-		c.resetStreams()
+		if c.IsClosed() {
+			return
+		}
+		c.m.Lock()
+		defer c.m.Unlock()
+		c.closeErr = errConnectionTimeout{}
+		for k, str := range c.streams {
+			str.setCloseError(c.closeErr)
+			delete(c.streams, k)
+		}
 		c.cancel()
 		c.scope.Done()
 		c.pc.Close()
@@ -276,7 +276,7 @@ func (c *connection) detachChannel(ctx context.Context, dc *webrtc.DataChannel) 
 	})
 	select {
 	case <-c.ctx.Done():
-		return nil, errors.New("connection closed")
+		return nil, c.closeErr
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-done:

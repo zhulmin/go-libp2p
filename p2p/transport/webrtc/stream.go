@@ -1,7 +1,6 @@
 package libp2pwebrtc
 
 import (
-	"context"
 	"net"
 	"sync"
 	"time"
@@ -14,10 +13,8 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-var _ network.MuxedStream = &webRTCStream{}
-
 const (
-	// maxMessageSize is limited to 16384 bytes in the SDP.
+	// maxMessageSize is the maximum message size of the Protobuf message we send / receive.
 	maxMessageSize = 16384
 	// Pion SCTP association has an internal receive buffer of 1MB (roughly, 1MB per connection).
 	// We can change this value in the SettingEngine before creating the peerconnection.
@@ -43,62 +40,73 @@ const (
 	varintOverhead = 2
 )
 
+type receiveState uint8
+
+const (
+	receiveStateReceiving receiveState = iota
+	receiveStateDataRead               // received and read the FIN
+	receiveStateReset                  // either by calling CloseRead locally, or by receiving
+)
+
+type sendState uint8
+
+const (
+	sendStateSending sendState = iota
+	sendStateDataSent
+	sendStateReset
+)
+
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
-type webRTCStream struct {
-	reader pbio.Reader
+type stream struct {
 	// pbio.Reader is not thread safe,
 	// and while our Read is not promised to be thread safe,
 	// we ourselves internally read from multiple routines...
-	readerMux sync.Mutex
+	readMu sync.Mutex
+	reader pbio.Reader
 	// this buffer is limited up to a single message. Reason we need it
 	// is because a reader might read a message midway, and so we need a
 	// wait to buffer that for as long as the remaining part is not (yet) read
-	readBuffer []byte
+	nextMessage  *pb.Message
+	receiveState receiveState
 
-	writer pbio.Writer
-	// public write API is not promised to be thread safe, however we also write from
-	// read functionality due to our spec limiations, so (e.g. 1 channel for state and data)
-	// and thus we do need to protect the writer
-	writerMux sync.Mutex
-
-	writerDeadline    time.Time
-	writerDeadlineMux sync.Mutex
-
-	writerDeadlineUpdated chan struct{}
-	writeAvailable        chan struct{}
+	// The public Write API is not promised to be thread safe,
+	// but we need to be able to write control messages.
+	writeMu              sync.Mutex
+	writer               pbio.Writer
+	sendStateChanged     chan struct{}
+	sendState            sendState
+	controlMsgQueue      []*pb.Message
+	writeDeadline        time.Time
+	writeDeadlineUpdated chan struct{}
+	writeAvailable       chan struct{}
 
 	readLoopOnce sync.Once
-
-	stateHandler webRTCStreamState
 
 	onDone      func()
 	id          uint16 // for logging purposes
 	dataChannel *datachannel.DataChannel
+	closeErr    error
 
 	laddr net.Addr
 	raddr net.Addr
-
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	closeOnce sync.Once
 }
+
+var _ network.MuxedStream = &stream{}
 
 func newStream(
 	channel *webrtc.DataChannel,
 	rwc datachannel.ReadWriteCloser,
 	laddr, raddr net.Addr,
 	onDone func(),
-) *webRTCStream {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	result := &webRTCStream{
+) *stream {
+	s := &stream{
 		reader: pbio.NewDelimitedReader(rwc, maxMessageSize),
 		writer: pbio.NewDelimitedWriter(rwc),
 
-		writerDeadlineUpdated: make(chan struct{}, 1),
-		writeAvailable:        make(chan struct{}, 1),
+		sendStateChanged:     make(chan struct{}, 1),
+		writeDeadlineUpdated: make(chan struct{}, 1),
+		writeAvailable:       make(chan struct{}, 1),
 
 		id:          *channel.ID(),
 		dataChannel: rwc.(*datachannel.DataChannel),
@@ -106,94 +114,109 @@ func newStream(
 
 		laddr: laddr,
 		raddr: raddr,
-
-		ctx:    ctx,
-		cancel: cancel,
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
 	channel.OnBufferedAmountLow(func() {
+		s.writeMu.Lock()
+		defer s.writeMu.Unlock()
+		// first send out queued control messages
+		for len(s.controlMsgQueue) > 0 {
+			msg := s.controlMsgQueue[0]
+			available := s.availableSendSpace()
+			if controlMsgSize < available {
+				s.writer.WriteMsg(msg) // TODO: handle error
+				s.controlMsgQueue = s.controlMsgQueue[1:]
+			} else {
+				return
+			}
+		}
+
+		s.maybeDeclareStreamDone()
+
 		select {
-		case result.writeAvailable <- struct{}{}:
+		case s.writeAvailable <- struct{}{}:
 		default:
 		}
 	})
-
-	return result
+	return s
 }
 
-func (s *webRTCStream) Close() error {
-	return s.close(false, true)
+func (s *stream) Close() error {
+	closeWriteErr := s.CloseWrite()
+	closeReadErr := s.CloseRead()
+	if closeWriteErr != nil {
+		return closeWriteErr
+	}
+	return closeReadErr
 }
 
-func (s *webRTCStream) Reset() error {
-	return s.close(true, true)
+func (s *stream) Reset() error {
+	cancelWriteErr := s.cancelWrite()
+	closeReadErr := s.CloseRead()
+	if cancelWriteErr != nil {
+		return cancelWriteErr
+	}
+	return closeReadErr
 }
 
-func (s *webRTCStream) LocalAddr() net.Addr {
-	return s.laddr
-}
+func (s *stream) LocalAddr() net.Addr  { return s.laddr }
+func (s *stream) RemoteAddr() net.Addr { return s.raddr }
 
-func (s *webRTCStream) RemoteAddr() net.Addr {
-	return s.raddr
-}
-
-func (s *webRTCStream) SetDeadline(t time.Time) error {
+func (s *stream) SetDeadline(t time.Time) error {
 	return s.SetWriteDeadline(t)
 }
 
-func (s *webRTCStream) processIncomingFlag(flag pb.Message_Flag) {
-	if s.isClosed() {
+// processIncomingFlag process the flag on an incoming message
+// It needs to be called with msg.Flag, not msg.GetFlag(),
+// otherwise we'd misinterpret the default value.
+func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
+	if flag == nil {
 		return
 	}
-	state, reset := s.stateHandler.HandleInboundFlag(flag)
-	if state == stateClosed {
-		log.Debug("closing: after handle inbound flag")
-		s.close(reset, true)
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	s.readMu.Lock()
+	defer s.readMu.Unlock()
+
+	switch *flag {
+	case pb.Message_FIN:
+		if s.receiveState == receiveStateReceiving {
+			s.receiveState = receiveStateDataRead
+		}
+	case pb.Message_STOP_SENDING:
+		if s.sendState == sendStateSending {
+			s.sendState = sendStateReset
+		}
+		select {
+		case s.sendStateChanged <- struct{}{}:
+		default:
+		}
+	case pb.Message_RESET:
+		if s.receiveState == receiveStateReceiving {
+			s.receiveState = receiveStateReset
+		}
 	}
+	s.maybeDeclareStreamDone()
 }
 
 // this is used to force reset a stream
-func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
-	if s.isClosed() {
-		return nil
+func (s *stream) maybeDeclareStreamDone() {
+	if (s.sendState == sendStateReset || s.sendState == sendStateDataSent) &&
+		(s.receiveState == receiveStateReset || s.receiveState == receiveStateDataRead) &&
+		len(s.controlMsgQueue) == 0 {
+		_ = s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
+		_ = s.dataChannel.Close()
+		// TODO: write for the spawned reader to return
+		s.onDone()
 	}
-
-	var err error
-	s.closeOnce.Do(func() {
-		log.Debugf("closing stream %d: reset: %t, notify: %t", s.id, isReset, notifyConnection)
-		if isReset {
-			s.stateHandler.Reset()
-			// write the RESET message. The error is explicitly ignored
-			// because we do not know if the remote is still connected
-			s.writeMessageToWriter(&pb.Message{Flag: pb.Message_RESET.Enum()})
-		} else {
-			s.stateHandler.Close()
-			// write a FIN message for standard stream closure
-			// we write directly to the underlying writer since we do not care about
-			// cancelled contexts or deadlines for this.
-			s.writeMessageToWriter(&pb.Message{Flag: pb.Message_FIN.Enum()})
-		}
-		// close the context
-		s.cancel()
-		// force close reads
-		s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
-		// close the channel. We do not care about the error message in
-		// this case
-		err = s.dataChannel.Close()
-		if notifyConnection {
-			s.onDone()
-		}
-	})
-
-	return err
 }
 
-func (s *webRTCStream) isClosed() bool {
-	select {
-	case <-s.ctx.Done():
-		return true
-	default:
-		return false
-	}
+func (s *stream) setCloseError(e error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	s.readMu.Lock()
+	defer s.readMu.Unlock()
+	s.closeErr = e
 }

@@ -2,116 +2,82 @@ package libp2pwebrtc
 
 import (
 	"errors"
-	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
-// Read from the underlying datachannel. This also
-// process sctp control messages such as DCEP, which is
-// handled internally by pion, and stream closure which
-// is signaled by `Read` on the datachannel returning
-// io.EOF.
-func (s *webRTCStream) Read(b []byte) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
+// Read from the underlying datachannel.
+// This also process SCTP control messages such as DCEP, which is handled internally by pion,
+// and stream closure which is signaled by `Read` on the datachannel returning io.EOF.
+func (s *stream) Read(b []byte) (int, error) {
+	if s.closeErr != nil {
+		return 0, s.closeErr
+	}
+	switch s.receiveState {
+	case receiveStateDataRead:
+		return 0, io.EOF
+	case receiveStateReset:
+		return 0, network.ErrReset
 	}
 
-	var (
-		readErr error
-		read    int
-	)
-	for read == 0 && readErr == nil {
-		if s.isClosed() {
-			if s.stateHandler.IsReset() {
-				return 0, network.ErrReset
+	if s.nextMessage == nil {
+		// load the next message
+		var msg pb.Message
+		if err := s.readMessageFromDataChannel(&msg); err != nil {
+			if err == io.EOF {
+				// if the channel was properly closed, return EOF
+				if s.receiveState == receiveStateDataRead {
+					return 0, io.EOF
+				}
+				// This case occurs when the remote node closes the stream without writing a FIN message
+				// There's little we can do here
+				return 0, errors.New("didn't receive final state for stream")
 			}
-			return 0, io.EOF
+			return 0, err
 		}
-		read, readErr = s.readMessage(b)
+		s.nextMessage = &msg
 	}
-	return read, readErr
+
+	n := copy(b, s.nextMessage.Message)
+	s.nextMessage.Message = s.nextMessage.Message[n:]
+	if len(s.nextMessage.Message) > 0 {
+		return n, nil
+	}
+
+	// process flags on the message after reading all the data
+	s.processIncomingFlag(s.nextMessage.Flag)
+	s.nextMessage = nil
+	if s.closeErr != nil {
+		return n, s.closeErr
+	}
+	switch s.receiveState {
+	case receiveStateDataRead:
+		return n, io.EOF
+	case receiveStateReset:
+		return n, network.ErrReset
+	default:
+		return n, nil
+	}
 }
 
-func (s *webRTCStream) readMessage(b []byte) (int, error) {
-	read := copy(b, s.readBuffer)
-	s.readBuffer = s.readBuffer[read:]
-	remaining := len(s.readBuffer)
-
-	if remaining == 0 && !s.stateHandler.AllowRead() {
-		log.Debug("[2] stream has no more data to read")
-		if read != 0 {
-			return read, nil
-		}
-		return read, io.EOF
-	}
-
-	if read > 0 {
-		return read, nil
-	}
-
-	// read from datachannel
-	var msg pb.Message
-	err := s.readMessageFromDataChannel(&msg)
-	if err != nil {
-		// This case occurs when the remote node goes away
-		// without writing a FIN message
-		if errors.Is(err, io.EOF) {
-			// if the channel was properly closed, return EOF
-			if !s.stateHandler.AllowRead() && !s.stateHandler.IsReset() {
-				return 0, io.EOF
-			}
-			return 0, network.ErrReset
-		}
-
-		if errors.Is(err, os.ErrDeadlineExceeded) && s.stateHandler.IsReset() {
-			return 0, network.ErrReset
-		}
-		return read, err
-	}
-
-	// append incoming data to read readBuffer
-	if s.stateHandler.AllowRead() && msg.Message != nil {
-		s.readBuffer = append(s.readBuffer, msg.GetMessage()...)
-	}
-
-	// process any flags on the message
-	if msg.Flag != nil {
-		s.processIncomingFlag(msg.GetFlag())
-	}
-
-	return read, nil
-}
-
-func (s *webRTCStream) readMessageFromDataChannel(msg *pb.Message) error {
-	s.readerMux.Lock()
-	defer s.readerMux.Unlock()
+func (s *stream) readMessageFromDataChannel(msg *pb.Message) error {
+	s.readMu.Lock()
+	defer s.readMu.Unlock()
 	return s.reader.ReadMsg(msg)
 }
 
-func (s *webRTCStream) SetReadDeadline(t time.Time) error {
-	return s.dataChannel.SetReadDeadline(t)
-}
+func (s *stream) SetReadDeadline(t time.Time) error { return s.dataChannel.SetReadDeadline(t) }
 
-func (s *webRTCStream) CloseRead() error {
-	if s.isClosed() {
-		return nil
+func (s *stream) CloseRead() error {
+	s.receiveState = receiveStateReset
+	if s.nextMessage != nil {
+		s.processIncomingFlag(s.nextMessage.Flag)
+		s.nextMessage = nil
 	}
-	var err error
-	s.closeOnce.Do(func() {
-		err = s.writeMessageToWriter(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
-		if err != nil {
-			log.Debug("could not write STOP_SENDING message")
-			err = fmt.Errorf("could not close stream for reading: %w", err)
-			return
-		}
-		if s.stateHandler.CloseRead() == stateClosed {
-			s.close(false, true)
-		}
-	})
+	err := s.sendControlMessage(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+	s.maybeDeclareStreamDone()
 	return err
 }

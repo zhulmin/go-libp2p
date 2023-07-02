@@ -2,82 +2,39 @@ package libp2pwebrtc
 
 import (
 	"errors"
-	"fmt"
-	"io"
-	"math"
 	"os"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
-	"google.golang.org/protobuf/proto"
 )
 
-func (s *webRTCStream) Write(b []byte) (int, error) {
-	if !s.stateHandler.AllowWrite() {
-		return 0, io.ErrClosedPipe
+var errWriteAfterClose = errors.New("write after close")
+
+// If we have less space than minMessageSize, we don't put a new message on the data channel.
+// Instead, we wait until more space opens up.
+const minMessageSize = 1 << 10
+
+func (s *stream) Write(b []byte) (int, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	if s.closeErr != nil {
+		return 0, s.closeErr
+	}
+	switch s.sendState {
+	case sendStateReset:
+		return 0, network.ErrReset
+	case sendStateDataSent:
+		return 0, errWriteAfterClose
 	}
 
 	// Check if there is any message on the wire. This is used for control
 	// messages only when the read side of the stream is closed
-	if s.stateHandler.State() == stateReadClosed {
+	if s.receiveState != receiveStateReceiving {
 		s.readLoopOnce.Do(s.spawnControlMessageReader)
 	}
 
-	const chunkSize = maxMessageSize - protoOverhead - varintOverhead
-
-	var n int
-
-	for len(b) > 0 {
-		end := len(b)
-		if chunkSize < end {
-			end = chunkSize
-		}
-
-		err := s.writeMessage(&pb.Message{Message: b[:end]})
-		n += end
-		b = b[end:]
-		if err != nil {
-			return n, err
-		}
-	}
-
-	return n, nil
-}
-
-// used for reading control messages while writing, in case the reader is closed,
-// as to ensure we do still get control messages. This is important as according to the spec
-// our data and control channels are intermixed on the same conn.
-func (s *webRTCStream) spawnControlMessageReader() {
-	go func() {
-		// zero the read deadline, so read call only returns
-		// when the underlying datachannel closes or there is
-		// a message on the channel
-		s.dataChannel.SetReadDeadline(time.Time{})
-		var msg pb.Message
-		for {
-			if s.stateHandler.Closed() {
-				return
-			}
-			err := s.readMessageFromDataChannel(&msg)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					s.close(true, true)
-				}
-				return
-			}
-			if msg.Flag != nil {
-				state, reset := s.stateHandler.HandleInboundFlag(msg.GetFlag())
-				if state == stateClosed {
-					log.Debug("closing: after handle inbound flag")
-					s.close(reset, true)
-				}
-			}
-		}
-	}()
-}
-
-func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 	var writeDeadlineTimer *time.Timer
 	defer func() {
 		if writeDeadlineTimer != nil {
@@ -85,95 +42,148 @@ func (s *webRTCStream) writeMessage(msg *pb.Message) error {
 		}
 	}()
 
-	for {
-		if !s.stateHandler.AllowWrite() {
-			return io.ErrClosedPipe
+	var n int
+	for len(b) > 0 {
+		if s.closeErr != nil {
+			return n, s.closeErr
+		}
+		switch s.sendState {
+		case sendStateReset:
+			return n, network.ErrReset
+		case sendStateDataSent:
+			return n, errWriteAfterClose
 		}
 
-		writeDeadline, hasWriteDeadline := s.getWriteDeadline()
-		if !hasWriteDeadline {
-			// writeDeadline = time.Unix(999999999999999999, 0)
-			// Does this cause the timer to overflow ? https://cs.opensource.google/go/go/+/master:src/time/sleep.go;l=32?q=runtimeTimer&ss=go%2Fgo
-			// this could be causing an overflow above https://cs.opensource.google/go/go/+/master:src/time/time.go;l=1123?q=unixTim&ss=go%2Fgo
-			// Go adds 62135596800 to the seconds parameter of `time.Unix`
-			writeDeadline = time.Unix(math.MaxInt64-62135596801, 0)
+		writeDeadline := s.writeDeadline
+		// deadline deleted, stop and remove the timer
+		if writeDeadline.IsZero() && writeDeadlineTimer != nil {
+			writeDeadlineTimer.Stop()
+			writeDeadlineTimer = nil
 		}
-		if writeDeadlineTimer == nil {
-			writeDeadlineTimer = time.NewTimer(time.Until(writeDeadline))
-		} else {
-			if !writeDeadlineTimer.Stop() {
-				<-writeDeadlineTimer.C
-			}
-			writeDeadlineTimer.Reset(time.Until(writeDeadline))
-		}
-
-		bufferedAmount := int(s.dataChannel.BufferedAmount())
-		addedBuffer := bufferedAmount + varintOverhead + proto.Size(msg)
-		if addedBuffer > maxBufferedAmount {
-			select {
-			case <-writeDeadlineTimer.C:
-				return os.ErrDeadlineExceeded
-			case <-s.writeAvailable:
-				return s.writeMessageToWriter(msg)
-			case <-s.ctx.Done():
-				if s.stateHandler.IsReset() {
-					return network.ErrReset
+		var writeDeadlineChan <-chan time.Time
+		if !writeDeadline.IsZero() {
+			if writeDeadlineTimer == nil {
+				writeDeadlineTimer = time.NewTimer(time.Until(writeDeadline))
+			} else {
+				if !writeDeadlineTimer.Stop() {
+					<-writeDeadlineTimer.C
 				}
-				return io.ErrClosedPipe
-			case <-s.writerDeadlineUpdated:
+				writeDeadlineTimer.Reset(time.Until(writeDeadline))
 			}
-		} else {
-			return s.writeMessageToWriter(msg)
+			writeDeadlineChan = writeDeadlineTimer.C
 		}
+
+		availableSpace := s.availableSendSpace()
+		if availableSpace < minMessageSize {
+			s.writeMu.Unlock()
+			select {
+			case <-s.writeAvailable:
+			case <-writeDeadlineChan:
+				s.writeMu.Lock()
+				return n, os.ErrDeadlineExceeded
+			case <-s.sendStateChanged:
+			case <-s.writeDeadlineUpdated:
+			}
+			s.writeMu.Lock()
+			continue
+		}
+		end := maxMessageSize
+		if end > availableSpace {
+			end = availableSpace
+		}
+		end -= protoOverhead + varintOverhead
+		if end > len(b) {
+			end = len(b)
+		}
+		msg := &pb.Message{Message: b[:end]}
+		if err := s.writer.WriteMsg(msg); err != nil {
+			return n, err
+		}
+		n += end
+		b = b[end:]
 	}
+	return n, nil
 }
 
-func (s *webRTCStream) writeMessageToWriter(msg *pb.Message) error {
-	s.writerMux.Lock()
-	defer s.writerMux.Unlock()
-	return s.writer.WriteMsg(msg)
+// used for reading control messages while writing, in case the reader is closed,
+// as to ensure we do still get control messages. This is important as according to the spec
+// our data and control channels are intermixed on the same conn.
+func (s *stream) spawnControlMessageReader() {
+	if s.nextMessage != nil {
+		s.processIncomingFlag(s.nextMessage.Flag)
+		s.nextMessage = nil
+	}
+	go func() {
+		// no deadline needed, Read will return once there's a new message, or an error occurred
+		_ = s.dataChannel.SetReadDeadline(time.Time{})
+		for {
+			var msg pb.Message
+			if err := s.readMessageFromDataChannel(&msg); err != nil {
+				return
+			}
+			s.processIncomingFlag(msg.Flag)
+		}
+	}()
 }
 
-func (s *webRTCStream) SetWriteDeadline(t time.Time) error {
-	s.writerDeadlineMux.Lock()
-	defer s.writerDeadlineMux.Unlock()
-	s.writerDeadline = t
+func (s *stream) SetWriteDeadline(t time.Time) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	s.writeDeadline = t
 	select {
-	case s.writerDeadlineUpdated <- struct{}{}:
+	case s.writeDeadlineUpdated <- struct{}{}:
 	default:
 	}
 	return nil
 }
 
-func (s *webRTCStream) getWriteDeadline() (time.Time, bool) {
-	s.writerDeadlineMux.Lock()
-	defer s.writerDeadlineMux.Unlock()
-	return s.writerDeadline, !s.writerDeadline.IsZero()
+func (s *stream) availableSendSpace() int {
+	buffered := int(s.dataChannel.BufferedAmount())
+	availableSpace := maxBufferedAmount - buffered
+	if availableSpace < 0 { // this should never happen, but better check
+		log.Errorw("data channel buffered more data than the maximum amount", "max", maxBufferedAmount, "buffered", buffered)
+	}
+	return availableSpace
 }
 
-func (s *webRTCStream) CloseWrite() error {
-	if s.isClosed() {
+const controlMsgSize = 100 // TODO: use actual message size
+
+func (s *stream) sendControlMessage(msg *pb.Message) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	available := s.availableSendSpace()
+	if controlMsgSize < available {
+		return s.writer.WriteMsg(msg)
+	}
+	s.controlMsgQueue = append(s.controlMsgQueue, msg)
+	return nil
+}
+
+func (s *stream) cancelWrite() error {
+	if s.sendState != sendStateSending {
 		return nil
 	}
-	var err error
-	s.closeOnce.Do(func() {
-		err = s.writeMessage(&pb.Message{Flag: pb.Message_FIN.Enum()})
-		if err != nil {
-			log.Debug("could not write FIN message")
-			err = fmt.Errorf("close stream for writing: %w", err)
-			return
-		}
-		// if successfully written, process the outgoing flag
-		state := s.stateHandler.CloseWrite()
-		// unblock and fail any ongoing writes
-		select {
-		case s.writeAvailable <- struct{}{}:
-		default:
-		}
-		// check if closure required
-		if state == stateClosed {
-			s.close(false, true)
-		}
-	})
-	return err
+	s.sendState = sendStateReset
+	select {
+	case s.sendStateChanged <- struct{}{}:
+	default:
+	}
+	if err := s.sendControlMessage(&pb.Message{Flag: pb.Message_RESET.Enum()}); err != nil {
+		return err
+	}
+	s.maybeDeclareStreamDone()
+	return nil
+}
+
+func (s *stream) CloseWrite() error {
+	if s.sendState != sendStateSending {
+		return nil
+	}
+	s.sendState = sendStateDataSent
+	if err := s.sendControlMessage(&pb.Message{Flag: pb.Message_FIN.Enum()}); err != nil {
+		return err
+	}
+	s.maybeDeclareStreamDone()
+	return nil
 }

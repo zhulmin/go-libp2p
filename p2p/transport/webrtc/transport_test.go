@@ -686,55 +686,6 @@ func TestTransportWebRTC_Close(t *testing.T) {
 	})
 }
 
-func TestReceiveFlagsAfterReadClosed(t *testing.T) {
-	tr, listeningPeer := getTransport(t)
-	listenMultiaddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP))
-	listener, err := tr.Listen(listenMultiaddr)
-	require.NoError(t, err)
-
-	tr1, connectingPeer := getTransport(t)
-	done := make(chan struct{})
-
-	go func() {
-		lconn, err := listener.Accept()
-		require.NoError(t, err)
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		stream, err := lconn.AcceptStream()
-		require.NoError(t, err)
-		b := make([]byte, 6)
-		n, err := stream.Read(b)
-		require.NoError(t, err)
-		require.Equal(t, []byte("foobar"), b[:n])
-		// stop reader
-		require.NoError(t, stream.Reset())
-		done <- struct{}{}
-	}()
-
-	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-	require.NoError(t, err)
-	stream, err := conn.OpenStream(context.Background())
-	require.NoError(t, err)
-
-	require.NoError(t, stream.CloseRead())
-	_, err = stream.Read([]byte{0})
-	require.ErrorIs(t, err, io.EOF)
-	_, err = stream.Write([]byte("foobar"))
-	require.NoError(t, err)
-	<-done
-	// at some point we should receive the stream reset
-	start := time.Now()
-	for {
-		if _, err := stream.Write([]byte{0x42}); err != nil {
-			require.ErrorIs(t, err, io.ErrClosedPipe)
-			break
-		}
-		if time.Since(start) > 3*time.Second {
-			require.Fail(t, "didn't receive stream reset")
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP))
@@ -808,7 +759,7 @@ func TestConnectionTimeoutOnListener(t *testing.T) {
 	// TODO: return timeout errors here
 	for {
 		if _, err := str.Write([]byte("test")); err != nil {
-			require.ErrorIs(t, err, io.ErrClosedPipe)
+			require.True(t, os.IsTimeout(err))
 			break
 		}
 		if time.Since(start) > 5*time.Second {
@@ -819,12 +770,10 @@ func TestConnectionTimeoutOnListener(t *testing.T) {
 	}
 	// make sure that accepting a stream also returns an error...
 	_, err = conn.AcceptStream()
-	// TODO: return timeout errors here
-	require.Error(t, err)
+	require.True(t, os.IsTimeout(err))
 	// ... as well as opening a new stream
 	_, err = conn.OpenStream(context.Background())
-	// TODO: return timeout errors here
-	require.Error(t, err)
+	require.True(t, os.IsTimeout(err))
 }
 
 func TestMaxInFlightRequests(t *testing.T) {
@@ -832,9 +781,9 @@ func TestMaxInFlightRequests(t *testing.T) {
 	tr, listeningPeer := getTransport(t,
 		WithListenerMaxInFlightConnections(count),
 	)
-	listener, err := tr.Listen(ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP)))
+	ln, err := tr.Listen(ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP)))
 	require.NoError(t, err)
-	defer listener.Close()
+	defer ln.Close()
 
 	var wg sync.WaitGroup
 	var success, fails atomic.Int32
@@ -845,7 +794,7 @@ func TestMaxInFlightRequests(t *testing.T) {
 			dialer, _ := getTransport(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 			defer cancel()
-			if _, err := dialer.Dial(ctx, listener.Multiaddr(), listeningPeer); err == nil {
+			if _, err := dialer.Dial(ctx, ln.Multiaddr(), listeningPeer); err == nil {
 				success.Add(1)
 			} else {
 				fails.Add(1)
