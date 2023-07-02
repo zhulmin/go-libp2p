@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 )
 
 // Read from the underlying datachannel. This also
@@ -33,9 +33,6 @@ func (s *webRTCStream) Read(b []byte) (int, error) {
 			return 0, io.EOF
 		}
 		read, readErr = s.readMessage(b)
-	}
-	if errors.Is(readErr, os.ErrDeadlineExceeded) {
-		return read, ErrTimeout
 	}
 	return read, readErr
 }

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -38,9 +38,6 @@ func (s *webRTCStream) Write(b []byte) (int, error) {
 		n += end
 		b = b[end:]
 		if err != nil {
-			if errors.Is(err, os.ErrDeadlineExceeded) {
-				err = ErrTimeout
-			}
 			return n, err
 		}
 	}

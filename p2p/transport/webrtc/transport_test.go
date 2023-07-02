@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -386,12 +387,12 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 		// deadline set to the past
 		stream.SetReadDeadline(time.Now().Add(-200 * time.Millisecond))
 		_, err = stream.Read([]byte{0, 0})
-		require.ErrorIs(t, err, ErrTimeout)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
 		// future deadline exceeded
 		stream.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		_, err = stream.Read([]byte{0, 0})
-		require.ErrorIs(t, err, ErrTimeout)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 	})
 
 	t.Run("SetWriteDeadline", func(t *testing.T) {
@@ -411,7 +412,7 @@ func TestTransportWebRTC_Deadline(t *testing.T) {
 		stream.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
 		largeBuffer := make([]byte, 2*1024*1024)
 		_, err = stream.Write(largeBuffer)
-		require.ErrorIs(t, err, ErrTimeout)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 	})
 }
 
@@ -451,9 +452,8 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 		}()
 	}
 
-	require.ErrorIs(t, <-errC, ErrTimeout)
-	require.ErrorIs(t, <-errC, ErrTimeout)
-
+	require.ErrorIs(t, <-errC, os.ErrDeadlineExceeded)
+	require.ErrorIs(t, <-errC, os.ErrDeadlineExceeded)
 }
 
 func TestTransportWebRTC_Read(t *testing.T) {
@@ -646,7 +646,7 @@ func TestTransportWebRTC_Close(t *testing.T) {
 		})
 
 		_, err = stream.Read(make([]byte, 19))
-		require.ErrorIs(t, err, ErrTimeout)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
 		select {
 		case <-done:
