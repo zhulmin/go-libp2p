@@ -235,19 +235,18 @@ func (l *listener) setupConnection(
 	}
 
 	errC := awaitPeerConnectionOpen(addr.ufrag, pc)
-	// we infer the client sdp from the incoming STUN connectivity check
-	// by setting the ice-ufrag equal to the incoming check.
-	clientSdpString := createClientSDP(addr.raddr, addr.ufrag)
-	clientSdp := webrtc.SessionDescription{SDP: clientSdpString, Type: webrtc.SDPTypeOffer}
-	pc.SetRemoteDescription(clientSdp)
-
+	// Infer the client SDP from the incoming STUN message by setting the ice-ufrag.
+	if err := pc.SetRemoteDescription(webrtc.SessionDescription{
+		SDP:  createClientSDP(addr.raddr, addr.ufrag),
+		Type: webrtc.SDPTypeOffer,
+	}); err != nil {
+		return nil, err
+	}
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
 		return nil, err
 	}
-
-	err = pc.SetLocalDescription(answer)
-	if err != nil {
+	if err := pc.SetLocalDescription(answer); err != nil {
 		return nil, err
 	}
 
@@ -294,8 +293,7 @@ func (l *listener) setupConnection(
 	}
 
 	// earliest point where we know the remote's peerID
-	err = scope.SetPeer(secureConn.RemotePeer())
-	if err != nil {
+	if err := scope.SetPeer(secureConn.RemotePeer()); err != nil {
 		return nil, err
 	}
 
