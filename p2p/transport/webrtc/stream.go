@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio/pbio"
+
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
 )
@@ -71,8 +72,8 @@ type webRTCStream struct {
 
 	stateHandler webRTCStreamState
 
-	conn        *connection
-	id          uint16
+	onDone      func()
+	id          uint16 // for logging purposes
 	dataChannel *datachannel.DataChannel
 
 	laddr net.Addr
@@ -85,10 +86,10 @@ type webRTCStream struct {
 }
 
 func newStream(
-	connection *connection,
 	channel *webrtc.DataChannel,
 	rwc datachannel.ReadWriteCloser,
 	laddr, raddr net.Addr,
+	onDone func(),
 ) *webRTCStream {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -99,9 +100,9 @@ func newStream(
 		writerDeadlineUpdated: make(chan struct{}, 1),
 		writeAvailable:        make(chan struct{}, 1),
 
-		conn:        connection,
 		id:          *channel.ID(),
 		dataChannel: rwc.(*datachannel.DataChannel),
+		onDone:      onDone,
 
 		laddr: laddr,
 		raddr: raddr,
@@ -180,8 +181,8 @@ func (s *webRTCStream) close(isReset bool, notifyConnection bool) error {
 		// close the channel. We do not care about the error message in
 		// this case
 		err = s.dataChannel.Close()
-		if notifyConnection && s.conn != nil {
-			s.conn.removeStream(s.id)
+		if notifyConnection {
+			s.onDone()
 		}
 	})
 

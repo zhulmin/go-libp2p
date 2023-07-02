@@ -268,7 +268,7 @@ func (l *listener) setupConnection(
 
 	localMultiaddrWithoutCerthash, _ := ma.SplitFunc(l.localMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
 
-	handshakeChannel := newStream(nil, rawDatachannel, rwc, l.localAddr, addr.raddr)
+	handshakeChannel := newStream(rawDatachannel, rwc, l.localAddr, addr.raddr, func() {})
 	// The connection is instantiated before performing the Noise handshake. This is
 	// to handle the case where the remote is faster and attempts to initiate a stream
 	// before the ondatachannel callback can be set.

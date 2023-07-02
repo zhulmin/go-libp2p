@@ -14,7 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	pb "github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
@@ -179,11 +179,11 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 		return nil, fmt.Errorf("open stream: %w", err)
 	}
 	stream := newStream(
-		c,
 		dc,
 		rwc,
 		nil,
 		nil,
+		func() { c.removeStream(*streamID) },
 	)
 	err = c.addStream(stream)
 	if err != nil {
@@ -197,13 +197,13 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, os.ErrClosed
-	case accStream := <-c.acceptQueue:
+	case str := <-c.acceptQueue:
 		stream := newStream(
-			c,
-			accStream.channel,
-			accStream.stream,
+			str.channel,
+			str.stream,
 			nil,
 			nil,
+			func() { c.removeStream(*str.channel.ID()) },
 		)
 		if err := c.addStream(stream); err != nil {
 			stream.Close()
@@ -213,36 +213,13 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	}
 }
 
-// implement network.ConnSecurity
-func (c *connection) LocalPeer() peer.ID {
-	return c.localPeer
-}
-
-func (c *connection) RemotePeer() peer.ID {
-	return c.remotePeer
-}
-
-func (c *connection) RemotePublicKey() ic.PubKey {
-	return c.remoteKey
-}
-
-// implement network.ConnMultiaddrs
-func (c *connection) LocalMultiaddr() ma.Multiaddr {
-	return c.localMultiaddr
-}
-
-func (c *connection) RemoteMultiaddr() ma.Multiaddr {
-	return c.remoteMultiaddr
-}
-
-// implement network.ConnScoper
-func (c *connection) Scope() network.ConnScope {
-	return c.scope
-}
-
-func (c *connection) Transport() tpt.Transport {
-	return c.transport
-}
+func (c *connection) LocalPeer() peer.ID            { return c.localPeer }
+func (c *connection) RemotePeer() peer.ID           { return c.remotePeer }
+func (c *connection) RemotePublicKey() ic.PubKey    { return c.remoteKey }
+func (c *connection) LocalMultiaddr() ma.Multiaddr  { return c.localMultiaddr }
+func (c *connection) RemoteMultiaddr() ma.Multiaddr { return c.remoteMultiaddr }
+func (c *connection) Scope() network.ConnScope      { return c.scope }
+func (c *connection) Transport() tpt.Transport      { return c.transport }
 
 func (c *connection) addStream(stream *webRTCStream) error {
 	c.m.Lock()

@@ -363,7 +363,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	}
 	laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
 
-	channel := newStream(nil, rawHandshakeChannel, detached, laddr, raddr)
+	channel := newStream(rawHandshakeChannel, detached, laddr, raddr, func() {})
 	// the local address of the selected candidate pair should be the
 	// local address for the connection, since different datachannels
 	// are multiplexed over the same SCTP connection
