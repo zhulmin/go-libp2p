@@ -736,45 +736,28 @@ func TestReceiveFlagsAfterReadClosed(t *testing.T) {
 }
 
 func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
-	// test multihash
-	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
-	require.NoError(t, err)
-
-	testMultihash := &multihash.DecodedMultihash{
-		Code:   multihash.SHA2_256,
-		Name:   multihash.Codes[multihash.SHA2_256],
-		Digest: encoded,
-		Length: len(encoded),
-	}
-
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP))
+	ln, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
-	listener, err := tr.Listen(listenMultiaddr)
+	defer ln.Close()
+
+	encoded, err := hex.DecodeString("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 	require.NoError(t, err)
-
-	tr1, _ := getTransport(t)
-
-	go listener.Accept()
-
-	badMultiaddr, _ := ma.SplitFunc(listener.Multiaddr(), func(component ma.Component) bool {
-		return component.Protocol().Code == ma.P_CERTHASH
-	})
-
-	encodedCerthash, err := multihash.Encode(testMultihash.Digest, testMultihash.Code)
+	encodedCerthash, err := multihash.Encode(encoded, multihash.SHA2_256)
 	require.NoError(t, err)
 	badEncodedCerthash, err := multibase.Encode(multibase.Base58BTC, encodedCerthash)
 	require.NoError(t, err)
 	badCerthash, err := ma.NewMultiaddr(fmt.Sprintf("/certhash/%s", badEncodedCerthash))
 	require.NoError(t, err)
+	badMultiaddr, _ := ma.SplitFunc(ln.Multiaddr(), func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
 	badMultiaddr = badMultiaddr.Encapsulate(badCerthash)
 
+	tr1, _ := getTransport(t)
 	conn, err := tr1.Dial(context.Background(), badMultiaddr, listeningPeer)
-	require.Nil(t, conn)
-	t.Log(err)
 	require.Error(t, err)
-
 	require.ErrorContains(t, err, "failed")
+	require.Nil(t, conn)
 }
 
 func TestConnectionTimeoutOnListener(t *testing.T) {
