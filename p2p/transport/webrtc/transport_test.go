@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	manet "github.com/multiformats/go-multiaddr/net"
+
+	quicproxy "github.com/quic-go/quic-go/integrationtests/tools/proxy"
+
 	"golang.org/x/crypto/sha3"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -773,59 +777,71 @@ func TestTransportWebRTC_PeerConnectionDTLSFailed(t *testing.T) {
 	require.ErrorContains(t, err, "failed")
 }
 
-func TestStreamResetOnPeerConnectionFailure(t *testing.T) {
+func TestConnectionTimeoutOnListener(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	tr.peerConnectionTimeouts.Disconnect = 100 * time.Millisecond
 	tr.peerConnectionTimeouts.Failed = 150 * time.Millisecond
 	tr.peerConnectionTimeouts.Keepalive = 50 * time.Millisecond
 
 	listenMultiaddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP))
-	lsnr, err := tr.Listen(listenMultiaddr)
+	ln, err := tr.Listen(listenMultiaddr)
 	require.NoError(t, err)
+	defer ln.Close()
+
+	var drop atomic.Bool
+	proxy, err := quicproxy.NewQuicProxy(fmt.Sprintf("%s:0", listenerIP), &quicproxy.Opts{
+		RemoteAddr: fmt.Sprintf("%s:%d", listenerIP, ln.Addr().(*net.UDPAddr).Port),
+		DropPacket: func(quicproxy.Direction, []byte) bool { return drop.Load() },
+	})
+	require.NoError(t, err)
+	defer proxy.Close()
 
 	tr1, connectingPeer := getTransport(t)
-	tr1.peerConnectionTimeouts.Disconnect = 100 * time.Millisecond
-	tr1.peerConnectionTimeouts.Failed = 150 * time.Millisecond
-	tr1.peerConnectionTimeouts.Keepalive = 50 * time.Millisecond
-
-	done := make(chan struct{})
 	go func() {
-		lconn, err := lsnr.Accept()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		addr, err := manet.FromNetAddr(proxy.LocalAddr())
 		require.NoError(t, err)
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-
-		stream, err := lconn.AcceptStream()
+		_, webrtcComponent := ma.SplitFunc(ln.Multiaddr(), func(c ma.Component) bool { return c.Protocol().Code == ma.P_WEBRTC_DIRECT })
+		addr = addr.Encapsulate(webrtcComponent)
+		conn, err := tr1.Dial(ctx, addr, listeningPeer)
 		require.NoError(t, err)
-		_, err = stream.Write([]byte("test"))
+		str, err := conn.OpenStream(ctx)
 		require.NoError(t, err)
-		// force close the mux
-		lsnr.(*listener).mux.Close()
-		// stream.Write can keep buffering data until failure,
-		// so we need to loop on writing.
-		for {
-			_, err := stream.Write([]byte("test"))
-			if err != nil {
-				assert.ErrorIs(t, err, network.ErrReset)
-				close(done)
-				return
-			}
-		}
+		str.Write([]byte("foobar"))
 	}()
 
-	dialctx, dialcancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer dialcancel()
-	conn, err := tr1.Dial(dialctx, lsnr.Multiaddr(), listeningPeer)
+	conn, err := ln.Accept()
 	require.NoError(t, err)
-	stream, err := conn.OpenStream(dialctx)
-	require.NoError(t, err)
-	_, err = io.ReadAll(stream)
-	require.Error(t, err)
+	require.Equal(t, connectingPeer, conn.RemotePeer())
 
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		t.Fatal("timed out")
+	str, err := conn.AcceptStream()
+	require.NoError(t, err)
+	_, err = str.Write([]byte("test"))
+	require.NoError(t, err)
+	// start dropping all packets
+	drop.Store(true)
+	start := time.Now()
+	// TODO: return timeout errors here
+	for {
+		if _, err := str.Write([]byte("test")); err != nil {
+			require.ErrorIs(t, err, io.ErrClosedPipe)
+			break
+		}
+		if time.Since(start) > 5*time.Second {
+			t.Fatal("timeout")
+		}
+		// make sure to not write too often, we don't want to fill the flow control window
+		time.Sleep(5 * time.Millisecond)
 	}
+	// make sure that accepting a stream also returns an error...
+	_, err = conn.AcceptStream()
+	// TODO: return timeout errors here
+	require.Error(t, err)
+	// ... as well as opening a new stream
+	_, err = conn.OpenStream(context.Background())
+	// TODO: return timeout errors here
+	require.Error(t, err)
 }
 
 func TestMaxInFlightRequests(t *testing.T) {
