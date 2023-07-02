@@ -491,14 +491,12 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	if inbound {
 		secureConn, err = sessionTransport.SecureOutbound(ctx, datachannel, peer)
 		if err != nil {
-			err = fmt.Errorf("failed to secure inbound [noise outbound]: %w %v", err, ctx.Value("id"))
-			return secureConn, err
+			return secureConn, fmt.Errorf("failed to secure inbound connection: %w", err)
 		}
 	} else {
 		secureConn, err = sessionTransport.SecureInbound(ctx, datachannel, peer)
 		if err != nil {
-			err = fmt.Errorf("failed to secure outbound [noise inbound]: %w %v", err, ctx.Value("id"))
-			return secureConn, err
+			return secureConn, fmt.Errorf("failed to secure outbound connection: %w", err)
 		}
 	}
 	return secureConn, nil
