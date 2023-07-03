@@ -841,7 +841,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		finalAddrs = append(finalAddrs, resolved...)
 	}
 
-	finalAddrs = network.DedupAddrs(finalAddrs)
+	finalAddrs = ma.Unique(finalAddrs)
 
 	// use nat mappings if we have them
 	if h.natmgr != nil && h.natmgr.HasDiscoveredNAT() {
@@ -910,7 +910,7 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 		}
 		finalAddrs = append(finalAddrs, observedAddrs...)
 	}
-	finalAddrs = network.DedupAddrs(finalAddrs)
+	finalAddrs = ma.Unique(finalAddrs)
 	finalAddrs = inferWebtransportAddrsFromQuic(finalAddrs)
 
 	return finalAddrs

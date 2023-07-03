@@ -6,12 +6,9 @@
 package network
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"time"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
@@ -199,24 +196,3 @@ type AddrDelay struct {
 
 // DialRanker provides a schedule of dialing the provided addresses
 type DialRanker func([]ma.Multiaddr) []AddrDelay
-
-// DedupAddrs deduplicates addresses in place, leave only unique addresses.
-// It doesn't allocate.
-func DedupAddrs(addrs []ma.Multiaddr) []ma.Multiaddr {
-	if len(addrs) == 0 {
-		return addrs
-	}
-	// Use the new slices package here, as the sort function doesn't allocate (sort.Slice does).
-	slices.SortFunc(addrs, func(a, b ma.Multiaddr) bool { return bytes.Compare(a.Bytes(), b.Bytes()) < 0 })
-	idx := 1
-	for i := 1; i < len(addrs); i++ {
-		if !addrs[i-1].Equal(addrs[i]) {
-			addrs[idx] = addrs[i]
-			idx++
-		}
-	}
-	for i := idx; i < len(addrs); i++ {
-		addrs[i] = nil
-	}
-	return addrs[:idx]
-}
