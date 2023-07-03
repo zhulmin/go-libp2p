@@ -35,7 +35,7 @@ func (errConnectionTimeout) Error() string   { return "connection timeout" }
 func (errConnectionTimeout) Timeout() bool   { return true }
 func (errConnectionTimeout) Temporary() bool { return false }
 
-type acceptStream struct {
+type dataChannel struct {
 	stream  datachannel.ReadWriteCloser
 	channel *webrtc.DataChannel
 }
@@ -57,7 +57,7 @@ type connection struct {
 	m       sync.Mutex
 	streams map[uint16]*stream
 
-	acceptQueue chan acceptStream
+	acceptQueue chan dataChannel
 	idAllocator *sidAllocator
 
 	ctx    context.Context
@@ -96,7 +96,7 @@ func newConnection(
 		streams:         make(map[uint16]*stream),
 		idAllocator:     idAllocator,
 
-		acceptQueue: make(chan acceptStream, maxAcceptQueueLen),
+		acceptQueue: make(chan dataChannel, maxAcceptQueueLen),
 	}
 
 	pc.OnConnectionStateChange(conn.onConnectionStateChange)
@@ -111,7 +111,7 @@ func newConnection(
 				return
 			}
 			select {
-			case conn.acceptQueue <- acceptStream{rwc, dc}:
+			case conn.acceptQueue <- dataChannel{rwc, dc}:
 			default:
 				log.Warnf("connection busy, rejecting stream")
 				b, _ := proto.Marshal(&pb.Message{Flag: pb.Message_RESET.Enum()})
@@ -186,19 +186,19 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, c.closeErr
-	case str := <-c.acceptQueue:
-		stream := newStream(
-			str.channel,
-			str.stream,
+	case dc := <-c.acceptQueue:
+		str := newStream(
+			dc.channel,
+			dc.stream,
 			nil,
 			nil,
-			func() { c.removeStream(*str.channel.ID()) },
+			func() { c.removeStream(*dc.channel.ID()) },
 		)
-		if err := c.addStream(stream); err != nil {
-			stream.Close()
+		if err := c.addStream(str); err != nil {
+			str.Close()
 			return nil, err
 		}
-		return stream, nil
+		return str, nil
 	}
 }
 
@@ -210,13 +210,13 @@ func (c *connection) RemoteMultiaddr() ma.Multiaddr { return c.remoteMultiaddr }
 func (c *connection) Scope() network.ConnScope      { return c.scope }
 func (c *connection) Transport() tpt.Transport      { return c.transport }
 
-func (c *connection) addStream(stream *stream) error {
+func (c *connection) addStream(str *stream) error {
 	c.m.Lock()
 	defer c.m.Unlock()
-	if _, ok := c.streams[stream.id]; ok {
+	if _, ok := c.streams[str.id]; ok {
 		return errors.New("stream ID already exists")
 	}
-	c.streams[stream.id] = stream
+	c.streams[str.id] = str
 	return nil
 }
 
