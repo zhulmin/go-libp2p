@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -15,7 +14,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+
 	"github.com/libp2p/go-msgio"
+
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/pion/datachannel"
 	"github.com/pion/webrtc/v3"
@@ -40,8 +41,6 @@ type acceptStream struct {
 }
 
 type connection struct {
-	// debug identifier for the connection
-	dbgId     int
 	pc        *webrtc.PeerConnection
 	transport *WebRTCTransport
 	scope     network.ConnManagementScope
@@ -82,7 +81,6 @@ func newConnection(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	conn := &connection{
-		dbgId:     rand.Intn(65536),
 		pc:        pc,
 		transport: transport,
 		scope:     scope,
@@ -229,7 +227,6 @@ func (c *connection) removeStream(id uint16) {
 }
 
 func (c *connection) onConnectionStateChange(state webrtc.PeerConnectionState) {
-	fmt.Printf("[%s][%d] handling peerconnection state: %s\n", c.localPeer, c.dbgId, state)
 	if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 		// reset any streams
 		if c.IsClosed() {
