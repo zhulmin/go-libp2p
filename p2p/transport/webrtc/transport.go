@@ -284,6 +284,8 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 
 	settingEngine.SetICECredentials(ufrag, ufrag)
 	settingEngine.DetachDataChannels()
+	// use the first best address candidate
+	settingEngine.SetPrflxAcceptanceMinWait(0)
 	settingEngine.SetICETimeouts(
 		t.peerConnectionTimeouts.Disconnect,
 		t.peerConnectionTimeouts.Failed,
