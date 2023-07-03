@@ -54,11 +54,11 @@ type connection struct {
 	remoteKey       ic.PubKey
 	remoteMultiaddr ma.Multiaddr
 
-	m       sync.Mutex
-	streams map[uint16]*stream
+	m            sync.Mutex
+	streams      map[uint16]*stream
+	nextStreamID atomic.Int32
 
 	acceptQueue chan dataChannel
-	idAllocator *sidAllocator
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -77,10 +77,8 @@ func newConnection(
 	remoteKey ic.PubKey,
 	remoteMultiaddr ma.Multiaddr,
 ) (*connection, error) {
-	idAllocator := newSidAllocator(direction)
-
 	ctx, cancel := context.WithCancel(context.Background())
-	conn := &connection{
+	c := &connection{
 		pc:        pc,
 		transport: transport,
 		scope:     scope,
@@ -94,14 +92,20 @@ func newConnection(
 		ctx:             ctx,
 		cancel:          cancel,
 		streams:         make(map[uint16]*stream),
-		idAllocator:     idAllocator,
 
 		acceptQueue: make(chan dataChannel, maxAcceptQueueLen),
 	}
+	switch direction {
+	case network.DirInbound:
+		c.nextStreamID.Store(1)
+	case network.DirOutbound:
+		// stream ID 0 is used for the Noise handshake stream
+		c.nextStreamID.Store(2)
+	}
 
-	pc.OnConnectionStateChange(conn.onConnectionStateChange)
+	pc.OnConnectionStateChange(c.onConnectionStateChange)
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		if conn.IsClosed() {
+		if c.IsClosed() {
 			return
 		}
 		dc.OnOpen(func() {
@@ -111,7 +115,7 @@ func newConnection(
 				return
 			}
 			select {
-			case conn.acceptQueue <- dataChannel{rwc, dc}:
+			case c.acceptQueue <- dataChannel{rwc, dc}:
 			default:
 				log.Warnf("connection busy, rejecting stream")
 				b, _ := proto.Marshal(&pb.Message{Flag: pb.Message_RESET.Enum()})
@@ -122,7 +126,7 @@ func newConnection(
 		})
 	})
 
-	return conn, nil
+	return c, nil
 }
 
 // ConnState implements transport.CapableConn
@@ -156,11 +160,12 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 		return nil, c.closeErr
 	}
 
-	streamID, err := c.idAllocator.nextID()
-	if err != nil {
-		return nil, err
+	id := c.nextStreamID.Add(2) - 2
+	if id > math.MaxUint16 {
+		return nil, errors.New("exhausted stream ID space")
 	}
-	dc, err := c.pc.CreateDataChannel("", &webrtc.DataChannelInit{ID: streamID})
+	streamID := uint16(id)
+	dc, err := c.pc.CreateDataChannel("", &webrtc.DataChannelInit{ID: &streamID})
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +178,7 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 		rwc,
 		nil,
 		nil,
-		func() { c.removeStream(*streamID) },
+		func() { c.removeStream(streamID) },
 	)
 	if err := c.addStream(str); err != nil {
 		str.Close()
@@ -304,39 +309,4 @@ func (c *connection) setRemotePeer(id peer.ID) {
 // only used during connection setup
 func (c *connection) setRemotePublicKey(key ic.PubKey) {
 	c.remoteKey = key
-}
-
-// sidAllocator is a helper struct to allocate stream IDs for datachannels. ID
-// reuse is not currently implemented. This prevents streams in pion from hanging
-// with `invalid DCEP message` errors.
-// The id is picked using the scheme described in:
-// https://datatracker.ietf.org/doc/html/draft-ietf-rtcweb-data-channel-08#section-6.5
-// By definition, the DTLS role for inbound connections is set to DTLS Server,
-// and outbound connections are DTLS Client.
-type sidAllocator struct {
-	n atomic.Uint32
-}
-
-func newSidAllocator(direction network.Direction) *sidAllocator {
-	switch direction {
-	case network.DirInbound:
-		// server will use odd values
-		a := new(sidAllocator)
-		a.n.Store(1)
-		return a
-	case network.DirOutbound:
-		// client will use even values
-		return new(sidAllocator)
-	default:
-		panic(fmt.Sprintf("create SID allocator for direction: %s", direction))
-	}
-}
-
-func (a *sidAllocator) nextID() (*uint16, error) {
-	nxt := a.n.Add(2)
-	if nxt > math.MaxUint16 {
-		return nil, fmt.Errorf("sid exhausted")
-	}
-	result := uint16(nxt)
-	return &result, nil
 }
