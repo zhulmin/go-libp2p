@@ -72,12 +72,18 @@ func (s *stream) readMessageFromDataChannel(msg *pb.Message) error {
 func (s *stream) SetReadDeadline(t time.Time) error { return s.dataChannel.SetReadDeadline(t) }
 
 func (s *stream) CloseRead() error {
+	s.readMu.Lock()
+	defer s.readMu.Unlock()
+
 	s.receiveState = receiveStateReset
 	if s.nextMessage != nil {
 		s.processIncomingFlag(s.nextMessage.Flag)
 		s.nextMessage = nil
 	}
-	err := s.sendControlMessage(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
-	s.maybeDeclareStreamDone()
-	return err
+	if s.receiveState == receiveStateReceiving && s.closeErr == nil {
+		err := s.sendControlMessage(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		s.maybeDeclareStreamDone()
+		return err
+	}
+	return nil
 }
