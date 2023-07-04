@@ -456,67 +456,6 @@ func TestTransportWebRTC_StreamWriteBufferContention(t *testing.T) {
 	require.ErrorIs(t, <-errC, os.ErrDeadlineExceeded)
 }
 
-func TestTransportWebRTC_Read(t *testing.T) {
-	tr, listeningPeer := getTransport(t)
-	listenMultiaddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP))
-	listener, err := tr.Listen(listenMultiaddr)
-	require.NoError(t, err)
-
-	tr1, connectingPeer := getTransport(t)
-
-	createListener := func() {
-		lconn, err := listener.Accept()
-		require.NoError(t, err)
-		require.Equal(t, connectingPeer, lconn.RemotePeer())
-		stream, err := lconn.AcceptStream()
-		require.NoError(t, err)
-		_, _ = stream.Write(make([]byte, 2*1024))
-	}
-
-	t.Run("read partial message", func(t *testing.T) {
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			createListener()
-		}()
-
-		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-		require.NoError(t, err)
-		stream, err := conn.OpenStream(context.Background())
-		require.NoError(t, err)
-
-		buf := make([]byte, 10)
-		stream.SetReadDeadline(time.Now().Add(10 * time.Second))
-		n, err := stream.Read(buf)
-		require.NoError(t, err)
-		require.Equal(t, n, 10)
-
-		wg.Wait()
-	})
-
-	t.Run("read zero bytes", func(t *testing.T) {
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			createListener()
-		}()
-
-		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-		require.NoError(t, err)
-		stream, err := conn.OpenStream(context.Background())
-		require.NoError(t, err)
-
-		stream.SetReadDeadline(time.Now().Add(10 * time.Second))
-		n, err := stream.Read([]byte{})
-		require.NoError(t, err)
-		require.Equal(t, n, 0)
-
-		wg.Wait()
-	})
-}
-
 func TestTransportWebRTC_RemoteReadsAfterClose(t *testing.T) {
 	tr, listeningPeer := getTransport(t)
 	listenMultiaddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/0/webrtc-direct", listenerIP))

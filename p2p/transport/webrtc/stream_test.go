@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
+
 	"github.com/libp2p/go-libp2p/core/network"
 
 	"github.com/pion/datachannel"
@@ -100,8 +102,9 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	serverStr := newStream(server.dc, server.rwc, nil, nil, func() { serverDone = true })
 
 	// send a foobar from the client
-	_, err := clientStr.Write([]byte("foobar"))
+	n, err := clientStr.Write([]byte("foobar"))
 	require.NoError(t, err)
+	require.Equal(t, 6, n)
 	require.NoError(t, clientStr.CloseWrite())
 	// writing after closing should error
 	_, err = clientStr.Write([]byte("foobar"))
@@ -113,7 +116,7 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("foobar"), b)
 	// reading again should give another io.EOF
-	n, err := serverStr.Read(make([]byte, 10))
+	n, err = serverStr.Read(make([]byte, 10))
 	require.Zero(t, n)
 	require.ErrorIs(t, err, io.EOF)
 	require.False(t, serverDone)
@@ -129,6 +132,82 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("lorem ipsum"), b)
 	require.True(t, clientDone)
+}
+
+func TestStreamPartialReads(t *testing.T) {
+	client, server := getDetachedDataChannels(t)
+
+	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
+	serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
+
+	_, err := serverStr.Write([]byte("foobar"))
+	require.NoError(t, err)
+	require.NoError(t, serverStr.CloseWrite())
+
+	n, err := clientStr.Read([]byte{}) // empty read
+	require.NoError(t, err)
+	require.Zero(t, n)
+	b := make([]byte, 3)
+	n, err = clientStr.Read(b)
+	require.NoError(t, err)
+	require.Equal(t, []byte("foo"), b)
+	b, err = io.ReadAll(clientStr)
+	require.NoError(t, err)
+	require.Equal(t, []byte("bar"), b)
+}
+
+func TestStreamSkipEmptyFrames(t *testing.T) {
+	client, server := getDetachedDataChannels(t)
+
+	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
+	serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
+
+	for i := 0; i < 10; i++ {
+		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
+	}
+	require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{Message: []byte("foo")}))
+	for i := 0; i < 10; i++ {
+		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
+	}
+	require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{Message: []byte("bar")}))
+	for i := 0; i < 10; i++ {
+		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
+	}
+	require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{Flag: pb.Message_FIN.Enum()}))
+
+	var read []byte
+	var count int
+	for i := 0; i < 100; i++ {
+		b := make([]byte, 10)
+		count++
+		n, err := clientStr.Read(b)
+		read = append(read, b[:n]...)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+	}
+	require.LessOrEqual(t, count, 3, "should've taken a maximum of 3 reads")
+	require.Equal(t, []byte("foobar"), read)
+}
+
+func TestStreamReadReturnsOnClose(t *testing.T) {
+	client, _ := getDetachedDataChannels(t)
+
+	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
+	// serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
+	errChan := make(chan error, 1)
+	go func() {
+		_, err := clientStr.Read([]byte{0})
+		errChan <- err
+	}()
+	require.NoError(t, clientStr.Close())
+	select {
+	case err := <-errChan:
+		require.ErrorIs(t, err, network.ErrReset)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout")
+	}
 }
 
 func TestStreamResets(t *testing.T) {

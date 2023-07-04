@@ -59,10 +59,10 @@ const (
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type stream struct {
+	mx sync.Mutex
 	// pbio.Reader is not thread safe,
 	// and while our Read is not promised to be thread safe,
 	// we ourselves internally read from multiple routines...
-	readMu sync.Mutex
 	reader pbio.Reader
 	// this buffer is limited up to a single message. Reason we need it
 	// is because a reader might read a message midway, and so we need a
@@ -72,7 +72,6 @@ type stream struct {
 
 	// The public Write API is not promised to be thread safe,
 	// but we need to be able to write control messages.
-	writeMu              sync.Mutex
 	writer               pbio.Writer
 	sendStateChanged     chan struct{}
 	sendState            sendState
@@ -118,8 +117,8 @@ func newStream(
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
 	channel.OnBufferedAmountLow(func() {
-		s.writeMu.Lock()
-		defer s.writeMu.Unlock()
+		s.mx.Lock()
+		defer s.mx.Unlock()
 		// first send out queued control messages
 		for len(s.controlMsgQueue) > 0 {
 			msg := s.controlMsgQueue[0]
@@ -171,15 +170,11 @@ func (s *stream) SetDeadline(t time.Time) error {
 // processIncomingFlag process the flag on an incoming message
 // It needs to be called with msg.Flag, not msg.GetFlag(),
 // otherwise we'd misinterpret the default value.
+// It needs to be called while the mutex is locked.
 func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 	if flag == nil {
 		return
 	}
-
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	s.readMu.Lock()
-	defer s.readMu.Unlock()
 
 	switch *flag {
 	case pb.Message_FIN:
@@ -215,9 +210,8 @@ func (s *stream) maybeDeclareStreamDone() {
 }
 
 func (s *stream) setCloseError(e error) {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	s.readMu.Lock()
-	defer s.readMu.Unlock()
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
 	s.closeErr = e
 }

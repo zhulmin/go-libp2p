@@ -16,8 +16,8 @@ var errWriteAfterClose = errors.New("write after close")
 const minMessageSize = 1 << 10
 
 func (s *stream) Write(b []byte) (int, error) {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.mx.Lock()
+	defer s.mx.Unlock()
 
 	if s.closeErr != nil {
 		return 0, s.closeErr
@@ -75,16 +75,16 @@ func (s *stream) Write(b []byte) (int, error) {
 
 		availableSpace := s.availableSendSpace()
 		if availableSpace < minMessageSize {
-			s.writeMu.Unlock()
+			s.mx.Unlock()
 			select {
 			case <-s.writeAvailable:
 			case <-writeDeadlineChan:
-				s.writeMu.Lock()
+				s.mx.Lock()
 				return n, os.ErrDeadlineExceeded
 			case <-s.sendStateChanged:
 			case <-s.writeDeadlineUpdated:
 			}
-			s.writeMu.Lock()
+			s.mx.Lock()
 			continue
 		}
 		end := maxMessageSize
@@ -113,22 +113,25 @@ func (s *stream) spawnControlMessageReader() {
 		s.processIncomingFlag(s.nextMessage.Flag)
 		s.nextMessage = nil
 	}
+
 	go func() {
 		// no deadline needed, Read will return once there's a new message, or an error occurred
 		_ = s.dataChannel.SetReadDeadline(time.Time{})
 		for {
 			var msg pb.Message
-			if err := s.readMessageFromDataChannel(&msg); err != nil {
+			if err := s.reader.ReadMsg(&msg); err != nil {
 				return
 			}
+			s.mx.Lock()
 			s.processIncomingFlag(msg.Flag)
+			s.mx.Unlock()
 		}
 	}()
 }
 
 func (s *stream) SetWriteDeadline(t time.Time) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.mx.Lock()
+	defer s.mx.Unlock()
 	s.writeDeadline = t
 	select {
 	case s.writeDeadlineUpdated <- struct{}{}:
@@ -149,9 +152,6 @@ func (s *stream) availableSendSpace() int {
 const controlMsgSize = 100 // TODO: use actual message size
 
 func (s *stream) sendControlMessage(msg *pb.Message) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	available := s.availableSendSpace()
 	if controlMsgSize < available {
 		return s.writer.WriteMsg(msg)
@@ -161,6 +161,9 @@ func (s *stream) sendControlMessage(msg *pb.Message) error {
 }
 
 func (s *stream) cancelWrite() error {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
 	if s.sendState != sendStateSending {
 		return nil
 	}
@@ -177,6 +180,9 @@ func (s *stream) cancelWrite() error {
 }
 
 func (s *stream) CloseWrite() error {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
 	if s.sendState != sendStateSending {
 		return nil
 	}
