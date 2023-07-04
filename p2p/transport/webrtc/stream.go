@@ -164,6 +164,7 @@ func (s *stream) LocalAddr() net.Addr  { return s.laddr }
 func (s *stream) RemoteAddr() net.Addr { return s.raddr }
 
 func (s *stream) SetDeadline(t time.Time) error {
+	_ = s.SetReadDeadline(t)
 	return s.SetWriteDeadline(t)
 }
 
