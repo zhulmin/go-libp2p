@@ -19,7 +19,7 @@ type dummyTransport struct {
 	closed    bool
 }
 
-func (dt *dummyTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (dt *dummyTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) chan transport.DialUpdate {
 	panic("unimplemented")
 }
 

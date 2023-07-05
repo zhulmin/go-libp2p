@@ -120,20 +120,28 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 	return t, nil
 }
 
-func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
+func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) chan tpt.DialUpdate {
+	updCh := make(chan tpt.DialUpdate, 1)
 	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
 	if err != nil {
 		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
-		return nil, err
+		updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: err}
+		close(updCh)
+		return updCh
 	}
+	go func() {
+		defer close(updCh)
 
-	c, err := t.dialWithScope(ctx, raddr, p, scope)
-	if err != nil {
-		scope.Done()
-		return nil, err
-	}
+		c, err := t.dialWithScope(ctx, raddr, p, scope)
+		if err != nil {
+			scope.Done()
+			updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: err}
+			return
+		}
+		updCh <- tpt.DialUpdate{Kind: tpt.DialSucceeded, Conn: c}
 
-	return c, nil
+	}()
+	return updCh
 }
 
 func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {

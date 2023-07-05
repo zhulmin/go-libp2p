@@ -489,8 +489,23 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr) (tra
 		return nil, ErrNoTransport
 	}
 
+	var connC transport.CapableConn
+	var err error
 	start := time.Now()
-	connC, err := tpt.Dial(ctx, addr, p)
+	updCh := tpt.Dial(ctx, addr, p)
+loop:
+	for upd := range updCh {
+		switch upd.Kind {
+		case transport.DialFailed:
+			err = upd.Error
+			break loop
+		case transport.DialSucceeded:
+			connC = upd.Conn
+			break loop
+		default:
+			log.Debugf("update on dial to %s at %s: %v", p, addr, upd)
+		}
+	}
 
 	// We're recording any error as a failure here.
 	// Notably, this also applies to cancelations (i.e. if another dial attempt was faster).

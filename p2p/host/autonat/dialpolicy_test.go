@@ -28,8 +28,8 @@ type mockT struct {
 	addr   multiaddr.Multiaddr
 }
 
-func (m *mockT) Dial(ctx context.Context, a multiaddr.Multiaddr, p peer.ID) (transport.CapableConn, error) {
-	return nil, nil
+func (m *mockT) Dial(ctx context.Context, a multiaddr.Multiaddr, p peer.ID) chan transport.DialUpdate {
+	panic("unimplemented")
 }
 func (m *mockT) CanDial(_ multiaddr.Multiaddr) bool { return true }
 func (m *mockT) Listen(a multiaddr.Multiaddr) (transport.Listener, error) {

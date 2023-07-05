@@ -156,17 +156,29 @@ func (t *WebsocketTransport) Resolve(ctx context.Context, maddr ma.Multiaddr) ([
 	return []ma.Multiaddr{parsed.toMultiaddr()}, nil
 }
 
-func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (t *WebsocketTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) chan transport.DialUpdate {
+	updCh := make(chan transport.DialUpdate, 1)
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
-		return nil, err
+		updCh <- transport.DialUpdate{Kind: transport.DialFailed, Error: err}
+		close(updCh)
+		return updCh
 	}
-	c, err := t.dialWithScope(ctx, raddr, p, connScope)
-	if err != nil {
-		connScope.Done()
-		return nil, err
-	}
-	return c, nil
+
+	go func() {
+		defer close(updCh)
+
+		c, err := t.dialWithScope(ctx, raddr, p, connScope)
+		if err != nil {
+			connScope.Done()
+			updCh <- transport.DialUpdate{Kind: transport.DialFailed, Error: err}
+			return
+		}
+		updCh <- transport.DialUpdate{Kind: transport.DialSucceeded, Conn: c}
+
+	}()
+
+	return updCh
 }
 
 func (t *WebsocketTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {

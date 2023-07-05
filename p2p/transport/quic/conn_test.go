@@ -21,6 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	"github.com/golang/mock/gomock"
+	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
 	quicproxy "github.com/quic-go/quic-go/integrationtests/tools/proxy"
@@ -95,7 +96,7 @@ func testHandshake(t *testing.T, tc *connTestCase) {
 		clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 		require.NoError(t, err)
 		defer clientTransport.(io.Closer).Close()
-		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 		require.NoError(t, err)
 		defer conn.Close()
 		serverConn, err := ln.Accept()
@@ -165,7 +166,7 @@ func testResourceManagerSuccess(t *testing.T, tc *connTestCase) {
 	connScope := mocknetwork.NewMockConnManagementScope(ctrl)
 	clientRcmgr.EXPECT().OpenConnection(network.DirOutbound, false, ln.Multiaddr()).Return(connScope, nil)
 	connScope.EXPECT().SetPeer(serverID)
-	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+	conn, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 	require.NoError(t, err)
 	serverConn := <-connChan
 	t.Log("received conn")
@@ -202,7 +203,7 @@ func testResourceManagerDialDenied(t *testing.T, tc *connTestCase) {
 	connScope.EXPECT().SetPeer(p).Return(rerr)
 	connScope.EXPECT().Done()
 
-	_, err = clientTransport.Dial(context.Background(), target, p)
+	_, err = ttransport.GetDialResult(clientTransport.Dial(context.Background(), target, p))
 	require.ErrorIs(t, err, rerr)
 
 }
@@ -252,7 +253,7 @@ func testResourceManagerAcceptDenied(t *testing.T, tc *connTestCase) {
 	// In rare instances, the connection gating error will already occur on Dial.
 	// In that case, Done is called on the connection scope.
 	clientConnScope.EXPECT().Done().MaxTimes(1)
-	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+	conn, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 	// In rare instances, the connection gating error will already occur on Dial.
 	if err == nil {
 		_, err = conn.AcceptStream()
@@ -286,7 +287,7 @@ func testStreams(t *testing.T, tc *connTestCase) {
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
-	conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+	conn, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 	require.NoError(t, err)
 	defer conn.Close()
 	serverConn, err := ln.Accept()
@@ -326,7 +327,7 @@ func testHandshakeFailPeerIDMismatch(t *testing.T, tc *connTestCase) {
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
 	// dial, but expect the wrong peer ID
-	_, err = clientTransport.Dial(context.Background(), ln.Multiaddr(), thirdPartyID)
+	_, err = ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), thirdPartyID))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "CRYPTO_ERROR")
 	defer clientTransport.(io.Closer).Close()
@@ -383,7 +384,7 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 		require.NoError(t, err)
 		defer clientTransport.(io.Closer).Close()
 		// make sure that connection attempts fails
-		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 		// In rare instances, the connection gating error will already occur on Dial.
 		// In most cases, it will be returned by AcceptStream.
 		if err == nil {
@@ -394,7 +395,7 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 		// now allow the address and make sure the connection goes through
 		cg.EXPECT().InterceptAccept(gomock.Any()).Return(true)
 		cg.EXPECT().InterceptSecured(gomock.Any(), gomock.Any(), gomock.Any()).Return(true)
-		conn, err = clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err = ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 		require.NoError(t, err)
 		defer conn.Close()
 		require.Eventually(t, func() bool {
@@ -422,13 +423,13 @@ func testConnectionGating(t *testing.T, tc *connTestCase) {
 		defer clientTransport.(io.Closer).Close()
 
 		// make sure that connection attempts fails
-		_, err = clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+		_, err = ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "connection gated")
 
 		// now allow the peerId and make sure the connection goes through
 		cg.EXPECT().InterceptSecured(gomock.Any(), gomock.Any(), gomock.Any()).Return(true)
-		conn, err := clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln.Multiaddr(), serverID))
 		require.NoError(t, err)
 		conn.Close()
 	})
@@ -481,10 +482,10 @@ func testDialTwo(t *testing.T, tc *connTestCase) {
 	clientTransport, err := NewTransport(clientKey, newConnManager(t, tc.Options...), nil, nil, nil)
 	require.NoError(t, err)
 	defer clientTransport.(io.Closer).Close()
-	c1, err := clientTransport.Dial(context.Background(), ln1.Multiaddr(), serverID)
+	c1, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln1.Multiaddr(), serverID))
 	require.NoError(t, err)
 	defer c1.Close()
-	c2, err := clientTransport.Dial(context.Background(), ln2.Multiaddr(), serverID2)
+	c2, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), ln2.Multiaddr(), serverID2))
 	require.NoError(t, err)
 	defer c2.Close()
 
@@ -546,7 +547,7 @@ func testStatelessReset(t *testing.T, tc *connTestCase) {
 	defer clientTransport.(io.Closer).Close()
 	proxyAddr, err := quicreuse.ToQuicMultiaddr(proxy.LocalAddr(), quic.Version1)
 	require.NoError(t, err)
-	conn, err := clientTransport.Dial(context.Background(), proxyAddr, serverID)
+	conn, err := ttransport.GetDialResult(clientTransport.Dial(context.Background(), proxyAddr, serverID))
 	require.NoError(t, err)
 	connChan := make(chan tpt.CapableConn)
 	go func() {
@@ -632,11 +633,11 @@ func TestHolePunching(t *testing.T) {
 	}()
 	connChan := make(chan tpt.CapableConn)
 	go func() {
-		conn, err := t2.Dial(
+		conn, err := ttransport.GetDialResult(t2.Dial(
 			network.WithSimultaneousConnect(context.Background(), false, ""),
 			ln1.Multiaddr(),
 			serverID,
-		)
+		))
 		require.NoError(t, err)
 		connChan <- conn
 	}()
@@ -650,11 +651,11 @@ func TestHolePunching(t *testing.T) {
 		return len(tr.holePunching) > 0
 	}, time.Second, 10*time.Millisecond)
 
-	conn1, err := t1.Dial(
+	conn1, err := ttransport.GetDialResult(t1.Dial(
 		network.WithSimultaneousConnect(context.Background(), true, ""),
 		ln2.Multiaddr(),
 		clientID,
-	)
+	))
 	require.NoError(t, err)
 	defer conn1.Close()
 	require.Equal(t, conn1.RemotePeer(), clientID)
@@ -765,7 +766,7 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 					require.Equal(t, v, versionConnRemote)
 				}()
 
-				conn, err := t2.Dial(ctx, a, serverID)
+				conn, err := ttransport.GetDialResult(t2.Dial(ctx, a, serverID))
 				require.NoError(t, err)
 				_, versionConnLocal, err := quicreuse.FromQuicMultiaddr(conn.LocalMultiaddr())
 				require.NoError(t, err)

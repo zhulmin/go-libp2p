@@ -200,7 +200,7 @@ func TestTransportConstructorQUIC(t *testing.T) {
 
 type mockTransport struct{}
 
-func (m mockTransport) Dial(context.Context, ma.Multiaddr, peer.ID) (transport.CapableConn, error) {
+func (m mockTransport) Dial(context.Context, ma.Multiaddr, peer.ID) chan transport.DialUpdate {
 	panic("implement me")
 }
 

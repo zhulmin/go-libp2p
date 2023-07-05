@@ -12,6 +12,7 @@ import (
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/transport"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -51,7 +52,17 @@ func run(raddr string, p string) error {
 	}
 
 	log.Printf("Dialing %s\n", addr.String())
-	conn, err := t.Dial(context.Background(), addr, peerID)
+	var conn transport.CapableConn
+	updCh := t.Dial(context.Background(), addr, peerID)
+	for upd := range updCh {
+		switch upd.Kind {
+		case transport.DialFailed:
+			err = upd.Error
+		case transport.DialSucceeded:
+			err = nil
+			conn = upd.Conn
+		}
+	}
 	if err != nil {
 		return err
 	}

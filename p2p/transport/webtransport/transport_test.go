@@ -29,6 +29,7 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/golang/mock/gomock"
+	ttransport "github.com/libp2p/go-libp2p/p2p/transport/testsuite"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
@@ -119,7 +120,7 @@ func TestTransport(t *testing.T) {
 		require.NoError(t, err)
 		defer tr2.(io.Closer).Close()
 
-		conn, err := tr2.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err := ttransport.GetDialResult(tr2.Dial(context.Background(), ln.Multiaddr(), serverID))
 		require.NoError(t, err)
 		str, err := conn.OpenStream(context.Background())
 		require.NoError(t, err)
@@ -173,7 +174,7 @@ func TestHashVerification(t *testing.T) {
 	t.Run("fails using only a wrong hash", func(t *testing.T) {
 		// replace the certificate hash in the multiaddr with a fake hash
 		addr := stripCertHashes(ln.Multiaddr()).Encapsulate(foobarHash)
-		_, err := tr2.Dial(context.Background(), addr, serverID)
+		_, err := ttransport.GetDialResult(tr2.Dial(context.Background(), addr, serverID))
 		require.Error(t, err)
 		var trErr *quic.TransportError
 		require.ErrorAs(t, err, &trErr)
@@ -182,7 +183,7 @@ func TestHashVerification(t *testing.T) {
 	})
 
 	t.Run("fails when adding a wrong hash", func(t *testing.T) {
-		_, err := tr2.Dial(context.Background(), ln.Multiaddr().Encapsulate(foobarHash), serverID)
+		_, err := ttransport.GetDialResult(tr2.Dial(context.Background(), ln.Multiaddr().Encapsulate(foobarHash), serverID))
 		require.Error(t, err)
 	})
 
@@ -284,7 +285,7 @@ func TestResourceManagerDialing(t *testing.T) {
 	scope.EXPECT().SetPeer(p).Return(errors.New("denied"))
 	scope.EXPECT().Done()
 
-	_, err = tr.Dial(context.Background(), addr, p)
+	_, err = ttransport.GetDialResult(tr.Dial(context.Background(), addr, p))
 	require.EqualError(t, err, "denied")
 }
 
@@ -316,7 +317,7 @@ func TestResourceManagerListening(t *testing.T) {
 			return nil, errors.New("denied")
 		})
 
-		_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		_, err = ttransport.GetDialResult(cl.Dial(context.Background(), ln.Multiaddr(), serverID))
 		require.EqualError(t, err, "received status 503")
 	})
 
@@ -338,7 +339,7 @@ func TestResourceManagerListening(t *testing.T) {
 		scope.EXPECT().Done().Do(func() { close(serverDone) })
 
 		// The handshake will complete, but the server will immediately close the connection.
-		conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		conn, err := ttransport.GetDialResult(cl.Dial(context.Background(), ln.Multiaddr(), serverID))
 		require.NoError(t, err)
 		defer conn.Close()
 		clientDone := make(chan struct{})
@@ -383,7 +384,7 @@ func TestConnectionGaterDialing(t *testing.T) {
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), connGater, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer cl.(io.Closer).Close()
-	_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+	_, err = ttransport.GetDialResult(cl.Dial(context.Background(), ln.Multiaddr(), serverID))
 	require.EqualError(t, err, "secured connection gated")
 }
 
@@ -409,7 +410,7 @@ func TestConnectionGaterInterceptAccept(t *testing.T) {
 	cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 	require.NoError(t, err)
 	defer cl.(io.Closer).Close()
-	_, err = cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+	_, err = ttransport.GetDialResult(cl.Dial(context.Background(), ln.Multiaddr(), serverID))
 	require.EqualError(t, err, "received status 403")
 }
 
@@ -437,7 +438,7 @@ func TestConnectionGaterInterceptSecured(t *testing.T) {
 		require.NotEqual(t, stripCertHashes(ln.Multiaddr()), addrs.RemoteMultiaddr())
 	})
 	// The handshake will complete, but the server will immediately close the connection.
-	conn, err := cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+	conn, err := ttransport.GetDialResult(cl.Dial(context.Background(), ln.Multiaddr(), serverID))
 	require.NoError(t, err)
 	defer conn.Close()
 	done := make(chan struct{})
@@ -468,7 +469,7 @@ func TestAcceptQueueFilledUp(t *testing.T) {
 		cl, err := libp2pwebtransport.New(key, nil, newConnManager(t), nil, &network.NullResourceManager{})
 		require.NoError(t, err)
 		defer cl.(io.Closer).Close()
-		return cl.Dial(context.Background(), ln.Multiaddr(), serverID)
+		return ttransport.GetDialResult(cl.Dial(context.Background(), ln.Multiaddr(), serverID))
 	}
 
 	const num = 16 + 1 // one more than the accept queue capacity
@@ -596,7 +597,7 @@ func TestFlowControlWindowIncrease(t *testing.T) {
 		addr = addr.Encapsulate(comp)
 	}
 
-	conn, err := tr2.Dial(context.Background(), addr, serverID)
+	conn, err := ttransport.GetDialResult(tr2.Dial(context.Background(), addr, serverID))
 	require.NoError(t, err)
 	str, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)

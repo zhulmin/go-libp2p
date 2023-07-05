@@ -1,6 +1,7 @@
 package ttransport
 
 import (
+	"errors"
 	"reflect"
 	"runtime"
 	"testing"
@@ -43,4 +44,17 @@ func SubtestTransport(t *testing.T, ta, tb transport.Transport, addr string, pee
 			f(t, ta, tb, maddr, peerA)
 		})
 	}
+}
+
+// GetDialResult returns the result of the dial ignoring any transport.DialProgressed events
+func GetDialResult(ch chan transport.DialUpdate) (transport.CapableConn, error) {
+	for upd := range ch {
+		switch upd.Kind {
+		case transport.DialFailed:
+			return nil, upd.Error
+		case transport.DialSucceeded:
+			return upd.Conn, nil
+		}
+	}
+	return nil, errors.New("channel closed before dial completion")
 }

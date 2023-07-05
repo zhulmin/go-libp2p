@@ -48,17 +48,28 @@ func AddTransport(h host.Host, upgrader transport.Upgrader) error {
 var _ transport.Transport = (*Client)(nil)
 var _ io.Closer = (*Client)(nil)
 
-func (c *Client) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (c *Client) Dial(ctx context.Context, a ma.Multiaddr, p peer.ID) chan transport.DialUpdate {
+	updCh := make(chan transport.DialUpdate, 1)
 	connScope, err := c.host.Network().ResourceManager().OpenConnection(network.DirOutbound, false, a)
 	if err != nil {
-		return nil, err
+		updCh <- transport.DialUpdate{Kind: transport.DialFailed, Error: err}
+		close(updCh)
+		return updCh
 	}
-	conn, err := c.dialAndUpgrade(ctx, a, p, connScope)
-	if err != nil {
-		connScope.Done()
-		return nil, err
-	}
-	return conn, nil
+
+	go func() {
+		defer close(updCh)
+
+		conn, err := c.dialAndUpgrade(ctx, a, p, connScope)
+		if err != nil {
+			connScope.Done()
+			updCh <- transport.DialUpdate{Kind: transport.DialFailed, Error: err}
+			return
+		}
+		updCh <- transport.DialUpdate{Kind: transport.DialSucceeded, Conn: conn}
+	}()
+
+	return updCh
 }
 
 func (c *Client) dialAndUpgrade(ctx context.Context, a ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {

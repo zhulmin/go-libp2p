@@ -52,8 +52,9 @@ type CapableConn interface {
 // For a conceptual overview, see https://docs.libp2p.io/concepts/transport/
 type Transport interface {
 	// Dial dials a remote peer. It should try to reuse local listener
-	// addresses if possible, but it may choose not to.
-	Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (CapableConn, error)
+	// addresses if possible, but it may choose not to. Updates related to the
+	// dial are sent on the returned channel.
+	Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) chan DialUpdate
 
 	// CanDial returns true if this transport knows how to dial the given
 	// multiaddr.
@@ -124,3 +125,27 @@ type Upgrader interface {
 	// Upgrade upgrades the multiaddr/net connection into a full libp2p-transport connection.
 	Upgrade(ctx context.Context, t Transport, maconn manet.Conn, dir network.Direction, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
 }
+
+// DialUpdate is an update related to the dial.
+type DialUpdate struct {
+	// Kind is the kind of update.
+	// If Kind is DialSucceeded, Conn is the resulting connection.
+	// If Kind is DialFailed, Error should be non nil.
+	Kind DialUpdateKind
+	// Error is any error that occured while dialing.
+	Error error
+	// Conn is the resulting connection of a successful dial.
+	Conn CapableConn
+}
+
+// DialUpdateKind indicates the kind of DialUpdate
+type DialUpdateKind int
+
+const (
+	// DialSucceeded indicates the dial succeeded.
+	DialSucceeded DialUpdateKind = iota
+	// DialFailed indicates the dial failed.
+	DialFailed
+	// DialProgressed indicates some progress was made on the Dial.
+	DialProgressed
+)

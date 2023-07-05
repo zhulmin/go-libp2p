@@ -115,7 +115,7 @@ func SubtestBasic(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr, 
 		t.Error("CanDial should have returned true")
 	}
 
-	connA, err = tb.Dial(ctx, list.Multiaddr(), peerA)
+	connA, err = GetDialResult(tb.Dial(ctx, list.Multiaddr(), peerA))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func SubtestPingPong(t *testing.T, ta, tb transport.Transport, maddr ma.Multiadd
 		t.Error("CanDial should have returned true")
 	}
 
-	connB, err = tb.Dial(ctx, list.Multiaddr(), peerA)
+	connB, err = GetDialResult(tb.Dial(ctx, list.Multiaddr(), peerA))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +297,7 @@ func SubtestCancel(t *testing.T, ta, tb transport.Transport, maddr ma.Multiaddr,
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	c, err := tb.Dial(ctx, list.Multiaddr(), peerA)
+	c, err := GetDialResult(tb.Dial(ctx, list.Multiaddr(), peerA))
 	if err == nil {
 		c.Close()
 		t.Fatal("dial should have failed")

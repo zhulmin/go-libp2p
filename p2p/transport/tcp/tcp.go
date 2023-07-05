@@ -175,19 +175,29 @@ func (t *TcpTransport) maDial(ctx context.Context, raddr ma.Multiaddr) (manet.Co
 }
 
 // Dial dials the peer at the remote address.
-func (t *TcpTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
+func (t *TcpTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) chan transport.DialUpdate {
+	updCh := make(chan transport.DialUpdate, 1)
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
 		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
-		return nil, err
+		updCh <- transport.DialUpdate{Kind: transport.DialFailed, Error: err}
+		close(updCh)
+		return updCh
 	}
 
-	c, err := t.dialWithScope(ctx, raddr, p, connScope)
-	if err != nil {
-		connScope.Done()
-		return nil, err
-	}
-	return c, nil
+	go func() {
+		defer close(updCh)
+
+		c, err := t.dialWithScope(ctx, raddr, p, connScope)
+		if err != nil {
+			connScope.Done()
+			updCh <- transport.DialUpdate{Kind: transport.DialFailed, Error: err}
+			return
+		}
+		updCh <- transport.DialUpdate{Kind: transport.DialSucceeded, Conn: c}
+	}()
+
+	return updCh
 }
 
 func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {

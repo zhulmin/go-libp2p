@@ -88,7 +88,7 @@ func TestResourceManager(t *testing.T) {
 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(scope, nil)
 		scope.EXPECT().SetPeer(peerA)
 		scope.EXPECT().PeerScope().Return(&network.NullScope{}).AnyTimes() // called by the upgrader
-		conn, err := tb.Dial(context.Background(), ln.Multiaddr(), peerA)
+		conn, err := ttransport.GetDialResult(tb.Dial(context.Background(), ln.Multiaddr(), peerA))
 		require.NoError(t, err)
 		scope.EXPECT().Done()
 		defer conn.Close()
@@ -97,7 +97,7 @@ func TestResourceManager(t *testing.T) {
 	t.Run("connection denied", func(t *testing.T) {
 		rerr := errors.New("nope")
 		rcmgr.EXPECT().OpenConnection(network.DirOutbound, true, ln.Multiaddr()).Return(nil, rerr)
-		_, err = tb.Dial(context.Background(), ln.Multiaddr(), peerA)
+		_, err = ttransport.GetDialResult(tb.Dial(context.Background(), ln.Multiaddr(), peerA))
 		require.ErrorIs(t, err, rerr)
 	})
 
@@ -107,7 +107,7 @@ func TestResourceManager(t *testing.T) {
 		rerr := errors.New("nope")
 		scope.EXPECT().SetPeer(peerA).Return(rerr)
 		scope.EXPECT().Done()
-		_, err = tb.Dial(context.Background(), ln.Multiaddr(), peerA)
+		_, err = ttransport.GetDialResult(tb.Dial(context.Background(), ln.Multiaddr(), peerA))
 		require.ErrorIs(t, err, rerr)
 	})
 }

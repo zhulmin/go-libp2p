@@ -104,23 +104,34 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 }
 
 // Dial dials a new QUIC connection
-func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (_c tpt.CapableConn, _err error) {
+func (t *transport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) chan tpt.DialUpdate {
+	updCh := make(chan tpt.DialUpdate, 1)
+
 	if ok, isClient, _ := network.GetSimultaneousConnect(ctx); ok && !isClient {
-		return t.holePunch(ctx, raddr, p)
+		go t.holePunch(ctx, raddr, p, updCh)
+		return updCh
 	}
 
 	scope, err := t.rcmgr.OpenConnection(network.DirOutbound, false, raddr)
 	if err != nil {
 		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
-		return nil, err
+		updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: err}
+		close(updCh)
+		return updCh
 	}
 
-	c, err := t.dialWithScope(ctx, raddr, p, scope)
-	if err != nil {
-		scope.Done()
-		return nil, err
-	}
-	return c, nil
+	go func() {
+		defer close(updCh)
+		c, err := t.dialWithScope(ctx, raddr, p, scope)
+		if err != nil {
+			scope.Done()
+			updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: err}
+			return
+		}
+		updCh <- tpt.DialUpdate{Kind: tpt.DialSucceeded, Conn: c}
+	}()
+
+	return updCh
 }
 
 func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, scope network.ConnManagementScope) (tpt.CapableConn, error) {
@@ -181,18 +192,23 @@ func (t *transport) removeConn(conn quic.Connection) {
 	t.connMx.Unlock()
 }
 
-func (t *transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (tpt.CapableConn, error) {
+func (t *transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID, updCh chan tpt.DialUpdate) {
+	defer close(updCh)
+
 	network, saddr, err := manet.DialArgs(raddr)
 	if err != nil {
-		return nil, err
+		updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: err}
+		return
 	}
 	addr, err := net.ResolveUDPAddr(network, saddr)
 	if err != nil {
-		return nil, err
+		updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: err}
+		return
 	}
 	pconn, err := t.connManager.Dial(network, addr)
 	if err != nil {
-		return nil, err
+		updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: err}
+		return
 	}
 	defer pconn.DecreaseCount()
 
@@ -203,7 +219,8 @@ func (t *transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID
 	t.holePunchingMx.Lock()
 	if _, ok := t.holePunching[key]; ok {
 		t.holePunchingMx.Unlock()
-		return nil, fmt.Errorf("already punching hole for %s", addr)
+		updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: fmt.Errorf("already punching hole for %s", addr)}
+		return
 	}
 	connCh := make(chan tpt.CapableConn, 1)
 	t.holePunching[key] = &activeHolePunch{connCh: connCh}
@@ -247,7 +264,8 @@ loop:
 			t.holePunchingMx.Lock()
 			delete(t.holePunching, key)
 			t.holePunchingMx.Unlock()
-			return c, nil
+			updCh <- tpt.DialUpdate{Kind: tpt.DialSucceeded, Conn: c}
+			return
 		case <-timer.C:
 		case <-ctx.Done():
 			punchErr = ErrHolePunching
@@ -262,9 +280,11 @@ loop:
 	}()
 	select {
 	case c := <-t.holePunching[key].connCh:
-		return c, nil
+		updCh <- tpt.DialUpdate{Kind: tpt.DialSucceeded, Conn: c}
+		return
 	default:
-		return nil, punchErr
+		updCh <- tpt.DialUpdate{Kind: tpt.DialFailed, Error: punchErr}
+		return
 	}
 }
 
