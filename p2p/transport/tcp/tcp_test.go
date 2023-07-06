@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -145,6 +146,66 @@ func TestTcpTransportCantListenUtp(t *testing.T) {
 		envReuseportVal = false
 	}
 	envReuseportVal = true
+}
+
+func TestTCPTransportDialUpdates(t *testing.T) {
+	peerA, ia := makeInsecureMuxer(t)
+	_, ib := makeInsecureMuxer(t)
+
+	ua, err := tptu.New(ia, muxers, nil, nil, nil)
+	require.NoError(t, err)
+	tl, err := NewTCPTransport(ua, nil)
+	require.NoError(t, err)
+	li, err := tl.Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0"))
+	require.NoError(t, err)
+	addr := li.Multiaddr()
+
+	ub, err := tptu.New(ib, muxers, nil, nil, nil)
+	require.NoError(t, err)
+	tb, err := NewTCPTransport(ub, nil)
+	require.NoError(t, err)
+	ch := tb.Dial(context.Background(), addr, peerA)
+	select {
+	case upd := <-ch:
+		if upd.Kind != transport.DialProgressed {
+			t.Fatalf("expected to receive a dial progressed event, got: %+v", upd)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("expected to receive a dial progressed event")
+	}
+
+	select {
+	case upd := <-ch:
+		if upd.Kind != transport.DialSucceeded {
+			t.Fatalf("expected to receive a dial succeeded event: got: %+v", upd)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("expected to receive a dial succeeded event")
+	}
+
+	// No muxer to check failure after connection established event
+	uc, err := tptu.New(ib, []tptu.StreamMuxer{}, nil, nil, nil)
+	require.NoError(t, err)
+	tc, err := NewTCPTransport(uc, nil)
+	require.NoError(t, err)
+	ch = tc.Dial(context.Background(), addr, peerA)
+	select {
+	case upd := <-ch:
+		if upd.Kind != transport.DialProgressed {
+			t.Fatalf("expected to receive a dial progressed event, got: %+v", upd)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("expected to receive a dial progressed event")
+	}
+
+	select {
+	case upd := <-ch:
+		if upd.Kind != transport.DialFailed {
+			t.Fatalf("expected to receive a dial succeeded event: got: %+v", upd)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("expected to receive a dial succeeded event")
+	}
 }
 
 func makeInsecureMuxer(t *testing.T) (peer.ID, []sec.SecureTransport) {
