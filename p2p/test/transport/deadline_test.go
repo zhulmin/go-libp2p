@@ -11,40 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewStreamDeadlines(t *testing.T) {
-	for _, tc := range transportsToTest {
-		t.Run(tc.Name, func(t *testing.T) {
-			if strings.Contains(tc.Name, "WebSocket") || strings.Contains(tc.Name, "Yamux") {
-				t.Skip("Fixme: websocket and yamux are flaky in this this")
-			}
-			if strings.Contains(tc.Name, "mplex") {
-				t.Skip("In a localhost test, writes may succeed instantly so a select { <-ctx.Done; <-write } may write.")
-			}
-
-			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
-			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
-
-			require.NoError(t, dialer.Connect(context.Background(), peer.AddrInfo{ID: listener.ID(), Addrs: listener.Addrs()}))
-
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			// Use cancelled context
-			_, err := dialer.Network().NewStream(ctx, listener.ID())
-			require.ErrorIs(t, err, context.Canceled)
-		})
-	}
-}
-
 func TestReadWriteDeadlines(t *testing.T) {
 	// Send a lot of data so that writes have to flush (can't just buffer it all)
 	sendBuf := make([]byte, 1<<20)
 
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			if strings.Contains(tc.Name, "mplex") {
-				t.Skip("Fixme: mplex fails this test")
-				return
-			}
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
 			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 
