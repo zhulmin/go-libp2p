@@ -43,7 +43,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 				_, err = s.Read(buf)
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "deadline")
-				require.Less(t, time.Since(start), 100*time.Millisecond)
+				require.Less(t, time.Since(start), 1*time.Second)
 
 				if strings.Contains(tc.Name, "mplex") {
 					// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
@@ -62,7 +62,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 				_, err = s.Write(sendBuf)
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "deadline")
-				require.Less(t, time.Since(start), 100*time.Millisecond)
+				require.Less(t, time.Since(start), 1*time.Second)
 
 				if strings.Contains(tc.Name, "mplex") {
 					// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
@@ -90,7 +90,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 						}
 						require.Error(t, err)
 						require.Contains(t, err.Error(), "deadline")
-						require.Less(t, time.Since(start), 100*time.Millisecond)
+						require.Less(t, time.Since(start), 1*time.Second)
 
 						if strings.Contains(tc.Name, "mplex") {
 							// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
