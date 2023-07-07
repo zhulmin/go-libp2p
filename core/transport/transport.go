@@ -142,10 +142,10 @@ type DialUpdate struct {
 type DialUpdateKind int
 
 const (
+	// DialProgressed indicates some progress was made on the Dial.
+	DialProgressed DialUpdateKind = iota
 	// DialSucceeded indicates the dial succeeded.
-	DialSucceeded DialUpdateKind = iota
+	DialSucceeded
 	// DialFailed indicates the dial failed.
 	DialFailed
-	// DialProgressed indicates some progress was made on the Dial.
-	DialProgressed
 )

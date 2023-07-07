@@ -1,35 +1,14 @@
 package swarm
 
 import (
-	"context"
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
-
-type dialResult struct {
-	Conn transport.CapableConn
-	Addr ma.Multiaddr
-	Err  error
-}
-
-type dialJob struct {
-	addr    ma.Multiaddr
-	peer    peer.ID
-	ctx     context.Context
-	resp    chan dialResult
-	timeout time.Duration
-}
-
-func (dj *dialJob) cancelled() bool {
-	return dj.ctx.Err() != nil
-}
 
 type dialLimiter struct {
 	lk sync.Mutex
@@ -45,7 +24,7 @@ type dialLimiter struct {
 	waitingOnPeerLimit map[peer.ID][]*dialJob
 }
 
-type dialfunc func(context.Context, peer.ID, ma.Multiaddr) (transport.CapableConn, error)
+type dialfunc func(dj *dialJob)
 
 func newDialLimiter(df dialfunc) *dialLimiter {
 	fd := ConcurrentFdDials
@@ -91,7 +70,10 @@ func (dl *dialLimiter) freeFDToken() {
 		dl.fdConsuming++
 
 		// we already have activePerPeer token at this point so we can just dial
-		go dl.executeDial(next)
+		go func() {
+			defer dl.finishedDial(next)
+			dl.dialFunc(next)
+		}()
 		return
 	}
 }
@@ -166,7 +148,11 @@ func (dl *dialLimiter) addCheckFdLimit(dj *dialJob) {
 
 	log.Debugf("[limiter] executing dial; peer: %s; addr: %s; FD consuming: %d; waiting: %d",
 		dj.peer, dj.addr, dl.fdConsuming, len(dl.waitingOnFd))
-	go dl.executeDial(dj)
+
+	go func() {
+		defer dl.finishedDial(dj)
+		dl.dialFunc(dj)
+	}()
 }
 
 func (dl *dialLimiter) addCheckPeerLimit(dj *dialJob) {
@@ -202,26 +188,4 @@ func (dl *dialLimiter) clearAllPeerDials(p peer.ID) {
 	// NB: the waitingOnFd list doesn't need to be cleaned out here, we will
 	// remove them as we encounter them because they are 'cancelled' at this
 	// point
-}
-
-// executeDial calls the dialFunc, and reports the result through the response
-// channel when finished. Once the response is sent it also releases all tokens
-// it held during the dial.
-func (dl *dialLimiter) executeDial(j *dialJob) {
-	defer dl.finishedDial(j)
-	if j.cancelled() {
-		return
-	}
-
-	dctx, cancel := context.WithTimeout(j.ctx, j.timeout)
-	defer cancel()
-
-	con, err := dl.dialFunc(dctx, j.peer, j.addr)
-	select {
-	case j.resp <- dialResult{Conn: con, Addr: j.addr, Err: err}:
-	case <-j.ctx.Done():
-		if con != nil {
-			con.Close()
-		}
-	}
 }
