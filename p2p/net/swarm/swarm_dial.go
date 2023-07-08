@@ -492,7 +492,7 @@ func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp
 
 // dialAddr is the actual dial for an addr specified by the dialJob. It is indirectly invoked through the limiter
 func (s *Swarm) dialAddr(j *dialJob) {
-	maybeSendResult := func(kind transport.DialUpdateKind, conn transport.CapableConn, err error) {
+	maybeSendUpdate := func(kind transport.DialUpdateKind, conn transport.CapableConn, err error) {
 		select {
 		case j.resp <- dialResult{Addr: j.addr, Kind: kind, Conn: conn, Err: err}:
 		case <-j.ctx.Done():
@@ -504,21 +504,21 @@ func (s *Swarm) dialAddr(j *dialJob) {
 
 	// Just to double check. Costs nothing.
 	if s.local == j.peer {
-		maybeSendResult(transport.DialFailed, nil, ErrDialToSelf)
+		maybeSendUpdate(transport.DialFailed, nil, ErrDialToSelf)
 		return
 	}
 
 	// Check before we start work
 	if err := j.ctx.Err(); err != nil {
 		log.Debugf("%s swarm not dialing. Context cancelled: %v. %s %s", s.local, err, j.peer, j.addr)
-		maybeSendResult(transport.DialFailed, nil, err)
+		maybeSendUpdate(transport.DialFailed, nil, err)
 		return
 	}
 	log.Debugf("%s swarm dialing %s %s", s.local, j.peer, j.addr)
 
 	tpt := s.TransportForDialing(j.addr)
 	if tpt == nil {
-		maybeSendResult(transport.DialFailed, nil, ErrNoTransport)
+		maybeSendUpdate(transport.DialFailed, nil, ErrNoTransport)
 		return
 	}
 
@@ -538,6 +538,8 @@ loop:
 		case transport.DialSucceeded:
 			conn = upd.Conn
 			break loop
+		case transport.DialProgressed:
+			maybeSendUpdate(upd.Kind, nil, nil)
 		default:
 			log.Debugf("update on dial to %s at %s: %v", j.peer, j.addr, upd)
 		}
@@ -552,7 +554,7 @@ loop:
 		if s.metricsTracer != nil {
 			s.metricsTracer.FailedDialing(j.addr, err)
 		}
-		maybeSendResult(transport.DialFailed, nil, err)
+		maybeSendUpdate(transport.DialFailed, nil, err)
 		return
 	}
 	canonicallog.LogPeerStatus(100, conn.RemotePeer(), conn.RemoteMultiaddr(), "connection_status", "established", "dir", "outbound")
@@ -567,12 +569,12 @@ loop:
 		conn.Close()
 		err = fmt.Errorf("BUG in transport %T: tried to dial %s, dialed %s", j.peer, conn.RemotePeer(), tpt)
 		log.Error(err)
-		maybeSendResult(transport.DialFailed, nil, err)
+		maybeSendUpdate(transport.DialFailed, nil, err)
 		return
 	}
 
 	// success! we got one!
-	maybeSendResult(transport.DialSucceeded, conn, nil)
+	maybeSendUpdate(transport.DialSucceeded, conn, nil)
 }
 
 // TODO We should have a `IsFdConsuming() bool` method on the `Transport` interface in go-libp2p/core/transport.

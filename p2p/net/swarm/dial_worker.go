@@ -8,8 +8,10 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // /////////////////////////////////////////////////////////////////////////////////
@@ -120,7 +122,7 @@ func (w *dialWorker) loop() {
 	defer w.wg.Done()
 	defer w.s.limiter.clearAllPeerDials(w.peer)
 
-	// dq is used to pace dials to different addresses of the peer
+	ds := newDialScheduler(w.cl)
 	dq := newDialQueue()
 	// dialsInFlight is the number of dials in flight.
 	dialsInFlight := 0
@@ -129,12 +131,39 @@ func (w *dialWorker) loop() {
 	// dialTimer is the dialTimer used to trigger dials
 	dialTimer := w.cl.InstantTimer(startTime.Add(math.MaxInt64))
 	timerRunning := true
+
+	// tcpUpgradeWaitEnd is a map from TCP addresses with established connection to estimated
+	// end time for security handshake and muxer selection
+	tcpUpgradeWaitEnd := make(map[string]time.Time)
+
 	// scheduleNextDial updates timer for triggering the next dial
 	scheduleNextDial := func() {
 		if timerRunning && !dialTimer.Stop() {
 			<-dialTimer.Ch()
 		}
 		timerRunning = false
+
+		// If there's a TCP connection upgrade in progress, wait for the latest established connection to
+		// upgrade.
+		now := time.Now()
+		for a, t := range tcpUpgradeWaitEnd {
+			// Remove expired entries first
+			if t.Before(now) {
+				delete(tcpUpgradeWaitEnd, a)
+			}
+		}
+		if len(tcpUpgradeWaitEnd) > 0 {
+			nextDialTime := now
+			for _, t := range tcpUpgradeWaitEnd {
+				if t.After(nextDialTime) {
+					nextDialTime = t
+				}
+			}
+			dialTimer.Reset(nextDialTime)
+			timerRunning = true
+			return
+		}
+
 		if dq.len() > 0 {
 			if dialsInFlight == 0 && !w.connected {
 				// if there are no dials in flight, trigger the next dials immediately
@@ -312,8 +341,6 @@ loop:
 			// A dial to an address has completed.
 			// Update all requests waiting on this address. On success, complete the request.
 			// On error, record the error
-
-			dialsInFlight--
 			ad, ok := w.trackedDials[string(res.Addr.Bytes())]
 			if !ok {
 				log.Errorf("SWARM BUG: no entry for address %s in trackedDials", res.Addr)
@@ -323,6 +350,7 @@ loop:
 				continue
 			}
 
+			dialsInFlight--
 			if res.Conn != nil {
 				// we got a connection, add it to the swarm
 				conn, err := w.s.addConn(res.Conn, network.DirOutbound)
@@ -489,4 +517,78 @@ func (dq *dialQueue) top() network.AddrDelay {
 // len returns the number of elements in the queue
 func (dq *dialQueue) len() int {
 	return len(dq.q)
+}
+
+type dialScheduler struct {
+	dialQueue
+	startTime         time.Time
+	tcpUpgradeWaitEnd map[string]time.Time
+	cl                Clock
+	connected         bool
+	simConnect        bool
+}
+
+func newDialScheduler(cl Clock) *dialScheduler {
+	return &dialScheduler{
+		dialQueue:         *newDialQueue(),
+		tcpUpgradeWaitEnd: make(map[string]time.Time),
+		cl:                cl,
+		startTime:         cl.Now(),
+	}
+}
+
+func (s *dialScheduler) SetSimConnect(v bool) {
+	s.simConnect = v
+	if s.simConnect {
+		s.tcpUpgradeWaitEnd = nil
+	}
+}
+
+func (s *dialScheduler) RecordResult(res dialResult) {
+	switch res.Kind {
+	case transport.DialProgressed:
+		if s.tcpUpgradeWaitEnd != nil && isProtocolAddr(res.Addr, ma.P_TCP) {
+			if manet.IsPublicAddr(res.Addr) {
+				s.tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = time.Now().Add(2 * PublicTCPDelay)
+			} else {
+				s.tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = time.Now().Add(3 * PublicTCPDelay)
+			}
+		}
+	case transport.DialSucceeded:
+		s.connected = true
+		delete(s.tcpUpgradeWaitEnd, string(res.Addr.Bytes()))
+	case transport.DialFailed:
+		delete(s.tcpUpgradeWaitEnd, string(res.Addr.Bytes()))
+	}
+}
+
+func (s *dialScheduler) NextDialTime(dialsInFlight int) time.Time {
+	// If there's a TCP connection upgrade in progress, wait for the latest established connection to
+	// upgrade.
+	now := time.Now()
+	for a, t := range s.tcpUpgradeWaitEnd {
+		// Remove expired entries first
+		if t.Before(now) {
+			delete(s.tcpUpgradeWaitEnd, a)
+		}
+	}
+	if len(s.tcpUpgradeWaitEnd) > 0 {
+		nextDialTime := now
+		for _, t := range s.tcpUpgradeWaitEnd {
+			if t.After(nextDialTime) {
+				nextDialTime = t
+			}
+		}
+		return nextDialTime
+	}
+
+	if s.dialQueue.len() > 0 {
+		if dialsInFlight == 0 && !s.connected {
+			// if there are no dials in flight, trigger the next dials immediately
+			return now.Add(-1)
+		} else {
+			return s.startTime.Add(s.dialQueue.top().Delay)
+		}
+	}
+	return now.Add(math.MaxInt64)
 }

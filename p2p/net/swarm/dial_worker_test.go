@@ -1081,3 +1081,119 @@ func TestDialWorkerLoopAddrDedup(t *testing.T) {
 		t.Errorf("expected a fail response")
 	}
 }
+
+func TestDialWorkerLoopTCPUpgradeDelay(t *testing.T) {
+	s1 := makeSwarmWithNoListenAddrs(t)
+	defer s1.Close()
+
+	s2 := makeSwarmWithNoListenAddrs(t)
+	defer s2.Close()
+
+	// acceptAndClose accepts a connection and closes it
+	acceptAndClose := func(a ma.Multiaddr, ch chan bool) manet.Listener {
+		list, err := manet.Listen(a)
+		if err != nil {
+			t.Error(err)
+			return list
+		}
+		go func() {
+			for {
+				conn, err := list.Accept()
+				if err != nil {
+					return
+				}
+				ch <- true
+				conn.Close()
+			}
+		}()
+		return list
+	}
+
+	// all dials to bha* addresses will fail. RFC6666 Discard Prefix
+	// lha* addresses are used to check that dials happen when we expect them to happen
+	bha1 := ma.StringCast("/ip6/0100::1/tcp/1/")
+	lha1 := ma.StringCast("/ip4/127.0.0.1/tcp/20001")
+	ch1 := make(chan bool)
+	li1 := acceptAndClose(lha1, ch1)
+	defer li1.Close()
+
+	bha2 := ma.StringCast("/ip6/0100::1/tcp/2/")
+	lha2 := ma.StringCast("/ip4/127.0.0.1/tcp/20002")
+	ch2 := make(chan bool)
+	li2 := acceptAndClose(lha2, ch2)
+	defer li2.Close()
+
+	bha3 := ma.StringCast("/ip6/0100::1/tcp/3/")
+	lha3 := ma.StringCast("/ip4/127.0.0.1/tcp/20003")
+	ch3 := make(chan bool)
+	li3 := acceptAndClose(lha3, ch3)
+	defer li3.Close()
+
+	s1.dialRanker = func(addrs []ma.Multiaddr) []network.AddrDelay {
+		return []network.AddrDelay{
+			{Addr: bha1, Delay: 0},
+			{Addr: lha1, Delay: 0},
+
+			{Addr: bha2, Delay: 250 * time.Millisecond},
+			{Addr: lha2, Delay: 250 * time.Millisecond},
+
+			{Addr: bha3, Delay: 750 * time.Millisecond},
+			{Addr: lha3, Delay: 750 * time.Millisecond},
+		}
+	}
+	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{bha1, bha2, bha3}, peerstore.PermanentAddrTTL)
+
+	reqch := make(chan dialRequest)
+	resch := make(chan dialResponse, 2)
+
+	cl := newMockClock()
+	worker := newDialWorker(s1, s2.LocalPeer(), reqch, cl)
+	// we will use this to simulate events on the black holed addresses
+	wresCh := worker.resch
+	go worker.loop()
+	defer worker.wg.Wait()
+	defer close(reqch)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	reqch <- dialRequest{ctx: ctx, resch: resch}
+	<-ch1 // received connection on t1
+
+	select {
+	case <-ch2:
+		t.Errorf("didn't expect connection attempt on second address")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	wresCh <- dialResult{Kind: transport.DialProgressed, Addr: bha1}
+	cl.AdvanceBy(400 * time.Millisecond)
+	select {
+	case <-ch2:
+		t.Errorf("didn't expect connection attempt on second address")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	wresCh <- dialResult{Kind: transport.DialFailed, Addr: bha1, Err: errors.New("test failure")}
+	select {
+	case <-ch2:
+	case <-time.After(100 * time.Millisecond):
+		t.Errorf("expected connection attempt on second address")
+	}
+
+	cl.AdvanceBy(100 * time.Millisecond)
+	// fail the second attempt to trigger the next dials immediately
+	wresCh <- dialResult{Kind: transport.DialFailed, Addr: bha2, Err: errors.New("test failure")}
+	select {
+	case <-ch3:
+		wresCh <- dialResult{Kind: transport.DialFailed, Addr: bha3, Err: errors.New("test failure")}
+	case <-time.After(100 * time.Millisecond):
+		t.Errorf("expected connection attempt on third address")
+	}
+	select {
+	case r := <-resch:
+		require.Error(t, r.err)
+	case <-time.After(5 * time.Second):
+		t.Errorf("expected to get a response")
+	}
+}
