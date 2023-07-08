@@ -525,7 +525,7 @@ func (s *Swarm) dialAddr(j *dialJob) {
 	dctx, cancel := context.WithTimeout(j.ctx, j.timeout)
 	defer cancel()
 
-	var conn transport.CapableConn
+	var connC transport.CapableConn
 	var err error
 	start := time.Now()
 	updCh := tpt.Dial(dctx, j.addr, j.peer)
@@ -536,7 +536,7 @@ loop:
 			err = upd.Error
 			break loop
 		case transport.DialSucceeded:
-			conn = upd.Conn
+			connC = upd.Conn
 			break loop
 		case transport.DialProgressed:
 			maybeSendUpdate(upd.Kind, nil, nil)
@@ -557,24 +557,24 @@ loop:
 		maybeSendUpdate(transport.DialFailed, nil, err)
 		return
 	}
-	canonicallog.LogPeerStatus(100, conn.RemotePeer(), conn.RemoteMultiaddr(), "connection_status", "established", "dir", "outbound")
+	canonicallog.LogPeerStatus(100, connC.RemotePeer(), connC.RemoteMultiaddr(), "connection_status", "established", "dir", "outbound")
 	if s.metricsTracer != nil {
-		connWithMetrics := wrapWithMetrics(conn, s.metricsTracer, start, network.DirOutbound)
+		connWithMetrics := wrapWithMetrics(connC, s.metricsTracer, start, network.DirOutbound)
 		connWithMetrics.completedHandshake()
-		conn = connWithMetrics
+		connC = connWithMetrics
 	}
 
 	// Trust the transport? Yeah... right.
-	if conn.RemotePeer() != j.peer {
-		conn.Close()
-		err = fmt.Errorf("BUG in transport %T: tried to dial %s, dialed %s", j.peer, conn.RemotePeer(), tpt)
+	if connC.RemotePeer() != j.peer {
+		connC.Close()
+		err = fmt.Errorf("BUG in transport %T: tried to dial %s, dialed %s", j.peer, connC.RemotePeer(), tpt)
 		log.Error(err)
 		maybeSendUpdate(transport.DialFailed, nil, err)
 		return
 	}
 
 	// success! we got one!
-	maybeSendUpdate(transport.DialSucceeded, conn, nil)
+	maybeSendUpdate(transport.DialSucceeded, connC, nil)
 }
 
 // TODO We should have a `IsFdConsuming() bool` method on the `Transport` interface in go-libp2p/core/transport.

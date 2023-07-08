@@ -572,6 +572,9 @@ func checkDialWorkerLoopScheduling(t *testing.T, s1, s2 *Swarm, tc schedulingTes
 	// at appropriate moment a message is sent to dialState.ch to trigger
 	// failure
 	failDials := make(map[ma.Multiaddr]dialState)
+	// upgradeWaits is used to track if the worker loop is waiting for upgrading a
+	// tcp connection
+	upgradeWaits := make(map[ma.Multiaddr]time.Time)
 	// recvCh is used to receive dial notifications for dials that will fail
 	recvCh := make(chan struct{}, 100)
 	// allDials tracks all pending dials
@@ -643,8 +646,30 @@ loop:
 			if p.failAt.Before(cl.Now()) || p.failAt == cl.Now() {
 				p.ch <- struct{}{}
 				delete(failDials, a)
+				delete(upgradeWaits, a)
 			}
 		}
+
+		// expire any upgrade wait dials
+		for a, t := range upgradeWaits {
+			if t.Before(cl.Now()) || t == cl.Now() {
+				delete(upgradeWaits, a)
+			}
+		}
+
+		// we are waiting for a TCP upgrade. Ensure no dial happens
+		if len(upgradeWaits) > 0 {
+			select {
+			case <-recvCh:
+				return errors.New("no dial should have happened while waiting for upgrade")
+			case <-time.After(10 * time.Millisecond):
+				// advance the clock
+				time.Sleep(10 * time.Millisecond)
+				cl.AdvanceBy(10 * time.Millisecond)
+			}
+			continue loop
+		}
+
 		// if there are no pending dials, next dial should have been triggered
 		trigger := len(failDials) == 0
 
@@ -657,29 +682,14 @@ loop:
 			}
 		}
 		for a, ds := range allDials {
-			if (trigger && mi == ds.delay) ||
-				cl.Now().After(st.Add(ds.delay)) ||
-				cl.Now() == st.Add(ds.delay) {
-				if ds.success {
-					// check for success and exit
-					select {
-					case r := <-resch:
-						if r.conn == nil {
-							return errors.New("expected connection to succeed")
-						}
-					// High timeout here is okay. We will exit whenever the other branch
-					// is triggered
-					case <-time.After(10 * time.Second):
-						return errors.New("expected to receive a response")
-					}
-					connected = true
-					break loop
-				} else {
+			if !ds.success {
+				if (trigger && mi == ds.delay) ||
+					cl.Now().After(st.Add(ds.delay)) ||
+					cl.Now() == st.Add(ds.delay) {
 					// ensure that a failing dial attempt happened but didn't succeed
 					select {
 					case <-recvCh:
-					case <-resch:
-						return errors.New("didn't expect a response")
+						upgradeWaits[a] = cl.Now().Add(2 * PrivateTCPDelay)
 					// High timeout here is okay. We will exit whenever the other branch
 					// is triggered
 					case <-time.After(10 * time.Second):
@@ -691,17 +701,44 @@ loop:
 						addr:   a,
 						delay:  ds.delay,
 					}
+					delete(allDials, a)
 				}
-				delete(allDials, a)
 			}
 		}
+
+		for a, ds := range allDials {
+			if ds.success {
+				if (trigger && mi == ds.delay) ||
+					cl.Now().After(st.Add(ds.delay)) ||
+					cl.Now() == st.Add(ds.delay) {
+					// check for success and exit
+					select {
+					case r := <-resch:
+						if r.conn == nil {
+							return errors.New("expected connection to succeed")
+						}
+					// High timeout here is okay. We will exit whenever the other branch
+					// is triggered
+					case <-time.After(10 * time.Second):
+						return fmt.Errorf("expected to receive a response %d", cl.Now().Sub(st))
+					}
+					connected = true
+					delete(allDials, a)
+					break loop
+				}
+			}
+		}
+
 		// check for unexpected dials
 		select {
 		case <-recvCh:
 			return errors.New("no dial should have succeeded at this instant")
+		case <-resch:
+			return errors.New("didn't expect a response")
 		default:
 		}
 
+		time.Sleep(3 * time.Millisecond)
 		// advance the clock
 		cl.AdvanceBy(10 * time.Millisecond)
 		// nothing more to do. exit
@@ -1195,5 +1232,70 @@ func TestDialWorkerLoopTCPUpgradeDelay(t *testing.T) {
 		require.Error(t, r.err)
 	case <-time.After(5 * time.Second):
 		t.Errorf("expected to get a response")
+	}
+}
+
+func TestDialWorkerLoopRanking2(t *testing.T) {
+	addrs := make([]ma.Multiaddr, 0)
+	for i := 0; i < 10; i++ {
+		for {
+			p := 20000 + i
+			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", p)))
+			break
+		}
+	}
+
+	testcases := []schedulingTestCase{
+		{
+			name: "first success",
+			input: []timedDial{
+				{
+					addr:      addrs[0],
+					delay:     320000000,
+					success:   true,
+					failAfter: 980000000,
+				},
+				{
+					addr:      addrs[1],
+					delay:     490000000,
+					success:   false,
+					failAfter: 460000000,
+				},
+				{
+					addr:      addrs[2],
+					delay:     20000000,
+					success:   false,
+					failAfter: 660000000,
+				},
+				{
+					addr:      addrs[3],
+					delay:     260000000,
+					success:   false,
+					failAfter: 790000000,
+				},
+				{
+					addr:      addrs[4],
+					delay:     250000000,
+					success:   false,
+					failAfter: 130000000,
+				},
+			},
+			maxDuration: 10000 * time.Millisecond,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			s1 := makeSwarmWithNoListenAddrs(t)
+			defer s1.Close()
+			s2 := makeSwarmWithNoListenAddrs(t)
+			defer s2.Close()
+			// setup the ranker to trigger dials according to the test case
+			s1.dialRanker = makeRanker(tc.input)
+			err := checkDialWorkerLoopScheduling(t, s1, s2, tc)
+			if err != nil {
+				t.Error(err)
+			}
+		})
 	}
 }

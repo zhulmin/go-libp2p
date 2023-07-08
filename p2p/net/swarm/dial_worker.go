@@ -123,18 +123,13 @@ func (w *dialWorker) loop() {
 	defer w.s.limiter.clearAllPeerDials(w.peer)
 
 	ds := newDialScheduler(w.cl)
-	dq := newDialQueue()
+
 	// dialsInFlight is the number of dials in flight.
 	dialsInFlight := 0
 
-	startTime := w.cl.Now()
 	// dialTimer is the dialTimer used to trigger dials
-	dialTimer := w.cl.InstantTimer(startTime.Add(math.MaxInt64))
+	dialTimer := w.cl.InstantTimer(w.cl.Now().Add(math.MaxInt64))
 	timerRunning := true
-
-	// tcpUpgradeWaitEnd is a map from TCP addresses with established connection to estimated
-	// end time for security handshake and muxer selection
-	tcpUpgradeWaitEnd := make(map[string]time.Time)
 
 	// scheduleNextDial updates timer for triggering the next dial
 	scheduleNextDial := func() {
@@ -143,36 +138,12 @@ func (w *dialWorker) loop() {
 		}
 		timerRunning = false
 
-		// If there's a TCP connection upgrade in progress, wait for the latest established connection to
-		// upgrade.
-		now := time.Now()
-		for a, t := range tcpUpgradeWaitEnd {
-			// Remove expired entries first
-			if t.Before(now) {
-				delete(tcpUpgradeWaitEnd, a)
-			}
-		}
-		if len(tcpUpgradeWaitEnd) > 0 {
-			nextDialTime := now
-			for _, t := range tcpUpgradeWaitEnd {
-				if t.After(nextDialTime) {
-					nextDialTime = t
-				}
-			}
-			dialTimer.Reset(nextDialTime)
-			timerRunning = true
+		nextDialTime := ds.NextDialTime(dialsInFlight)
+		if nextDialTime.IsZero() {
 			return
 		}
-
-		if dq.len() > 0 {
-			if dialsInFlight == 0 && !w.connected {
-				// if there are no dials in flight, trigger the next dials immediately
-				dialTimer.Reset(startTime)
-			} else {
-				dialTimer.Reset(startTime.Add(dq.top().Delay))
-			}
-			timerRunning = true
-		}
+		dialTimer.Reset(nextDialTime)
+		timerRunning = true
 	}
 
 	// totalDials is used to track number of dials made by this worker for metrics
@@ -214,6 +185,7 @@ loop:
 
 			// get the delays to dial these addrs from the swarms dialRanker
 			simConnect, _, _ := network.GetSimultaneousConnect(req.ctx)
+			ds.UpdateSimConnect(simConnect)
 			addrRanking := w.rankAddrs(addrs, simConnect)
 			addrDelay := make(map[string]time.Duration, len(addrRanking))
 
@@ -279,7 +251,7 @@ loop:
 						if simConnect, _, _ := network.GetSimultaneousConnect(ad.ctx); !simConnect {
 							ad.ctx = network.WithSimultaneousConnect(ad.ctx, isClient, reason)
 							// update the element in dq to use the simultaneous connect delay.
-							dq.Add(network.AddrDelay{
+							ds.Add(network.AddrDelay{
 								Addr:  ad.addr,
 								Delay: addrDelay[string(ad.addr.Bytes())],
 							})
@@ -291,7 +263,7 @@ loop:
 			}
 
 			if len(todial) > 0 {
-				now := time.Now()
+				now := w.cl.Now()
 				// these are new addresses, track them and add them to dq
 				for _, a := range todial {
 					w.trackedDials[string(a.Bytes())] = &addrDial{
@@ -300,7 +272,7 @@ loop:
 						requests:  []int{w.reqno},
 						createdAt: now,
 					}
-					dq.Add(network.AddrDelay{Addr: a, Delay: addrDelay[string(a.Bytes())]})
+					ds.Add(network.AddrDelay{Addr: a, Delay: addrDelay[string(a.Bytes())]})
 				}
 			}
 			// setup dialTimer for updates to dq
@@ -312,8 +284,8 @@ loop:
 			// because if the timer triggered before the delay, it means that all
 			// the inflight dials have errored and we should dial the next batch of
 			// addresses
-			now := time.Now()
-			for _, adelay := range dq.NextBatch() {
+			now := w.cl.Now()
+			for _, adelay := range ds.NextBatch() {
 				// spawn the dial
 				ad, ok := w.trackedDials[string(adelay.Addr.Bytes())]
 				if !ok {
@@ -324,8 +296,7 @@ loop:
 				ad.dialRankingDelay = now.Sub(ad.createdAt)
 				err := w.s.dialNextAddr(ad.ctx, w.peer, ad.addr, w.resch)
 				if err != nil {
-					// Errored without attempting a dial. This happens in case of
-					// backoff or black hole.
+					// Errored without attempting a dial. Address is on backoff.
 					w.dispatchError(ad, err)
 				} else {
 					// the dial was successful. update inflight dials
@@ -347,6 +318,12 @@ loop:
 				if res.Conn != nil {
 					res.Conn.Close()
 				}
+				continue
+			}
+
+			ds.RecordResult(res)
+			if res.Kind == transport.DialProgressed {
+				scheduleNextDial()
 				continue
 			}
 
@@ -519,6 +496,9 @@ func (dq *dialQueue) len() int {
 	return len(dq.q)
 }
 
+// dialScheduler helps pace dials to addresses in dialQueue. It provides the time
+// for dialing the next batch of addresses after considering hole punch status, in flight dials,
+// and TCP dials waiting security upgrade.
 type dialScheduler struct {
 	dialQueue
 	startTime         time.Time
@@ -537,9 +517,9 @@ func newDialScheduler(cl Clock) *dialScheduler {
 	}
 }
 
-func (s *dialScheduler) SetSimConnect(v bool) {
-	s.simConnect = v
-	if s.simConnect {
+func (s *dialScheduler) UpdateSimConnect(simConnect bool) {
+	if !s.simConnect && simConnect {
+		s.simConnect = true
 		s.tcpUpgradeWaitEnd = nil
 	}
 }
@@ -549,9 +529,9 @@ func (s *dialScheduler) RecordResult(res dialResult) {
 	case transport.DialProgressed:
 		if s.tcpUpgradeWaitEnd != nil && isProtocolAddr(res.Addr, ma.P_TCP) {
 			if manet.IsPublicAddr(res.Addr) {
-				s.tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = time.Now().Add(2 * PublicTCPDelay)
+				s.tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = s.cl.Now().Add(2 * PublicTCPDelay)
 			} else {
-				s.tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = time.Now().Add(3 * PublicTCPDelay)
+				s.tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = s.cl.Now().Add(2 * PrivateTCPDelay)
 			}
 		}
 	case transport.DialSucceeded:
@@ -563,32 +543,34 @@ func (s *dialScheduler) RecordResult(res dialResult) {
 }
 
 func (s *dialScheduler) NextDialTime(dialsInFlight int) time.Time {
+	now := s.cl.Now()
 	// If there's a TCP connection upgrade in progress, wait for the latest established connection to
 	// upgrade.
-	now := time.Now()
 	for a, t := range s.tcpUpgradeWaitEnd {
 		// Remove expired entries first
-		if t.Before(now) {
+		if !t.After(now) {
 			delete(s.tcpUpgradeWaitEnd, a)
 		}
 	}
-	if len(s.tcpUpgradeWaitEnd) > 0 {
-		nextDialTime := now
-		for _, t := range s.tcpUpgradeWaitEnd {
-			if t.After(nextDialTime) {
-				nextDialTime = t
-			}
+	tcpEnd := time.Time{}
+	for _, t := range s.tcpUpgradeWaitEnd {
+		if t.After(tcpEnd) {
+			tcpEnd = t
 		}
-		return nextDialTime
 	}
 
+	dqNext := time.Time{}
 	if s.dialQueue.len() > 0 {
 		if dialsInFlight == 0 && !s.connected {
 			// if there are no dials in flight, trigger the next dials immediately
-			return now.Add(-1)
+			dqNext = now.Add(-1)
 		} else {
-			return s.startTime.Add(s.dialQueue.top().Delay)
+			dqNext = s.startTime.Add(s.dialQueue.top().Delay)
 		}
 	}
-	return now.Add(math.MaxInt64)
+
+	if tcpEnd.After(dqNext) {
+		return tcpEnd
+	}
+	return dqNext
 }
