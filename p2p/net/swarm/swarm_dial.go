@@ -35,13 +35,6 @@ const maxAddressResolution = 32
 //                                                             retry dialAttempt x
 
 var (
-	// ErrDialBackoff is returned by the backoff code when a given peer has
-	// been dialed too frequently
-	ErrDialBackoff = errors.New("dial backoff")
-
-	// ErrDialRefusedBlackHole is returned when we are in a black holed environment
-	ErrDialRefusedBlackHole = errors.New("dial refused because of black hole")
-
 	// ErrDialToSelf is returned if we attempt to dial our own peer
 	ErrDialToSelf = errors.New("dial to self attempted")
 
@@ -311,7 +304,7 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) ([]ma.Multiaddr, er
 		return nil, err
 	}
 
-	goodAddrs := s.filterKnownUndialables(p, resolved)
+	goodAddrs := s.filterKnownUndialables(ctx, p, resolved)
 	if forceDirect, _ := network.GetForceDirectDial(ctx); forceDirect {
 		goodAddrs = ma.FilterAddrs(goodAddrs, s.nonProxyAddr)
 	}
@@ -388,20 +381,6 @@ func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) ([]ma.Multia
 	return resolved, nil
 }
 
-func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, resch chan dialResult) error {
-	// check the dial backoff
-	if forceDirect, _ := network.GetForceDirectDial(ctx); !forceDirect {
-		if s.backf.Backoff(p, addr) {
-			return ErrDialBackoff
-		}
-	}
-
-	// start the dial
-	s.limitedDial(ctx, p, addr, resch)
-
-	return nil
-}
-
 func (s *Swarm) canDial(addr ma.Multiaddr) bool {
 	t := s.TransportForDialing(addr)
 	return t != nil && t.CanDial(addr)
@@ -418,7 +397,7 @@ func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 // addresses that we know to be our own, and addresses with a better tranport
 // available. This is an optimization to avoid wasting time on dials that we
 // know are going to fail or for which we have a better alternative.
-func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Multiaddr {
+func (s *Swarm) filterKnownUndialables(ctx context.Context, p peer.ID, addrs []ma.Multiaddr) []ma.Multiaddr {
 	lisAddrs, _ := s.InterfaceListenAddresses()
 	var ourAddrs []ma.Multiaddr
 	for _, addr := range lisAddrs {
@@ -430,14 +409,13 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 			return false
 		})
 	}
+	forceDirect, _ := network.GetForceDirectDial(ctx)
 
 	// The order of these two filters is important. If we can only dial /webtransport,
 	// we don't want to filter /webtransport addresses out because the peer had a /quic-v1
 	// address
-
 	// filter addresses we cannot dial
 	addrs = ma.FilterAddrs(addrs, s.canDial)
-
 	// filter low priority addresses among the addresses we can dial
 	addrs = filterLowPriorityAddresses(addrs)
 
@@ -445,6 +423,7 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 	addrs = s.bhd.FilterAddrs(addrs)
 
 	return ma.FilterAddrs(addrs,
+		func(addr ma.Multiaddr) bool { return forceDirect || !s.backf.Backoff(p, addr) },
 		func(addr ma.Multiaddr) bool { return !ma.Contains(ourAddrs, addr) },
 		// TODO: Consider allowing link-local addresses
 		func(addr ma.Multiaddr) bool { return !manet.IsIP6LinkLocal(addr) },

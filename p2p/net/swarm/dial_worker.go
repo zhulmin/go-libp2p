@@ -293,16 +293,9 @@ loop:
 				}
 				ad.dialed = true
 				ad.dialRankingDelay = now.Sub(ad.createdAt)
-				err := w.s.dialNextAddr(ad.ctx, w.peer, ad.addr, w.resch)
-				if err != nil {
-					// Errored without attempting a dial. This happens in case of
-					// backoff or black hole.
-					w.dispatchError(ad, err)
-				} else {
-					// the dial was successful. update inflight dials
-					dialsInFlight++
-					totalDials++
-				}
+				w.s.limitedDial(ad.ctx, w.peer, ad.addr, w.resch)
+				dialsInFlight++
+				totalDials++
 			}
 			timerRunning = false
 			// schedule more dials
@@ -357,18 +350,12 @@ loop:
 				continue loop
 			}
 
-			// it must be an error -- add backoff if applicable and dispatch
-			// ErrDialRefusedBlackHole shouldn't end up here, just a safety check
-			if res.Err != ErrDialRefusedBlackHole && res.Err != context.Canceled && !w.connected {
-				// we only add backoff if there has not been a successful connection
-				// for consistency with the old dialer behavior.
+			// it must be an error -- add backoff if applicable
+			if res.Err != context.Canceled {
 				w.s.backf.AddBackoff(w.peer, res.Addr)
-			} else if res.Err == ErrDialRefusedBlackHole {
-				log.Errorf("SWARM BUG: unexpected ErrDialRefusedBlackHole while dialing peer %s to addr %s",
-					w.peer, res.Addr)
 			}
-
 			w.dispatchError(ad, res.Err)
+
 			// Only schedule next dial on error.
 			// If we scheduleNextDial on success, we will end up making one dial more than
 			// required because the final successful dial will spawn one more dial
@@ -406,14 +393,6 @@ func (w *dialWorker) dispatchError(ad *addrDial, err error) {
 	}
 
 	ad.requests = nil
-
-	// if it was a backoff, clear the address dial so that it doesn't inhibit new dial requests.
-	// this is necessary to support active listen scenarios, where a new dial comes in while
-	// another dial is in progress, and needs to do a direct connection without inhibitions from
-	// dial backoff.
-	if err == ErrDialBackoff {
-		delete(w.trackedDials, string(ad.addr.Bytes()))
-	}
 }
 
 // rankAddrs ranks addresses for dialing. if it's a simConnect request we
