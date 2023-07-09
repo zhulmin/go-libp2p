@@ -435,7 +435,7 @@ func (s *Swarm) filterKnownUndialables(ctx context.Context, p peer.ID, addrs []m
 // limitedDial will start a dial to the given peer when
 // it is able, respecting the various different types of rate
 // limiting that occur without using extra goroutines per addr
-func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp chan dialResult) {
+func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp chan transport.DialUpdate) {
 	timeout := s.dialTimeout
 	if lowTimeoutFilters.AddrBlocked(a) && s.dialTimeoutLocal < s.dialTimeout {
 		timeout = s.dialTimeoutLocal
@@ -449,49 +449,34 @@ func (s *Swarm) limitedDial(ctx context.Context, p peer.ID, a ma.Multiaddr, resp
 	})
 }
 
-type dialResult struct {
-	Kind dialUpdateKind
-	Conn transport.CapableConn
-	Addr ma.Multiaddr
-	Err  error
-}
-
-type dialUpdateKind int
-
-const (
-	DialStarted dialUpdateKind = iota
-	DialFailed
-	DialSuccessful
-)
-
 // dialAddr is the actual dial for an addr, indirectly invoked through the limiter
-func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, resCh chan dialResult) {
+func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, resCh chan transport.DialUpdate) {
 	// Just to double check. Costs nothing.
 	if s.local == p {
-		resCh <- dialResult{Kind: DialFailed, Addr: addr, Err: ErrDialToSelf}
+		resCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: addr, Err: ErrDialToSelf}
 		return
 	}
 	// Check before we start work
 	if err := ctx.Err(); err != nil {
 		log.Debugf("%s swarm not dialing. Context cancelled: %v. %s %s", s.local, err, p, addr)
-		resCh <- dialResult{Kind: DialFailed, Addr: addr, Err: err}
+		resCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: addr, Err: err}
 		return
 	}
 	log.Debugf("%s swarm dialing %s %s", s.local, p, addr)
 
 	tpt := s.TransportForDialing(addr)
 	if tpt == nil {
-		resCh <- dialResult{Kind: DialFailed, Addr: addr, Err: ErrNoTransport}
+		resCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: addr, Err: ErrNoTransport}
 		return
 	}
 
-	resCh <- dialResult{Kind: DialStarted, Addr: addr}
+	resCh <- transport.DialUpdate{Kind: transport.DialStarted, Addr: addr}
 	conn, err := tpt.Dial(ctx, addr, p)
 	if err != nil {
-		resCh <- dialResult{Kind: DialFailed, Addr: addr, Conn: nil, Err: err}
+		resCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: addr, Conn: nil, Err: err}
 		return
 	}
-	resCh <- dialResult{Kind: DialSuccessful, Addr: addr, Conn: conn, Err: err}
+	resCh <- transport.DialUpdate{Kind: transport.DialSuccessful, Addr: addr, Conn: conn, Err: err}
 }
 
 // TODO We should have a `IsFdConsuming() bool` method on the `Transport` interface in go-libp2p/core/transport.

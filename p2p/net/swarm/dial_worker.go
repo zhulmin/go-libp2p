@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/canonicallog"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -86,7 +87,7 @@ type dialWorker struct {
 	// we dial an address at most once
 	trackedDials map[string]*addrDial
 	// resch is used to receive response for dials to the peers addresses.
-	resch chan dialResult
+	resch chan transport.DialUpdate
 
 	connected bool // true when a connection has been successfully established
 
@@ -105,7 +106,7 @@ func newDialWorker(s *Swarm, p peer.ID, reqch <-chan dialRequest, cl Clock) *dia
 		reqch:           reqch,
 		pendingRequests: make(map[*pendRequest]bool),
 		trackedDials:    make(map[string]*addrDial),
-		resch:           make(chan dialResult),
+		resch:           make(chan transport.DialUpdate, 1),
 		cl:              cl,
 	}
 }
@@ -322,7 +323,7 @@ loop:
 				continue
 			}
 
-			if res.Kind == DialStarted {
+			if res.Kind == transport.DialStarted {
 				ad.startTime = w.cl.Now()
 				scheduleNextDial()
 				continue
@@ -352,7 +353,7 @@ loop:
 	}
 }
 
-func (w *dialWorker) handleSuccess(ad *addrDial, res dialResult) {
+func (w *dialWorker) handleSuccess(ad *addrDial, res transport.DialUpdate) {
 	// Ensure we connected to the correct peer.
 	// This was most likely already checked by the security protocol, but it doesn't hurt do it again here.
 	if res.Conn.RemotePeer() != w.peer {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
+	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
@@ -38,7 +39,7 @@ func tcpPortOver(a ma.Multiaddr, n int) bool {
 	return pnum > n
 }
 
-func tryDialAddrs(ctx context.Context, l *dialLimiter, p peer.ID, addrs []ma.Multiaddr, res chan dialResult) {
+func tryDialAddrs(ctx context.Context, l *dialLimiter, p peer.ID, addrs []ma.Multiaddr, res chan transport.DialUpdate) {
 	for _, a := range addrs {
 		l.AddDialJob(&dialJob{
 			ctx:  ctx,
@@ -50,25 +51,25 @@ func tryDialAddrs(ctx context.Context, l *dialLimiter, p peer.ID, addrs []ma.Mul
 }
 
 func hangDialFunc(hang chan struct{}) dialfunc {
-	return func(ctx context.Context, p peer.ID, a ma.Multiaddr, resCh chan dialResult) {
+	return func(ctx context.Context, p peer.ID, a ma.Multiaddr, resCh chan transport.DialUpdate) {
 		if mafmt.UTP.Matches(a) {
-			resCh <- dialResult{}
+			resCh <- transport.DialUpdate{}
 			return
 		}
 
 		_, err := a.ValueForProtocol(ma.P_CIRCUIT)
 		if err == nil {
-			resCh <- dialResult{}
+			resCh <- transport.DialUpdate{}
 			return
 		}
 
 		if tcpPortOver(a, 10) {
-			resCh <- dialResult{}
+			resCh <- transport.DialUpdate{}
 			return
 		}
 
 		<-hang
-		resCh <- dialResult{Err: errors.New("bad dial")}
+		resCh <- transport.DialUpdate{Err: errors.New("bad dial")}
 	}
 }
 
@@ -81,7 +82,7 @@ func TestLimiterBasicDials(t *testing.T) {
 	bads := []ma.Multiaddr{addrWithPort(1), addrWithPort(2), addrWithPort(3), addrWithPort(4)}
 	good := addrWithPort(20)
 
-	resch := make(chan dialResult)
+	resch := make(chan transport.DialUpdate)
 	pid := peer.ID("testpeer")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -132,7 +133,7 @@ func TestFDLimiting(t *testing.T) {
 	goodTCP := addrWithPort(20)
 
 	ctx := context.Background()
-	resch := make(chan dialResult)
+	resch := make(chan transport.DialUpdate)
 
 	// take all fd limit tokens with hang dials
 	for _, pid := range pids {
@@ -190,9 +191,9 @@ func TestFDLimiting(t *testing.T) {
 func TestTokenRedistribution(t *testing.T) {
 	var lk sync.Mutex
 	hangchs := make(map[peer.ID]chan struct{})
-	df := func(ctx context.Context, p peer.ID, a ma.Multiaddr, resCh chan dialResult) {
+	df := func(ctx context.Context, p peer.ID, a ma.Multiaddr, resCh chan transport.DialUpdate) {
 		if tcpPortOver(a, 10) {
-			resCh <- dialResult{}
+			resCh <- transport.DialUpdate{}
 			return
 		}
 
@@ -200,7 +201,7 @@ func TestTokenRedistribution(t *testing.T) {
 		ch := hangchs[p]
 		lk.Unlock()
 		<-ch
-		resCh <- dialResult{Err: fmt.Errorf("test bad dial")}
+		resCh <- transport.DialUpdate{Err: fmt.Errorf("test bad dial")}
 	}
 	l := newDialLimiterWithParams(df, 8, 4)
 
@@ -208,7 +209,7 @@ func TestTokenRedistribution(t *testing.T) {
 	pids := []peer.ID{"testpeer1", "testpeer2"}
 
 	ctx := context.Background()
-	resch := make(chan dialResult)
+	resch := make(chan transport.DialUpdate)
 
 	// take all fd limit tokens with hang dials
 	for _, pid := range pids {
@@ -284,14 +285,14 @@ func TestTokenRedistribution(t *testing.T) {
 }
 
 func TestStressLimiter(t *testing.T) {
-	df := func(ctx context.Context, p peer.ID, a ma.Multiaddr, resCh chan dialResult) {
+	df := func(ctx context.Context, p peer.ID, a ma.Multiaddr, resCh chan transport.DialUpdate) {
 		if tcpPortOver(a, 1000) {
-			resCh <- dialResult{}
+			resCh <- transport.DialUpdate{}
 			return
 		}
 
 		time.Sleep(time.Millisecond * time.Duration(5+rand.Intn(100)))
-		resCh <- dialResult{Err: fmt.Errorf("test bad dial")}
+		resCh <- transport.DialUpdate{Err: fmt.Errorf("test bad dial")}
 	}
 
 	l := newDialLimiterWithParams(df, 20, 5)
@@ -309,7 +310,7 @@ func TestStressLimiter(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			resp := make(chan dialResult)
+			resp := make(chan transport.DialUpdate)
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 			for _, i := range rand.Perm(len(addresses)) {
 				l.AddDialJob(&dialJob{
@@ -338,12 +339,12 @@ func TestStressLimiter(t *testing.T) {
 }
 
 func TestFDLimitUnderflow(t *testing.T) {
-	df := func(ctx context.Context, p peer.ID, addr ma.Multiaddr, resCh chan dialResult) {
+	df := func(ctx context.Context, p peer.ID, addr ma.Multiaddr, resCh chan transport.DialUpdate) {
 		select {
 		case <-ctx.Done():
 		case <-time.After(5 * time.Second):
 		}
-		resCh <- dialResult{Err: fmt.Errorf("df timed out")}
+		resCh <- transport.DialUpdate{Err: fmt.Errorf("df timed out")}
 	}
 
 	const fdLimit = 20
@@ -364,7 +365,7 @@ func TestFDLimitUnderflow(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			resp := make(chan dialResult)
+			resp := make(chan transport.DialUpdate)
 			l.AddDialJob(&dialJob{
 				addr: addrs[i],
 				ctx:  ctx,

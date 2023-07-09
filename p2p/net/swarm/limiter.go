@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -16,7 +17,7 @@ type dialJob struct {
 	addr    ma.Multiaddr
 	peer    peer.ID
 	ctx     context.Context
-	resp    chan dialResult
+	resp    chan transport.DialUpdate
 	timeout time.Duration
 }
 
@@ -38,7 +39,7 @@ type dialLimiter struct {
 	waitingOnPeerLimit map[peer.ID][]*dialJob
 }
 
-type dialfunc func(context.Context, peer.ID, ma.Multiaddr, chan dialResult)
+type dialfunc func(context.Context, peer.ID, ma.Multiaddr, chan transport.DialUpdate)
 
 func newDialLimiter(df dialfunc) *dialLimiter {
 	fd := ConcurrentFdDials
