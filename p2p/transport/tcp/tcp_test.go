@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -145,6 +146,56 @@ func TestTcpTransportCantListenUtp(t *testing.T) {
 		envReuseportVal = false
 	}
 	envReuseportVal = true
+}
+
+func TestDialWithUpdates(t *testing.T) {
+	peerA, ia := makeInsecureMuxer(t)
+	_, ib := makeInsecureMuxer(t)
+
+	ua, err := tptu.New(ia, muxers, nil, nil, nil)
+	require.NoError(t, err)
+	ta, err := NewTCPTransport(ua, nil)
+	require.NoError(t, err)
+	ln, err := ta.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
+	require.NoError(t, err)
+	defer ln.Close()
+
+	ub, err := tptu.New(ib, muxers, nil, nil, nil)
+	require.NoError(t, err)
+	tb, err := NewTCPTransport(ub, nil)
+	require.NoError(t, err)
+
+	updCh := make(chan transport.DialUpdate, 2)
+	tb.DialWithUpdates(context.Background(), ln.Multiaddr(), peerA, updCh)
+	upd := <-updCh
+	require.Equal(t, upd.Kind, transport.TCPConnectionEstablished)
+	upd = <-updCh
+	require.Equal(t, upd.Kind, transport.DialSuccessful)
+	require.NotNil(t, upd.Conn)
+
+	acceptAndClose := func() manet.Listener {
+		li, err := manet.Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			conn, err := li.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}()
+		return li
+	}
+	li := acceptAndClose()
+	defer li.Close()
+
+	tb.DialWithUpdates(context.Background(), li.Multiaddr(), peerA, updCh)
+	upd = <-updCh
+	require.Equal(t, upd.Kind, transport.TCPConnectionEstablished)
+	upd = <-updCh
+	require.Equal(t, upd.Kind, transport.DialFailed)
+	require.Error(t, upd.Err)
 }
 
 func makeInsecureMuxer(t *testing.T) (peer.ID, []sec.SecureTransport) {

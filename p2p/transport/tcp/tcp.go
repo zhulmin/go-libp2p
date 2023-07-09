@@ -182,7 +182,7 @@ func (t *TcpTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) 
 		return nil, err
 	}
 
-	c, err := t.dialWithScope(ctx, raddr, p, connScope)
+	c, err := t.dialWithScope(ctx, raddr, p, connScope, nil)
 	if err != nil {
 		connScope.Done()
 		return nil, err
@@ -190,7 +190,26 @@ func (t *TcpTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) 
 	return c, nil
 }
 
-func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope) (transport.CapableConn, error) {
+// Dial dials the peer at the remote address.
+func (t *TcpTransport) DialWithUpdates(ctx context.Context, raddr ma.Multiaddr, p peer.ID, updCh chan transport.DialUpdate) {
+	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
+	if err != nil {
+		log.Debugw("resource manager blocked outgoing connection", "peer", p, "addr", raddr, "error", err)
+		updCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: raddr, Err: err}
+		return
+	}
+
+	c, err := t.dialWithScope(ctx, raddr, p, connScope, updCh)
+	if err != nil {
+		connScope.Done()
+		updCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: raddr, Err: err}
+		return
+	}
+	updCh <- transport.DialUpdate{Kind: transport.DialSuccessful, Addr: raddr, Conn: c}
+}
+
+func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p peer.ID, connScope network.ConnManagementScope,
+	updCh chan transport.DialUpdate) (transport.CapableConn, error) {
 	if err := connScope.SetPeer(p); err != nil {
 		log.Debugw("resource manager blocked outgoing connection for peer", "peer", p, "addr", raddr, "error", err)
 		return nil, err
@@ -211,6 +230,9 @@ func (t *TcpTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p 
 		if err != nil {
 			return nil, err
 		}
+	}
+	if updCh != nil {
+		updCh <- transport.DialUpdate{Kind: transport.TCPConnectionEstablished, Addr: raddr}
 	}
 	direction := network.DirOutbound
 	if ok, isClient, _ := network.GetSimultaneousConnect(ctx); ok && !isClient {

@@ -279,8 +279,6 @@ loop:
 					dq.Add(network.AddrDelay{Addr: a, Delay: addrDelay[string(a.Bytes())]})
 				}
 			}
-			// setup dialTimer for updates to dq
-			scheduleNextDial()
 
 		case <-dialTimer.Ch():
 			// It's time to dial the next batch of addresses.
@@ -303,8 +301,6 @@ loop:
 				totalDials++
 			}
 			timerRunning = false
-			// schedule more dials
-			scheduleNextDial()
 
 		case res := <-w.resch:
 			// A dial to an address has completed.
@@ -320,13 +316,14 @@ loop:
 				// It is better to decrement the dials in flight and schedule one extra dial
 				// than risking not closing the worker loop on cleanup
 				dialsInFlight--
-				continue
+				break
 			}
 
 			if res.Kind == transport.DialStarted {
 				ad.startTime = w.cl.Now()
-				scheduleNextDial()
-				continue
+				break
+			} else if res.Kind == transport.TCPConnectionEstablished {
+				break
 			}
 
 			dialsInFlight--
@@ -347,9 +344,8 @@ loop:
 				}
 				w.dispatchError(ad, res.Err)
 			}
-
-			scheduleNextDial()
 		}
+		scheduleNextDial()
 	}
 }
 

@@ -470,6 +470,11 @@ func (s *Swarm) dialAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, resC
 		return
 	}
 
+	tupd, ok := tpt.(transport.DialUpdater)
+	if ok {
+		tupd.DialWithUpdates(ctx, addr, p, resCh)
+		return
+	}
 	resCh <- transport.DialUpdate{Kind: transport.DialStarted, Addr: addr}
 	conn, err := tpt.Dial(ctx, addr, p)
 	if err != nil {

@@ -5,6 +5,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/network"
@@ -123,4 +124,52 @@ type Upgrader interface {
 	UpgradeListener(Transport, manet.Listener) Listener
 	// Upgrade upgrades the multiaddr/net connection into a full libp2p-transport connection.
 	Upgrade(ctx context.Context, t Transport, maconn manet.Conn, dir network.Direction, p peer.ID, scope network.ConnManagementScope) (CapableConn, error)
+}
+
+// DialUpdater provides updates on in progress dials.
+type DialUpdater interface {
+	// DialWithUpdates dials a remote peer and provides updates on the passed channel.
+	DialWithUpdates(context.Context, ma.Multiaddr, peer.ID, chan DialUpdate)
+}
+
+// DialUpdateKind indicates the type of DialUpdate event.
+type DialUpdateKind int
+
+const (
+	// DialStarted indicates dial has started.
+	DialStarted DialUpdateKind = iota
+	// DialFailed indicates dial failed.
+	DialFailed
+	// DialSuccessful indicates dial succeeded.
+	DialSuccessful
+	// TCPConnectionEstablished indicates TCP connection was established and dial is pending security
+	// upgrade and muxer selection.
+	TCPConnectionEstablished
+)
+
+func (k DialUpdateKind) String() string {
+	switch k {
+	case DialStarted:
+		return "DialStarted"
+	case DialFailed:
+		return "DialFailed"
+	case DialSuccessful:
+		return "DialSuccessful"
+	case TCPConnectionEstablished:
+		return "TCPConnectionEstablished"
+	default:
+		return fmt.Sprintf("Unknown-%d", k)
+	}
+}
+
+// DialUpdate is used by DialUpdater to provide dial updates.
+type DialUpdate struct {
+	// Kind is the kind of update event.
+	Kind DialUpdateKind
+	// Addr is the peer's address.
+	Addr ma.Multiaddr
+	// Conn is the resulting connection on success.
+	Conn CapableConn
+	// Err is the reason for dial failure.
+	Err error
 }
