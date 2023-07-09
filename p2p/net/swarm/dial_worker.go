@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/transport"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // /////////////////////////////////////////////////////////////////////////////////
@@ -123,6 +124,10 @@ func (w *dialWorker) loop() {
 	// dialsInFlight is the number of dials in flight.
 	dialsInFlight := 0
 
+	// tcpUpgradeWaitEnd maps tcp addresses that have established connection to their estimated
+	// security upgrade and muxer selection end time.
+	tcpUpgradeWaitEnd := make(map[string]time.Time)
+
 	startTime := w.cl.Now()
 	// dialTimer is the dialTimer used to trigger dials
 	dialTimer := w.cl.InstantTimer(startTime.Add(math.MaxInt64))
@@ -133,13 +138,36 @@ func (w *dialWorker) loop() {
 			<-dialTimer.Ch()
 		}
 		timerRunning = false
+
+		now := w.cl.Now()
+		for a, t := range tcpUpgradeWaitEnd {
+			if !t.After(now) {
+				delete(tcpUpgradeWaitEnd, a)
+			}
+		}
+		tcpWaitEnd := time.Time{}
+		for _, t := range tcpUpgradeWaitEnd {
+			if t.After(tcpWaitEnd) {
+				tcpWaitEnd = t
+			}
+		}
+
+		dqNext := time.Time{}
 		if dq.Len() > 0 {
 			if dialsInFlight == 0 && !w.connected {
 				// if there are no dials in flight, trigger the next dials immediately
-				dialTimer.Reset(startTime)
+				dqNext = startTime
 			} else {
-				dialTimer.Reset(startTime.Add(dq.top().Delay))
+				dqNext = startTime.Add(dq.top().Delay)
 			}
+		}
+
+		latest := tcpWaitEnd
+		if latest.Before(dqNext) {
+			latest = dqNext
+		}
+		if !latest.IsZero() {
+			dialTimer.Reset(latest)
 			timerRunning = true
 		}
 	}
@@ -195,6 +223,10 @@ loop:
 			// get the delays to dial these addrs from the swarms dialRanker
 			simConnect, _, _ := network.GetSimultaneousConnect(req.ctx)
 			addrRanking := w.rankAddrs(addrs, simConnect)
+			if simConnect {
+				// Disable waiting for TCP dials to finish if we are hole punching
+				tcpUpgradeWaitEnd = nil
+			}
 			addrDelay := make(map[string]time.Duration, len(addrRanking))
 
 			// create the pending request object
@@ -323,8 +355,18 @@ loop:
 				ad.startTime = w.cl.Now()
 				break
 			} else if res.Kind == transport.TCPConnectionEstablished {
+				if tcpUpgradeWaitEnd != nil {
+					if isProtocolAddr(res.Addr, ma.P_TCP) {
+						if manet.IsPublicAddr(res.Addr) {
+							tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = w.cl.Now().Add(2 * PublicTCPDelay)
+						} else {
+							tcpUpgradeWaitEnd[string(res.Addr.Bytes())] = w.cl.Now().Add(2 * PrivateTCPDelay)
+						}
+					}
+				}
 				break
 			}
+			delete(tcpUpgradeWaitEnd, string(res.Addr.Bytes()))
 
 			dialsInFlight--
 			// We're recording any error as a failure here.

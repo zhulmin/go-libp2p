@@ -14,6 +14,7 @@ import (
 	"testing/quick"
 	"time"
 
+	"github.com/libp2p/go-libp2p-testing/ci"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -572,6 +573,9 @@ func checkDialWorkerLoopScheduling(t *testing.T, s1, s2 *Swarm, tc schedulingTes
 	// at appropriate moment a message is sent to dialState.ch to trigger
 	// failure
 	failDials := make(map[ma.Multiaddr]dialState)
+	// tcpUpgradeWaitEnd maps in progress tcp dials that are awaiting security upgrade to their
+	// estimated upgrade end time
+	tcpUpgradeWaitEnd := make(map[ma.Multiaddr]time.Time)
 	// recvCh is used to receive dial notifications for dials that will fail
 	recvCh := make(chan struct{}, 100)
 	// allDials tracks all pending dials
@@ -642,11 +646,28 @@ loop:
 	for {
 		// fail any dials that should fail at this instant
 		for a, p := range failDials {
-			if p.failAt.Before(cl.Now()) || p.failAt == cl.Now() {
+			if !p.failAt.After(cl.Now()) {
 				p.ch <- struct{}{}
 				delete(failDials, a)
+				delete(tcpUpgradeWaitEnd, a)
 			}
 		}
+
+		for a, t := range tcpUpgradeWaitEnd {
+			if !t.After(cl.Now()) {
+				delete(tcpUpgradeWaitEnd, a)
+			}
+		}
+		if len(tcpUpgradeWaitEnd) > 0 {
+			select {
+			case <-recvCh:
+				return errors.New("no dial should have succeeded at this instant")
+			case <-time.After(5 * time.Millisecond):
+			}
+			cl.AdvanceBy(10 * time.Millisecond)
+			continue
+		}
+
 		// if there are no pending dials, next dial should have been triggered
 		trigger := len(failDials) == 0
 
@@ -658,25 +679,13 @@ loop:
 				mi = ds.delay
 			}
 		}
+
+		// First check for all failed dials
 		for a, ds := range allDials {
-			if (trigger && mi == ds.delay) ||
-				cl.Now().After(st.Add(ds.delay)) ||
-				cl.Now() == st.Add(ds.delay) {
-				if ds.success {
-					// check for success and exit
-					select {
-					case r := <-resch:
-						if r.conn == nil {
-							return errors.New("expected connection to succeed")
-						}
-					// High timeout here is okay. We will exit whenever the other branch
-					// is triggered
-					case <-time.After(10 * time.Second):
-						return errors.New("expected to receive a response")
-					}
-					connected = true
-					break loop
-				} else {
+			if !ds.success {
+				if (trigger && mi == ds.delay) ||
+					cl.Now().After(st.Add(ds.delay)) ||
+					cl.Now() == st.Add(ds.delay) {
 					// ensure that a failing dial attempt happened but didn't succeed
 					select {
 					case <-recvCh:
@@ -693,8 +702,35 @@ loop:
 						addr:   a,
 						delay:  ds.delay,
 					}
+					tcpUpgradeWaitEnd[a] = cl.Now().Add(2 * PrivateTCPDelay)
+					delete(allDials, a)
 				}
-				delete(allDials, a)
+			}
+		}
+
+		// Check for any successes
+		for a, ds := range allDials {
+			if ds.success {
+				if (trigger && mi == ds.delay) ||
+					cl.Now().After(st.Add(ds.delay)) ||
+					cl.Now() == st.Add(ds.delay) {
+					if ds.success {
+						// check for success and exit
+						select {
+						case r := <-resch:
+							if r.conn == nil {
+								return errors.New("expected connection to succeed")
+							}
+						// High timeout here is okay. We will exit whenever the other branch
+						// is triggered
+						case <-time.After(10 * time.Second):
+							return errors.New("expected to receive a response")
+						}
+						connected = true
+						break loop
+					}
+					delete(allDials, a)
+				}
 			}
 		}
 		// check for unexpected dials
@@ -704,6 +740,7 @@ loop:
 		default:
 		}
 
+		time.Sleep(5 * time.Millisecond)
 		// advance the clock
 		cl.AdvanceBy(10 * time.Millisecond)
 		// nothing more to do. exit
@@ -894,6 +931,10 @@ func TestDialWorkerLoopRanking(t *testing.T) {
 }
 
 func TestDialWorkerLoopSchedulingProperty(t *testing.T) {
+	if ci.IsRunning() {
+		// We are relying on progress being made within 5 Millisecond increments in checkDialWorkerLoopScheduling
+		t.Skip("there is a race condition in the simulated time and using InstantTimers is not an option")
+	}
 	f := func(tc schedulingTestCase) bool {
 		s1 := makeSwarmWithNoListenAddrs(t)
 		defer s1.Close()
@@ -1082,5 +1123,121 @@ func TestDialWorkerLoopAddrDedup(t *testing.T) {
 		t.Errorf("didn't expect a connection attempt")
 	case <-time.After(5 * time.Second):
 		t.Errorf("expected a fail response")
+	}
+}
+
+func TestDialWorkerLoopTCPUpgradeDelay(t *testing.T) {
+	s1 := makeSwarmWithNoListenAddrs(t)
+	defer s1.Close()
+
+	s2 := makeSwarmWithNoListenAddrs(t)
+	defer s2.Close()
+
+	// acceptAndClose accepts a connection and closes it
+	acceptAndClose := func(a ma.Multiaddr, ch chan bool) manet.Listener {
+		list, err := manet.Listen(a)
+		if err != nil {
+			t.Error(err)
+			return list
+		}
+		go func() {
+			for {
+				conn, err := list.Accept()
+				if err != nil {
+					return
+				}
+				ch <- true
+				conn.Close()
+			}
+		}()
+		return list
+	}
+
+	// all dials to bha* addresses will fail. RFC6666 Discard Prefix
+	// lha* addresses are used to check that dials happen when we expect them to happen
+	bha1 := ma.StringCast("/ip6/0100::1/tcp/1/")
+	lha1 := ma.StringCast("/ip4/127.0.0.1/tcp/20001")
+	ch1 := make(chan bool)
+	li1 := acceptAndClose(lha1, ch1)
+	defer li1.Close()
+
+	bha2 := ma.StringCast("/ip6/0100::1/tcp/2/")
+	lha2 := ma.StringCast("/ip4/127.0.0.1/tcp/20002")
+	ch2 := make(chan bool)
+	li2 := acceptAndClose(lha2, ch2)
+	defer li2.Close()
+
+	bha3 := ma.StringCast("/ip6/0100::1/tcp/3/")
+	lha3 := ma.StringCast("/ip4/127.0.0.1/tcp/20003")
+	ch3 := make(chan bool)
+	li3 := acceptAndClose(lha3, ch3)
+	defer li3.Close()
+
+	s1.dialRanker = func(addrs []ma.Multiaddr) []network.AddrDelay {
+		return []network.AddrDelay{
+			{Addr: bha1, Delay: 0},
+			{Addr: lha1, Delay: 0},
+
+			{Addr: bha2, Delay: 250 * time.Millisecond},
+			{Addr: lha2, Delay: 250 * time.Millisecond},
+
+			{Addr: bha3, Delay: 750 * time.Millisecond},
+			{Addr: lha3, Delay: 750 * time.Millisecond},
+		}
+	}
+	s1.Peerstore().AddAddrs(s2.LocalPeer(), []ma.Multiaddr{bha1, bha2, bha3}, peerstore.PermanentAddrTTL)
+
+	reqch := make(chan dialRequest)
+	resch := make(chan dialResponse, 2)
+
+	cl := newMockClock()
+	worker := newDialWorker(s1, s2.LocalPeer(), reqch, cl)
+	// we will use this to simulate events on the black holed addresses
+	wresCh := worker.resch
+	go worker.loop()
+	defer worker.wg.Wait()
+	defer close(reqch)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	reqch <- dialRequest{ctx: ctx, resch: resch}
+	<-ch1 // received connection on t1
+
+	select {
+	case <-ch2:
+		t.Errorf("didn't expect connection attempt on second address")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	wresCh <- transport.DialUpdate{Kind: transport.TCPConnectionEstablished, Addr: bha1}
+	cl.AdvanceBy(400 * time.Millisecond)
+	select {
+	case <-ch2:
+		t.Errorf("didn't expect connection attempt on second address")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	wresCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: bha1, Err: errors.New("test failure")}
+	select {
+	case <-ch2:
+	case <-time.After(100 * time.Millisecond):
+		t.Errorf("expected connection attempt on second address")
+	}
+
+	cl.AdvanceBy(100 * time.Millisecond)
+	// fail the second attempt to trigger the next dials immediately
+	wresCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: bha2, Err: errors.New("test failure")}
+	select {
+	case <-ch3:
+		wresCh <- transport.DialUpdate{Kind: transport.DialFailed, Addr: bha3, Err: errors.New("test failure")}
+	case <-time.After(100 * time.Millisecond):
+		t.Errorf("expected connection attempt on third address")
+	}
+	select {
+	case r := <-resch:
+		require.Error(t, r.err)
+	case <-time.After(5 * time.Second):
+		t.Errorf("expected to get a response")
 	}
 }
