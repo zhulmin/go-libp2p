@@ -177,6 +177,7 @@ func TestDelayRankerTCPDelay(t *testing.T) {
 	t1 := ma.StringCast("/ip4/1.2.3.5/tcp/1/")
 	t1v6 := ma.StringCast("/ip6/1::2/tcp/1")
 	t2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+	t3 := ma.StringCast("/ip6/1::3/tcp/3")
 
 	testCase := []struct {
 		name   string
@@ -185,7 +186,7 @@ func TestDelayRankerTCPDelay(t *testing.T) {
 	}{
 		{
 			name:  "quic-with-tcp-ip6-ip4",
-			addrs: []ma.Multiaddr{q1, q1v1, q1v16, q2v16, q3v16, q2v1, t1, t2},
+			addrs: []ma.Multiaddr{q1, q1v1, q1v16, q2v16, q3v16, q2v1, t1, t1v6, t2, t3},
 			output: []network.AddrDelay{
 				{Addr: q1v16, Delay: 0},
 				{Addr: q1v1, Delay: PublicQUICDelay},
@@ -193,29 +194,31 @@ func TestDelayRankerTCPDelay(t *testing.T) {
 				{Addr: q2v16, Delay: 2 * PublicQUICDelay},
 				{Addr: q3v16, Delay: 2 * PublicQUICDelay},
 				{Addr: q2v1, Delay: 2 * PublicQUICDelay},
-				{Addr: t1, Delay: 3 * PublicQUICDelay},
-				{Addr: t2, Delay: 3 * PublicQUICDelay},
+				{Addr: t1v6, Delay: 3 * PublicQUICDelay},
+				{Addr: t1, Delay: 4 * PublicQUICDelay},
+				{Addr: t2, Delay: 5 * PublicQUICDelay},
+				{Addr: t3, Delay: 5 * PublicQUICDelay},
 			},
 		},
 		{
 			name:  "quic-ip4-with-tcp",
-			addrs: []ma.Multiaddr{q1, q2, q3, t1, t2, t1v6},
+			addrs: []ma.Multiaddr{q1, q2, q3, t2, t1v6},
 			output: []network.AddrDelay{
 				{Addr: q1, Delay: 0},
 				{Addr: q2, Delay: PublicQUICDelay},
 				{Addr: q3, Delay: PublicQUICDelay},
-				{Addr: t1, Delay: PublicQUICDelay + PublicTCPDelay},
-				{Addr: t2, Delay: PublicQUICDelay + PublicTCPDelay},
 				{Addr: t1v6, Delay: PublicQUICDelay + PublicTCPDelay},
+				{Addr: t2, Delay: PublicQUICDelay + 2*PublicTCPDelay},
 			},
 		},
 		{
 			name:  "tcp-ip4-ip6",
-			addrs: []ma.Multiaddr{t1, t2, t1v6},
+			addrs: []ma.Multiaddr{t1, t2, t1v6, t3},
 			output: []network.AddrDelay{
 				{Addr: t1v6, Delay: 0},
-				{Addr: t1, Delay: 0},
-				{Addr: t2, Delay: 0},
+				{Addr: t1, Delay: PublicTCPDelay},
+				{Addr: t2, Delay: 2 * PublicTCPDelay},
+				{Addr: t3, Delay: 2 * PublicTCPDelay},
 			},
 		},
 	}
