@@ -105,7 +105,22 @@ func TestShouldRecordObservationWithWebTransport(t *testing.T) {
 	require.True(t, shouldRecordObservation(h, h, c, observedAddr))
 }
 
-func TestIsWellKnownPrefixIPv4ConvertedIPv6Address(t *testing.T) {
+func TestShouldRecordObservationWithNAT64Addr(t *testing.T) {
+	listenAddr1 := ma.StringCast("/ip4/0.0.0.0/tcp/1234")
+	ifaceAddr1 := ma.StringCast("/ip4/10.0.0.2/tcp/4321")
+	listenAddr2 := ma.StringCast("/ip6/::/tcp/1234")
+	ifaceAddr2 := ma.StringCast("/ip6/1::1/tcp/4321")
+
+	h := &mockHost{
+		listenAddrs:      []ma.Multiaddr{listenAddr1, listenAddr2},
+		ifaceListenAddrs: []ma.Multiaddr{ifaceAddr1, ifaceAddr2},
+		addrs:            []ma.Multiaddr{listenAddr1, listenAddr2},
+	}
+	c := &mockConn{
+		local:  listenAddr1,
+		remote: ma.StringCast("/ip4/1.2.3.6/tcp/4321"),
+	}
+
 	cases := []struct {
 		addr          ma.Multiaddr
 		want          bool
@@ -113,28 +128,24 @@ func TestIsWellKnownPrefixIPv4ConvertedIPv6Address(t *testing.T) {
 	}{
 		{
 			addr:          ma.StringCast("/ip4/1.2.3.4/tcp/1234"),
-			want:          false,
-			failureReason: "ip4 addresses should return false",
+			want:          true,
+			failureReason: "IPv4 should be observed",
 		},
 		{
 			addr:          ma.StringCast("/ip6/1::4/tcp/1234"),
-			want:          false,
-			failureReason: "ip6 addresses doesn't have wellknown prefix",
-		},
-		{
-			addr:          ma.StringCast("/ip6/::1/tcp/1234"),
-			want:          false,
-			failureReason: "localhost addresses should return false",
+			want:          true,
+			failureReason: "public IPv6 address should be observed",
 		},
 		{
 			addr:          ma.StringCast("/ip6/64:ff9b::192.0.1.2/tcp/1234"),
-			want:          true,
-			failureReason: "ip6 address begins with well-known prefix",
+			want:          false,
+			failureReason: "NAT64 IPv6 address shouldn't be observed",
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			if isNAT64IPv4ConvertedIPv6Addr(tc.addr) != tc.want {
+
+			if shouldRecordObservation(h, h, c, tc.addr) != tc.want {
 				t.Fatalf("%s %s", tc.addr, tc.failureReason)
 			}
 		})
