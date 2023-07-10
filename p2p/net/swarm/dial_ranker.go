@@ -21,7 +21,7 @@ const (
 	PrivateQUICDelay = 30 * time.Millisecond
 
 	// RelayDelay is the duration by which relay dials are delayed relative to direct addresses
-	RelayDelay = 250 * time.Millisecond
+	RelayDelay = 500 * time.Millisecond
 )
 
 // NoDelayDialRanker ranks addresses with no delay. This is useful for simultaneous connect requests.
