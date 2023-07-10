@@ -181,7 +181,7 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 
 	dialRanker := cfg.DialRanker
 	if dialRanker == nil {
-		dialRanker = swarm.NoDelayDialRanker
+		dialRanker = swarm.DefaultDialRanker
 	}
 	opts = append(opts, swarm.WithDialRanker(dialRanker))
 
