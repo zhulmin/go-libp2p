@@ -409,6 +409,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 					maxRetries := streamCount * 4
 					shouldRetry := func(err error) bool {
 						didErr = true
+						sawFirstErr.Store(true)
 						maxRetries--
 						if maxRetries == 0 || len(errCh) > 0 {
 							select {
