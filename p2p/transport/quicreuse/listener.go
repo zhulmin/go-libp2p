@@ -15,8 +15,6 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-var quicListen = quic.Listen // so we can mock it in tests
-
 type Listener interface {
 	Accept(context.Context) (quic.Connection, error)
 	Addr() net.Addr
@@ -31,16 +29,16 @@ type protoConf struct {
 }
 
 type connListener struct {
-	l       quic.Listener
-	conn    pConn
-	running chan struct{}
-	addrs   []ma.Multiaddr
+	l         *quic.Listener
+	transport refCountedQuicTransport
+	running   chan struct{}
+	addrs     []ma.Multiaddr
 
 	protocolsMu sync.Mutex
 	protocols   map[string]protoConf
 }
 
-func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*connListener, error) {
+func newConnListener(c refCountedQuicTransport, quicConfig *quic.Config, enableDraft29 bool) (*connListener, error) {
 	localMultiaddrs := make([]ma.Multiaddr, 0, 2)
 	a, err := ToQuicMultiaddr(c.LocalAddr(), quic.Version1)
 	if err != nil {
@@ -57,7 +55,7 @@ func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*con
 	cl := &connListener{
 		protocols: map[string]protoConf{},
 		running:   make(chan struct{}),
-		conn:      c,
+		transport: c,
 		addrs:     localMultiaddrs,
 	}
 	tlsConf := &tls.Config{
@@ -78,7 +76,7 @@ func newConnListener(c pConn, quicConfig *quic.Config, enableDraft29 bool) (*con
 	}
 	quicConf := quicConfig.Clone()
 	quicConf.AllowConnectionWindowIncrease = cl.allowWindowIncrease
-	ln, err := quicListen(c, tlsConf, quicConf)
+	ln, err := c.Transport().Listen(tlsConf, quicConf)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +130,7 @@ func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 
 func (l *connListener) Run() error {
 	defer close(l.running)
-	defer l.conn.DecreaseCount()
+	defer l.transport.DecreaseCount()
 	for {
 		conn, err := l.l.Accept(context.Background())
 		if err != nil {

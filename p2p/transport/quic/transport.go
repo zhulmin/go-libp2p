@@ -190,7 +190,7 @@ func (t *transport) holePunch(ctx context.Context, raddr ma.Multiaddr, p peer.ID
 	if err != nil {
 		return nil, err
 	}
-	pconn, err := t.connManager.Dial(network, addr)
+	pconn, err := t.connManager.TransportForDial(network, addr)
 	if err != nil {
 		return nil, err
 	}
