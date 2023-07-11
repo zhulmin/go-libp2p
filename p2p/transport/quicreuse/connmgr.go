@@ -13,8 +13,6 @@ import (
 	quiclogging "github.com/quic-go/quic-go/logging"
 )
 
-var quicDialContext = quic.DialContext // so we can mock it in tests
-
 type ConnManager struct {
 	reuseUDP4       *reuse
 	reuseUDP6       *reuse
@@ -27,6 +25,9 @@ type ConnManager struct {
 
 	connsMu sync.Mutex
 	conns   map[string]connListenerEntry
+
+	srk           quic.StatelessResetKey
+	metricsTracer *metricsTracer
 }
 
 type connListenerEntry struct {
@@ -39,6 +40,7 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 		enableReuseport: true,
 		enableDraft29:   true,
 		conns:           make(map[string]connListenerEntry),
+		srk:             statelessResetKey,
 	}
 	for _, o := range opts {
 		if err := o(cm); err != nil {
@@ -47,17 +49,23 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 	}
 
 	quicConf := quicConfig.Clone()
-	quicConf.StatelessResetKey = &statelessResetKey
 
 	var tracers []quiclogging.Tracer
-	if qlogTracer != nil {
-		tracers = append(tracers, qlogTracer)
-	}
+
 	if cm.enableMetrics {
-		tracers = append(tracers, newMetricsTracer())
+		cm.metricsTracer = newMetricsTracer()
 	}
 	if len(tracers) > 0 {
-		quicConf.Tracer = quiclogging.NewMultiplexedTracer(tracers...)
+		quicConf.Tracer = func(ctx context.Context, p quiclogging.Perspective, ci quic.ConnectionID) quiclogging.ConnectionTracer {
+			tracers := make([]quiclogging.ConnectionTracer, 0, 2)
+			if qlogTracerDir != "" {
+				tracers = append(tracers, qloggerForDir(qlogTracerDir, p, ci))
+			}
+			if cm.metricsTracer != nil {
+				tracers = append(tracers, cm.metricsTracer.TracerForConnection(ctx, p, ci))
+			}
+			return quiclogging.NewMultiplexedConnectionTracer(tracers...)
+		}
 	}
 	serverConfig := quicConf.Clone()
 	if !cm.enableDraft29 {
@@ -67,8 +75,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse()
-		cm.reuseUDP6 = newReuse()
+		cm.reuseUDP4 = newReuse(&statelessResetKey, cm.metricsTracer)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, cm.metricsTracer)
 	}
 	return cm, nil
 }
@@ -106,7 +114,7 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 	key := laddr.String()
 	entry, ok := c.conns[key]
 	if !ok {
-		conn, err := c.listen(netw, laddr)
+		conn, err := c.transportForListen(netw, laddr)
 		if err != nil {
 			return nil, err
 		}
@@ -143,20 +151,20 @@ func (c *ConnManager) onListenerClosed(key string) {
 	}
 }
 
-func (c *ConnManager) listen(network string, laddr *net.UDPAddr) (pConn, error) {
+func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (refCountedQuicTransport, error) {
 	if c.enableReuseport {
 		reuse, err := c.getReuse(network)
 		if err != nil {
 			return nil, err
 		}
-		return reuse.Listen(network, laddr)
+		return reuse.TransportForListen(network, laddr)
 	}
 
-	conn, err := net.ListenUDP(network, laddr)
+	conn, err := listenAndOptimize(network, laddr)
 	if err != nil {
 		return nil, err
 	}
-	return &noreuseConn{conn}, nil
+	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, nil
 }
 
 func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (quic.Connection, error) {
@@ -164,7 +172,7 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 	if err != nil {
 		return nil, err
 	}
-	netw, host, err := manet.DialArgs(raddr)
+	netw, _, err := manet.DialArgs(raddr)
 	if err != nil {
 		return nil, err
 	}
@@ -181,25 +189,25 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 		return nil, errors.New("unknown QUIC version")
 	}
 
-	pconn, err := c.Dial(netw, naddr)
+	tr, err := c.TransportForDial(netw, naddr)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := quicDialContext(ctx, pconn, naddr, host, tlsConf, quicConf)
+	conn, err := tr.Transport().Dial(ctx, naddr, tlsConf, quicConf)
 	if err != nil {
-		pconn.DecreaseCount()
+		tr.DecreaseCount()
 		return nil, err
 	}
 	return conn, nil
 }
 
-func (c *ConnManager) Dial(network string, raddr *net.UDPAddr) (pConn, error) {
+func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refCountedQuicTransport, error) {
 	if c.enableReuseport {
 		reuse, err := c.getReuse(network)
 		if err != nil {
 			return nil, err
 		}
-		return reuse.Dial(network, raddr)
+		return reuse.TransportForDial(network, raddr)
 	}
 
 	var laddr *net.UDPAddr
@@ -209,11 +217,11 @@ func (c *ConnManager) Dial(network string, raddr *net.UDPAddr) (pConn, error) {
 	case "udp6":
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	conn, err := net.ListenUDP(network, laddr)
+	conn, err := listenAndOptimize(network, laddr)
 	if err != nil {
 		return nil, err
 	}
-	return &noreuseConn{conn}, nil
+	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, nil
 }
 
 func (c *ConnManager) Protocols() []int {
@@ -231,4 +239,13 @@ func (c *ConnManager) Close() error {
 		return err
 	}
 	return c.reuseUDP4.Close()
+}
+
+// listenAndOptimize same as net.ListenUDP, but also calls quic.OptimizeConn
+func listenAndOptimize(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
+	conn, err := net.ListenUDP(network, laddr)
+	if err != nil {
+		return nil, err
+	}
+	return quic.OptimizeConn(conn)
 }

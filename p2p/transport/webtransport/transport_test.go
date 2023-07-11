@@ -669,7 +669,7 @@ func serverSendsBackValidCert(t *testing.T, timeSinceUnixEpoch time.Duration, ke
 	require.NoError(t, err)
 	defer l.Close()
 
-	conn, err := quic.DialAddr(l.Addr().String(), &tls.Config{
+	conn, err := quic.DialAddr(context.Background(), l.Addr().String(), &tls.Config{
 		NextProtos:         []string{http3.NextProtoH3},
 		InsecureSkipVerify: true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
