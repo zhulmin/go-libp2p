@@ -21,20 +21,20 @@ func (c *refcountedTransport) GetCount() int {
 
 func closeAllConns(reuse *reuse) {
 	reuse.mutex.Lock()
-	for _, conn := range reuse.globalListeners {
-		for conn.GetCount() > 0 {
-			conn.DecreaseCount()
+	for _, tr := range reuse.globalListeners {
+		for tr.GetCount() > 0 {
+			tr.DecreaseCount()
 		}
 	}
-	for _, conn := range reuse.globalDialers {
-		for conn.GetCount() > 0 {
-			conn.DecreaseCount()
+	for _, tr := range reuse.globalDialers {
+		for tr.GetCount() > 0 {
+			tr.DecreaseCount()
 		}
 	}
-	for _, conns := range reuse.unicast {
-		for _, conn := range conns {
-			for conn.GetCount() > 0 {
-				conn.DecreaseCount()
+	for _, trs := range reuse.unicast {
+		for _, tr := range trs {
+			for tr.GetCount() > 0 {
+				tr.DecreaseCount()
 			}
 		}
 	}
@@ -138,28 +138,27 @@ func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {
 	// dial any address
 	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
 	require.NoError(t, err)
-	rconn, err := reuse.TransportForDial("udp4", raddr)
+	rTr, err := reuse.TransportForDial("udp4", raddr)
 	require.NoError(t, err)
 
 	// open a listener
 	laddr := &net.UDPAddr{IP: net.IPv4zero, Port: 1234}
-	tr, err := reuse.TransportForListen("udp4", laddr)
+	lTr, err := reuse.TransportForListen("udp4", laddr)
 	require.NoError(t, err)
-	defer tr.Close()
 
 	// new dials should go via the listener connection
 	raddr, err = net.ResolveUDPAddr("udp4", "1.1.1.1:1235")
 	require.NoError(t, err)
-	conn, err := reuse.TransportForDial("udp4", raddr)
+	tr, err := reuse.TransportForDial("udp4", raddr)
 	require.NoError(t, err)
-	require.Equal(t, conn, tr)
-	require.Equal(t, conn.GetCount(), 2)
+	require.Equal(t, tr, lTr)
+	require.Equal(t, tr.GetCount(), 2)
 
 	// a listener on an unspecified port should reuse the dialer
 	laddr2 := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	lconn2, err := reuse.TransportForListen("udp4", laddr2)
 	require.NoError(t, err)
-	require.Equal(t, lconn2, rconn)
+	require.Equal(t, lconn2, rTr)
 	require.Equal(t, lconn2.GetCount(), 2)
 }
 

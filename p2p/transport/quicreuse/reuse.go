@@ -42,6 +42,12 @@ func (c *singleOwnerTransport) LocalAddr() net.Addr {
 	return c.Transport.Conn.LocalAddr()
 }
 
+func (c *singleOwnerTransport) Close() error {
+	// TODO(when we drop support for go 1.19) use errors.Join
+	c.Transport.Close()
+	return c.packetConn.Close()
+}
+
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Safe because we called quic.OptimizeConn ourselves.
 	return c.packetConn.WriteTo(b, addr)
@@ -69,6 +75,12 @@ func (c *refcountedTransport) IncreaseCount() {
 	c.refCount++
 	c.unusedSince = time.Time{}
 	c.mutex.Unlock()
+}
+
+func (c *refcountedTransport) Close() error {
+	// TODO(when we drop support for go 1.19) use errors.Join
+	c.Transport.Close()
+	return c.packetConn.Close()
 }
 
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
@@ -131,15 +143,15 @@ func newReuse(srk *quic.StatelessResetKey, mt *metricsTracer) *reuse {
 func (r *reuse) gc() {
 	defer func() {
 		r.mutex.Lock()
-		for _, conn := range r.globalListeners {
-			conn.Close()
+		for _, tr := range r.globalListeners {
+			tr.Close()
 		}
-		for _, conn := range r.globalDialers {
-			conn.Close()
+		for _, tr := range r.globalDialers {
+			tr.Close()
 		}
-		for _, conns := range r.unicast {
-			for _, conn := range conns {
-				conn.Close()
+		for _, trs := range r.unicast {
+			for _, tr := range trs {
+				tr.Close()
 			}
 		}
 		r.mutex.Unlock()
