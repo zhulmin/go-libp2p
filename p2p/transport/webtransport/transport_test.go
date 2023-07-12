@@ -220,14 +220,15 @@ func TestCanDial(t *testing.T) {
 func TestListenAddrValidity(t *testing.T) {
 	valid := []ma.Multiaddr{
 		ma.StringCast("/ip6/::/udp/0/quic-v1/webtransport/"),
-		ma.StringCast("/ip4/127.0.0.1/udp/12233/quic-v1/webtransport/"),
+		ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport/"),
+		// the random certhash will be ignored and correct certhash will be used
+		ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1/webtransport/certhash/" + randomMultihash(t)),
 	}
 
 	invalid := []ma.Multiaddr{
-		ma.StringCast("/ip4/127.0.0.1/udp/12233"),              // missing webtransport
-		ma.StringCast("/ip4/127.0.0.1/udp/12233/webtransport"), // missing quic
-		ma.StringCast("/ip4/127.0.0.1/tcp/12233/webtransport"), // WebTransport over TCP? Is this a joke?
-		ma.StringCast("/ip4/127.0.0.1/udp/12233/quic-v1/webtransport/certhash/" + randomMultihash(t)),
+		ma.StringCast("/ip4/127.0.0.1/udp/0"),              // missing webtransport
+		ma.StringCast("/ip4/127.0.0.1/udp/0/webtransport"), // missing quic
+		ma.StringCast("/ip4/127.0.0.1/tcp/0/webtransport"), // WebTransport over TCP? Is this a joke?
 	}
 
 	_, key := newIdentity(t)
