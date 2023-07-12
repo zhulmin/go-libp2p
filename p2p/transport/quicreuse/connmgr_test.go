@@ -6,12 +6,12 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -114,32 +114,36 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 }
 
 func TestAcceptErrorGetCleanedUp(t *testing.T) {
-	t.Skip("Not sure how to test this")
-
 	raddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
 
 	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)
 	defer cm.Close()
 
-	naddr, _, err := FromQuicMultiaddr(raddr)
-	require.NoError(t, err)
-	netw, _, err := manet.DialArgs(raddr)
-	require.NoError(t, err)
+	originalNumberOfGoroutines := runtime.NumGoroutine()
+	t.Log("num goroutines:", originalNumberOfGoroutines)
 
-	quicTr, err := cm.transportForListen(netw, naddr)
-	require.NoError(t, err)
-
+	// This spawns a background goroutine for the listener
 	l, err := cm.ListenQUIC(raddr, &tls.Config{NextProtos: []string{"proto"}}, nil)
 	require.NoError(t, err)
-	defer l.Close()
-	go func() {
-		// Close the quic Transport to trigger an Accept error
-		quicTr.Transport().Close()
-		quicTr.Transport().Conn.Close()
-	}()
-	_, err = l.Accept(context.Background())
-	require.ErrorIs(t, err, transport.ErrListenerClosed)
+
+	// We spawned a goroutine for the listener
+	require.Greater(t, runtime.NumGoroutine(), originalNumberOfGoroutines)
+	l.Close()
+
+	// Now make sure we have less goroutines than before
+	// Manually doing the same as require.Eventually, except avoiding adding a goroutine
+	goRoutinesCleanedUp := false
+	for i := 0; i < 50; i++ {
+		t.Log("num goroutines:", runtime.NumGoroutine())
+		if runtime.NumGoroutine() <= originalNumberOfGoroutines {
+			goRoutinesCleanedUp = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	require.True(t, goRoutinesCleanedUp, "goroutines were not cleaned up")
 }
 
 // The connection passed to quic-go needs to be type-assertable to a net.UDPConn,
