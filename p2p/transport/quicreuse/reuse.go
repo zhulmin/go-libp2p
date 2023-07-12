@@ -1,6 +1,8 @@
 package quicreuse
 
 import (
+	"context"
+	"crypto/tls"
 	"net"
 	"sync"
 	"time"
@@ -11,7 +13,6 @@ import (
 )
 
 type refCountedQuicTransport interface {
-	Transport() *quic.Transport
 	WriteTo([]byte, net.Addr) (int, error)
 	LocalAddr() net.Addr
 
@@ -20,10 +21,13 @@ type refCountedQuicTransport interface {
 	// count conn reference
 	DecreaseCount()
 	IncreaseCount()
+
+	Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *quic.Config) (quic.Connection, error)
+	Listen(tlsConf *tls.Config, conf *quic.Config) (*quic.Listener, error)
 }
 
 type singleOwnerTransport struct {
-	tr quic.Transport
+	quic.Transport
 
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
@@ -31,24 +35,16 @@ type singleOwnerTransport struct {
 
 func (c *singleOwnerTransport) IncreaseCount() {}
 func (c *singleOwnerTransport) DecreaseCount() {
-	c.tr.Close()
-}
-
-func (c *singleOwnerTransport) Transport() *quic.Transport {
-	return &c.tr
+	c.Transport.Close()
 }
 
 func (c *singleOwnerTransport) LocalAddr() net.Addr {
-	return c.tr.Conn.LocalAddr()
+	return c.Transport.Conn.LocalAddr()
 }
 
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Safe because we called quic.OptimizeConn ourselves.
 	return c.packetConn.WriteTo(b, addr)
-}
-
-func (c *singleOwnerTransport) Close() error {
-	return c.tr.Close()
 }
 
 // Constant. Defined as variables to simplify testing.
@@ -58,7 +54,7 @@ var (
 )
 
 type refcountedTransport struct {
-	tr quic.Transport
+	quic.Transport
 
 	// Used to write packets directly around QUIC.
 	packetConn net.PacketConn
@@ -75,21 +71,13 @@ func (c *refcountedTransport) IncreaseCount() {
 	c.mutex.Unlock()
 }
 
-func (c *refcountedTransport) Transport() *quic.Transport {
-	return &c.tr
-}
-
-func (c *refcountedTransport) Close() error {
-	return c.tr.Close()
-}
-
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Safe because we called quic.OptimizeConn ourselves.
 	return c.packetConn.WriteTo(b, addr)
 }
 
 func (c *refcountedTransport) LocalAddr() net.Addr {
-	return c.tr.Conn.LocalAddr()
+	return c.Transport.Conn.LocalAddr()
 }
 
 func (c *refcountedTransport) DecreaseCount() {
@@ -119,7 +107,7 @@ type reuse struct {
 	globalListeners map[int]*refcountedTransport
 	// globalDialers contains transports that we've dialed out from. These transports are listening on 0.0.0.0 / ::
 	// On Dial, transports are reused from this map if no transport is available in the globalListeners
-	// On Listen, transport are reused from this map if the requested port is 0, and then moved to globalListeners
+	// On Listen, transports are reused from this map if the requested port is 0, and then moved to globalListeners
 	globalDialers map[int]*refcountedTransport
 
 	statelessResetKey *quic.StatelessResetKey
@@ -267,13 +255,15 @@ func (r *reuse) transportForDialLocked(network string, source *net.IP) (*refcoun
 	if err != nil {
 		return nil, err
 	}
-	rconn := &refcountedTransport{tr: quic.Transport{
+	tr := &refcountedTransport{Transport: quic.Transport{
 		Conn:              conn,
 		StatelessResetKey: r.statelessResetKey,
-		Tracer:            r.metricsTracer,
 	}, packetConn: conn}
-	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = rconn
-	return rconn, nil
+	if r.metricsTracer != nil {
+		tr.Transport.Tracer = r.metricsTracer
+	}
+	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = tr
+	return tr, nil
 }
 
 func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcountedTransport, error) {
@@ -315,11 +305,13 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		return nil, err
 	}
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	tr := &refcountedTransport{tr: quic.Transport{
+	tr := &refcountedTransport{Transport: quic.Transport{
 		Conn:              conn,
 		StatelessResetKey: r.statelessResetKey,
-		Tracer:            r.metricsTracer,
 	}, packetConn: conn}
+	if r.metricsTracer != nil {
+		tr.Transport.Tracer = r.metricsTracer
+	}
 
 	tr.IncreaseCount()
 

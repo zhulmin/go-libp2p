@@ -164,7 +164,11 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (re
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
+	tr := &singleOwnerTransport{Transport: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}
+	if c.metricsTracer != nil {
+		tr.Transport.Tracer = c.metricsTracer
+	}
+	return tr, nil
 }
 
 func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (quic.Connection, error) {
@@ -193,7 +197,7 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 	if err != nil {
 		return nil, err
 	}
-	conn, err := tr.Transport().Dial(ctx, naddr, tlsConf, quicConf)
+	conn, err := tr.Dial(ctx, naddr, tlsConf, quicConf)
 	if err != nil {
 		tr.DecreaseCount()
 		return nil, err
@@ -221,7 +225,12 @@ func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refC
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
+	tr := &singleOwnerTransport{Transport: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}
+	if c.metricsTracer != nil {
+		tr.Transport.Tracer = c.metricsTracer
+	}
+
+	return tr, nil
 }
 
 func (c *ConnManager) Protocols() []int {

@@ -107,8 +107,8 @@ func TestConnectionPassedToQUICForListening(t *testing.T) {
 	require.NoError(t, err)
 	quicTr, err := cm.transportForListen(netw, naddr)
 	require.NoError(t, err)
-	defer quicTr.Transport().Close()
-	if _, ok := quicTr.Transport().Conn.(quic.OOBCapablePacketConn); !ok {
+	defer quicTr.Close()
+	if _, ok := quicTr.(*singleOwnerTransport).Transport.Conn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }
@@ -163,8 +163,8 @@ func TestConnectionPassedToQUICForDialing(t *testing.T) {
 	quicTr, err := cm.TransportForDial(netw, naddr)
 
 	require.NoError(t, err, "dial error")
-	defer quicTr.Transport().Conn.Close()
-	if _, ok := quicTr.Transport().Conn.(quic.OOBCapablePacketConn); !ok {
+	defer quicTr.Close()
+	if _, ok := quicTr.(*singleOwnerTransport).Transport.Conn.(quic.OOBCapablePacketConn); !ok {
 		t.Fatal("connection passed to quic-go cannot be type asserted to a *net.UDPConn")
 	}
 }

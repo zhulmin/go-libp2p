@@ -121,13 +121,13 @@ func TestReuseConnectionWhenListening(t *testing.T) {
 
 	raddr, err := net.ResolveUDPAddr("udp4", "1.1.1.1:1234")
 	require.NoError(t, err)
-	conn, err := reuse.TransportForDial("udp4", raddr)
+	tr, err := reuse.TransportForDial("udp4", raddr)
 	require.NoError(t, err)
-	laddr := &net.UDPAddr{IP: net.IPv4zero, Port: conn.Transport().Conn.LocalAddr().(*net.UDPAddr).Port}
+	laddr := &net.UDPAddr{IP: net.IPv4zero, Port: tr.LocalAddr().(*net.UDPAddr).Port}
 	lconn, err := reuse.TransportForListen("udp4", laddr)
 	require.NoError(t, err)
 	require.Equal(t, lconn.GetCount(), 2)
-	require.Equal(t, conn.GetCount(), 2)
+	require.Equal(t, tr.GetCount(), 2)
 }
 
 func TestReuseConnectionWhenDialBeforeListen(t *testing.T) {

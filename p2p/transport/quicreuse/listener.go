@@ -76,7 +76,7 @@ func newConnListener(c refCountedQuicTransport, quicConfig *quic.Config, enableD
 	}
 	quicConf := quicConfig.Clone()
 	quicConf.AllowConnectionWindowIncrease = cl.allowWindowIncrease
-	ln, err := c.Transport().Listen(tlsConf, quicConf)
+	ln, err := c.Listen(tlsConf, quicConf)
 	if err != nil {
 		return nil, err
 	}
