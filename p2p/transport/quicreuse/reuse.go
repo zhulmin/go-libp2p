@@ -24,6 +24,9 @@ type refCountedQuicTransport interface {
 
 type singleOwnerTransport struct {
 	tr quic.Transport
+
+	// Used to write packets directly around QUIC.
+	packetConn net.PacketConn
 }
 
 func (c *singleOwnerTransport) IncreaseCount() {}
@@ -41,7 +44,7 @@ func (c *singleOwnerTransport) LocalAddr() net.Addr {
 
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Safe because we called quic.OptimizeConn ourselves.
-	return c.tr.Conn.WriteTo(b, addr)
+	return c.packetConn.WriteTo(b, addr)
 }
 
 func (c *singleOwnerTransport) Close() error {
@@ -56,6 +59,9 @@ var (
 
 type refcountedTransport struct {
 	tr quic.Transport
+
+	// Used to write packets directly around QUIC.
+	packetConn net.PacketConn
 
 	mutex       sync.Mutex
 	refCount    int
@@ -79,7 +85,7 @@ func (c *refcountedTransport) Close() error {
 
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Safe because we called quic.OptimizeConn ourselves.
-	return c.tr.Conn.WriteTo(b, addr)
+	return c.packetConn.WriteTo(b, addr)
 }
 
 func (c *refcountedTransport) LocalAddr() net.Addr {
@@ -265,7 +271,7 @@ func (r *reuse) transportForDialLocked(network string, source *net.IP) (*refcoun
 		Conn:              conn,
 		StatelessResetKey: r.statelessResetKey,
 		Tracer:            r.metricsTracer,
-	}}
+	}, packetConn: conn}
 	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = rconn
 	return rconn, nil
 }
@@ -313,7 +319,7 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		Conn:              conn,
 		StatelessResetKey: r.statelessResetKey,
 		Tracer:            r.metricsTracer,
-	}}
+	}, packetConn: conn}
 
 	tr.IncreaseCount()
 

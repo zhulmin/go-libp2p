@@ -164,7 +164,7 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (re
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, nil
+	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
 }
 
 func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (quic.Connection, error) {
@@ -221,7 +221,7 @@ func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refC
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}}, nil
+	return &singleOwnerTransport{tr: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
 }
 
 func (c *ConnManager) Protocols() []int {
