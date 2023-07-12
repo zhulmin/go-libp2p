@@ -26,8 +26,8 @@ type ConnManager struct {
 	connsMu sync.Mutex
 	conns   map[string]connListenerEntry
 
-	srk           quic.StatelessResetKey
-	metricsTracer *metricsTracer
+	srk quic.StatelessResetKey
+	mt  *metricsTracer
 }
 
 type connListenerEntry struct {
@@ -53,7 +53,7 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 	var tracers []quiclogging.Tracer
 
 	if cm.enableMetrics {
-		cm.metricsTracer = newMetricsTracer()
+		cm.mt = newMetricsTracer()
 	}
 	if len(tracers) > 0 {
 		quicConf.Tracer = func(ctx context.Context, p quiclogging.Perspective, ci quic.ConnectionID) quiclogging.ConnectionTracer {
@@ -61,8 +61,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 			if qlogTracerDir != "" {
 				tracers = append(tracers, qloggerForDir(qlogTracerDir, p, ci))
 			}
-			if cm.metricsTracer != nil {
-				tracers = append(tracers, cm.metricsTracer.TracerForConnection(ctx, p, ci))
+			if cm.mt != nil {
+				tracers = append(tracers, cm.mt.TracerForConnection(ctx, p, ci))
 			}
 			return quiclogging.NewMultiplexedConnectionTracer(tracers...)
 		}
@@ -75,8 +75,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey, cm.metricsTracer)
-		cm.reuseUDP6 = newReuse(&statelessResetKey, cm.metricsTracer)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, cm.mt)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, cm.mt)
 	}
 	return cm, nil
 }
@@ -165,8 +165,8 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (re
 		return nil, err
 	}
 	tr := &singleOwnerTransport{Transport: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}
-	if c.metricsTracer != nil {
-		tr.Transport.Tracer = c.metricsTracer
+	if c.mt != nil {
+		tr.Transport.Tracer = c.mt
 	}
 	return tr, nil
 }
@@ -226,8 +226,8 @@ func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refC
 		return nil, err
 	}
 	tr := &singleOwnerTransport{Transport: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}
-	if c.metricsTracer != nil {
-		tr.Transport.Tracer = c.metricsTracer
+	if c.mt != nil {
+		tr.Transport.Tracer = c.mt
 	}
 
 	return tr, nil
