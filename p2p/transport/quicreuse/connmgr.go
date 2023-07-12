@@ -247,5 +247,8 @@ func listenAndOptimize(network string, laddr *net.UDPAddr) (net.PacketConn, erro
 	if err != nil {
 		return nil, err
 	}
-	return quic.OptimizeConn(conn)
+	// We aren't actually calling optimizeConn here because of https://github.com/quic-go/quic-go/issues/3947
+	// Either enable this or remove this function depending on how that issue is resolved.
+	// return quic.OptimizeConn(conn)
+	return conn, err
 }
