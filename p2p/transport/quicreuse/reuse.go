@@ -13,8 +13,10 @@ import (
 )
 
 type refCountedQuicTransport interface {
-	WriteTo([]byte, net.Addr) (int, error)
 	LocalAddr() net.Addr
+
+	// Used to send packets directly around QUIC. Useful for hole punching.
+	WriteTo([]byte, net.Addr) (int, error)
 
 	Close() error
 
