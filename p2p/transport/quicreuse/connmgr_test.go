@@ -26,12 +26,12 @@ func checkClosed(t *testing.T, cm *ConnManager) {
 			continue
 		}
 		r.mutex.Lock()
-		for _, conn := range r.globalListeners {
-			require.Zero(t, conn.GetCount())
+		for _, tr := range r.globalListeners {
+			require.Zero(t, tr.GetCount())
 		}
-		for _, conns := range r.unicast {
-			for _, conn := range conns {
-				require.Zero(t, conn.GetCount())
+		for _, trs := range r.unicast {
+			for _, tr := range trs {
+				require.Zero(t, tr.GetCount())
 			}
 		}
 		r.mutex.Unlock()
@@ -93,7 +93,7 @@ func testListenOnSameProto(t *testing.T, enableReuseport bool) {
 // type-asserted to a UDPConn. That way, it can use all kinds of optimizations.
 func TestConnectionPassedToQUICForListening(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("skipping on windows. Not sure why this fails")
+		t.Skip("skipping on windows. Windows doesn't support these optimizations")
 	}
 	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestAcceptErrorGetCleanedUp(t *testing.T) {
 // in order to enable features like batch processing and ECN.
 func TestConnectionPassedToQUICForDialing(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("skipping on windows. Not sure why this fails")
+		t.Skip("skipping on windows. Windows doesn't support these optimizations")
 	}
 	cm, err := NewConnManager([32]byte{}, DisableReuseport())
 	require.NoError(t, err)

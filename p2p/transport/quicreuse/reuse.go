@@ -20,7 +20,7 @@ type refCountedQuicTransport interface {
 
 	Close() error
 
-	// count conn reference
+	// count transport reference
 	DecreaseCount()
 	IncreaseCount()
 
@@ -169,28 +169,28 @@ func (r *reuse) gc() {
 		case <-ticker.C:
 			now := time.Now()
 			r.mutex.Lock()
-			for key, conn := range r.globalListeners {
-				if conn.ShouldGarbageCollect(now) {
-					conn.Close()
+			for key, tr := range r.globalListeners {
+				if tr.ShouldGarbageCollect(now) {
+					tr.Close()
 					delete(r.globalListeners, key)
 				}
 			}
-			for key, conn := range r.globalDialers {
-				if conn.ShouldGarbageCollect(now) {
-					conn.Close()
+			for key, tr := range r.globalDialers {
+				if tr.ShouldGarbageCollect(now) {
+					tr.Close()
 					delete(r.globalDialers, key)
 				}
 			}
-			for ukey, conns := range r.unicast {
-				for key, conn := range conns {
-					if conn.ShouldGarbageCollect(now) {
-						conn.Close()
-						delete(conns, key)
+			for ukey, trs := range r.unicast {
+				for key, tr := range trs {
+					if tr.ShouldGarbageCollect(now) {
+						tr.Close()
+						delete(trs, key)
 					}
 				}
-				if len(conns) == 0 {
+				if len(trs) == 0 {
 					delete(r.unicast, ukey)
-					// If we've dropped all connections with a unicast binding,
+					// If we've dropped all transports with a unicast binding,
 					// assume our routes may have changed.
 					if len(r.unicast) == 0 {
 						r.routes = nil
@@ -236,27 +236,27 @@ func (r *reuse) TransportForDial(network string, raddr *net.UDPAddr) (*refcounte
 
 func (r *reuse) transportForDialLocked(network string, source *net.IP) (*refcountedTransport, error) {
 	if source != nil {
-		// We already have at least one suitable connection...
-		if conns, ok := r.unicast[source.String()]; ok {
+		// We already have at least one suitable transport...
+		if trs, ok := r.unicast[source.String()]; ok {
 			// ... we don't care which port we're dialing from. Just use the first.
-			for _, c := range conns {
-				return c, nil
+			for _, tr := range trs {
+				return tr, nil
 			}
 		}
 	}
 
-	// Use a connection listening on 0.0.0.0 (or ::).
+	// Use a transport listening on 0.0.0.0 (or ::).
 	// Again, we don't care about the port number.
-	for _, conn := range r.globalListeners {
-		return conn, nil
+	for _, tr := range r.globalListeners {
+		return tr, nil
 	}
 
-	// Use a connection we've previously dialed from
-	for _, conn := range r.globalDialers {
-		return conn, nil
+	// Use a transport we've previously dialed from
+	for _, tr := range r.globalDialers {
+		return tr, nil
 	}
 
-	// We don't have a connection that we can use for dialing.
+	// We don't have a transport that we can use for dialing.
 	// Dial a new connection from a random port.
 	var addr *net.UDPAddr
 	switch network {
@@ -284,17 +284,17 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	// Check if we can reuse a connection we have already dialed out from.
-	// We reuse a connection from globalDialers when the requested port is 0 or the requested
+	// Check if we can reuse a transport we have already dialed out from.
+	// We reuse a transport from globalDialers when the requested port is 0 or the requested
 	// port is already in the globalDialers.
-	// If we are reusing a connection from globalDialers, we move the globalDialers entry to
+	// If we are reusing a transport from globalDialers, we move the globalDialers entry to
 	// globalListeners
 	if laddr.IP.IsUnspecified() {
 		var rTr *refcountedTransport
 		var localAddr *net.UDPAddr
 
 		if laddr.Port == 0 {
-			// the requested port is 0, we can reuse any connection
+			// the requested port is 0, we can reuse any transport
 			for _, tr := range r.globalDialers {
 				rTr = tr
 				localAddr = rTr.LocalAddr().(*net.UDPAddr)

@@ -28,7 +28,7 @@ type protoConf struct {
 	allowWindowIncrease func(conn quic.Connection, delta uint64) bool
 }
 
-type connListener struct {
+type quicListener struct {
 	l         *quic.Listener
 	transport refCountedQuicTransport
 	running   chan struct{}
@@ -38,7 +38,7 @@ type connListener struct {
 	protocols   map[string]protoConf
 }
 
-func newConnListener(c refCountedQuicTransport, quicConfig *quic.Config, enableDraft29 bool) (*connListener, error) {
+func newQuicListener(c refCountedQuicTransport, quicConfig *quic.Config, enableDraft29 bool) (*quicListener, error) {
 	localMultiaddrs := make([]ma.Multiaddr, 0, 2)
 	a, err := ToQuicMultiaddr(c.LocalAddr(), quic.Version1)
 	if err != nil {
@@ -52,7 +52,7 @@ func newConnListener(c refCountedQuicTransport, quicConfig *quic.Config, enableD
 		}
 		localMultiaddrs = append(localMultiaddrs, a)
 	}
-	cl := &connListener{
+	cl := &quicListener{
 		protocols: map[string]protoConf{},
 		running:   make(chan struct{}),
 		transport: c,
@@ -85,7 +85,7 @@ func newConnListener(c refCountedQuicTransport, quicConfig *quic.Config, enableD
 	return cl, nil
 }
 
-func (l *connListener) allowWindowIncrease(conn quic.Connection, delta uint64) bool {
+func (l *quicListener) allowWindowIncrease(conn quic.Connection, delta uint64) bool {
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
@@ -96,7 +96,7 @@ func (l *connListener) allowWindowIncrease(conn quic.Connection, delta uint64) b
 	return conf.allowWindowIncrease(conn, delta)
 }
 
-func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (Listener, error) {
+func (l *quicListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool, onRemove func()) (Listener, error) {
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
@@ -128,7 +128,7 @@ func (l *connListener) Add(tlsConf *tls.Config, allowWindowIncrease func(conn qu
 	return ln, nil
 }
 
-func (l *connListener) Run() error {
+func (l *quicListener) Run() error {
 	defer close(l.running)
 	defer l.transport.DecreaseCount()
 	for {
@@ -152,7 +152,7 @@ func (l *connListener) Run() error {
 	}
 }
 
-func (l *connListener) Close() error {
+func (l *quicListener) Close() error {
 	err := l.l.Close()
 	<-l.running // wait for Run to return
 	return err

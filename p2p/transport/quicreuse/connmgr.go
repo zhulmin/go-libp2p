@@ -23,23 +23,23 @@ type ConnManager struct {
 	serverConfig *quic.Config
 	clientConfig *quic.Config
 
-	connsMu sync.Mutex
-	conns   map[string]connListenerEntry
+	quicListenersMu sync.Mutex
+	quicListeners   map[string]quicListenerEntry
 
 	srk quic.StatelessResetKey
 	mt  *metricsTracer
 }
 
-type connListenerEntry struct {
+type quicListenerEntry struct {
 	refCount int
-	ln       *connListener
+	ln       *quicListener
 }
 
 func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
 		enableReuseport: true,
 		enableDraft29:   true,
-		conns:           make(map[string]connListenerEntry),
+		quicListeners:   make(map[string]quicListenerEntry),
 		srk:             statelessResetKey,
 	}
 	for _, o := range opts {
@@ -104,22 +104,22 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 		return nil, err
 	}
 
-	c.connsMu.Lock()
-	defer c.connsMu.Unlock()
+	c.quicListenersMu.Lock()
+	defer c.quicListenersMu.Unlock()
 
 	key := laddr.String()
-	entry, ok := c.conns[key]
+	entry, ok := c.quicListeners[key]
 	if !ok {
-		conn, err := c.transportForListen(netw, laddr)
+		tr, err := c.transportForListen(netw, laddr)
 		if err != nil {
 			return nil, err
 		}
-		ln, err := newConnListener(conn, c.serverConfig, c.enableDraft29)
+		ln, err := newQuicListener(tr, c.serverConfig, c.enableDraft29)
 		if err != nil {
 			return nil, err
 		}
-		key = conn.LocalAddr().String()
-		entry = connListenerEntry{ln: ln}
+		key = tr.LocalAddr().String()
+		entry = quicListenerEntry{ln: ln}
 	}
 	l, err := entry.ln.Add(tlsConf, allowWindowIncrease, func() { c.onListenerClosed(key) })
 	if err != nil {
@@ -129,21 +129,21 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 		return nil, err
 	}
 	entry.refCount++
-	c.conns[key] = entry
+	c.quicListeners[key] = entry
 	return l, nil
 }
 
 func (c *ConnManager) onListenerClosed(key string) {
-	c.connsMu.Lock()
-	defer c.connsMu.Unlock()
+	c.quicListenersMu.Lock()
+	defer c.quicListenersMu.Unlock()
 
-	entry := c.conns[key]
+	entry := c.quicListeners[key]
 	entry.refCount = entry.refCount - 1
 	if entry.refCount <= 0 {
-		delete(c.conns, key)
+		delete(c.quicListeners, key)
 		entry.ln.Close()
 	} else {
-		c.conns[key] = entry
+		c.quicListeners[key] = entry
 	}
 }
 
