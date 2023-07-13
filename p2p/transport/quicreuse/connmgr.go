@@ -50,23 +50,18 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 
 	quicConf := quicConfig.Clone()
 
-	var tracers []quiclogging.Tracer
-
 	if cm.enableMetrics {
 		cm.mt = newMetricsTracer()
-		tracers = append(tracers, cm.mt)
 	}
-	if len(tracers) > 0 {
-		quicConf.Tracer = func(ctx context.Context, p quiclogging.Perspective, ci quic.ConnectionID) quiclogging.ConnectionTracer {
-			tracers := make([]quiclogging.ConnectionTracer, 0, 2)
-			if qlogTracerDir != "" {
-				tracers = append(tracers, qloggerForDir(qlogTracerDir, p, ci))
-			}
-			if cm.mt != nil {
-				tracers = append(tracers, cm.mt.TracerForConnection(ctx, p, ci))
-			}
-			return quiclogging.NewMultiplexedConnectionTracer(tracers...)
+	quicConf.Tracer = func(ctx context.Context, p quiclogging.Perspective, ci quic.ConnectionID) quiclogging.ConnectionTracer {
+		tracers := make([]quiclogging.ConnectionTracer, 0, 2)
+		if qlogTracerDir != "" {
+			tracers = append(tracers, qloggerForDir(qlogTracerDir, p, ci))
 		}
+		if cm.mt != nil {
+			tracers = append(tracers, cm.mt.TracerForConnection(ctx, p, ci))
+		}
+		return quiclogging.NewMultiplexedConnectionTracer(tracers...)
 	}
 	serverConfig := quicConf.Clone()
 	if !cm.enableDraft29 {
