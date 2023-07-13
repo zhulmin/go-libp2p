@@ -105,6 +105,7 @@ type DialResponse struct {
 }
 
 type DialResult struct {
-	Addr   ma.Multiaddr
-	Status pb.DialResponse_DialStatus
+	ExternalAddr ma.Multiaddr
+	LocalAddr    ma.Multiaddr
+	Status       pb.DialResponse_DialStatus
 }
