@@ -224,10 +224,10 @@ func TestListenAddrValidity(t *testing.T) {
 	}
 
 	invalid := []ma.Multiaddr{
-		ma.StringCast("/ip4/127.0.0.1/udp/1234"),              // missing webtransport
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/webtransport"), // missing quic
-		ma.StringCast("/ip4/127.0.0.1/tcp/1234/webtransport"), // WebTransport over TCP? Is this a joke?
-		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/" + randomMultihash(t)),
+		ma.StringCast("/ip4/127.0.0.1/udp/1234"),                                                     // missing webtransport
+		ma.StringCast("/ip4/127.0.0.1/udp/1234/webtransport"),                                        // missing quic
+		ma.StringCast("/ip4/127.0.0.1/tcp/1234/webtransport"),                                        // WebTransport over TCP? Is this a joke?
+		ma.StringCast("/ip4/127.0.0.1/udp/1234/quic-v1/webtransport/certhash/" + randomMultihash(t)), // We can't listen on a specific certhash
 	}
 
 	_, key := newIdentity(t)
