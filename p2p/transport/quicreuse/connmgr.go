@@ -54,6 +54,7 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 
 	if cm.enableMetrics {
 		cm.mt = newMetricsTracer()
+		tracers = append(tracers, cm.mt)
 	}
 	if len(tracers) > 0 {
 		quicConf.Tracer = func(ctx context.Context, p quiclogging.Perspective, ci quic.ConnectionID) quiclogging.ConnectionTracer {
