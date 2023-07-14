@@ -103,6 +103,9 @@ func WithResourceManager(m network.ResourceManager) Option {
 // WithDialRanker configures swarm to use d as the DialRanker
 func WithDialRanker(d network.DialRanker) Option {
 	return func(s *Swarm) error {
+		if d == nil {
+			return errors.New("dial ranker cannot be nil")
+		}
 		s.dialRanker = d
 		return nil
 	}

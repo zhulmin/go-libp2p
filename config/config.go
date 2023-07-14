@@ -163,6 +163,7 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	}
 
 	opts := cfg.SwarmOpts
+
 	if cfg.Reporter != nil {
 		opts = append(opts, swarm.WithMetrics(cfg.Reporter))
 	}
@@ -178,12 +179,9 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	if cfg.MultiaddrResolver != nil {
 		opts = append(opts, swarm.WithMultiaddrResolver(cfg.MultiaddrResolver))
 	}
-
-	dialRanker := cfg.DialRanker
-	if dialRanker == nil {
-		dialRanker = swarm.DefaultDialRanker
+	if cfg.DialRanker != nil {
+		opts = append(opts, swarm.WithDialRanker(cfg.DialRanker))
 	}
-	opts = append(opts, swarm.WithDialRanker(dialRanker))
 
 	if enableMetrics {
 		opts = append(opts,
