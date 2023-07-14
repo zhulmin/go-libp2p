@@ -19,7 +19,7 @@ require (
 	github.com/ipfs/go-ds-leveldb v0.5.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/jbenet/go-temp-err-catcher v0.1.0
-	github.com/klauspost/compress v1.16.5
+	github.com/klauspost/compress v1.16.7
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-flow-metrics v0.1.0
 	github.com/libp2p/go-libp2p-asn-util v0.3.0
@@ -29,7 +29,7 @@ require (
 	github.com/libp2p/go-nat v0.2.0
 	github.com/libp2p/go-netroute v0.2.1
 	github.com/libp2p/go-reuseport v0.3.0
-	github.com/libp2p/go-yamux/v4 v4.0.0
+	github.com/libp2p/go-yamux/v4 v4.0.1
 	github.com/libp2p/zeroconf/v2 v2.2.0
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b
@@ -41,7 +41,7 @@ require (
 	github.com/multiformats/go-multiaddr-fmt v0.1.0
 	github.com/multiformats/go-multibase v0.2.0
 	github.com/multiformats/go-multicodec v0.9.0
-	github.com/multiformats/go-multihash v0.2.2
+	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.4.1
 	github.com/multiformats/go-varint v0.0.7
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
@@ -50,11 +50,11 @@ require (
 	github.com/quic-go/quic-go v0.36.2
 	github.com/quic-go/webtransport-go v0.5.3
 	github.com/raulk/go-watchdog v1.3.0
-	github.com/stretchr/testify v1.8.2
-	go.uber.org/fx v1.19.2
+	github.com/stretchr/testify v1.8.4
+	go.uber.org/fx v1.20.0
 	go.uber.org/goleak v1.1.12
 	golang.org/x/crypto v0.11.0
-	golang.org/x/exp v0.0.0-20230711153332-06a737ee72cb
+	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
 	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.10.0
 	golang.org/x/tools v0.11.0
@@ -91,7 +91,7 @@ require (
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
-	github.com/miekg/dns v1.1.54 // indirect
+	github.com/miekg/dns v1.1.55 // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
