@@ -2,6 +2,7 @@ package libp2pquic
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/libp2p/go-libp2p/core/network"
 
@@ -29,6 +30,7 @@ func (s *stream) Read(b []byte) (n int, err error) {
 func (s *stream) Write(b []byte) (n int, err error) {
 	n, err = s.Stream.Write(b)
 	if err != nil && errors.Is(err, &quic.StreamError{}) {
+		fmt.Println(err)
 		err = network.ErrReset
 	}
 	return n, err

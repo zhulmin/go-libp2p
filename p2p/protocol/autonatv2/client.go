@@ -2,6 +2,8 @@ package autonatv2
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -17,29 +19,31 @@ import (
 
 //go:generate protoc --go_out=. --go_opt=Mpb/autonat.proto=./pb pb/autonat.proto
 
-type AutoNAT struct {
+var (
+	ErrNoValidPeers = errors.New("autonat v2: No valid peers")
+)
+
+type Client struct {
 	h          host.Host
 	dialCharge []byte
 
-	mu         sync.Mutex
-	attemptChs map[uint64]chan attempt
+	mu            sync.Mutex
+	attemptQueues map[uint64]chan attempt
 }
 
-func (c *AutoNAT) DialRequest(addrs []ma.Multiaddr) (DialResponse, error) {
+func (c *Client) DialRequest(addrs []ma.Multiaddr) (DialResponse, error) {
 	peers := c.validPeers()
-	for _, p := range peers {
-		if resp, err := c.tryPeer(p, addrs); err == nil {
-			return resp, nil
-		}
+	if len(peers) == 0 {
+		return DialResponse{}, ErrNoValidPeers
 	}
-	return DialResponse{}, nil
+	return c.tryPeer(peers[0], addrs)
 }
 
-func (c *AutoNAT) validPeers() []peer.ID {
+func (c *Client) validPeers() []peer.ID {
 	peers := c.h.Peerstore().Peers()
 	idx := 0
 	for _, p := range c.h.Peerstore().Peers() {
-		if proto, err := c.h.Peerstore().SupportsProtocols(p, protocol); len(proto) == 0 || err != nil {
+		if proto, err := c.h.Peerstore().SupportsProtocols(p, dialProtocol); len(proto) == 0 || err != nil {
 			continue
 		}
 		peers[idx] = p
@@ -50,10 +54,14 @@ func (c *AutoNAT) validPeers() []peer.ID {
 	return peers
 }
 
-func (c *AutoNAT) tryPeer(p peer.ID, addrs []ma.Multiaddr) (DialResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (c *Client) tryPeer(p peer.ID, addrs []ma.Multiaddr) (DialResponse, error) {
+	c.h.SetStreamHandler(attemptProtocol, c.handleDialAttempt)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	s, err := c.h.NewStream(ctx, p, protocol)
+	s, err := c.h.NewStream(ctx, p, dialProtocol)
+	if err != nil {
+		return DialResponse{}, err
+	}
 	s.SetDeadline(time.Now().Add(1 * time.Minute))
 	if err != nil {
 		return DialResponse{}, err
@@ -61,24 +69,28 @@ func (c *AutoNAT) tryPeer(p peer.ID, addrs []ma.Multiaddr) (DialResponse, error)
 	nonce := rand.Uint64()
 	ch := make(chan attempt, 1)
 	c.mu.Lock()
-	c.attemptChs[nonce] = ch
+	c.attemptQueues[nonce] = ch
 	c.mu.Unlock()
 
+	addrsb := make([][]byte, len(addrs))
+	for i, a := range addrs {
+		addrsb[i] = a.Bytes()
+	}
 	msg := &pb.Message{
 		Msg: &pb.Message_DialRequest{
 			DialRequest: &pb.DialRequest{
-				Addrs: make([][]byte, len(addrs)),
+				Addrs: addrsb,
 				Nonce: nonce,
 			},
 		},
 	}
-	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	w := pbio.NewDelimitedWriter(s)
 	if err := w.WriteMsg(msg); err != nil {
 		return DialResponse{}, err
 	}
 
 	msg.Reset()
+	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	if err := r.ReadMsg(msg); err != nil {
 		return DialResponse{}, err
 	}
@@ -90,12 +102,14 @@ func (c *AutoNAT) tryPeer(p peer.ID, addrs []ma.Multiaddr) (DialResponse, error)
 			if rem > len(c.dialCharge) {
 				n, err := s.Write(c.dialCharge)
 				if err != nil {
+					fmt.Println("done here")
 					return DialResponse{}, err
 				}
 				rem -= n
 			} else {
 				n, err := s.Write(c.dialCharge[:rem])
 				if err != nil {
+					fmt.Println("done for here")
 					return DialResponse{}, err
 				}
 				rem -= n
@@ -107,28 +121,62 @@ func (c *AutoNAT) tryPeer(p peer.ID, addrs []ma.Multiaddr) (DialResponse, error)
 		}
 	}
 
-	select {
-	case <-ch:
-		return DialResponse{
-			Status:  msg.GetDialResponse().GetStatus(),
-			Results: nil,
-		}, nil
-	case <-ctx.Done():
-		return DialResponse{}, ctx.Err()
+	if msg.GetDialResponse().GetStatus() != pb.DialResponse_ResponseStatus_OK {
+		return DialResponse{Status: msg.GetDialResponse().GetStatus()}, nil
 	}
+
+	dialSuccess := false
+	statuses := msg.GetDialResponse().GetDialStatuses()
+	for _, st := range statuses {
+		if st == pb.DialResponse_DialStaus_OK {
+			dialSuccess = true
+			break
+		}
+	}
+
+	var attemptLocalAddr ma.Multiaddr
+	if dialSuccess {
+		select {
+		case at := <-ch:
+			fmt.Println("received nonce")
+			if at.nonce == nonce {
+				attemptLocalAddr = at.addr
+			}
+		case <-ctx.Done():
+		}
+	}
+	fmt.Println("writing")
+	results := make([]DialResult, len(addrs))
+	for i := 0; i < len(addrs); i++ {
+		if i >= len(statuses) {
+			results[i] = DialResult{Status: -1}
+			continue
+		}
+		results[i] = DialResult{Status: statuses[i], Addr: addrs[i]}
+		if results[i].Status == pb.DialResponse_DialStaus_OK {
+			if attemptLocalAddr != nil {
+				results[i].LocalAddr = attemptLocalAddr
+			} else {
+				results[i].Status = pb.DialResponse_E_ATTEMPT_ERROR
+			}
+		}
+	}
+	return DialResponse{
+		Status:  msg.GetDialResponse().GetStatus(),
+		Results: results,
+	}, nil
 }
 
-func (c *AutoNAT) handleDialAttempt(s network.Stream) {
+func (c *Client) handleDialAttempt(s network.Stream) {
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	msg := &pb.DialAttempt{}
 	if err := r.ReadMsg(msg); err != nil {
 		return
 	}
-	// This is necessary to allow implementations that choose to keep a
-	// separate dialer with a different peerID from the nodes peerID
+
 	nonce := msg.GetNonce()
 	c.mu.Lock()
-	ch := c.attemptChs[nonce]
+	ch := c.attemptQueues[nonce]
 	c.mu.Unlock()
 	select {
 	case ch <- attempt{addr: s.Conn().LocalMultiaddr(), nonce: nonce}:
@@ -142,9 +190,9 @@ type DialResponse struct {
 }
 
 type DialResult struct {
-	ExternalAddr ma.Multiaddr
-	LocalAddr    ma.Multiaddr
-	Status       pb.DialResponse_DialStatus
+	Addr      ma.Multiaddr
+	LocalAddr ma.Multiaddr
+	Status    pb.DialResponse_DialStatus
 }
 
 type attempt struct {

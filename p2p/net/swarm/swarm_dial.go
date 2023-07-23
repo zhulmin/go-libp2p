@@ -402,7 +402,7 @@ func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, 
 	return nil
 }
 
-func (s *Swarm) canDial(addr ma.Multiaddr) bool {
+func (s *Swarm) CanDial(addr ma.Multiaddr) bool {
 	t := s.TransportForDialing(addr)
 	return t != nil && t.CanDial(addr)
 }
@@ -436,7 +436,7 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) []ma.Mul
 	// address
 
 	// filter addresses we cannot dial
-	addrs = ma.FilterAddrs(addrs, s.canDial)
+	addrs = ma.FilterAddrs(addrs, s.CanDial)
 
 	// filter low priority addresses among the addresses we can dial
 	addrs = filterLowPriorityAddresses(addrs)
