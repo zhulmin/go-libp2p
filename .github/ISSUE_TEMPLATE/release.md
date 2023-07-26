@@ -20,9 +20,16 @@ about: 'Start a new libp2p release.'
 - [ ] **Stage 0 - Finishing Touches**
     - [ ] Go through relevant libp2p repos looking for unreleased changes that should make it into the release. If you find any, cut releases.
     - [ ] Run `go get -u ./...` to see if there are any out-of-date deps that look important. If there are, bubble them. Try to avoid _directly_ updating indirect deps in go-libp2p's `go.mod` when possible.
+    - [ ] Performance Benchmarking
+      - [ ] Follow the instructions [on adding a new version to the libp2p performance benchmark tooling](https://github.com/libp2p/test-plans/tree/master/perf#adding-a-new-implementation-or-a-new-version). Instead of the final go-libp2p release commit, which obviously doesn't yet exist, use the most recent available commit. See https://github.com/libp2p/test-plans/pull/242 as an example.
+      - [ ] Run the benchmarks [via the GitHub _perf_ Action](https://github.com/libp2p/test-plans/tree/master/perf#running-via-github-action), wait for the action to push a commit to your https://github.com/libp2p/test-plans/ pull request and compare the performance of the upcoming release with the previous release [using the dashboard](https://github.com/libp2p/test-plans/tree/master/perf#running-via-github-action).
 - [ ] **Stage 1 - Release**
   - [ ] Publish the release through the GitHub UI, adding the release notes. Some users rely on this to receive notifications of new releases.
   - [ ] Announce the release on the [discuss.libp2p.io](https://discuss.libp2p.io).
+  - [ ] Performance Benchmarking
+    - [ ] Replace the most recent (pre-release) go-libp2p commit with the final go-libp2p release commit on your previously created https://github.com/libp2p/test-plans/ pull request.
+    - [ ] Retrigger [the GitHub _perf_ Action](https://github.com/libp2p/test-plans/tree/master/perf#running-via-github-action) and wait for it to push the results as a new commit.
+    - [ ] Merge the https://github.com/libp2p/test-plans/ pull request.
 - [ ] **Stage 2 - Update Upstream**
   - [ ] Update the examples to the final release
   - [ ] Update the upstream dependencies to the final release and create PRs.
