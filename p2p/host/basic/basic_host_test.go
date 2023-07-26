@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/netip"
 	"reflect"
 	"sort"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	"tailscale.com/tstest/natlab"
 
 	ma "github.com/multiformats/go-multiaddr"
 
@@ -892,5 +894,50 @@ func TestInferWebtransportAddrsFromQuic(t *testing.T) {
 		})
 
 	}
+}
 
+func TestAddressDiscovery(t *testing.T) {
+	inet := &natlab.Network{Name: "internet", Prefix4: netip.MustParsePrefix("1.2.3.0/24")}
+	type TestHost struct {
+		H    *BasicHost
+		Addr ma.Multiaddr
+	}
+	port := 1000
+	newHost := func(name string) TestHost {
+		m := &natlab.Machine{Name: name}
+		mif := m.Attach("eth0", inet)
+		port++
+		listenAddr := ma.StringCast(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", port))
+		publicAddr := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", mif.V4().String(), port))
+		h, err := NewHost(swarmt.GenSwarm(t, swarmt.OptQUICListenAddress(listenAddr), swarmt.OptUDPTransport(swarmt.UDPTransport(m))), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return TestHost{H: h, Addr: publicAddr}
+	}
+
+	var peers []TestHost
+	for i := 0; i < identify.ActivationThresh; i++ {
+		h := newHost(fmt.Sprintf("peer-%d", i))
+		h.H.IDService().Start()
+		peers = append(peers, h)
+	}
+
+	h := newHost("host")
+	h.H.IDService().Start()
+	for _, p := range peers {
+		ctx := network.WithDialPeerTimeout(context.Background(), 1*time.Second)
+		h.H.Peerstore().AddAddr(p.H.ID(), p.Addr, peerstore.TempAddrTTL)
+		err := h.H.Connect(ctx, peer.AddrInfo{ID: p.H.ID()})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	require.Eventually(t,
+		func() bool {
+			return ma.Contains(h.H.Addrs(), h.Addr)
+		},
+		5*time.Second,
+		100*time.Millisecond)
 }
