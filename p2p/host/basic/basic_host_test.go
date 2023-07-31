@@ -899,7 +899,7 @@ func TestInferWebtransportAddrsFromQuic(t *testing.T) {
 func TestAddressDiscovery(t *testing.T) {
 	inet := &natlab.Network{Name: "internet", Prefix4: netip.MustParsePrefix("1.2.3.0/24")}
 	type TestHost struct {
-		H    *BasicHost
+		*BasicHost
 		Addr ma.Multiaddr
 	}
 	port := 1000
@@ -913,22 +913,22 @@ func TestAddressDiscovery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return TestHost{H: h, Addr: publicAddr}
+		return TestHost{BasicHost: h, Addr: publicAddr}
 	}
 
 	var peers []TestHost
 	for i := 0; i < identify.ActivationThresh; i++ {
 		h := newHost(fmt.Sprintf("peer-%d", i))
-		h.H.IDService().Start()
+		h.Start()
 		peers = append(peers, h)
 	}
 
 	h := newHost("host")
-	h.H.IDService().Start()
+	h.Start()
 	for _, p := range peers {
 		ctx := network.WithDialPeerTimeout(context.Background(), 1*time.Second)
-		h.H.Peerstore().AddAddr(p.H.ID(), p.Addr, peerstore.TempAddrTTL)
-		err := h.H.Connect(ctx, peer.AddrInfo{ID: p.H.ID()})
+		h.Peerstore().AddAddr(p.ID(), p.Addr, peerstore.TempAddrTTL)
+		err := h.Connect(ctx, peer.AddrInfo{ID: p.ID()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -936,7 +936,7 @@ func TestAddressDiscovery(t *testing.T) {
 
 	require.Eventually(t,
 		func() bool {
-			return ma.Contains(h.H.Addrs(), h.Addr)
+			return ma.Contains(h.Addrs(), h.Addr)
 		},
 		5*time.Second,
 		100*time.Millisecond)

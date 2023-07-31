@@ -196,6 +196,7 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() { reuse.Close() })
 		quicTransport, err := quic.NewTransport(priv, reuse, nil, cfg.connectionGater, nil)
 		if err != nil {
 			t.Fatal(err)
