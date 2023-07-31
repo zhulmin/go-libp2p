@@ -88,6 +88,8 @@ func TestInterceptSecuredOutgoing(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, ConnGater: connGater})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 			require.Len(t, h2.Addrs(), 1)
 
@@ -120,6 +122,8 @@ func TestInterceptUpgradedOutgoing(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, ConnGater: connGater})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 			require.Len(t, h2.Addrs(), 1)
 
@@ -154,6 +158,8 @@ func TestInterceptAccept(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{ConnGater: connGater})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -187,6 +193,8 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{ConnGater: connGater})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -218,6 +226,8 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 
 			h1 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
 			h2 := tc.HostGenerator(t, TransportTestCaseOpts{ConnGater: connGater})
+			defer h1.Close()
+			defer h2.Close()
 			require.Len(t, h2.Addrs(), 1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
