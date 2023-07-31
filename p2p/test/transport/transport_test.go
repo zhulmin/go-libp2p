@@ -613,8 +613,8 @@ func TestStreamReadDeadline(t *testing.T) {
 			_, err = s.Read([]byte{0})
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "deadline")
-			nerr, ok := err.(net.Error)
-			require.True(t, ok, "expected a net.Error")
+			var nerr net.Error
+			require.True(t, errors.As(err, &nerr), "expected a net.Error")
 			require.True(t, nerr.Timeout(), "expected net.Error.Timeout() == true")
 			// now test that the stream is still usable
 			s.SetReadDeadline(time.Time{})
