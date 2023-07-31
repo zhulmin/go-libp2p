@@ -12,7 +12,8 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.5.0
-	github.com/hashicorp/golang-lru/v2 v2.0.2
+	github.com/hashicorp/golang-lru/arc/v2 v2.0.4
+	github.com/hashicorp/golang-lru/v2 v2.0.4
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-ds-badger v0.3.0
