@@ -21,9 +21,11 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	tptu "github.com/libp2p/go-libp2p/p2p/net/upgrader"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"github.com/libp2p/go-libp2p/p2p/transport/tor"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
@@ -38,6 +40,8 @@ type config struct {
 	sk               crypto.PrivKey
 	swarmOpts        []swarm.Option
 	eventBus         event.Bus
+	useNoiseUpgrader bool
+	torTransport     bool
 	clock
 }
 
@@ -101,6 +105,14 @@ func OptPeerPrivateKey(sk crypto.PrivKey) Option {
 	}
 }
 
+var OptNoiseUpgrader = func(_ *testing.T, c *config) {
+	c.useNoiseUpgrader = true
+}
+
+var OptTorTransport = func(_ *testing.T, c *config) {
+	c.torTransport = true
+}
+
 func EventBus(b event.Bus) Option {
 	return func(_ *testing.T, c *config) {
 		c.eventBus = b
@@ -112,6 +124,17 @@ func GenUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater
 	id := n.LocalPeer()
 	pk := n.Peerstore().PrivKey(id)
 	st := insecure.NewWithIdentity(insecure.ID, id, pk)
+
+	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: yamux.ID, Muxer: yamux.DefaultTransport}}, nil, nil, connGater, opts...)
+	require.NoError(t, err)
+	return u
+}
+
+func NoiseUpgrader(t *testing.T, n *swarm.Swarm, connGater connmgr.ConnectionGater, opts ...tptu.Option) transport.Upgrader {
+	id := n.LocalPeer()
+	pk := n.Peerstore().PrivKey(id)
+	st, err := noise.New(noise.ID, pk, []tptu.StreamMuxer{{ID: yamux.ID, Muxer: yamux.DefaultTransport}})
+	require.NoError(t, err)
 
 	u, err := tptu.New([]sec.SecureTransport{st}, []tptu.StreamMuxer{{ID: yamux.ID, Muxer: yamux.DefaultTransport}}, nil, nil, connGater, opts...)
 	require.NoError(t, err)
@@ -156,7 +179,12 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 	s, err := swarm.NewSwarm(id, ps, eventBus, swarmOpts...)
 	require.NoError(t, err)
 
-	upgrader := GenUpgrader(t, s, cfg.connectionGater)
+	var upgrader transport.Upgrader
+	if cfg.useNoiseUpgrader {
+		upgrader = NoiseUpgrader(t, s, cfg.connectionGater)
+	} else {
+		upgrader = GenUpgrader(t, s, cfg.connectionGater)
+	}
 
 	if !cfg.disableTCP {
 		var tcpOpts []tcp.Option
@@ -190,6 +218,14 @@ func GenSwarm(t *testing.T, opts ...Option) *swarm.Swarm {
 			if err := s.Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic")); err != nil {
 				t.Fatal(err)
 			}
+		}
+	}
+
+	if cfg.torTransport {
+		tpt, err := tor.NewTransport(upgrader, nil)
+		require.NoError(t, err)
+		if err := s.AddTransport(tpt); err != nil {
+			t.Fatal(err)
 		}
 	}
 	if !cfg.dialOnly {
