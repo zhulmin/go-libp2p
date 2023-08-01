@@ -743,3 +743,12 @@ func (c connWithMetrics) Close() error {
 	c.metricsTracer.ClosedConnection(c.dir, time.Since(c.opened), c.ConnState(), c.LocalMultiaddr())
 	return c.CapableConn.Close()
 }
+
+func (c connWithMetrics) Stat() network.ConnStats {
+	if cs, ok := c.CapableConn.(network.ConnStat); ok {
+		return cs.Stat()
+	}
+	return network.ConnStats{}
+}
+
+var _ network.ConnStat = connWithMetrics{}
