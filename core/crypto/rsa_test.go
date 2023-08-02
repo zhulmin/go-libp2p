@@ -69,7 +69,7 @@ func TestRSASmallKey(t *testing.T) {
 }
 
 func TestRSABigKeyFailsToGenerate(t *testing.T) {
-	_, _, err := GenerateRSAKeyPair(MaxRsaKeyBits*2, rand.Reader)
+	_, _, err := GenerateRSAKeyPair(maxRsaKeyBits*2, rand.Reader)
 	if err != ErrRsaKeyTooBig {
 		t.Fatal("should have refused to create too big RSA key")
 	}
@@ -78,12 +78,12 @@ func TestRSABigKeyFailsToGenerate(t *testing.T) {
 func TestRSABigKey(t *testing.T) {
 	// Make the global limit smaller for this test to run faster.
 	// Note we also change the limit below, but this is different
-	origSize := MaxRsaKeyBits
-	MaxRsaKeyBits = 2048
-	defer func() { MaxRsaKeyBits = origSize }() //
+	origSize := maxRsaKeyBits
+	maxRsaKeyBits = 2048
+	defer func() { maxRsaKeyBits = origSize }() //
 
-	MaxRsaKeyBits *= 2
-	badPriv, badPub, err := GenerateRSAKeyPair(MaxRsaKeyBits, rand.Reader)
+	maxRsaKeyBits *= 2
+	badPriv, badPub, err := GenerateRSAKeyPair(maxRsaKeyBits, rand.Reader)
 	if err != nil {
 		t.Fatalf("should have succeeded, got: %s", err)
 	}
@@ -95,7 +95,7 @@ func TestRSABigKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	MaxRsaKeyBits /= 2
+	maxRsaKeyBits /= 2
 	_, err = UnmarshalPublicKey(pubBytes)
 	if err != ErrRsaKeyTooBig {
 		t.Fatal("should have refused to unmarshal a too big key")

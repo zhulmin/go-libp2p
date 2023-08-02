@@ -31,7 +31,7 @@ func GenerateRSAKeyPair(bits int, src io.Reader) (PrivKey, PubKey, error) {
 	if bits < MinRsaKeyBits {
 		return nil, nil, ErrRsaKeyTooSmall
 	}
-	if bits > MaxRsaKeyBits {
+	if bits > maxRsaKeyBits {
 		return nil, nil, ErrRsaKeyTooBig
 	}
 	priv, err := rsa.GenerateKey(src, bits)
@@ -127,7 +127,7 @@ func UnmarshalRsaPrivateKey(b []byte) (key PrivKey, err error) {
 	if sk.N.BitLen() < MinRsaKeyBits {
 		return nil, ErrRsaKeyTooSmall
 	}
-	if sk.N.BitLen() > MaxRsaKeyBits {
+	if sk.N.BitLen() > maxRsaKeyBits {
 		return nil, ErrRsaKeyTooBig
 	}
 	return &RsaPrivateKey{sk: *sk}, nil
@@ -147,7 +147,7 @@ func UnmarshalRsaPublicKey(b []byte) (key PubKey, err error) {
 	if pk.N.BitLen() < MinRsaKeyBits {
 		return nil, ErrRsaKeyTooSmall
 	}
-	if pk.N.BitLen() > MaxRsaKeyBits {
+	if pk.N.BitLen() > maxRsaKeyBits {
 		return nil, ErrRsaKeyTooBig
 	}
 
