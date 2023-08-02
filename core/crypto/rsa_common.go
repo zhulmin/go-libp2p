@@ -11,7 +11,7 @@ import (
 const WeakRsaKeyEnv = "LIBP2P_ALLOW_WEAK_RSA_KEYS"
 
 var MinRsaKeyBits = 2048
-var MaxRsaKeyBits = 8192
+const maxRsaKeyBits = 8192
 
 // ErrRsaKeyTooSmall is returned when trying to generate or parse an RSA key
 // that's smaller than MinRsaKeyBits bits. In test
