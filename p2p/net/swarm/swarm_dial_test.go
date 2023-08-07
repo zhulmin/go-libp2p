@@ -370,7 +370,44 @@ func TestBlackHoledAddrBlocked(t *testing.T) {
 	if conn != nil {
 		t.Fatalf("expected dial to be blocked")
 	}
-	if !errors.Is(err, ErrNoGoodAddresses) {
+	var de *DialError
+	if !errors.As(err, &de) {
 		t.Fatalf("expected to receive an error of type *DialError, got %s of type %T", err, err)
 	}
+	require.Contains(t, de.DialErrors, TransportError{Address: addr, Cause: ErrDialRefusedBlackHole})
+}
+
+func TestBackoffAddrBlocked(t *testing.T) {
+	resolver, err := madns.NewResolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestSwarmWithResolver(t, resolver)
+	defer s.Close()
+
+	// all dials to the address will fail. RFC6666 Discard Prefix
+	addr := ma.StringCast("/ip6/0100::1/tcp/54321/")
+	p, err := test.RandPeerID()
+	if err != nil {
+		t.Error(err)
+	}
+	s.Peerstore().AddAddr(p, addr, peerstore.PermanentAddrTTL)
+
+	// do 1 extra dial to ensure that the blackHoleDetector state is updated since it
+	// happens in a different goroutine
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	conn, err := s.DialPeer(ctx, p)
+	require.Nil(t, conn)
+	require.Error(t, err)
+	cancel()
+
+	ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	conn, err = s.DialPeer(ctx, p)
+	require.Nil(t, conn)
+	var de *DialError
+	if !errors.As(err, &de) {
+		t.Fatalf("expected to receive an error of type *DialError, got %s of type %T", err, err)
+	}
+	require.Contains(t, de.DialErrors, TransportError{Address: addr, Cause: ErrDialBackoff})
 }

@@ -288,16 +288,9 @@ loop:
 				}
 				ad.dialed = true
 				ad.dialRankingDelay = now.Sub(ad.createdAt)
-				err := w.s.dialNextAddr(ad.ctx, w.peer, ad.addr, w.resch)
-				if err != nil {
-					// Errored without attempting a dial. This happens in case of
-					// backoff or black hole.
-					w.dispatchError(ad, err)
-				} else {
-					// the dial was successful. update inflight dials
-					dialsInFlight++
-					totalDials++
-				}
+				w.s.limitedDial(ad.ctx, w.peer, ad.addr, w.resch)
+				dialsInFlight++
+				totalDials++
 			}
 			timerRunning = false
 			// schedule more dials
@@ -388,14 +381,6 @@ func (w *dialWorker) dispatchError(ad *addrDial, err error) {
 				delete(w.pendingRequests, pr)
 			}
 		}
-	}
-
-	// if it was a backoff, clear the address dial so that it doesn't inhibit new dial requests.
-	// this is necessary to support active listen scenarios, where a new dial comes in while
-	// another dial is in progress, and needs to do a direct connection without inhibitions from
-	// dial backoff.
-	if err == ErrDialBackoff {
-		delete(w.trackedDials, string(ad.addr.Bytes()))
 	}
 }
 

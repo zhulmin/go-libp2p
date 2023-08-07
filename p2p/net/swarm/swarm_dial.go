@@ -311,12 +311,10 @@ func (s *Swarm) addrsForDial(ctx context.Context, p peer.ID) (goodAddrs []ma.Mul
 		return nil, nil, err
 	}
 
-	goodAddrs = ma.Unique(resolved)
-	goodAddrs, addrErrs = s.filterKnownUndialables(p, goodAddrs)
-	if forceDirect, _ := network.GetForceDirectDial(ctx); forceDirect {
-		goodAddrs = ma.FilterAddrs(goodAddrs, s.nonProxyAddr)
-	}
+	forceDirect, _ := network.GetForceDirectDial(ctx)
 
+	goodAddrs = ma.Unique(resolved)
+	goodAddrs, addrErrs = s.filterKnownUndialables(p, goodAddrs, forceDirect)
 	if len(goodAddrs) == 0 {
 		return nil, addrErrs, ErrNoGoodAddresses
 	}
@@ -388,20 +386,6 @@ func (s *Swarm) resolveAddrs(ctx context.Context, pi peer.AddrInfo) ([]ma.Multia
 	return resolved, nil
 }
 
-func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, resch chan dialResult) error {
-	// check the dial backoff
-	if forceDirect, _ := network.GetForceDirectDial(ctx); !forceDirect {
-		if s.backf.Backoff(p, addr) {
-			return ErrDialBackoff
-		}
-	}
-
-	// start the dial
-	s.limitedDial(ctx, p, addr, resch)
-
-	return nil
-}
-
 func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 	t := s.TransportForDialing(addr)
 	return !t.Proxy()
@@ -413,7 +397,7 @@ func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 // addresses that we know to be our own, and addresses with a better tranport
 // available. This is an optimization to avoid wasting time on dials that we
 // know are going to fail or for which we have a better alternative.
-func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAddrs []ma.Multiaddr, addrErrs []TransportError) {
+func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr, forceDirect bool) (goodAddrs []ma.Multiaddr, addrErrs []TransportError) {
 	lisAddrs, _ := s.InterfaceListenAddresses()
 	var ourAddrs []ma.Multiaddr
 	for _, addr := range lisAddrs {
@@ -467,6 +451,16 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAdd
 				return false
 			}
 			return true
+		},
+		func(addr ma.Multiaddr) bool {
+			if !forceDirect && s.backf.Backoff(p, addr) {
+				addrErrs = append(addrErrs, TransportError{Address: addr, Cause: ErrDialBackoff})
+				return false
+			}
+			return true
+		},
+		func(addr ma.Multiaddr) bool {
+			return !forceDirect || s.nonProxyAddr(addr)
 		},
 	), addrErrs
 }
