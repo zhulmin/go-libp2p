@@ -128,6 +128,8 @@ type Config struct {
 	DialRanker network.DialRanker
 
 	SwarmOpts []swarm.Option
+
+	DisableAutoNATv2 bool
 }
 
 func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swarm, error) {
@@ -319,6 +321,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		RelayServiceOpts:     cfg.RelayServiceOpts,
 		EnableMetrics:        !cfg.DisableMetrics,
 		PrometheusRegisterer: cfg.PrometheusRegisterer,
+		EnableAutoNATv2:      !cfg.DisableAutoNATv2,
 	})
 	if err != nil {
 		swrm.Close()

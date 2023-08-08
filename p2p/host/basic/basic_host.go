@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	"github.com/libp2p/go-libp2p/p2p/host/pstoremanager"
 	"github.com/libp2p/go-libp2p/p2p/host/relaysvc"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	"github.com/libp2p/go-libp2p/p2p/protocol/holepunch"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
@@ -101,6 +102,8 @@ type BasicHost struct {
 	caBook                  peerstore.CertifiedAddrBook
 
 	autoNat autonat.AutoNAT
+
+	autonatv2 *autonatv2.AutoNAT
 }
 
 var _ host.Host = (*BasicHost)(nil)
@@ -160,6 +163,8 @@ type HostOpts struct {
 	EnableMetrics bool
 	// PrometheusRegisterer is the PrometheusRegisterer used for metrics
 	PrometheusRegisterer prometheus.Registerer
+
+	EnableAutoNATv2 bool
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -299,6 +304,13 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 
 	if opts.EnablePing {
 		h.pings = ping.NewPingService(h)
+	}
+
+	if opts.EnableAutoNATv2 {
+		h.autonatv2, err = autonatv2.New(h)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create autonatv2: %w", err)
+		}
 	}
 
 	n.SetStreamHandler(h.newStreamHandler)
@@ -1003,6 +1015,10 @@ func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
 	return h.autoNat
 }
 
+func (h *BasicHost) GetAutoNatV2() *autonatv2.AutoNAT {
+	return h.autonatv2
+}
+
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
 	h.closeSync.Do(func() {
@@ -1024,6 +1040,9 @@ func (h *BasicHost) Close() error {
 		}
 		if h.hps != nil {
 			h.hps.Close()
+		}
+		if h.autonatv2 != nil {
+			h.autonatv2.Close()
 		}
 
 		_ = h.emitters.evtLocalProtocolsUpdated.Close()
