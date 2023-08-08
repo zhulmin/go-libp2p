@@ -192,6 +192,44 @@ func (cfg *Config) makeSwarm(eventBus event.Bus, enableMetrics bool) (*swarm.Swa
 	return swarm.NewSwarm(pid, cfg.Peerstore, eventBus, opts...)
 }
 
+func (cfg *Config) makeAutoNATHost() (*blankhost.BlankHost, error) {
+	autonatPrivKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	ps, err := pstoremem.NewPeerstore()
+	if err != nil {
+		return nil, err
+	}
+
+	// Pull out the pieces of the config that we _actually_ care about.
+	// Specifically, don't set up things like autorelay, listeners,
+	// identify, etc.
+	autoNatCfg := Config{
+		Transports:         cfg.Transports,
+		Muxers:             cfg.Muxers,
+		SecurityTransports: cfg.SecurityTransports,
+		Insecure:           cfg.Insecure,
+		PSK:                cfg.PSK,
+		ConnectionGater:    cfg.ConnectionGater,
+		Reporter:           cfg.Reporter,
+		PeerKey:            autonatPrivKey,
+		Peerstore:          ps,
+		DialRanker:         swarm.NoDelayDialRanker,
+	}
+
+	dialer, err := autoNatCfg.makeSwarm(eventbus.NewBus(), false)
+	if err != nil {
+		return nil, err
+	}
+	dialerHost := blankhost.NewBlankHost(dialer)
+	if err := autoNatCfg.addTransports(dialerHost); err != nil {
+		dialerHost.Close()
+		return nil, err
+	}
+	return dialerHost, nil
+}
+
 func (cfg *Config) addTransports(h host.Host) error {
 	swrm, ok := h.Network().(transport.TransportNetwork)
 	if !ok {
@@ -307,6 +345,15 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		rcmgr.MustRegisterWith(cfg.PrometheusRegisterer)
 	}
 
+	var autonatv2Dialer network.Network
+	if !cfg.DisableAutoNATv2 {
+		ah, err := cfg.makeAutoNATHost()
+		if err != nil {
+			return nil, err
+		}
+		autonatv2Dialer = ah.Network()
+	}
+
 	h, err := bhost.NewHost(swrm, &bhost.HostOpts{
 		EventBus:             eventBus,
 		ConnManager:          cfg.ConnManager,
@@ -322,6 +369,7 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		EnableMetrics:        !cfg.DisableMetrics,
 		PrometheusRegisterer: cfg.PrometheusRegisterer,
 		EnableAutoNATv2:      !cfg.DisableAutoNATv2,
+		AutoNATv2Dialer:      autonatv2Dialer,
 	})
 	if err != nil {
 		swrm.Close()
@@ -399,46 +447,15 @@ func (cfg *Config) NewNode() (host.Host, error) {
 			autonat.WithPeerThrottling(cfg.AutoNATConfig.ThrottlePeerLimit))
 	}
 	if cfg.AutoNATConfig.EnableService {
-		autonatPrivKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+		ah, err := cfg.makeAutoNATHost()
 		if err != nil {
-			return nil, err
-		}
-		ps, err := pstoremem.NewPeerstore()
-		if err != nil {
-			return nil, err
-		}
-
-		// Pull out the pieces of the config that we _actually_ care about.
-		// Specifically, don't set up things like autorelay, listeners,
-		// identify, etc.
-		autoNatCfg := Config{
-			Transports:         cfg.Transports,
-			Muxers:             cfg.Muxers,
-			SecurityTransports: cfg.SecurityTransports,
-			Insecure:           cfg.Insecure,
-			PSK:                cfg.PSK,
-			ConnectionGater:    cfg.ConnectionGater,
-			Reporter:           cfg.Reporter,
-			PeerKey:            autonatPrivKey,
-			Peerstore:          ps,
-			DialRanker:         swarm.NoDelayDialRanker,
-		}
-
-		dialer, err := autoNatCfg.makeSwarm(eventbus.NewBus(), false)
-		if err != nil {
-			h.Close()
-			return nil, err
-		}
-		dialerHost := blankhost.NewBlankHost(dialer)
-		if err := autoNatCfg.addTransports(dialerHost); err != nil {
-			dialerHost.Close()
 			h.Close()
 			return nil, err
 		}
 		// NOTE: We're dropping the blank host here but that's fine. It
 		// doesn't really _do_ anything and doesn't even need to be
 		// closed (as long as we close the underlying network).
-		autonatOpts = append(autonatOpts, autonat.EnableService(dialerHost.Network()))
+		autonatOpts = append(autonatOpts, autonat.EnableService(ah.Network()))
 	}
 	if cfg.AutoNATConfig.ForceReachability != nil {
 		autonatOpts = append(autonatOpts, autonat.WithReachability(*cfg.AutoNATConfig.ForceReachability))

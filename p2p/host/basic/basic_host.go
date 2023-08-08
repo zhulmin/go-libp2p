@@ -165,6 +165,7 @@ type HostOpts struct {
 	PrometheusRegisterer prometheus.Registerer
 
 	EnableAutoNATv2 bool
+	AutoNATv2Dialer network.Network
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -307,7 +308,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	}
 
 	if opts.EnableAutoNATv2 {
-		h.autonatv2, err = autonatv2.New(h)
+		h.autonatv2, err = autonatv2.New(h, opts.AutoNATv2Dialer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create autonatv2: %w", err)
 		}
