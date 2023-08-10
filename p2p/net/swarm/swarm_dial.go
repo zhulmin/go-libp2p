@@ -417,6 +417,11 @@ func (s *Swarm) dialNextAddr(ctx context.Context, p peer.ID, addr ma.Multiaddr, 
 	return nil
 }
 
+func (s *Swarm) CanDial(addr ma.Multiaddr) bool {
+	t := s.TransportForDialing(addr)
+	return t != nil && t.CanDial(addr)
+}
+
 func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 	t := s.TransportForDialing(addr)
 	return !t.Proxy()
