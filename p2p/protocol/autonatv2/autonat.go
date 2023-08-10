@@ -29,7 +29,7 @@ type AutoNAT struct {
 	allowAllAddrs bool // for testing
 }
 
-func New(h host.Host, dialer network.Network) (*AutoNAT, error) {
+func New(h host.Host, dialer host.Host) (*AutoNAT, error) {
 	sub, err := h.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe to event.EvtLocalReachabilityChanged: %w", err)
@@ -55,8 +55,10 @@ func (an *AutoNAT) background() {
 		select {
 		case <-an.ctx.Done():
 			an.srv.Stop()
+			an.wg.Done()
 			return
 		case evt := <-an.sub.Out():
+			fmt.Printf("received event %s\n", evt)
 			revt, ok := evt.(event.EvtLocalReachabilityChanged)
 			if !ok {
 				log.Errorf("Unexpected event %s of type %T", evt, evt)
@@ -71,7 +73,6 @@ func (an *AutoNAT) background() {
 }
 
 func (an *AutoNAT) Close() {
-	an.sub.Close()
 	an.cancel()
 	an.wg.Wait()
 }

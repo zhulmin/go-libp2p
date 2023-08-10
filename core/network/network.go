@@ -185,6 +185,9 @@ type Dialer interface {
 	// Notify/StopNotify register and unregister a notifiee for signals
 	Notify(Notifiee)
 	StopNotify(Notifiee)
+
+	// CanDial returns whether an address is dialable
+	CanDial(a ma.Multiaddr) bool
 }
 
 // AddrDelay provides an address along with the delay after which the address

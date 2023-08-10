@@ -22,7 +22,7 @@ import (
 func newAutoNAT(t *testing.T) *AutoNAT {
 	t.Helper()
 	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	dialer := swarmt.GenSwarm(t)
+	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	an, err := New(h, dialer)
 	if err != nil {
 		t.Error(err)
