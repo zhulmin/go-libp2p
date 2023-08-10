@@ -98,3 +98,27 @@ func TestServerDataRequest(t *testing.T) {
 
 	require.Equal(t, res[0].Rch, network.ReachabilityPublic)
 }
+
+func TestServerDial(t *testing.T) {
+	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	as := NewServer(h, dialer, nil, true)
+	defer as.host.Close()
+	as.Start()
+
+	c := newAutoNAT(t)
+	c.allowAllAddrs = true
+	defer c.Close()
+	defer c.host.Close()
+
+	c.host.Peerstore().AddAddrs(as.host.ID(), as.host.Addrs(), peerstore.PermanentAddrTTL)
+	c.host.Peerstore().AddProtocols(as.host.ID(), DialProtocol)
+	randAddr := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{randAddr}, c.host.Addrs())
+	require.NoError(t, err)
+	require.Equal(t, res[0].Rch, network.ReachabilityPrivate)
+
+	res, err = c.CheckReachability(context.Background(), nil, c.host.Addrs())
+	require.NoError(t, err)
+	require.Equal(t, res[0].Rch, network.ReachabilityPublic)
+}

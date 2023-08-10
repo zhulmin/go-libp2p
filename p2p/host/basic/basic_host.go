@@ -165,7 +165,7 @@ type HostOpts struct {
 	PrometheusRegisterer prometheus.Registerer
 
 	EnableAutoNATv2 bool
-	AutoNATv2Dialer network.Network
+	AutoNATv2Dialer host.Host
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.

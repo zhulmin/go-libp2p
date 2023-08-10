@@ -345,13 +345,13 @@ func (cfg *Config) NewNode() (host.Host, error) {
 		rcmgr.MustRegisterWith(cfg.PrometheusRegisterer)
 	}
 
-	var autonatv2Dialer network.Network
+	var autonatv2Dialer *blankhost.BlankHost
 	if !cfg.DisableAutoNATv2 {
 		ah, err := cfg.makeAutoNATHost()
 		if err != nil {
 			return nil, err
 		}
-		autonatv2Dialer = ah.Network()
+		autonatv2Dialer = ah
 	}
 
 	h, err := bhost.NewHost(swrm, &bhost.HostOpts{
