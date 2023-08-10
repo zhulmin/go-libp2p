@@ -12,7 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
 
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -30,7 +30,7 @@ func newAutoNAT(t *testing.T) *AutoNAT {
 	return an
 }
 
-func parseAddrs(t *testing.T, msg *pb.Message) []ma.Multiaddr {
+func parseAddrs(t *testing.T, msg *pbv2.Message) []ma.Multiaddr {
 	t.Helper()
 	req := msg.GetDialRequest()
 	addrs := make([]ma.Multiaddr, 0)
@@ -87,7 +87,7 @@ func TestClientRequest(t *testing.T) {
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	p.SetStreamHandler(DialProtocol, func(s network.Stream) {
 		r := pbio.NewDelimitedReader(s, maxMsgSize)
-		var msg pb.Message
+		var msg pbv2.Message
 		err := r.ReadMsg(&msg)
 		if err != nil {
 			t.Error(err)
@@ -125,12 +125,12 @@ func TestClientServerError(t *testing.T) {
 		{handler: func(s network.Stream) { s.Reset(); done <- true }},
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pb.Message
+			var msg pbv2.Message
 			r.ReadMsg(&msg)
 			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pb.Message{
-				Msg: &pb.Message_DialRequest{
-					DialRequest: &pb.DialRequest{
+			w.WriteMsg(&pbv2.Message{
+				Msg: &pbv2.Message_DialRequest{
+					DialRequest: &pbv2.DialRequest{
 						Addrs: [][]byte{},
 						Nonce: 0,
 					},
@@ -169,12 +169,12 @@ func TestClientDataRequest(t *testing.T) {
 	}{
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pb.Message
+			var msg pbv2.Message
 			r.ReadMsg(&msg)
 			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pb.Message{
-				Msg: &pb.Message_DialDataRequest{
-					DialDataRequest: &pb.DialDataRequest{
+			w.WriteMsg(&pbv2.Message{
+				Msg: &pbv2.Message_DialDataRequest{
+					DialDataRequest: &pbv2.DialDataRequest{
 						AddrIdx:  0,
 						NumBytes: 10000,
 					},
@@ -198,12 +198,12 @@ func TestClientDataRequest(t *testing.T) {
 		}},
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pb.Message
+			var msg pbv2.Message
 			r.ReadMsg(&msg)
 			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pb.Message{
-				Msg: &pb.Message_DialDataRequest{
-					DialDataRequest: &pb.DialDataRequest{
+			w.WriteMsg(&pbv2.Message{
+				Msg: &pbv2.Message_DialDataRequest{
+					DialDataRequest: &pbv2.DialDataRequest{
 						AddrIdx:  1,
 						NumBytes: 10000,
 					},
@@ -245,14 +245,13 @@ func TestClientDialAttempts(t *testing.T) {
 	}{
 		{
 			handler: func(s network.Stream) {
-				resp := &pb.DialResponse{
-					Status: pb.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pb.DialResponse_DialStatus{
-						pb.DialResponse_DIAL_STATUS_OK},
+				resp := &pbv2.DialResponse{
+					Status:       pbv2.DialResponse_ResponseStatus_OK,
+					DialStatuses: []pbv2.DialStatus{pbv2.DialStatus_OK},
 				}
 				w := pbio.NewDelimitedWriter(s)
-				w.WriteMsg(&pb.Message{
-					Msg: &pb.Message_DialResponse{
+				w.WriteMsg(&pbv2.Message{
+					Msg: &pbv2.Message_DialResponse{
 						DialResponse: resp,
 					},
 				})
@@ -263,7 +262,7 @@ func TestClientDialAttempts(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
+				var msg pbv2.Message
 				r.ReadMsg(&msg)
 				req := msg.GetDialRequest()
 				addrs := parseAddrs(t, &msg)
@@ -277,17 +276,17 @@ func TestClientDialAttempts(t *testing.T) {
 					return
 				}
 				w := pbio.NewDelimitedWriter(as)
-				w.WriteMsg(&pb.DialAttempt{Nonce: req.Nonce})
+				w.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce})
 				as.CloseWrite()
 
 				w = pbio.NewDelimitedWriter(s)
-				resp := &pb.DialResponse{
-					Status: pb.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pb.DialResponse_DialStatus{
-						pb.DialResponse_DIAL_STATUS_OK},
+				resp := &pbv2.DialResponse{
+					Status: pbv2.DialResponse_ResponseStatus_OK,
+					DialStatuses: []pbv2.DialStatus{
+						pbv2.DialStatus_OK},
 				}
-				w.WriteMsg(&pb.Message{
-					Msg: &pb.Message_DialResponse{
+				w.WriteMsg(&pbv2.Message{
+					Msg: &pbv2.Message_DialResponse{
 						DialResponse: resp,
 					},
 				})
@@ -298,7 +297,7 @@ func TestClientDialAttempts(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
+				var msg pbv2.Message
 				r.ReadMsg(&msg)
 				req := msg.GetDialRequest()
 				addrs := parseAddrs(t, &msg)
@@ -313,7 +312,7 @@ func TestClientDialAttempts(t *testing.T) {
 					return
 				}
 				ww := pbio.NewDelimitedWriter(as)
-				if err := ww.WriteMsg(&pb.DialAttempt{Nonce: req.Nonce - 1}); err != nil {
+				if err := ww.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce - 1}); err != nil {
 					s.Reset()
 					as.Reset()
 					return
@@ -326,15 +325,15 @@ func TestClientDialAttempts(t *testing.T) {
 				}()
 
 				w := pbio.NewDelimitedWriter(s)
-				resp := &pb.DialResponse{
-					Status: pb.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pb.DialResponse_DialStatus{
-						pb.DialResponse_E_TRANSPORT_NOT_SUPPORTED,
-						pb.DialResponse_DIAL_STATUS_OK,
+				resp := &pbv2.DialResponse{
+					Status: pbv2.DialResponse_ResponseStatus_OK,
+					DialStatuses: []pbv2.DialStatus{
+						pbv2.DialStatus_E_TRANSPORT_NOT_SUPPORTED,
+						pbv2.DialStatus_OK,
 					},
 				}
-				w.WriteMsg(&pb.Message{
-					Msg: &pb.Message_DialResponse{
+				w.WriteMsg(&pbv2.Message{
+					Msg: &pbv2.Message_DialResponse{
 						DialResponse: resp,
 					},
 				})
@@ -345,7 +344,7 @@ func TestClientDialAttempts(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
+				var msg pbv2.Message
 				r.ReadMsg(&msg)
 				req := msg.GetDialRequest()
 				addrs := parseAddrs(t, &msg)
@@ -361,7 +360,7 @@ func TestClientDialAttempts(t *testing.T) {
 				}
 
 				w := pbio.NewDelimitedWriter(as)
-				if err := w.WriteMsg(&pb.DialAttempt{Nonce: req.Nonce}); err != nil {
+				if err := w.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce}); err != nil {
 					t.Error("failed to write nonce", err)
 					s.Reset()
 					as.Reset()
@@ -375,15 +374,15 @@ func TestClientDialAttempts(t *testing.T) {
 				}()
 
 				w = pbio.NewDelimitedWriter(s)
-				resp := &pb.DialResponse{
-					Status: pb.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pb.DialResponse_DialStatus{
-						pb.DialResponse_E_TRANSPORT_NOT_SUPPORTED,
-						pb.DialResponse_DIAL_STATUS_OK,
+				resp := &pbv2.DialResponse{
+					Status: pbv2.DialResponse_ResponseStatus_OK,
+					DialStatuses: []pbv2.DialStatus{
+						pbv2.DialStatus_E_TRANSPORT_NOT_SUPPORTED,
+						pbv2.DialStatus_OK,
 					},
 				}
-				w.WriteMsg(&pb.Message{
-					Msg: &pb.Message_DialResponse{
+				w.WriteMsg(&pbv2.Message{
+					Msg: &pbv2.Message_DialResponse{
 						DialResponse: resp,
 					},
 				})
