@@ -2,7 +2,6 @@ package transport_integration
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +17,9 @@ func TestReadWriteDeadlines(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
+			defer listener.Close()
 			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer dialer.Close()
 
 			require.NoError(t, dialer.Connect(context.Background(), peer.AddrInfo{
 				ID:    listener.ID(),
@@ -44,11 +45,6 @@ func TestReadWriteDeadlines(t *testing.T) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "deadline")
 				require.Less(t, time.Since(start), 1*time.Second)
-
-				if strings.Contains(tc.Name, "mplex") {
-					// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
-					s.Reset()
-				}
 			})
 
 			t.Run("WriteDeadline", func(t *testing.T) {
@@ -63,11 +59,6 @@ func TestReadWriteDeadlines(t *testing.T) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "deadline")
 				require.Less(t, time.Since(start), 1*time.Second)
-
-				if strings.Contains(tc.Name, "mplex") {
-					// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
-					s.Reset()
-				}
 			})
 
 			// Like the above, but with SetDeadline
@@ -91,11 +82,6 @@ func TestReadWriteDeadlines(t *testing.T) {
 						require.Error(t, err)
 						require.Contains(t, err.Error(), "deadline")
 						require.Less(t, time.Since(start), 1*time.Second)
-
-						if strings.Contains(tc.Name, "mplex") {
-							// FIXME: mplex stalls on close, so we reset so we don't spend an extra 5s waiting for nothing
-							s.Reset()
-						}
 					})
 				}
 			})
