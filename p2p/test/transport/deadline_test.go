@@ -2,6 +2,7 @@ package transport_integration
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -12,8 +13,7 @@ import (
 
 func TestReadWriteDeadlines(t *testing.T) {
 	// Send a lot of data so that writes have to flush (can't just buffer it all)
-	sendBuf := make([]byte, 1<<20)
-
+	sendBuf := make([]byte, 10<<20)
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
@@ -43,7 +43,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 				buf := make([]byte, 1)
 				_, err = s.Read(buf)
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "deadline")
+				require.True(t, err.(net.Error).Timeout())
 				require.Less(t, time.Since(start), 1*time.Second)
 			})
 
@@ -57,7 +57,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 				start := time.Now()
 				_, err = s.Write(sendBuf)
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "deadline")
+				require.True(t, err.(net.Error).Timeout())
 				require.Less(t, time.Since(start), 1*time.Second)
 			})
 
@@ -80,7 +80,7 @@ func TestReadWriteDeadlines(t *testing.T) {
 							_, err = s.Write(sendBuf)
 						}
 						require.Error(t, err)
-						require.Contains(t, err.Error(), "deadline")
+						require.True(t, err.(net.Error).Timeout())
 						require.Less(t, time.Since(start), 1*time.Second)
 					})
 				}
