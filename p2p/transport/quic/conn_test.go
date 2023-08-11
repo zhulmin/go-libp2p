@@ -681,7 +681,7 @@ func TestGetErrorWhenListeningWithDraft29WhenDisabled(t *testing.T) {
 	t1, err := NewTransport(serverKey, newConnManager(t, quicreuse.DisableDraft29()), nil, nil, nil)
 	require.NoError(t, err)
 	defer t1.(io.Closer).Close()
-	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic")
+	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1")
 	require.NoError(t, err)
 	_, err = t1.Listen(laddr)
 	require.Error(t, err)
@@ -725,7 +725,7 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 			mas := []ma.Multiaddr{ln1.Multiaddr()}
 			var ln2 tpt.Listener
 			if !tc.serverDisablesDraft29 {
-				laddrDraft29 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic")
+				laddrDraft29 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
 				ln2, err = t1.Listen(laddrDraft29)
 				require.NoError(t, err)
 				t.Cleanup(func() { ln2.Close() })

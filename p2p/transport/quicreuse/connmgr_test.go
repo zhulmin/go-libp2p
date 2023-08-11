@@ -43,7 +43,7 @@ func TestListenQUICDraft29Disabled(t *testing.T) {
 	cm, err := NewConnManager([32]byte{}, DisableDraft29(), DisableReuseport())
 	require.NoError(t, err)
 	defer cm.Close()
-	_, err = cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic"), &tls.Config{}, nil)
+	_, err = cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{}, nil)
 	require.EqualError(t, err, "can't listen on `/quic` multiaddr (QUIC draft 29 version) when draft 29 support is disabled")
 	ln, err := cm.ListenQUIC(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"), &tls.Config{NextProtos: []string{"proto"}}, nil)
 	require.NoError(t, err)

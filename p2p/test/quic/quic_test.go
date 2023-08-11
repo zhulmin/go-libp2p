@@ -31,7 +31,7 @@ func TestQUICVersions(t *testing.T) {
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
 		libp2p.ListenAddrStrings(
-			"/ip4/127.0.0.1/udp/12345/quic",    // QUIC draft-29
+			"/ip4/127.0.0.1/udp/12345/quic-v1", // QUIC draft-29
 			"/ip4/127.0.0.1/udp/12345/quic-v1", // QUIC v1
 		),
 	)
@@ -85,7 +85,7 @@ func TestDisableQUICDraft29(t *testing.T) {
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
 		libp2p.ListenAddrStrings(
-			"/ip4/127.0.0.1/udp/12346/quic",    // QUIC draft-29
+			"/ip4/127.0.0.1/udp/12346/quic-v1", // QUIC draft-29
 			"/ip4/127.0.0.1/udp/12346/quic-v1", // QUIC v1
 		),
 	)
@@ -107,7 +107,7 @@ func TestDisableQUICDraft29(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Microsecond)
 	defer cancel()
 	require.ErrorIs(t,
-		h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/udp/12346/quic")}}),
+		h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/udp/12346/quic-v1")}}),
 		context.DeadlineExceeded,
 	)
 	// make sure that dialing QUIC v1 works

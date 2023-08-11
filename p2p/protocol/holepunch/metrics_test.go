@@ -24,8 +24,8 @@ func TestHolePunchOutcomeCounter(t *testing.T) {
 	t1 := ma.StringCast("/ip4/1.2.3.4/tcp/1")
 	t2 := ma.StringCast("/ip4/1.2.3.4/tcp/2")
 
-	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic")
-	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic")
+	q1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
+	q2 := ma.StringCast("/ip4/1.2.3.4/udp/2/quic-v1")
 
 	q1v1 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
 

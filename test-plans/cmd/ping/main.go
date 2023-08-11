@@ -100,7 +100,7 @@ func main() {
 		listenAddr = fmt.Sprintf("/ip4/%s/tcp/0", ip)
 	case "quic":
 		options = append(options, libp2p.Transport(libp2pquic.NewTransport))
-		listenAddr = fmt.Sprintf("/ip4/%s/udp/0/quic", ip)
+		listenAddr = fmt.Sprintf("/ip4/%s/udp/0/quic-v1", ip)
 	case "quic-v1":
 		options = append(options, libp2p.Transport(libp2pquic.NewTransport))
 		listenAddr = fmt.Sprintf("/ip4/%s/udp/0/quic-v1", ip)

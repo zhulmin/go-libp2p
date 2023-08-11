@@ -13,7 +13,7 @@ func TestConvertToQuicMultiaddr(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(192, 168, 0, 42), Port: 1337}
 	maddr, err := ToQuicMultiaddr(addr, quic.VersionDraft29)
 	require.NoError(t, err)
-	require.Equal(t, maddr.String(), "/ip4/192.168.0.42/udp/1337/quic")
+	require.Equal(t, maddr.String(), "/ip4/192.168.0.42/udp/1337/quic-v1")
 }
 
 func TestConvertToQuicV1Multiaddr(t *testing.T) {
@@ -24,7 +24,7 @@ func TestConvertToQuicV1Multiaddr(t *testing.T) {
 }
 
 func TestConvertFromQuicDraft29Multiaddr(t *testing.T) {
-	maddr, err := ma.NewMultiaddr("/ip4/192.168.0.42/udp/1337/quic")
+	maddr, err := ma.NewMultiaddr("/ip4/192.168.0.42/udp/1337/quic-v1")
 	require.NoError(t, err)
 	udpAddr, v, err := FromQuicMultiaddr(maddr)
 	require.NoError(t, err)
