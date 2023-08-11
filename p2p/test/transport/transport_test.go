@@ -358,7 +358,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
 			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
-			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 			defer listener.Close()
 			defer dialer.Close()
 
@@ -377,6 +377,8 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 			close(workQueue)
 
 			listener.SetStreamHandler("echo", func(s network.Stream) {
+				// Wait a bit so that we have more parallel streams open at the same time
+				time.Sleep(time.Millisecond * 10)
 				io.Copy(s, s)
 				s.Close()
 			})
@@ -386,7 +388,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 			var completedStreams atomic.Int32
 
 			const maxWorkerCount = streamCount
-			var workerCount int
+			workerCount := 4
 
 			var startWorker func(workerIdx int)
 			startWorker = func(workerIdx int) {
@@ -404,9 +406,14 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 						defer completedStreams.Add(1)
 						defer func() {
 							// Only the first worker adds more workers
-							if workerIdx == 0 && !didErr && !sawFirstErr.Load() && workerCount+1 < maxWorkerCount {
-								workerCount++
-								go startWorker(workerCount)
+							if workerIdx == 0 && !didErr && !sawFirstErr.Load() {
+								nextWorkerCount := workerCount * 2
+								if nextWorkerCount < maxWorkerCount {
+									for i := workerCount; i < nextWorkerCount; i++ {
+										go startWorker(i)
+									}
+									workerCount = nextWorkerCount
+								}
 							}
 						}()
 
@@ -438,6 +445,11 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 							}
 							err = func(s network.Stream) error {
 								defer s.Close()
+								err = s.SetDeadline(time.Now().Add(100 * time.Millisecond))
+								if err != nil {
+									return err
+								}
+
 								_, err = s.Write([]byte("hello"))
 								if err != nil {
 									return err
@@ -470,6 +482,12 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 				}
 			}
 
+			// Create any initial parallel workers
+			for i := 1; i < workerCount; i++ {
+				go startWorker(i)
+			}
+
+			// Start the first worker
 			startWorker(0)
 
 			wg.Wait()
@@ -477,6 +495,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 
 			require.NoError(t, <-errCh)
 			require.Equal(t, streamCount, int(handledStreams.Load()))
+			require.True(t, sawFirstErr.Load())
 		})
 	}
 }
