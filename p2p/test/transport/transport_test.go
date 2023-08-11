@@ -370,9 +370,11 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 			var handledStreams atomic.Int32
 			var sawFirstErr atomic.Bool
 
-			semaphore := make(chan struct{}, streamCount)
-			// Start with a single stream at a time. If that works, we'll increase the number of concurrent streams.
-			semaphore <- struct{}{}
+			workQueue := make(chan struct{}, streamCount)
+			for i := 0; i < streamCount; i++ {
+				workQueue <- struct{}{}
+			}
+			close(workQueue)
 
 			listener.SetStreamHandler("echo", func(s network.Stream) {
 				io.Copy(s, s)
@@ -380,86 +382,96 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 			})
 
 			wg := sync.WaitGroup{}
-			wg.Add(streamCount)
 			errCh := make(chan error, 1)
 			var completedStreams atomic.Int32
-			for i := 0; i < streamCount; i++ {
-				go func() {
-					<-semaphore
-					var didErr bool
-					defer wg.Done()
-					defer completedStreams.Add(1)
-					defer func() {
-						select {
-						case semaphore <- struct{}{}:
-						default:
-						}
-						if !didErr && !sawFirstErr.Load() {
-							// No error! We can add one more stream to our concurrency limit.
-							select {
-							case semaphore <- struct{}{}:
-							default:
-							}
-						}
-					}()
 
-					var s network.Stream
-					var err error
-					// maxRetries is an arbitrary retry amount if there's any error.
-					maxRetries := streamCount * 4
-					shouldRetry := func(err error) bool {
-						didErr = true
-						sawFirstErr.Store(true)
-						maxRetries--
-						if maxRetries == 0 || len(errCh) > 0 {
-							select {
-							case errCh <- errors.New("max retries exceeded"):
-							default:
-							}
-							return false
-						}
-						return true
+			const maxWorkerCount = streamCount
+			var workerCount int
+
+			var startWorker func(workerIdx int)
+			startWorker = func(workerIdx int) {
+				wg.Add(1)
+				defer wg.Done()
+				for {
+					_, ok := <-workQueue
+					if !ok {
+						return
 					}
 
-					for {
-						s, err = dialer.NewStream(context.Background(), listener.ID(), "echo")
-						if err != nil {
-							if shouldRetry(err) {
+					// Inline function so we can use defer
+					func() {
+						var didErr bool
+						defer completedStreams.Add(1)
+						defer func() {
+							// Only the first worker adds more workers
+							if workerIdx == 0 && !didErr && !sawFirstErr.Load() && workerCount+1 < maxWorkerCount {
+								workerCount++
+								go startWorker(workerCount)
+							}
+						}()
+
+						var s network.Stream
+						var err error
+						// maxRetries is an arbitrary retry amount if there's any error.
+						maxRetries := streamCount * 4
+						shouldRetry := func(err error) bool {
+							didErr = true
+							sawFirstErr.Store(true)
+							maxRetries--
+							if maxRetries == 0 || len(errCh) > 0 {
+								select {
+								case errCh <- errors.New("max retries exceeded"):
+								default:
+								}
+								return false
+							}
+							return true
+						}
+
+						for {
+							s, err = dialer.NewStream(context.Background(), listener.ID(), "echo")
+							if err != nil {
+								if shouldRetry(err) {
+									time.Sleep(50 * time.Millisecond)
+									continue
+								}
+							}
+							err = func(s network.Stream) error {
+								defer s.Close()
+								_, err = s.Write([]byte("hello"))
+								if err != nil {
+									return err
+								}
+
+								err = s.CloseWrite()
+								if err != nil {
+									return err
+								}
+
+								b, err := io.ReadAll(s)
+								if err != nil {
+									return err
+								}
+								if !bytes.Equal(b, []byte("hello")) {
+									return errors.New("received data does not match sent data")
+								}
+								handledStreams.Add(1)
+
+								return nil
+							}(s)
+							if err != nil && shouldRetry(err) {
 								time.Sleep(50 * time.Millisecond)
 								continue
 							}
+							return
+
 						}
-						err = func(s network.Stream) error {
-							defer s.Close()
-							_, err = s.Write([]byte("hello"))
-							if err != nil {
-								return err
-							}
-
-							err = s.CloseWrite()
-							if err != nil {
-								return err
-							}
-
-							b, err := io.ReadAll(s)
-							if err != nil {
-								return err
-							}
-							if !bytes.Equal(b, []byte("hello")) {
-								return errors.New("received data does not match sent data")
-							}
-							handledStreams.Add(1)
-
-							return nil
-						}(s)
-						if err != nil && shouldRetry(err) {
-							time.Sleep(50 * time.Millisecond)
-							continue
-						}
-						return
-					}
-				}()
+					}()
+				}
 			}
+
+			startWorker(0)
+
 			wg.Wait()
 			close(errCh)
 
