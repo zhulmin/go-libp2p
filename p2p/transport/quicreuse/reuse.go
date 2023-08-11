@@ -51,8 +51,7 @@ func (c *singleOwnerTransport) Close() error {
 }
 
 func (c *singleOwnerTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
-	// Safe because we called quic.OptimizeConn ourselves.
-	return c.packetConn.WriteTo(b, addr)
+	return c.Transport.WriteTo(b, addr)
 }
 
 // Constant. Defined as variables to simplify testing.
@@ -86,8 +85,7 @@ func (c *refcountedTransport) Close() error {
 }
 
 func (c *refcountedTransport) WriteTo(b []byte, addr net.Addr) (int, error) {
-	// Safe because we called quic.OptimizeConn ourselves.
-	return c.packetConn.WriteTo(b, addr)
+	return c.Transport.WriteTo(b, addr)
 }
 
 func (c *refcountedTransport) LocalAddr() net.Addr {
