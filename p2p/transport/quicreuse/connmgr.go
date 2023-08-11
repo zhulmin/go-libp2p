@@ -16,7 +16,6 @@ import (
 type ConnManager struct {
 	reuseUDP4       *reuse
 	reuseUDP6       *reuse
-	enableDraft29   bool
 	enableReuseport bool
 	enableMetrics   bool
 
@@ -38,7 +37,6 @@ type quicListenerEntry struct {
 func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*ConnManager, error) {
 	cm := &ConnManager{
 		enableReuseport: true,
-		enableDraft29:   true,
 		quicListeners:   make(map[string]quicListenerEntry),
 		srk:             statelessResetKey,
 	}
@@ -64,9 +62,7 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 		return quiclogging.NewMultiplexedConnectionTracer(tracers...)
 	}
 	serverConfig := quicConf.Clone()
-	if !cm.enableDraft29 {
-		serverConfig.Versions = []quic.VersionNumber{quic.Version1}
-	}
+	serverConfig.Versions = []quic.VersionNumber{quic.Version1}
 
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
@@ -89,12 +85,6 @@ func (c *ConnManager) getReuse(network string) (*reuse, error) {
 }
 
 func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (Listener, error) {
-	if !c.enableDraft29 {
-		if _, err := addr.ValueForProtocol(ma.P_QUIC); err == nil {
-			return nil, errors.New("can't listen on `/quic` multiaddr (QUIC draft 29 version) when draft 29 support is disabled")
-		}
-	}
-
 	netw, host, err := manet.DialArgs(addr)
 	if err != nil {
 		return nil, err
@@ -114,7 +104,7 @@ func (c *ConnManager) ListenQUIC(addr ma.Multiaddr, tlsConf *tls.Config, allowWi
 		if err != nil {
 			return nil, err
 		}
-		ln, err := newQuicListener(tr, c.serverConfig, c.enableDraft29)
+		ln, err := newQuicListener(tr, c.serverConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -156,7 +146,7 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (re
 		return reuse.TransportForListen(network, laddr)
 	}
 
-	conn, err := listenAndOptimize(network, laddr)
+	conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
@@ -183,8 +173,6 @@ func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf 
 	if v == quic.Version1 {
 		// The endpoint has explicit support for QUIC v1, so we'll only use that version.
 		quicConf.Versions = []quic.VersionNumber{quic.Version1}
-	} else if v == quic.VersionDraft29 {
-		quicConf.Versions = []quic.VersionNumber{quic.VersionDraft29}
 	} else {
 		return nil, errors.New("unknown QUIC version")
 	}
@@ -217,7 +205,7 @@ func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refC
 	case "udp6":
 		laddr = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
 	}
-	conn, err := listenAndOptimize(network, laddr)
+	conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
@@ -230,9 +218,6 @@ func (c *ConnManager) TransportForDial(network string, raddr *net.UDPAddr) (refC
 }
 
 func (c *ConnManager) Protocols() []int {
-	if c.enableDraft29 {
-		return []int{ma.P_QUIC, ma.P_QUIC_V1}
-	}
 	return []int{ma.P_QUIC_V1}
 }
 
@@ -244,13 +229,4 @@ func (c *ConnManager) Close() error {
 		return err
 	}
 	return c.reuseUDP4.Close()
-}
-
-// listenAndOptimize same as net.ListenUDP, but also calls quic.OptimizeConn
-func listenAndOptimize(network string, laddr *net.UDPAddr) (net.PacketConn, error) {
-	conn, err := net.ListenUDP(network, laddr)
-	if err != nil {
-		return nil, err
-	}
-	return quic.OptimizeConn(conn)
 }

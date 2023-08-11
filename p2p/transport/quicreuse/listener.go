@@ -38,20 +38,13 @@ type quicListener struct {
 	protocols   map[string]protoConf
 }
 
-func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config, enableDraft29 bool) (*quicListener, error) {
+func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quicListener, error) {
 	localMultiaddrs := make([]ma.Multiaddr, 0, 2)
 	a, err := ToQuicMultiaddr(tr.LocalAddr(), quic.Version1)
 	if err != nil {
 		return nil, err
 	}
 	localMultiaddrs = append(localMultiaddrs, a)
-	if enableDraft29 {
-		a, err := ToQuicMultiaddr(tr.LocalAddr(), quic.VersionDraft29)
-		if err != nil {
-			return nil, err
-		}
-		localMultiaddrs = append(localMultiaddrs, a)
-	}
 	cl := &quicListener{
 		protocols: map[string]protoConf{},
 		running:   make(chan struct{}),
@@ -89,7 +82,7 @@ func (l *quicListener) allowWindowIncrease(conn quic.Connection, delta uint64) b
 	l.protocolsMu.Lock()
 	defer l.protocolsMu.Unlock()
 
-	conf, ok := l.protocols[conn.ConnectionState().TLS.ConnectionState.NegotiatedProtocol]
+	conf, ok := l.protocols[conn.ConnectionState().TLS.NegotiatedProtocol]
 	if !ok {
 		return false
 	}
