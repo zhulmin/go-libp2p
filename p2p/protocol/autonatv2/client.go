@@ -144,27 +144,26 @@ func (ac *Client) newResults(ds []pbv2.DialStatus, highPriorityAddrs []ma.Multia
 		} else {
 			addr = lowPriorityAddrs[i-len(highPriorityAddrs)]
 		}
-		err := ErrDialNotAttempted
 		rch := network.ReachabilityUnknown
+		status := pbv2.DialStatus_SKIPPED
 		if i < len(ds) {
 			switch ds[i] {
 			case pbv2.DialStatus_OK:
 				if areAddrsConsistent(attempt, addr) {
-					err = nil
+					status = pbv2.DialStatus_OK
 					rch = network.ReachabilityPublic
 				} else {
-					err = errors.New("attempt error")
+					status = pbv2.DialStatus_E_ATTEMPT_ERROR
 					rch = network.ReachabilityUnknown
 				}
 			case pbv2.DialStatus_E_DIAL_ERROR:
-				err = errors.New("dial failed")
 				rch = network.ReachabilityPrivate
 			default:
-				err = errors.New("other")
+				status = ds[i]
 				rch = network.ReachabilityUnknown
 			}
 		}
-		res[i] = Result{Addr: addr, Rch: rch, Err: err}
+		res[i] = Result{Addr: addr, Reachability: rch, Status: status}
 	}
 	return res
 }

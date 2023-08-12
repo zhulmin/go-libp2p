@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"golang.org/x/exp/rand"
@@ -29,19 +30,27 @@ type AutoNAT struct {
 	allowAllAddrs bool // for testing
 }
 
-func New(h host.Host, dialer host.Host) (*AutoNAT, error) {
+func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error) {
+	s := defaultSettings()
+	for _, o := range opts {
+		if err := o(s); err != nil {
+			return nil, err
+		}
+	}
 	sub, err := h.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe to event.EvtLocalReachabilityChanged: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+
 	an := &AutoNAT{
-		host:   h,
-		ctx:    ctx,
-		cancel: cancel,
-		sub:    sub,
-		srv:    &Server{dialer: dialer, host: h},
-		cli:    NewClient(h),
+		host:          h,
+		ctx:           ctx,
+		cancel:        cancel,
+		sub:           sub,
+		srv:           NewServer(h, dialer, s),
+		cli:           NewClient(h),
+		allowAllAddrs: s.allowAllAddrs,
 	}
 	an.cli.Register()
 
@@ -54,7 +63,7 @@ func (an *AutoNAT) background() {
 	for {
 		select {
 		case <-an.ctx.Done():
-			an.srv.Stop()
+			an.srv.Disable()
 			an.wg.Done()
 			return
 		case evt := <-an.sub.Out():
@@ -64,9 +73,9 @@ func (an *AutoNAT) background() {
 				log.Errorf("Unexpected event %s of type %T", evt, evt)
 			}
 			if revt.Reachability == network.ReachabilityPrivate {
-				an.srv.Stop()
+				an.srv.Disable()
 			} else {
-				an.srv.Start()
+				an.srv.Enable()
 			}
 		}
 	}
@@ -119,9 +128,9 @@ func (an *AutoNAT) validPeer() peer.ID {
 }
 
 type Result struct {
-	Addr ma.Multiaddr
-	Rch  network.Reachability
-	Err  error
+	Addr         ma.Multiaddr
+	Reachability network.Reachability
+	Status       pbv2.DialStatus
 }
 
 var (

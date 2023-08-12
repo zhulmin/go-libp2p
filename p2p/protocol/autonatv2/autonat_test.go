@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
@@ -19,11 +20,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newAutoNAT(t *testing.T) *AutoNAT {
+func newAutoNAT(t *testing.T, dialer host.Host, opts ...AutoNATOption) *AutoNAT {
 	t.Helper()
 	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	an, err := New(h, dialer)
+	if dialer == nil {
+		dialer = bhost.NewBlankHost(swarmt.GenSwarm(t))
+	}
+	an, err := New(h, dialer, opts...)
 	if err != nil {
 		t.Error(err)
 	}
@@ -45,7 +48,7 @@ func parseAddrs(t *testing.T, msg *pbv2.Message) []ma.Multiaddr {
 }
 
 func TestValidPeer(t *testing.T) {
-	an := newAutoNAT(t)
+	an := newAutoNAT(t, nil)
 	require.Equal(t, an.validPeer(), peer.ID(""))
 	an.host.Peerstore().AddAddr("peer1", ma.StringCast("/ip4/127.0.0.1/tcp/1"), peerstore.PermanentAddrTTL)
 	an.host.Peerstore().AddAddr("peer2", ma.StringCast("/ip4/127.0.0.1/tcp/2"), peerstore.PermanentAddrTTL)
@@ -72,15 +75,14 @@ func TestValidPeer(t *testing.T) {
 }
 
 func TestAutoNATPrivateAddr(t *testing.T) {
-	an := newAutoNAT(t)
+	an := newAutoNAT(t, nil)
 	res, err := an.CheckReachability(context.Background(), []ma.Multiaddr{ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")}, nil)
 	require.Nil(t, res)
 	require.NotNil(t, err)
 }
 
 func TestClientRequest(t *testing.T) {
-	an := newAutoNAT(t)
-	an.allowAllAddrs = true
+	an := newAutoNAT(t, nil)
 
 	addrs := an.host.Addrs()
 
@@ -111,8 +113,7 @@ func TestClientRequest(t *testing.T) {
 }
 
 func TestClientServerError(t *testing.T) {
-	an := newAutoNAT(t)
-	an.allowAllAddrs = true
+	an := newAutoNAT(t, nil, allowAll)
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -122,7 +123,10 @@ func TestClientServerError(t *testing.T) {
 	tests := []struct {
 		handler func(network.Stream)
 	}{
-		{handler: func(s network.Stream) { s.Reset(); done <- true }},
+		{handler: func(s network.Stream) {
+			s.Reset()
+			done <- true
+		}},
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
 			var msg pbv2.Message
@@ -156,8 +160,7 @@ func TestClientServerError(t *testing.T) {
 }
 
 func TestClientDataRequest(t *testing.T) {
-	an := newAutoNAT(t)
-	an.allowAllAddrs = true
+	an := newAutoNAT(t, nil, allowAll)
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -230,8 +233,7 @@ func TestClientDataRequest(t *testing.T) {
 }
 
 func TestClientDialAttempts(t *testing.T) {
-	an := newAutoNAT(t)
-	an.allowAllAddrs = true
+	an := newAutoNAT(t, nil, allowAll)
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -245,6 +247,9 @@ func TestClientDialAttempts(t *testing.T) {
 	}{
 		{
 			handler: func(s network.Stream) {
+				r := pbio.NewDelimitedReader(s, maxMsgSize)
+				var msg pbv2.Message
+				r.ReadMsg(&msg)
 				resp := &pbv2.DialResponse{
 					Status:       pbv2.DialResponse_ResponseStatus_OK,
 					DialStatuses: []pbv2.DialStatus{pbv2.DialStatus_OK},
@@ -399,13 +404,13 @@ func TestClientDialAttempts(t *testing.T) {
 			require.NoError(t, err)
 			if !tc.success {
 				for i := 0; i < len(res); i++ {
-					require.Error(t, res[i].Err)
-					require.Equal(t, res[i].Rch, network.ReachabilityUnknown)
+					require.NotEqual(t, res[i].Status, pbv2.DialStatus_OK)
+					require.Equal(t, res[i].Reachability, network.ReachabilityUnknown)
 				}
 			} else {
 				success := false
 				for i := 0; i < len(res); i++ {
-					if res[i].Rch == network.ReachabilityPublic {
+					if res[i].Reachability == network.ReachabilityPublic {
 						success = true
 						break
 					}

@@ -3,6 +3,7 @@ package autonatv2
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
@@ -11,7 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
 	"github.com/libp2p/go-msgio/pbio"
-	"github.com/multiformats/go-multiaddr"
+
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"golang.org/x/exp/rand"
@@ -26,21 +27,30 @@ type Server struct {
 	host              host.Host
 	dataRequestPolicy dataRequestPolicyFunc
 	allowAllAddrs     bool
+	limiter           *rateLimiter
+	now               func() time.Time // for tests
 }
 
-func NewServer(host, dialer host.Host, dataRequestPolicy dataRequestPolicyFunc, allowAllAddrs bool) *Server {
-	drp := defaultDataRequestPolicy
-	if dataRequestPolicy != nil {
-		drp = dataRequestPolicy
+func NewServer(host, dialer host.Host, s *autoNATSettings) *Server {
+	return &Server{
+		dialer:            dialer,
+		host:              host,
+		dataRequestPolicy: s.dataRequestPolicy,
+		allowAllAddrs:     s.allowAllAddrs,
+		limiter: &rateLimiter{
+			RPM:        s.serverRPM,
+			RPMPerPeer: s.serverRPMPerPeer,
+			now:        s.now,
+		},
+		now: s.now,
 	}
-	return &Server{dialer: dialer, host: host, dataRequestPolicy: drp, allowAllAddrs: allowAllAddrs}
 }
 
-func (as *Server) Start() {
+func (as *Server) Enable() {
 	as.host.SetStreamHandler(DialProtocol, as.handleDialRequest)
 }
 
-func (as *Server) Stop() {
+func (as *Server) Disable() {
 	as.host.RemoveStreamHandler(DialProtocol)
 }
 
@@ -58,7 +68,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
 
-	s.SetDeadline(time.Now().Add(time.Minute))
+	s.SetDeadline(as.now().Add(time.Minute))
 	defer s.Close()
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
@@ -73,11 +83,17 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		log.Debugf("invalid message type: %T", msg.Msg)
 		return
 	}
+	if !as.limiter.Accept(s.Conn().RemotePeer()) {
+		s.Reset()
+		log.Debugf("rate limited request from %s", s.Conn().RemotePeer())
+		return
+	}
+
 	nonce := msg.GetDialRequest().Nonce
 	statuses := make([]pbv2.DialStatus, 0, len(msg.GetDialRequest().GetAddrs()))
 	var dialAddr ma.Multiaddr
 	for _, ab := range msg.GetDialRequest().GetAddrs() {
-		a, err := multiaddr.NewMultiaddrBytes(ab)
+		a, err := ma.NewMultiaddrBytes(ab)
 		if err != nil {
 			statuses = append(statuses, pbv2.DialStatus_E_ADDRESS_UNKNOWN)
 			continue
@@ -101,7 +117,11 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	w := pbio.NewDelimitedWriter(s)
 	if dialAddr == nil {
 		msg := getResponseMsg(pbv2.DialResponse_ResponseStatus_OK, statuses)
-		w.WriteMsg(msg)
+		if err := w.WriteMsg(msg); err != nil {
+			log.Debugf("failed to write response: %s", err)
+			s.Reset()
+			return
+		}
 		return
 	}
 
@@ -109,8 +129,8 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		msg.Reset()
 		err := getDialData(w, r, len(statuses))
 		if err != nil {
-			s.Reset()
 			log.Debugf("peer refused data request: %s", err)
+			s.Reset()
 			return
 		}
 	}
@@ -174,7 +194,7 @@ func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.D
 		return pbv2.DialStatus_E_DIAL_ERROR
 	}
 	defer s.Close()
-	s.SetDeadline(time.Now().Add(5 * time.Second))
+	s.SetDeadline(as.now().Add(5 * time.Second))
 
 	w := pbio.NewDelimitedWriter(s)
 	if err := w.WriteMsg(&pbv2.DialAttempt{Nonce: nonce}); err != nil {
@@ -183,7 +203,7 @@ func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.D
 	}
 	// s.Close() here might discard the message
 	s.CloseWrite()
-	s.SetDeadline(time.Now().Add(1 * time.Second))
+	s.SetDeadline(as.now().Add(1 * time.Second))
 	b := make([]byte, 1)
 	s.Read(b)
 
@@ -199,4 +219,57 @@ func getResponseMsg(respStatus pbv2.DialResponse_ResponseStatus, statuses []pbv2
 			},
 		},
 	}
+}
+
+// rateLimiter implements a sliding window rate limit of requests per minute.
+type rateLimiter struct {
+	RPMPerPeer int
+	RPM        int
+
+	mu       sync.Mutex
+	reqs     []time.Time
+	peerReqs map[peer.ID][]time.Time
+	now      func() time.Time // for tests
+}
+
+func (r *rateLimiter) Accept(p peer.ID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.peerReqs == nil {
+		r.peerReqs = make(map[peer.ID][]time.Time)
+	}
+
+	nw := r.now()
+	r.cleanup(p, nw)
+
+	if len(r.reqs) >= r.RPM || len(r.peerReqs[p]) >= r.RPMPerPeer {
+		return false
+	}
+	r.reqs = append(r.reqs, nw)
+	r.peerReqs[p] = append(r.peerReqs[p], nw)
+	return true
+}
+
+// cleanup removes stale requests.
+//
+// This is fast enough in rate limited cases and the state is small enough to
+// clean up quickly when blocking requests.
+func (r *rateLimiter) cleanup(p peer.ID, now time.Time) {
+	idx := len(r.reqs)
+	for i, t := range r.reqs {
+		if now.Sub(t).Minutes() <= 1 {
+			idx = i
+			break
+		}
+	}
+	r.reqs = r.reqs[idx:]
+
+	idx = len(r.peerReqs[p])
+	for i, t := range r.peerReqs[p] {
+		if now.Sub(t).Minutes() <= 1 {
+			idx = i
+			break
+		}
+	}
+	r.peerReqs[p] = r.peerReqs[p][idx:]
 }
