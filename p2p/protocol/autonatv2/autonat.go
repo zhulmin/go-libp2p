@@ -18,15 +18,23 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-var log = logging.Logger("autonatv2")
-
 const (
+	ServiceName     = "libp2p.autonatv2"
+	AttemptProtocol = "/libp2p/autonat/2/attempt"
+	DialProtocol    = "/libp2p/autonat/2"
+
+	maxMsgSize           = 8192
 	streamTimeout        = time.Minute
 	attemptStreamTimeout = 5 * time.Second
+	attemptDialTimeout   = 30 * time.Second
 )
 
 var (
 	ErrNoValidPeers = errors.New("autonat v2: No valid peers")
+)
+
+var (
+	log = logging.Logger("autonatv2")
 )
 
 type AutoNAT struct {
@@ -77,7 +85,19 @@ func (an *AutoNAT) background() {
 			an.wg.Done()
 			return
 		case evt := <-an.sub.Out():
-			fmt.Printf("received event %s\n", evt)
+			// Enable the server only if we're publicly reachable.
+			//
+			// Currently this event is sent by the AutoNAT v1 module. During the
+			// transition period from AutoNAT v1 to v2, there won't be enough v2 servers
+			// on the network and most clients will be unable to discover a peer which
+			// supports AutoNAT v2. So, we use v1 to determine reachability for the
+			// transition period.
+			//
+			// Once there are enough v2 servers on the network for nodes to determine
+			// their reachability using AutoNAT v2, we'll use Address Pipeline
+			// (https://github.com/libp2p/go-libp2p/issues/2229)(to be implemented in a
+			// future release) to determine reachability using v2 client and send this
+			// event if we are publicly reachable.
 			revt, ok := evt.(event.EvtLocalReachabilityChanged)
 			if !ok {
 				log.Errorf("Unexpected event %s of type %T", evt, evt)

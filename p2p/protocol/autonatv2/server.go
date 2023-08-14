@@ -18,7 +18,6 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-const DialProtocol = "/libp2p/autonat/2"
 
 type dataRequestPolicyFunc = func(s network.Stream, dialAddr ma.Multiaddr) bool
 
@@ -201,12 +200,13 @@ func runAmplificationAttackPrevention(w pbio.Writer, r pbio.Reader, msg *pbv2.Me
 }
 
 func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.DialStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), attemptDialTimeout)
 	as.dialer.Peerstore().AddAddr(p, addr, peerstore.TempAddrTTL)
 	defer func() {
 		cancel()
 		as.dialer.Network().ClosePeer(p)
 		as.dialer.Peerstore().ClearAddrs(p)
+		as.dialer.Peerstore().RemovePeer(p)
 	}()
 	s, err := as.dialer.NewStream(ctx, p, AttemptProtocol)
 	if err != nil {

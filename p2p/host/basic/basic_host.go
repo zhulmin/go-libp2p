@@ -1016,10 +1016,6 @@ func (h *BasicHost) GetAutoNat() autonat.AutoNAT {
 	return h.autoNat
 }
 
-func (h *BasicHost) GetAutoNatV2() *autonatv2.AutoNAT {
-	return h.autonatv2
-}
-
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
 	h.closeSync.Do(func() {

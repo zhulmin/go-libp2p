@@ -177,7 +177,7 @@ func (s *sub) Close() error {
 				break
 			}
 		}
-		fmt.Println("dropping")
+
 		tryDrop := len(n.sinks) == 0 && n.nEmitters.Load() == 0
 
 		n.lk.Unlock()

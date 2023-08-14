@@ -16,12 +16,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-const (
-	ServiceName     = "libp2p.autonatv2"
-	AttemptProtocol = "/libp2p/autonat/2/attempt"
-	maxMsgSize      = 8192
-)
-
 //go:generate protoc --go_out=. --go_opt=Mpbv2/autonat.proto=./pbv2 pbv2/autonat.proto
 
 type Client struct {
