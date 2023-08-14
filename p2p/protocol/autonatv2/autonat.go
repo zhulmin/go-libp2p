@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/event"
@@ -18,6 +19,15 @@ import (
 )
 
 var log = logging.Logger("autonatv2")
+
+const (
+	streamTimeout        = time.Minute
+	attemptStreamTimeout = 5 * time.Second
+)
+
+var (
+	ErrNoValidPeers = errors.New("autonat v2: No valid peers")
+)
 
 type AutoNAT struct {
 	host          host.Host
@@ -132,7 +142,3 @@ type Result struct {
 	Reachability network.Reachability
 	Status       pbv2.DialStatus
 }
-
-var (
-	ErrNoValidPeers = errors.New("autonat v2: No valid peers")
-)

@@ -2,7 +2,6 @@ package autonatv2
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -38,7 +37,7 @@ func NewClient(h host.Host) *Client {
 }
 
 func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) ([]Result, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(time.Minute))
+	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 
 	s, err := ac.host.NewStream(ctx, p, DialProtocol)
@@ -59,7 +58,7 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
 
-	s.SetDeadline(time.Now().Add(time.Minute))
+	s.SetDeadline(time.Now().Add(streamTimeout))
 	defer s.Close()
 
 	nonce := rand.Uint64()
@@ -93,7 +92,7 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 		req := msg.GetDialDataRequest()
 		if int(req.AddrIdx) >= len(highPriorityAddrs) {
 			s.Reset()
-			return nil, fmt.Errorf("data charge for low priority address")
+			return nil, fmt.Errorf("not providing dial data for low priority address")
 		}
 		if err := ac.sendDialData(msg.GetDialDataRequest(), w, &msg); err != nil {
 			s.Reset()
@@ -120,15 +119,17 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 
 	var attempt ma.Multiaddr
 	for _, st := range resp.GetDialStatuses() {
+		timer := time.NewTimer(attemptStreamTimeout)
 		if st == pbv2.DialStatus_OK {
 			select {
 			case at := <-ch:
 				attempt = at
 			case <-ctx.Done():
-			case <-time.After(5 * time.Second):
+			case <-timer.C:
 			}
 			break
 		}
+		timer.Stop()
 	}
 
 	return ac.newResults(resp.GetDialStatuses(), highPriorityAddrs, lowPriorityAddrs, attempt), nil
@@ -225,7 +226,7 @@ func (ac *Client) handleDialAttempt(s network.Stream) {
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
 
-	s.SetDeadline(time.Now().Add(5 * time.Second))
+	s.SetDeadline(time.Now().Add(attemptStreamTimeout))
 	defer s.Close()
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
@@ -245,8 +246,6 @@ func (ac *Client) handleDialAttempt(s network.Stream) {
 	default:
 	}
 }
-
-var ErrDialNotAttempted = errors.New("didn't attempt to dial")
 
 func areAddrsConsistent(a, b ma.Multiaddr) bool {
 	if a == nil || b == nil {

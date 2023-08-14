@@ -73,7 +73,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
 
-	s.SetDeadline(as.now().Add(time.Minute))
+	s.SetDeadline(as.now().Add(streamTimeout))
 	defer s.Close()
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
@@ -213,7 +213,7 @@ func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.D
 		return pbv2.DialStatus_E_DIAL_ERROR
 	}
 	defer s.Close()
-	s.SetDeadline(as.now().Add(5 * time.Second))
+	s.SetDeadline(as.now().Add(attemptStreamTimeout))
 
 	w := pbio.NewDelimitedWriter(s)
 	if err := w.WriteMsg(&pbv2.DialAttempt{Nonce: nonce}); err != nil {
