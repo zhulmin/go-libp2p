@@ -126,7 +126,7 @@ func TestDelayRankerQUICDelay(t *testing.T) {
 			addrs: []ma.Multiaddr{q1v16, q2v16, q3v16, wt1},
 			output: []network.AddrDelay{
 				{Addr: q1v16, Delay: 0},
-				{Addr: wt1, Delay: 2 * PublicQUICDelay},
+				{Addr: wt1, Delay: PublicQUICDelay},
 				{Addr: q2v16, Delay: 2 * PublicQUICDelay},
 				{Addr: q3v16, Delay: 2 * PublicQUICDelay},
 			},

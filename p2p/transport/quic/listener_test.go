@@ -102,23 +102,15 @@ func TestCorrectNumberOfVirtualListeners(t *testing.T) {
 	tpt := tr.(*transport)
 	defer tr.(io.Closer).Close()
 
-	localAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
-	udpAddr, _, err := quicreuse.FromQuicMultiaddr(localAddr)
-	require.NoError(t, err)
-
-	ln, err := tr.Listen(localAddr)
-	require.NoError(t, err)
-	require.Equal(t, 1, len(tpt.listeners[udpAddr.String()]))
 	localAddrV1 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
-	ln2, err := tr.Listen(localAddrV1)
+	ln, err := tr.Listen(localAddrV1)
+	require.NoError(t, err)
+	udpAddr, _, err := quicreuse.FromQuicMultiaddr(localAddrV1)
 	require.NoError(t, err)
 
 	require.NoError(t, err)
-	require.Equal(t, 2, len(tpt.listeners[udpAddr.String()]))
-
-	ln.Close()
 	require.Equal(t, 1, len(tpt.listeners[udpAddr.String()]))
-	ln2.Close()
+	ln.Close()
 	require.Equal(t, 0, len(tpt.listeners[udpAddr.String()]))
 
 }
