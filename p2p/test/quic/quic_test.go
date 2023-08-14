@@ -147,36 +147,14 @@ func TestQUICAndWebTransport(t *testing.T) {
 	}
 	h2.Close()
 
-	// then test that we can dial a QUIC draft-29
-	h3, err := libp2p.New(
-		libp2p.Transport(libp2pquic.NewTransport),
-		libp2p.NoListenAddrs,
-	)
-	require.NoError(t, err)
-	require.NoError(t, h3.Connect(ctx, peer.AddrInfo{
-		ID: h1.ID(),
-		// a libp2p host will prefer dialing v1 if it supports both versions,
-		// so we need to filter the addresses so it thinks that h1 only supports draft-29
-		Addrs: ma.FilterAddrs(h1.Addrs(), func(addr ma.Multiaddr) bool { _, err := addr.ValueForProtocol(ma.P_QUIC); return err == nil }),
-	}))
-	for _, conns := range [][]network.Conn{h3.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h3.ID())} {
-		require.Len(t, conns, 1)
-		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
-			t.Fatalf("expected a QUIC connection, got a WebTransport connection (%s <-> %s)", conns[0].LocalMultiaddr(), conns[0].RemoteMultiaddr())
-		}
-		require.Equal(t, ma.P_QUIC, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
-		require.Equal(t, ma.P_QUIC, getQUICMultiaddrCode(conns[0].RemoteMultiaddr()))
-	}
-	h3.Close()
-
 	// finally, test that we can dial a WebTransport connection
-	h4, err := libp2p.New(
+	h3, err := libp2p.New(
 		libp2p.Transport(webtransport.New),
 		libp2p.NoListenAddrs,
 	)
 	require.NoError(t, err)
-	require.NoError(t, h4.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
-	for _, conns := range [][]network.Conn{h4.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h4.ID())} {
+	require.NoError(t, h3.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: h1.Addrs()}))
+	for _, conns := range [][]network.Conn{h3.Network().ConnsToPeer(h1.ID()), h1.Network().ConnsToPeer(h3.ID())} {
 		require.Len(t, conns, 1)
 		if _, err := conns[0].LocalMultiaddr().ValueForProtocol(ma.P_WEBTRANSPORT); err != nil {
 			t.Fatalf("expected a WebTransport connection, got a QUIC connection (%s <-> %s)", conns[0].LocalMultiaddr(), conns[0].RemoteMultiaddr())
@@ -184,5 +162,5 @@ func TestQUICAndWebTransport(t *testing.T) {
 		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
 		require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].RemoteMultiaddr()))
 	}
-	h4.Close()
+	h3.Close()
 }
