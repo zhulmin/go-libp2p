@@ -142,11 +142,11 @@ func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma
 func (an *AutoNAT) validPeer() peer.ID {
 	peers := an.host.Peerstore().Peers()
 	idx := 0
-	for _, p := range an.host.Peerstore().Peers() {
-		if proto, err := an.host.Peerstore().SupportsProtocols(p, DialProtocol); len(proto) == 0 || err != nil {
+	for i := 0; i < len(peers); i++ {
+		if proto, err := an.host.Peerstore().SupportsProtocols(peers[i], DialProtocol); len(proto) == 0 || err != nil {
 			continue
 		}
-		peers[idx] = p
+		peers[idx] = peers[i]
 		idx++
 	}
 	if idx == 0 {

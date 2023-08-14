@@ -18,11 +18,15 @@ import (
 
 //go:generate protoc --go_out=. --go_opt=Mpbv2/autonat.proto=./pbv2 pbv2/autonat.proto
 
+// Client implements the client for making dial requests for AutoNAT v2. It verifies successful
+// dials and provides an option to send data for amplification attack prevention.
 type Client struct {
 	host       host.Host
 	dialCharge []byte
 
-	mu            sync.Mutex
+	mu sync.Mutex
+	// attemptQueues maps nonce to the channel for providing the local multiaddr of the connection
+	// the nonce was received on
 	attemptQueues map[uint64]chan ma.Multiaddr
 }
 
@@ -30,6 +34,8 @@ func NewClient(h host.Host) *Client {
 	return &Client{host: h, dialCharge: make([]byte, 4096), attemptQueues: make(map[uint64]chan ma.Multiaddr)}
 }
 
+// CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide data for amplification
+// attack prevention for high priority addresses and not for low priority addresses.
 func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) ([]Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()

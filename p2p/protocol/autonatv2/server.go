@@ -18,7 +18,6 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-
 type dataRequestPolicyFunc = func(s network.Stream, dialAddr ma.Multiaddr) bool
 
 const (
@@ -268,7 +267,7 @@ func (r *rateLimiter) Accept(p peer.ID) bool {
 func (r *rateLimiter) cleanup(p peer.ID, now time.Time) {
 	idx := len(r.reqs)
 	for i, t := range r.reqs {
-		if now.Sub(t).Minutes() <= 1 {
+		if now.Sub(t) < time.Minute {
 			idx = i
 			break
 		}
@@ -277,7 +276,7 @@ func (r *rateLimiter) cleanup(p peer.ID, now time.Time) {
 
 	idx = len(r.peerReqs[p])
 	for i, t := range r.peerReqs[p] {
-		if now.Sub(t).Minutes() <= 1 {
+		if now.Sub(t) < time.Minute {
 			idx = i
 			break
 		}
