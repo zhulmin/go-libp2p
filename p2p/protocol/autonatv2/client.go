@@ -75,13 +75,13 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 
 	msg := newDialRequest(highPriorityAddrs, lowPriorityAddrs, nonce)
 	w := pbio.NewDelimitedWriter(s)
-	if err := w.WriteMsg(msg); err != nil {
+	if err := w.WriteMsg(&msg); err != nil {
 		s.Reset()
 		return nil, fmt.Errorf("failed to write dial request: %w", err)
 	}
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
-	if err := r.ReadMsg(msg); err != nil {
+	if err := r.ReadMsg(&msg); err != nil {
 		s.Reset()
 		return nil, fmt.Errorf("failed to read dial msg on %s: %w", DialProtocol, err)
 	}
@@ -95,12 +95,11 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 			s.Reset()
 			return nil, fmt.Errorf("data charge for low priority address")
 		}
-		if err := ac.sendDialData(msg.GetDialDataRequest(), w, msg); err != nil {
+		if err := ac.sendDialData(msg.GetDialDataRequest(), w, &msg); err != nil {
 			s.Reset()
 			return nil, fmt.Errorf("failed to send dial data: %w", err)
 		}
-		msg.Reset()
-		if err := r.ReadMsg(msg); err != nil {
+		if err := r.ReadMsg(&msg); err != nil {
 			s.Reset()
 			return nil, fmt.Errorf("failed to read dial response: %w", err)
 		}
@@ -171,8 +170,11 @@ func (ac *Client) newResults(ds []pbv2.DialStatus, highPriorityAddrs []ma.Multia
 func (ac *Client) sendDialData(req *pbv2.DialDataRequest, w pbio.Writer, msg *pbv2.Message) error {
 	nb := req.GetNumBytes()
 	ddResp := &pbv2.DialDataResponse{Data: ac.dialCharge}
-	msg.Reset()
-	msg.Msg = &pbv2.Message_DialDataResponse{DialDataResponse: ddResp}
+	*msg = pbv2.Message{
+		Msg: &pbv2.Message_DialDataResponse{
+			DialDataResponse: ddResp,
+		},
+	}
 	for remain := int(nb); remain > 0; {
 		end := remain
 		if end > len(ac.dialCharge) {
@@ -187,7 +189,7 @@ func (ac *Client) sendDialData(req *pbv2.DialDataRequest, w pbio.Writer, msg *pb
 	return nil
 }
 
-func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce uint64) *pbv2.Message {
+func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce uint64) pbv2.Message {
 	addrbs := make([][]byte, len(highPriorityAddrs)+len(lowPriorityAddrs))
 	for i, a := range highPriorityAddrs {
 		addrbs[i] = a.Bytes()
@@ -195,7 +197,7 @@ func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce ui
 	for i, a := range lowPriorityAddrs {
 		addrbs[len(highPriorityAddrs)+i] = a.Bytes()
 	}
-	return &pbv2.Message{
+	return pbv2.Message{
 		Msg: &pbv2.Message_DialRequest{
 			DialRequest: &pbv2.DialRequest{
 				Addrs: addrbs,

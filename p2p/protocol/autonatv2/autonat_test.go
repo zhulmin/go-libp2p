@@ -140,7 +140,6 @@ func TestClientServerError(t *testing.T) {
 					},
 				},
 			})
-			msg.Reset()
 			if err := r.ReadMsg(&msg); err == nil {
 				t.Errorf("expected read to fail: %T", msg.Msg)
 			}
@@ -185,7 +184,6 @@ func TestClientDataRequest(t *testing.T) {
 			)
 			remain := 10000
 			for remain > 0 {
-				msg.Reset()
 				if err := r.ReadMsg(&msg); err != nil {
 					t.Errorf("expected a valid data response")
 					break
@@ -212,7 +210,6 @@ func TestClientDataRequest(t *testing.T) {
 					},
 				}},
 			)
-			msg.Reset()
 			if err := r.ReadMsg(&msg); err == nil {
 				t.Errorf("expected to reject data request for low priority address")
 			}
