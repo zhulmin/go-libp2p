@@ -52,6 +52,7 @@ func newQuicListener(tr refCountedQuicTransport, quicConfig *quic.Config) (*quic
 		addrs:     localMultiaddrs,
 	}
 	tlsConf := &tls.Config{
+		SessionTicketsDisabled: true, // This is set for the config for client, but we set it here as well: https://github.com/quic-go/quic-go/issues/4029
 		GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
 			cl.protocolsMu.Lock()
 			defer cl.protocolsMu.Unlock()
