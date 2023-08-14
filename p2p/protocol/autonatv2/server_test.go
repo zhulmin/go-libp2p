@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/test"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
@@ -14,12 +13,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
-
-// identify provides server address and protocol to client
-func identify(cli *AutoNAT, srv *AutoNAT) {
-	cli.host.Peerstore().AddAddrs(srv.host.ID(), srv.host.Addrs(), peerstore.PermanentAddrTTL)
-	cli.host.Peerstore().AddProtocols(srv.host.ID(), DialProtocol)
-}
 
 func TestServerAllAddrsInvalid(t *testing.T) {
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.OptDisableTCP))
@@ -32,7 +25,7 @@ func TestServerAllAddrsInvalid(t *testing.T) {
 	defer c.Close()
 	defer c.host.Close()
 
-	identify(c, an)
+	identify(t, c, an)
 
 	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
 	require.NoError(t, err)
@@ -51,7 +44,7 @@ func TestServerPrivateRejected(t *testing.T) {
 	defer c.Close()
 	defer c.host.Close()
 
-	identify(c, an)
+	identify(t, c, an)
 
 	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
 	require.NoError(t, err)
@@ -79,7 +72,7 @@ func TestServerDataRequest(t *testing.T) {
 	defer c.Close()
 	defer c.host.Close()
 
-	identify(c, an)
+	identify(t, c, an)
 
 	var quicAddr, tcpAddr ma.Multiaddr
 	for _, a := range c.host.Addrs() {
@@ -108,7 +101,7 @@ func TestServerDial(t *testing.T) {
 	defer c.Close()
 	defer c.host.Close()
 
-	identify(c, an)
+	identify(t, c, an)
 
 	randAddr := ma.StringCast("/ip4/1.2.3.4/tcp/2")
 	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{randAddr}, c.host.Addrs())

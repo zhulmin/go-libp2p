@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
 
@@ -22,7 +24,8 @@ import (
 
 func newAutoNAT(t *testing.T, dialer host.Host, opts ...AutoNATOption) *AutoNAT {
 	t.Helper()
-	h := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	b := eventbus.NewBus()
+	h := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.EventBus(b)), bhost.WithEventBus(b))
 	if dialer == nil {
 		dialer = bhost.NewBlankHost(swarmt.GenSwarm(t))
 	}
@@ -30,6 +33,8 @@ func newAutoNAT(t *testing.T, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 	if err != nil {
 		t.Error(err)
 	}
+	an.srv.Enable()
+	an.cli.Register()
 	return an
 }
 
@@ -47,31 +52,28 @@ func parseAddrs(t *testing.T, msg *pbv2.Message) []ma.Multiaddr {
 	return addrs
 }
 
-func TestValidPeer(t *testing.T) {
-	an := newAutoNAT(t, nil)
-	require.Equal(t, an.validPeer(), peer.ID(""))
-	an.host.Peerstore().AddAddr("peer1", ma.StringCast("/ip4/127.0.0.1/tcp/1"), peerstore.PermanentAddrTTL)
-	an.host.Peerstore().AddAddr("peer2", ma.StringCast("/ip4/127.0.0.1/tcp/2"), peerstore.PermanentAddrTTL)
-	require.NoError(t, an.host.Peerstore().AddProtocols("peer1", DialProtocol))
-	require.NoError(t, an.host.Peerstore().AddProtocols("peer2", DialProtocol))
+func idAndConnect(t *testing.T, a, b host.Host) {
+	a.Peerstore().AddAddrs(b.ID(), b.Addrs(), peerstore.PermanentAddrTTL)
+	a.Peerstore().AddProtocols(b.ID(), DialProtocol)
 
-	var got1, got2 bool
-	for i := 0; i < 100; i++ {
-		p := an.validPeer()
-		switch p {
-		case peer.ID("peer1"):
-			got1 = true
-		case peer.ID("peer2"):
-			got2 = true
-		default:
-			t.Fatalf("invalid peer: %s", p)
-		}
-		if got1 && got2 {
-			break
-		}
-	}
-	require.True(t, got1)
-	require.True(t, got2)
+	err := a.Connect(context.Background(), peer.AddrInfo{ID: b.ID()})
+	require.NoError(t, err)
+}
+
+// waitForPeer waits for a to process all peer events
+func waitForPeer(t *testing.T, a *AutoNAT) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		a.mx.Lock()
+		defer a.mx.Unlock()
+		return len(a.peers) > 0
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// identify provides server address and protocol to client
+func identify(t *testing.T, cli *AutoNAT, srv *AutoNAT) {
+	idAndConnect(t, cli.host, srv.host)
+	waitForPeer(t, cli)
 }
 
 func TestAutoNATPrivateAddr(t *testing.T) {
@@ -82,19 +84,24 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 }
 
 func TestClientRequest(t *testing.T) {
-	an := newAutoNAT(t, nil)
+	an := newAutoNAT(t, nil, allowAll)
 
 	addrs := an.host.Addrs()
 
+	var gotReq atomic.Bool
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
 	p.SetStreamHandler(DialProtocol, func(s network.Stream) {
+		gotReq.Store(true)
 		r := pbio.NewDelimitedReader(s, maxMsgSize)
 		var msg pbv2.Message
-		err := r.ReadMsg(&msg)
-		if err != nil {
+		if err := r.ReadMsg(&msg); err != nil {
 			t.Error(err)
+			return
 		}
-		require.NotNil(t, msg.GetDialRequest())
+		if msg.GetDialRequest() == nil {
+			t.Errorf("expected message to be of type DialRequest, got %T", msg.Msg)
+			return
+		}
 		addrsb := make([][]byte, len(addrs))
 		for i := 0; i < len(addrs); i++ {
 			addrsb[i] = addrs[i].Bytes()
@@ -105,11 +112,13 @@ func TestClientRequest(t *testing.T) {
 		s.Reset()
 	})
 
-	an.host.Peerstore().AddAddrs(p.ID(), p.Addrs(), peerstore.TempAddrTTL)
-	an.host.Peerstore().AddProtocols(p.ID(), DialProtocol)
+	idAndConnect(t, an.host, p)
+	waitForPeer(t, an)
+
 	res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
 	require.Nil(t, res)
 	require.NotNil(t, err)
+	require.True(t, gotReq.Load())
 }
 
 func TestClientServerError(t *testing.T) {
@@ -117,8 +126,9 @@ func TestClientServerError(t *testing.T) {
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	an.host.Peerstore().AddAddrs(p.ID(), p.Addrs(), peerstore.PermanentAddrTTL)
-	an.host.Peerstore().AddProtocols(p.ID(), DialProtocol)
+	idAndConnect(t, an.host, p)
+	waitForPeer(t, an)
+
 	done := make(chan bool)
 	tests := []struct {
 		handler func(network.Stream)
@@ -163,8 +173,9 @@ func TestClientDataRequest(t *testing.T) {
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	an.host.Peerstore().AddAddrs(p.ID(), p.Addrs(), peerstore.PermanentAddrTTL)
-	an.host.Peerstore().AddProtocols(p.ID(), DialProtocol)
+	idAndConnect(t, an.host, p)
+	waitForPeer(t, an)
+
 	done := make(chan bool)
 	tests := []struct {
 		handler func(network.Stream)
@@ -234,9 +245,8 @@ func TestClientDialAttempts(t *testing.T) {
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	an.host.Peerstore().AddAddrs(p.ID(), p.Addrs(), peerstore.PermanentAddrTTL)
-	an.host.Peerstore().AddProtocols(p.ID(), DialProtocol)
-	an.cli.Register()
+	idAndConnect(t, an.host, p)
+	waitForPeer(t, an)
 
 	tests := []struct {
 		handler func(network.Stream)
@@ -418,4 +428,42 @@ func TestClientDialAttempts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEventSubscription(t *testing.T) {
+	an := newAutoNAT(t, nil)
+	defer an.host.Close()
+
+	b := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer b.Close()
+	c := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer c.Close()
+
+	idAndConnect(t, an.host, b)
+	require.Eventually(t, func() bool {
+		an.mx.Lock()
+		defer an.mx.Unlock()
+		return len(an.peers) == 1
+	}, 5*time.Second, 100*time.Millisecond)
+
+	idAndConnect(t, an.host, c)
+	require.Eventually(t, func() bool {
+		an.mx.Lock()
+		defer an.mx.Unlock()
+		return len(an.peers) == 2
+	}, 5*time.Second, 100*time.Millisecond)
+
+	an.host.Network().ClosePeer(b.ID())
+	require.Eventually(t, func() bool {
+		an.mx.Lock()
+		defer an.mx.Unlock()
+		return len(an.peers) == 1
+	}, 5*time.Second, 100*time.Millisecond)
+
+	an.host.Network().ClosePeer(c.ID())
+	require.Eventually(t, func() bool {
+		an.mx.Lock()
+		defer an.mx.Unlock()
+		return len(an.peers) == 0
+	}, 5*time.Second, 100*time.Millisecond)
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
-	"golang.org/x/exp/rand"
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -45,6 +45,8 @@ type AutoNAT struct {
 	wg            sync.WaitGroup
 	srv           *Server
 	cli           *Client
+	mx            sync.Mutex
+	peers         map[peer.ID]struct{}
 	allowAllAddrs bool // for testing
 }
 
@@ -55,7 +57,12 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 			return nil, err
 		}
 	}
-	sub, err := h.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
+	sub, err := h.EventBus().Subscribe([]interface{}{
+		new(event.EvtLocalReachabilityChanged),
+		new(event.EvtPeerProtocolsUpdated),
+		new(event.EvtPeerConnectednessChanged),
+		new(event.EvtPeerIdentificationCompleted),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe to event.EvtLocalReachabilityChanged: %w", err)
 	}
@@ -69,6 +76,7 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 		srv:           NewServer(h, dialer, s),
 		cli:           NewClient(h),
 		allowAllAddrs: s.allowAllAddrs,
+		peers:         make(map[peer.ID]struct{}),
 	}
 	an.cli.Register()
 
@@ -84,28 +92,31 @@ func (an *AutoNAT) background() {
 			an.srv.Disable()
 			an.wg.Done()
 			return
-		case evt := <-an.sub.Out():
-			// Enable the server only if we're publicly reachable.
-			//
-			// Currently this event is sent by the AutoNAT v1 module. During the
-			// transition period from AutoNAT v1 to v2, there won't be enough v2 servers
-			// on the network and most clients will be unable to discover a peer which
-			// supports AutoNAT v2. So, we use v1 to determine reachability for the
-			// transition period.
-			//
-			// Once there are enough v2 servers on the network for nodes to determine
-			// their reachability using AutoNAT v2, we'll use Address Pipeline
-			// (https://github.com/libp2p/go-libp2p/issues/2229)(to be implemented in a
-			// future release) to determine reachability using v2 client and send this
-			// event if we are publicly reachable.
-			revt, ok := evt.(event.EvtLocalReachabilityChanged)
-			if !ok {
-				log.Errorf("Unexpected event %s of type %T", evt, evt)
-			}
-			if revt.Reachability == network.ReachabilityPrivate {
-				an.srv.Disable()
-			} else {
-				an.srv.Enable()
+		case e := <-an.sub.Out():
+			switch evt := e.(type) {
+			case event.EvtLocalReachabilityChanged:
+				// Enable the server only if we're publicly reachable.
+				//
+				// Currently this event is sent by the AutoNAT v1 module. During the
+				// transition period from AutoNAT v1 to v2, there won't be enough v2 servers
+				// on the network and most clients will be unable to discover a peer which
+				// supports AutoNAT v2. So, we use v1 to determine reachability for the
+				// transition period.
+				//
+				// Once there are enough v2 servers on the network for nodes to determine
+				// their reachability using AutoNAT v2, we'll use Address Pipeline
+				// (https://github.com/libp2p/go-libp2p/issues/2229)(to be implemented in a
+				// future release) to determine reachability using v2 client and send this
+				// event from Address Pipeline, if we are publicly reachable.
+				if evt.Reachability == network.ReachabilityPrivate {
+					an.srv.Disable()
+				} else {
+					an.srv.Enable()
+				}
+			case event.EvtPeerProtocolsUpdated:
+				an.updatePeer(evt.Peer)
+			case event.EvtPeerConnectednessChanged:
+				an.updatePeer(evt.Peer)
 			}
 		}
 	}
@@ -140,21 +151,25 @@ func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma
 }
 
 func (an *AutoNAT) validPeer() peer.ID {
-	peers := an.host.Peerstore().Peers()
-	idx := 0
-	for i := 0; i < len(peers); i++ {
-		if proto, err := an.host.Peerstore().SupportsProtocols(peers[i], DialProtocol); len(proto) == 0 || err != nil {
-			continue
-		}
-		peers[idx] = peers[i]
-		idx++
+	an.mx.Lock()
+	defer an.mx.Unlock()
+	for p := range an.peers {
+		return p
 	}
-	if idx == 0 {
-		return ""
+	return ""
+}
+
+func (an *AutoNAT) updatePeer(p peer.ID) {
+	an.mx.Lock()
+	defer an.mx.Unlock()
+
+	protos, err := an.host.Peerstore().SupportsProtocols(p, DialProtocol)
+	connectedness := an.host.Network().Connectedness(p)
+	if err == nil && slices.Contains(protos, DialProtocol) && connectedness == network.Connected {
+		an.peers[p] = struct{}{}
+	} else {
+		delete(an.peers, p)
 	}
-	peers = peers[:idx]
-	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
-	return peers[0]
 }
 
 type Result struct {
