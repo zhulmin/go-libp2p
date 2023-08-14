@@ -34,41 +34,31 @@ func TestListenAddr(t *testing.T) {
 	defer tr.(io.Closer).Close()
 
 	t.Run("for IPv4", func(t *testing.T) {
-		localAddr := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
-		ln, err := tr.Listen(localAddr)
-		require.NoError(t, err)
 		localAddrV1 := ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")
-		ln2, err := tr.Listen(localAddrV1)
+		ln, err := tr.Listen(localAddrV1)
 		require.NoError(t, err)
 		defer ln.Close()
-		defer ln2.Close()
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
 
 		var multiaddrsStrings []string
-		for _, a := range []ma.Multiaddr{ln.Multiaddr(), ln2.Multiaddr()} {
+		for _, a := range []ma.Multiaddr{ln.Multiaddr()} {
 			multiaddrsStrings = append(multiaddrsStrings, a.String())
 		}
-		require.Contains(t, multiaddrsStrings, fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic", port))
 		require.Contains(t, multiaddrsStrings, fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", port))
 	})
 
 	t.Run("for IPv6", func(t *testing.T) {
-		localAddr := ma.StringCast("/ip6/::/udp/0/quic-v1")
-		ln, err := tr.Listen(localAddr)
-		require.NoError(t, err)
 		localAddrV1 := ma.StringCast("/ip6/::/udp/0/quic-v1")
-		ln2, err := tr.Listen(localAddrV1)
+		ln, err := tr.Listen(localAddrV1)
 		require.NoError(t, err)
 		defer ln.Close()
-		defer ln2.Close()
 		port := ln.Addr().(*net.UDPAddr).Port
 		require.NotZero(t, port)
 		var multiaddrsStrings []string
-		for _, a := range []ma.Multiaddr{ln.Multiaddr(), ln2.Multiaddr()} {
+		for _, a := range []ma.Multiaddr{ln.Multiaddr()} {
 			multiaddrsStrings = append(multiaddrsStrings, a.String())
 		}
-		require.Contains(t, multiaddrsStrings, fmt.Sprintf("/ip6/::/udp/%d/quic", port))
 		require.Contains(t, multiaddrsStrings, fmt.Sprintf("/ip6/::/udp/%d/quic-v1", port))
 	})
 }
