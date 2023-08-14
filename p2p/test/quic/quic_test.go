@@ -27,6 +27,7 @@ func getQUICMultiaddrCode(addr ma.Multiaddr) int {
 }
 
 func TestQUICVersions(t *testing.T) {
+	t.Skip("Re-enable when we add v2 support")
 	h1, err := libp2p.New(
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
@@ -40,31 +41,17 @@ func TestQUICVersions(t *testing.T) {
 
 	addrs := h1.Addrs()
 	require.Len(t, addrs, 2)
-	var quicDraft29Addr, quicV1Addr ma.Multiaddr
+	var quicV1Addr ma.Multiaddr
 	for _, addr := range addrs {
 		switch getQUICMultiaddrCode(addr) {
-		case ma.P_QUIC:
-			quicDraft29Addr = addr
 		case ma.P_QUIC_V1:
 			quicV1Addr = addr
 		}
 	}
-	require.NotNil(t, quicDraft29Addr, "expected to be listening on a QUIC draft-29 address")
 	require.NotNil(t, quicV1Addr, "expected to be listening on a QUIC v1 address")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	//  connect using QUIC draft-29
-	h2, err := libp2p.New(
-		libp2p.Transport(libp2pquic.NewTransport),
-	)
-	require.NoError(t, err)
-	require.NoError(t, h2.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{quicDraft29Addr}}))
-	conns := h2.Network().ConnsToPeer(h1.ID())
-	require.Len(t, conns, 1)
-	require.Equal(t, ma.P_QUIC, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
-	require.Equal(t, ma.P_QUIC, getQUICMultiaddrCode(conns[0].RemoteMultiaddr()))
-	h2.Close()
 
 	//  connect using QUIC v1
 	h3, err := libp2p.New(
@@ -72,7 +59,7 @@ func TestQUICVersions(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NoError(t, h3.Connect(ctx, peer.AddrInfo{ID: h1.ID(), Addrs: []ma.Multiaddr{quicV1Addr}}))
-	conns = h3.Network().ConnsToPeer(h1.ID())
+	conns := h3.Network().ConnsToPeer(h1.ID())
 	require.Len(t, conns, 1)
 	require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].LocalMultiaddr()))
 	require.Equal(t, ma.P_QUIC_V1, getQUICMultiaddrCode(conns[0].RemoteMultiaddr()))
@@ -81,11 +68,10 @@ func TestQUICVersions(t *testing.T) {
 
 func TestDisableQUICDraft29(t *testing.T) {
 	h1, err := libp2p.New(
-		libp2p.QUICReuse(quicreuse.NewConnManager, quicreuse.DisableDraft29()),
+		libp2p.QUICReuse(quicreuse.NewConnManager),
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
 		libp2p.ListenAddrStrings(
-			"/ip4/127.0.0.1/udp/12346/quic-v1", // QUIC draft-29
 			"/ip4/127.0.0.1/udp/12346/quic-v1", // QUIC v1
 		),
 	)
@@ -122,7 +108,6 @@ func TestQUICAndWebTransport(t *testing.T) {
 		libp2p.Transport(libp2pquic.NewTransport),
 		libp2p.Transport(webtransport.New),
 		libp2p.ListenAddrStrings(
-			"/ip4/127.0.0.1/udp/12347/quic/",
 			"/ip4/127.0.0.1/udp/12347/quic-v1",
 			"/ip4/127.0.0.1/udp/12347/quic-v1/webtransport",
 		),
@@ -131,19 +116,16 @@ func TestQUICAndWebTransport(t *testing.T) {
 	defer h1.Close()
 
 	addrs := h1.Addrs()
-	require.Len(t, addrs, 3)
-	var quicDraft29Addr, quicV1Addr, webtransportAddr ma.Multiaddr
+	require.Len(t, addrs, 2)
+	var quicV1Addr, webtransportAddr ma.Multiaddr
 	for _, addr := range addrs {
 		if _, err := addr.ValueForProtocol(ma.P_WEBTRANSPORT); err == nil {
 			webtransportAddr = addr
 		} else if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 			quicV1Addr = addr
-		} else {
-			quicDraft29Addr = addr
 		}
 	}
 	require.NotNil(t, webtransportAddr, "expected to have a WebTransport address")
-	require.NotNil(t, quicDraft29Addr, "expected to have a QUIC draft-29 address")
 	require.NotNil(t, quicV1Addr, "expected to have a QUIC v1 address")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

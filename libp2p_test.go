@@ -192,7 +192,7 @@ func TestTransportConstructorQUIC(t *testing.T) {
 	)
 	require.NoError(t, err)
 	defer h.Close()
-	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-1")))
+	require.NoError(t, h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")))
 	err = h.Network().Listen(ma.StringCast("/ip4/127.0.0.1/tcp/0"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), swarm.ErrNoTransport.Error())

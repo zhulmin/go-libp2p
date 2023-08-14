@@ -62,7 +62,6 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, opts ...Option) (*
 		return quiclogging.NewMultiplexedConnectionTracer(tracers...)
 	}
 	serverConfig := quicConf.Clone()
-	serverConfig.Versions = []quic.VersionNumber{quic.Version1}
 
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig

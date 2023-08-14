@@ -35,8 +35,8 @@ type connTestCase struct {
 }
 
 var connTestCases = []*connTestCase{
-	{"reuseport_on", []quicreuse.Option{quicreuse.DisableDraft29()}},
-	{"reuseport_off", []quicreuse.Option{quicreuse.DisableReuseport(), quicreuse.DisableDraft29()}},
+	{"reuseport_on", []quicreuse.Option{}},
+	{"reuseport_off", []quicreuse.Option{quicreuse.DisableReuseport()}},
 }
 
 func createPeer(t *testing.T) (peer.ID, ic.PrivKey) {
@@ -678,7 +678,7 @@ func TestHolePunching(t *testing.T) {
 func TestGetErrorWhenListeningWithDraft29WhenDisabled(t *testing.T) {
 	_, serverKey := createPeer(t)
 
-	t1, err := NewTransport(serverKey, newConnManager(t, quicreuse.DisableDraft29()), nil, nil, nil)
+	t1, err := NewTransport(serverKey, newConnManager(t), nil, nil, nil)
 	require.NoError(t, err)
 	defer t1.(io.Closer).Close()
 	laddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1")
@@ -711,7 +711,7 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 
 			var serverOpts []quicreuse.Option
 			if tc.serverDisablesDraft29 {
-				serverOpts = append(serverOpts, quicreuse.DisableDraft29())
+				serverOpts = append(serverOpts)
 			}
 
 			t1, err := NewTransport(serverKey, newConnManager(t, serverOpts...), nil, nil, nil)
@@ -749,8 +749,6 @@ func TestClientCanDialDifferentQUICVersions(t *testing.T) {
 					var err error
 					if v == quic.Version1 {
 						conn, err = ln1.Accept()
-					} else if v == quic.VersionDraft29 {
-						conn, err = ln2.Accept()
 					} else {
 						panic("unexpected version")
 					}
