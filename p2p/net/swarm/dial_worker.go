@@ -12,11 +12,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-// /////////////////////////////////////////////////////////////////////////////////
-// lo and behold, The Dialer
-// TODO explain how all this works
-// ////////////////////////////////////////////////////////////////////////////////
-
 // dialRequest is structure used to request dials to the peer associated with a
 // worker loop
 type dialRequest struct {
