@@ -10,8 +10,7 @@ import (
 )
 
 var (
-	quicV1MA      = ma.StringCast("/quic-v1")
-	quicDraft29MA = ma.StringCast("/quic")
+	quicV1MA = ma.StringCast("/quic-v1")
 )
 
 func ToQuicMultiaddr(na net.Addr, version quic.VersionNumber) (ma.Multiaddr, error) {
