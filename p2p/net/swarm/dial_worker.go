@@ -77,7 +77,7 @@ type dialWorker struct {
 	// reqch is used to send dial requests to the worker. close reqch to end the worker loop
 	reqch <-chan dialRequest
 	// pendingRequests is the set of pendingRequests
-	pendingRequests map[*pendRequest]bool
+	pendingRequests map[*pendRequest]struct{}
 	// trackedDials tracks dials to the peer's addresses. An entry here is used to ensure that
 	// we dial an address at most once
 	trackedDials map[string]*addrDial
@@ -99,7 +99,7 @@ func newDialWorker(s *Swarm, p peer.ID, reqch <-chan dialRequest, cl Clock) *dia
 		s:               s,
 		peer:            p,
 		reqch:           reqch,
-		pendingRequests: make(map[*pendRequest]bool),
+		pendingRequests: make(map[*pendRequest]struct{}),
 		trackedDials:    make(map[string]*addrDial),
 		resch:           make(chan dialResult),
 		cl:              cl,
@@ -231,7 +231,7 @@ loop:
 			}
 
 			// The request has some pending or new dials
-			w.pendingRequests[pr] = true
+			w.pendingRequests[pr] = struct{}{}
 
 			for _, ad := range tojoin {
 				if !ad.dialed {
