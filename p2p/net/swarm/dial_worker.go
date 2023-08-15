@@ -48,7 +48,7 @@ type pendRequest struct {
 	// At the time of creation addrs is initialised to all the addresses of the peer. On a failed dial,
 	// the addr is removed from the map and err is updated. On a successful dial, the dialRequest is
 	// completed and response is sent with the connection
-	addrs map[string]bool
+	addrs map[string]struct{}
 }
 
 // addrDial tracks dials to a particular multiaddress.
@@ -185,10 +185,10 @@ loop:
 			pr := &pendRequest{
 				req:   req,
 				err:   &DialError{Peer: w.peer},
-				addrs: make(map[string]bool, len(addrRanking)),
+				addrs: make(map[string]struct{}, len(addrRanking)),
 			}
 			for _, adelay := range addrRanking {
-				pr.addrs[string(adelay.Addr.Bytes())] = true
+				pr.addrs[string(adelay.Addr.Bytes())] = struct{}{}
 				addrDelay[string(adelay.Addr.Bytes())] = adelay.Delay
 			}
 
@@ -323,7 +323,7 @@ loop:
 				}
 
 				for pr := range w.pendingRequests {
-					if pr.addrs[string(ad.addr.Bytes())] {
+					if _, ok := pr.addrs[string(ad.addr.Bytes())]; ok {
 						pr.req.resch <- dialResponse{conn: conn}
 						delete(w.pendingRequests, pr)
 					}
@@ -365,7 +365,7 @@ func (w *dialWorker) dispatchError(ad *addrDial, err error) {
 	ad.err = err
 	for pr := range w.pendingRequests {
 		// accumulate the error
-		if pr.addrs[string(ad.addr.Bytes())] {
+		if _, ok := pr.addrs[string(ad.addr.Bytes())]; ok {
 			pr.err.recordErr(ad.addr, err)
 			delete(pr.addrs, string(ad.addr.Bytes()))
 			if len(pr.addrs) == 0 {
