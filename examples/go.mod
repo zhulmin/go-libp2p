@@ -9,7 +9,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.29.0
 	github.com/libp2p/go-libp2p-kad-dht v0.20.1-0.20230209220319-6c2045abad23
-	github.com/multiformats/go-multiaddr v0.10.1
+	github.com/multiformats/go-multiaddr v0.11.0
 	github.com/prometheus/client_golang v1.14.0
 )
 
@@ -99,7 +99,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
+	golang.org/x/exp v0.0.0-20230725012225-302865e7556b // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.12.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
