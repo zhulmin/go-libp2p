@@ -29,9 +29,8 @@ func TestServerAllAddrsInvalid(t *testing.T) {
 
 	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
 	require.NoError(t, err)
-	for _, r := range res {
-		require.Equal(t, r.Status, pbv2.DialStatus_E_TRANSPORT_NOT_SUPPORTED)
-	}
+	require.Equal(t, res.Reachability, network.ReachabilityUnknown)
+	require.Equal(t, res.Status, pbv2.DialStatus_E_DIAL_REFUSED)
 }
 
 func TestServerPrivateRejected(t *testing.T) {
@@ -48,9 +47,8 @@ func TestServerPrivateRejected(t *testing.T) {
 
 	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
 	require.NoError(t, err)
-	for _, r := range res {
-		require.Equal(t, r.Status, pbv2.DialStatus_E_DIAL_REFUSED)
-	}
+	require.Equal(t, res.Status, pbv2.DialStatus_E_DIAL_REFUSED)
+	require.Equal(t, res.Reachability, network.ReachabilityUnknown)
 }
 
 func TestServerDataRequest(t *testing.T) {
@@ -89,7 +87,12 @@ func TestServerDataRequest(t *testing.T) {
 	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{quicAddr}, []ma.Multiaddr{tcpAddr})
 	require.NoError(t, err)
 
-	require.Equal(t, res[0].Reachability, network.ReachabilityPublic)
+	require.Equal(t, res, &Result{
+		Idx:          0,
+		Addr:         quicAddr,
+		Reachability: network.ReachabilityPublic,
+		Status:       pbv2.DialStatus_OK,
+	})
 }
 
 func TestServerDial(t *testing.T) {
@@ -104,13 +107,24 @@ func TestServerDial(t *testing.T) {
 	identify(t, c, an)
 
 	randAddr := ma.StringCast("/ip4/1.2.3.4/tcp/2")
-	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{randAddr}, c.host.Addrs())
+	hostAddrs := c.host.Addrs()
+	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{randAddr}, hostAddrs)
 	require.NoError(t, err)
-	require.Equal(t, res[0].Reachability, network.ReachabilityPrivate)
+	require.Equal(t, res, &Result{
+		Idx:          0,
+		Addr:         randAddr,
+		Reachability: network.ReachabilityPrivate,
+		Status:       pbv2.DialStatus_E_DIAL_ERROR,
+	})
 
 	res, err = c.CheckReachability(context.Background(), nil, c.host.Addrs())
 	require.NoError(t, err)
-	require.Equal(t, res[0].Reachability, network.ReachabilityPublic)
+	require.Equal(t, res, &Result{
+		Idx:          0,
+		Addr:         hostAddrs[0],
+		Reachability: network.ReachabilityPublic,
+		Status:       pbv2.DialStatus_OK,
+	})
 }
 
 func TestRateLimiter(t *testing.T) {

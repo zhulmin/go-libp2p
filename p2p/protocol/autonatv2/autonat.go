@@ -127,9 +127,16 @@ func (an *AutoNAT) Close() {
 	an.wg.Wait()
 }
 
+type Result struct {
+	Idx          int
+	Addr         ma.Multiaddr
+	Reachability network.Reachability
+	Status       pbv2.DialStatus
+}
+
 // CheckReachability makes a single dial request for checking reachability. For highPriorityAddrs dial charge is paid
 // if the server asks for it. For lowPriorityAddrs dial charge is rejected.
-func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) ([]Result, error) {
+func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (*Result, error) {
 	if !an.allowAllAddrs {
 		for _, a := range highPriorityAddrs {
 			if !manet.IsPublicAddr(a) {
@@ -153,6 +160,7 @@ func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma
 func (an *AutoNAT) validPeer() peer.ID {
 	an.mx.Lock()
 	defer an.mx.Unlock()
+	// TODO: improve randomness here. map is not sufficiently random
 	for p := range an.peers {
 		return p
 	}
@@ -170,10 +178,4 @@ func (an *AutoNAT) updatePeer(p peer.ID) {
 	} else {
 		delete(an.peers, p)
 	}
-}
-
-type Result struct {
-	Addr         ma.Multiaddr
-	Reachability network.Reachability
-	Status       pbv2.DialStatus
 }

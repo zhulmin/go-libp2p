@@ -256,10 +256,13 @@ func TestClientDialAttempts(t *testing.T) {
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
 				var msg pbv2.Message
-				r.ReadMsg(&msg)
+				if err := r.ReadMsg(&msg); err != nil {
+					t.Error(err)
+				}
 				resp := &pbv2.DialResponse{
-					Status:       pbv2.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pbv2.DialStatus{pbv2.DialStatus_OK},
+					Status:     pbv2.DialResponse_ResponseStatus_OK,
+					DialStatus: pbv2.DialStatus_OK,
+					AddrIdx:    0,
 				}
 				w := pbio.NewDelimitedWriter(s)
 				w.WriteMsg(&pbv2.Message{
@@ -292,14 +295,13 @@ func TestClientDialAttempts(t *testing.T) {
 				as.CloseWrite()
 
 				w = pbio.NewDelimitedWriter(s)
-				resp := &pbv2.DialResponse{
-					Status: pbv2.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pbv2.DialStatus{
-						pbv2.DialStatus_OK},
-				}
 				w.WriteMsg(&pbv2.Message{
 					Msg: &pbv2.Message_DialResponse{
-						DialResponse: resp,
+						DialResponse: &pbv2.DialResponse{
+							Status:     pbv2.DialResponse_ResponseStatus_OK,
+							DialStatus: pbv2.DialStatus_OK,
+							AddrIdx:    0,
+						},
 					},
 				})
 				s.Close()
@@ -337,16 +339,13 @@ func TestClientDialAttempts(t *testing.T) {
 				}()
 
 				w := pbio.NewDelimitedWriter(s)
-				resp := &pbv2.DialResponse{
-					Status: pbv2.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pbv2.DialStatus{
-						pbv2.DialStatus_E_TRANSPORT_NOT_SUPPORTED,
-						pbv2.DialStatus_OK,
-					},
-				}
 				w.WriteMsg(&pbv2.Message{
 					Msg: &pbv2.Message_DialResponse{
-						DialResponse: resp,
+						DialResponse: &pbv2.DialResponse{
+							Status:     pbv2.DialResponse_ResponseStatus_OK,
+							DialStatus: pbv2.DialStatus_OK,
+							AddrIdx:    0,
+						},
 					},
 				})
 				s.Close()
@@ -386,16 +385,14 @@ func TestClientDialAttempts(t *testing.T) {
 				}()
 
 				w = pbio.NewDelimitedWriter(s)
-				resp := &pbv2.DialResponse{
-					Status: pbv2.DialResponse_ResponseStatus_OK,
-					DialStatuses: []pbv2.DialStatus{
-						pbv2.DialStatus_E_TRANSPORT_NOT_SUPPORTED,
-						pbv2.DialStatus_OK,
-					},
-				}
+
 				w.WriteMsg(&pbv2.Message{
 					Msg: &pbv2.Message_DialResponse{
-						DialResponse: resp,
+						DialResponse: &pbv2.DialResponse{
+							Status:     pbv2.DialResponse_ResponseStatus_OK,
+							DialStatus: pbv2.DialStatus_OK,
+							AddrIdx:    1,
+						},
 					},
 				})
 				s.Close()
@@ -410,21 +407,11 @@ func TestClientDialAttempts(t *testing.T) {
 			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
 			require.NoError(t, err)
 			if !tc.success {
-				for i := 0; i < len(res); i++ {
-					require.NotEqual(t, res[i].Status, pbv2.DialStatus_OK)
-					require.Equal(t, res[i].Reachability, network.ReachabilityUnknown)
-				}
+				require.Equal(t, res.Reachability, network.ReachabilityUnknown)
+				require.NotEqual(t, res.Status, pbv2.DialStatus_OK, "got: %d", res.Status)
 			} else {
-				success := false
-				for i := 0; i < len(res); i++ {
-					if res[i].Reachability == network.ReachabilityPublic {
-						success = true
-						break
-					}
-				}
-				if !success {
-					t.Fatal("expected one address to be reachable")
-				}
+				require.Equal(t, res.Reachability, network.ReachabilityPublic)
+				require.Equal(t, res.Status, pbv2.DialStatus_OK)
 			}
 		})
 	}

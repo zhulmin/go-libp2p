@@ -24,27 +24,23 @@ message DialDataRequest {
 
 
 enum DialStatus {
-    OK                        = 0;
-    E_DIAL_ERROR              = 100;
-    E_CONN_UPGRADE_FAILED     = 101;
-    E_ATTEMPT_ERROR           = 102;
-    E_DIAL_REFUSED            = 200;
-    E_TRANSPORT_NOT_SUPPORTED = 300;
-    E_ADDRESS_UNKNOWN         = 301;
-    SKIPPED                   = 400;
+    E_DIAL_REFUSED  = 0;
+    E_DIAL_ERROR    = 100;
+    E_ATTEMPT_ERROR = 101;
+    OK              = 200;
 }
 
 
 message DialResponse {
     enum ResponseStatus {
-        ResponseStatus_OK         = 0;
-        E_BAD_REQUEST             = 100;
-        E_REQUEST_REFUSED         = 101;
-        E_INTERNAL_ERROR          = 300;
+        E_INTERNAL_ERROR   = 0;
+        E_REQUEST_REJECTED = 100; 
+        ResponseStatus_OK  = 200; 
     }
 
     ResponseStatus status = 1;
-    repeated DialStatus dialStatuses = 2;
+    uint32 addrIdx        = 2; 
+    DialStatus dialStatus = 3;
 }
 
 

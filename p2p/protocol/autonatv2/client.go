@@ -36,7 +36,7 @@ func NewClient(h host.Host) *Client {
 
 // CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide data for amplification
 // attack prevention for high priority addresses and not for low priority addresses.
-func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) ([]Result, error) {
+func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (*Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 
@@ -118,54 +118,54 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	}
 
 	var attempt ma.Multiaddr
-	for _, st := range resp.GetDialStatuses() {
+	if resp.GetDialStatus() == pbv2.DialStatus_OK && int(resp.AddrIdx) < len(highPriorityAddrs)+len(lowPriorityAddrs) {
 		timer := time.NewTimer(attemptStreamTimeout)
-		if st == pbv2.DialStatus_OK {
-			select {
-			case at := <-ch:
-				attempt = at
-			case <-ctx.Done():
-			case <-timer.C:
-			}
-			break
+		select {
+		case at := <-ch:
+			attempt = at
+		case <-ctx.Done():
+		case <-timer.C:
 		}
 		timer.Stop()
 	}
-
-	return ac.newResults(resp.GetDialStatuses(), highPriorityAddrs, lowPriorityAddrs, attempt), nil
+	return ac.newResults(resp, highPriorityAddrs, lowPriorityAddrs, attempt)
 }
 
-func (ac *Client) newResults(ds []pbv2.DialStatus, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, attempt ma.Multiaddr) []Result {
-	res := make([]Result, len(highPriorityAddrs)+len(lowPriorityAddrs))
-	for i := 0; i < len(res); i++ {
-		var addr ma.Multiaddr
-		if i < len(highPriorityAddrs) {
-			addr = highPriorityAddrs[i]
-		} else {
-			addr = lowPriorityAddrs[i-len(highPriorityAddrs)]
-		}
-		rch := network.ReachabilityUnknown
-		status := pbv2.DialStatus_SKIPPED
-		if i < len(ds) {
-			switch ds[i] {
-			case pbv2.DialStatus_OK:
-				if areAddrsConsistent(attempt, addr) {
-					status = pbv2.DialStatus_OK
-					rch = network.ReachabilityPublic
-				} else {
-					status = pbv2.DialStatus_E_ATTEMPT_ERROR
-					rch = network.ReachabilityUnknown
-				}
-			case pbv2.DialStatus_E_DIAL_ERROR:
-				rch = network.ReachabilityPrivate
-			default:
-				status = ds[i]
-				rch = network.ReachabilityUnknown
-			}
-		}
-		res[i] = Result{Addr: addr, Reachability: rch, Status: status}
+func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, attempt ma.Multiaddr) (*Result, error) {
+
+	if resp.DialStatus == pbv2.DialStatus_E_DIAL_REFUSED {
+		return &Result{Idx: -1, Reachability: network.ReachabilityUnknown, Status: pbv2.DialStatus_E_DIAL_REFUSED}, nil
 	}
-	return res
+	if int(resp.AddrIdx) >= len(highPriorityAddrs)+len(lowPriorityAddrs) {
+		return nil, fmt.Errorf("invalid addrIdx in response: %d, request address count: %d", resp.AddrIdx, len(highPriorityAddrs)+len(lowPriorityAddrs))
+	}
+
+	idx := int(resp.AddrIdx)
+	var addr ma.Multiaddr
+	if idx < len(highPriorityAddrs) {
+		addr = highPriorityAddrs[idx]
+	} else {
+		addr = lowPriorityAddrs[idx-len(highPriorityAddrs)]
+	}
+
+	rch := network.ReachabilityUnknown
+	status := resp.DialStatus
+	switch status {
+	case pbv2.DialStatus_OK:
+		if areAddrsConsistent(attempt, addr) {
+			rch = network.ReachabilityPublic
+		} else {
+			status = pbv2.DialStatus_E_ATTEMPT_ERROR
+		}
+	case pbv2.DialStatus_E_DIAL_ERROR:
+		rch = network.ReachabilityPrivate
+	}
+	return &Result{
+		Idx:          idx,
+		Addr:         addr,
+		Reachability: rch,
+		Status:       status,
+	}, nil
 }
 
 func (ac *Client) sendDialData(req *pbv2.DialDataRequest, w pbio.Writer, msg *pbv2.Message) error {

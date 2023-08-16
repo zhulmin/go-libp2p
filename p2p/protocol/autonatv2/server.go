@@ -93,27 +93,19 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 
 	nonce := msg.GetDialRequest().Nonce
-	statuses := make([]pbv2.DialStatus, 0, len(msg.GetDialRequest().GetAddrs()))
 	var dialAddr ma.Multiaddr
-	for _, ab := range msg.GetDialRequest().GetAddrs() {
+	var addrIdx int
+	for i, ab := range msg.GetDialRequest().GetAddrs() {
 		a, err := ma.NewMultiaddrBytes(ab)
 		if err != nil {
-			statuses = append(statuses, pbv2.DialStatus_E_ADDRESS_UNKNOWN)
 			continue
 		}
-		if !as.allowAllAddrs && !manet.IsPublicAddr(a) {
-			statuses = append(statuses, pbv2.DialStatus_E_DIAL_REFUSED)
-			continue
-		}
-		if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err == nil {
-			statuses = append(statuses, pbv2.DialStatus_E_DIAL_REFUSED)
-			continue
-		}
-		if !as.dialer.Network().CanDial(a) {
-			statuses = append(statuses, pbv2.DialStatus_E_TRANSPORT_NOT_SUPPORTED)
+		if (!as.allowAllAddrs && !manet.IsPublicAddr(a)) ||
+			(!as.dialer.Network().CanDial(a)) {
 			continue
 		}
 		dialAddr = a
+		addrIdx = i
 		break
 	}
 
@@ -122,8 +114,10 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		msg = pbv2.Message{
 			Msg: &pbv2.Message_DialResponse{
 				DialResponse: &pbv2.DialResponse{
-					Status:       pbv2.DialResponse_ResponseStatus_OK,
-					DialStatuses: statuses,
+					Status:     pbv2.DialResponse_ResponseStatus_OK,
+					DialStatus: pbv2.DialStatus_E_DIAL_REFUSED,
+					// send an invalid index to prevent accidental misuse
+					AddrIdx: uint32(len(msg.GetDialRequest().Addrs)),
 				},
 			},
 		}
@@ -136,7 +130,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 
 	if as.dataRequestPolicy(s, dialAddr) {
-		err := runAmplificationAttackPrevention(w, r, &msg, len(statuses))
+		err := runAmplificationAttackPrevention(w, r, &msg, addrIdx)
 		if err != nil {
 			s.Reset()
 			log.Debugf("peer refused dial data request: %s", err)
@@ -145,12 +139,12 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 
 	status := as.attemptDial(s.Conn().RemotePeer(), dialAddr, nonce)
-	statuses = append(statuses, status)
 	msg = pbv2.Message{
 		Msg: &pbv2.Message_DialResponse{
 			DialResponse: &pbv2.DialResponse{
-				Status:       pbv2.DialResponse_ResponseStatus_OK,
-				DialStatuses: statuses,
+				Status:     pbv2.DialResponse_ResponseStatus_OK,
+				DialStatus: status,
+				AddrIdx:    uint32(addrIdx),
 			},
 		},
 	}
