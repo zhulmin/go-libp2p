@@ -20,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
@@ -357,7 +358,16 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 	const streamCount = 1024
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			listener := tc.HostGenerator(t, TransportTestCaseOpts{})
+			listenerLimits := rcmgr.PartialLimitConfig{
+				PeerDefault: rcmgr.ResourceLimits{
+					Streams:         32,
+					StreamsInbound:  16,
+					StreamsOutbound: 16,
+				},
+			}
+			r, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(listenerLimits.Build(rcmgr.DefaultLimits.AutoScale())))
+			require.NoError(t, err)
+			listener := tc.HostGenerator(t, TransportTestCaseOpts{ResourceManager: r})
 			dialer := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true, NoRcmgr: true})
 			defer listener.Close()
 			defer dialer.Close()
@@ -495,7 +505,7 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 
 			require.NoError(t, <-errCh)
 			require.Equal(t, streamCount, int(handledStreams.Load()))
-			require.True(t, sawFirstErr.Load())
+			require.True(t, sawFirstErr.Load(), "Expected to see an error from the peer")
 		})
 	}
 }
