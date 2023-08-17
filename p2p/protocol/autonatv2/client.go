@@ -34,25 +34,23 @@ func NewClient(h host.Host) *Client {
 	return &Client{host: h, dialCharge: make([]byte, 4096), attemptQueues: make(map[uint64]chan ma.Multiaddr)}
 }
 
-// CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide data for amplification
-// attack prevention for high priority addresses and not for low priority addresses.
+// CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide dial data for dialing high
+// priority addresses and not for low priority addresses.
 func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (*Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 
 	s, err := ac.host.NewStream(ctx, p, DialProtocol)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open %s stream with %s: %w", DialProtocol, p, err)
+		return nil, fmt.Errorf("open %s stream: %w", DialProtocol, err)
 	}
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Debugf("error attaching stream to service: %s", err)
 		s.Reset()
-		return nil, fmt.Errorf("failed to attach stream to service %s: %w", ServiceName, err)
+		return nil, fmt.Errorf("attach stream %s to service %s: %w", DialProtocol, ServiceName, err)
 	}
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("error reserving memory for stream: %s", err)
 		s.Reset()
 		return nil, fmt.Errorf("failed to reserve memory for stream %s: %w", DialProtocol, err)
 	}
@@ -76,13 +74,13 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	w := pbio.NewDelimitedWriter(s)
 	if err := w.WriteMsg(&msg); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("failed to write dial request: %w", err)
+		return nil, fmt.Errorf("dial request write: %w", err)
 	}
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	if err := r.ReadMsg(&msg); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("failed to read dial msg on %s: %w", DialProtocol, err)
+		return nil, fmt.Errorf("dial msg read: %w", err)
 	}
 
 	switch {
@@ -92,29 +90,29 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 		req := msg.GetDialDataRequest()
 		if int(req.AddrIdx) >= len(highPriorityAddrs) {
 			s.Reset()
-			return nil, fmt.Errorf("not providing dial data for low priority address")
+			return nil, fmt.Errorf("dial data requested for low priority address")
 		}
 		if err := ac.sendDialData(msg.GetDialDataRequest(), w, &msg); err != nil {
 			s.Reset()
-			return nil, fmt.Errorf("failed to send dial data: %w", err)
+			return nil, fmt.Errorf("dial data send: %w", err)
 		}
 		if err := r.ReadMsg(&msg); err != nil {
 			s.Reset()
-			return nil, fmt.Errorf("failed to read dial response: %w", err)
+			return nil, fmt.Errorf("dial response read: %w", err)
 		}
 		if msg.GetDialResponse() == nil {
 			s.Reset()
-			return nil, fmt.Errorf("invalid response type %T", msg.Msg)
+			return nil, fmt.Errorf("invalid response type: %T", msg.Msg)
 		}
 	default:
 		s.Reset()
-		return nil, fmt.Errorf("invalid msg type %T", msg.Msg)
+		return nil, fmt.Errorf("invalid msg type: %T", msg.Msg)
 	}
 
 	resp := msg.GetDialResponse()
 	if resp.GetStatus() != pbv2.DialResponse_ResponseStatus_OK {
-		s.Reset()
-		return nil, fmt.Errorf("dial request failed: status: %s", pbv2.DialStatus_name[int32(resp.GetStatus())])
+		return nil, fmt.Errorf("dial request failed: status %d %s", resp.GetStatus(),
+			pbv2.DialStatus_name[int32(resp.GetStatus())])
 	}
 
 	var attempt ma.Multiaddr
@@ -132,12 +130,11 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 }
 
 func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, attempt ma.Multiaddr) (*Result, error) {
-
 	if resp.DialStatus == pbv2.DialStatus_E_DIAL_REFUSED {
 		return &Result{Idx: -1, Reachability: network.ReachabilityUnknown, Status: pbv2.DialStatus_E_DIAL_REFUSED}, nil
 	}
 	if int(resp.AddrIdx) >= len(highPriorityAddrs)+len(lowPriorityAddrs) {
-		return nil, fmt.Errorf("invalid addrIdx in response: %d, request address count: %d", resp.AddrIdx, len(highPriorityAddrs)+len(lowPriorityAddrs))
+		return nil, fmt.Errorf("addrIdx out of range: %d 0-%d", resp.AddrIdx, len(highPriorityAddrs)+len(lowPriorityAddrs)-1)
 	}
 
 	idx := int(resp.AddrIdx)
@@ -214,13 +211,13 @@ func (ac *Client) Register() {
 
 func (ac *Client) handleDialAttempt(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
-		log.Errorf("error attaching stream to service %s: %s", ServiceName, err)
+		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)
 		s.Reset()
 		return
 	}
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
-		log.Errorf("error reserving memory for autonatv2 attempt stream: %s", err)
+		log.Debugf("failed to reserve memory for stream %s: %w", AttemptProtocol, err)
 		s.Reset()
 		return
 	}
@@ -230,9 +227,9 @@ func (ac *Client) handleDialAttempt(s network.Stream) {
 	defer s.Close()
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
-	msg := &pbv2.DialAttempt{}
-	if err := r.ReadMsg(msg); err != nil {
-		log.Debugf("error reading dial attempt msg: %s", err)
+	var msg pbv2.DialAttempt
+	if err := r.ReadMsg(&msg); err != nil {
+		log.Debugf("failed to read dial attempt msg from %s: %s", s.Conn().RemotePeer(), err)
 		s.Reset()
 		return
 	}

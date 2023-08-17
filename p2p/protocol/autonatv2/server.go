@@ -60,13 +60,13 @@ func (as *Server) Disable() {
 func (as *Server) handleDialRequest(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		s.Reset()
-		log.Debugf("error attaching stream to service %s: %s", ServiceName, err)
+		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)
 		return
 	}
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
 		s.Reset()
-		log.Debugf("error reserving memory for autonatv2 stream: %s", err)
+		log.Debugf("failed to reserve memory for stream %s: %w", DialProtocol, err)
 		return
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
@@ -74,21 +74,22 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	s.SetDeadline(as.now().Add(streamTimeout))
 	defer s.Close()
 
+	p := s.Conn().RemotePeer()
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	var msg pbv2.Message
 	if err := r.ReadMsg(&msg); err != nil {
 		s.Reset()
-		log.Debugf("error reading %s request: %s", DialProtocol, err)
+		log.Debugf("failed to read request from %s: %s", p, err)
 		return
 	}
 	if msg.GetDialRequest() == nil {
 		s.Reset()
-		log.Debugf("invalid message type: %T", msg.Msg)
+		log.Debugf("invalid message type from %s: %T", p, msg.Msg)
 		return
 	}
-	if !as.limiter.Accept(s.Conn().RemotePeer()) {
+	if !as.limiter.Accept(p) {
 		s.Reset()
-		log.Debugf("rate limited request from %s", s.Conn().RemotePeer())
+		log.Debugf("rejecting request from %s: rate limit exceeded", p)
 		return
 	}
 
@@ -123,7 +124,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		}
 		if err := w.WriteMsg(&msg); err != nil {
 			s.Reset()
-			log.Debugf("failed to write response: %s", err)
+			log.Debugf("failed to write response to %s: %s", p, err)
 			return
 		}
 		return
@@ -133,11 +134,10 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		err := runAmplificationAttackPrevention(w, r, &msg, addrIdx)
 		if err != nil {
 			s.Reset()
-			log.Debugf("peer refused dial data request: %s", err)
+			log.Debugf("%s refused dial data request: %s", p, err)
 			return
 		}
 	}
-
 	status := as.attemptDial(s.Conn().RemotePeer(), dialAddr, nonce)
 	msg = pbv2.Message{
 		Msg: &pbv2.Message_DialResponse{
@@ -150,7 +150,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 	if err := w.WriteMsg(&msg); err != nil {
 		s.Reset()
-		log.Debugf("failed to write response: %s", err)
+		log.Debugf("failed to write response to %s: %s", p, err)
 		return
 	}
 }
@@ -177,15 +177,15 @@ func runAmplificationAttackPrevention(w pbio.Writer, r pbio.Reader, msg *pbv2.Me
 		},
 	}
 	if err := w.WriteMsg(msg); err != nil {
-		return fmt.Errorf("error requesting dial data: %w", err)
+		return fmt.Errorf("dial data write: %w", err)
 	}
 	remain := numBytes
 	for remain > 0 {
 		if err := r.ReadMsg(msg); err != nil {
-			return fmt.Errorf("error reading dial data: %w", err)
+			return fmt.Errorf("dial data read: %w", err)
 		}
 		if msg.GetDialDataResponse() == nil {
-			return fmt.Errorf("invalid msg type. expected DialDataResponse, got %T", msg.Msg)
+			return fmt.Errorf("invalid msg type %T", msg.Msg)
 		}
 		remain -= len(msg.GetDialDataResponse().Data)
 	}

@@ -30,7 +30,7 @@ const (
 )
 
 var (
-	ErrNoValidPeers = errors.New("autonat v2: No valid peers")
+	ErrNoValidPeers = errors.New("no valid peers for autonat v2")
 )
 
 var (
@@ -54,7 +54,7 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 	s := defaultSettings()
 	for _, o := range opts {
 		if err := o(s); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to apply option: %w", err)
 		}
 	}
 	sub, err := h.EventBus().Subscribe([]interface{}{
@@ -64,7 +64,7 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 		new(event.EvtPeerIdentificationCompleted),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to subscribe to event.EvtLocalReachabilityChanged: %w", err)
+		return nil, fmt.Errorf("event subscription failed: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -90,6 +90,7 @@ func (an *AutoNAT) background() {
 		select {
 		case <-an.ctx.Done():
 			an.srv.Disable()
+			an.peers = nil
 			an.wg.Done()
 			return
 		case e := <-an.sub.Out():
@@ -117,6 +118,8 @@ func (an *AutoNAT) background() {
 				an.updatePeer(evt.Peer)
 			case event.EvtPeerConnectednessChanged:
 				an.updatePeer(evt.Peer)
+			case event.EvtPeerIdentificationCompleted:
+				an.updatePeer(evt.Peer)
 			}
 		}
 	}
@@ -127,11 +130,16 @@ func (an *AutoNAT) Close() {
 	an.wg.Wait()
 }
 
+// Result is the result of the CheckReachability call
 type Result struct {
-	Idx          int
-	Addr         ma.Multiaddr
+	// Idx is the index of the dialed address
+	Idx int
+	// Addr is the dialed address
+	Addr ma.Multiaddr
+	// Reachability of the dialed address
 	Reachability network.Reachability
-	Status       pbv2.DialStatus
+	// Status is the outcome of the dialback
+	Status pbv2.DialStatus
 }
 
 // CheckReachability makes a single dial request for checking reachability. For highPriorityAddrs dial charge is paid
@@ -154,7 +162,13 @@ func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma
 		return nil, ErrNoValidPeers
 	}
 
-	return an.cli.CheckReachability(ctx, p, highPriorityAddrs, lowPriorityAddrs)
+	res, err := an.cli.CheckReachability(ctx, p, highPriorityAddrs, lowPriorityAddrs)
+	if err != nil {
+		log.Debugf("reachability check with %s failed, err: %s", p, err)
+		return nil, fmt.Errorf("reachability check with %s failed: %w", p, err)
+	}
+	log.Debugf("reachability check with %s successful", p)
+	return res, nil
 }
 
 func (an *AutoNAT) validPeer() peer.ID {
