@@ -114,6 +114,9 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 		return nil, fmt.Errorf("dial request failed: status %d %s", resp.GetStatus(),
 			pbv2.DialStatus_name[int32(resp.GetStatus())])
 	}
+	if resp.GetDialStatus() == pbv2.DialStatus_E_INTERNAL_ERROR {
+		return nil, fmt.Errorf("dial request failed: received invalid dial status 0")
+	}
 
 	var attempt ma.Multiaddr
 	if resp.GetDialStatus() == pbv2.DialStatus_OK && int(resp.AddrIdx) < len(highPriorityAddrs)+len(lowPriorityAddrs) {
