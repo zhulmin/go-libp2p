@@ -53,7 +53,7 @@ func TestMetricsNoAllocNoCover(t *testing.T) {
 		{StreamMultiplexer: "yamux", Security: "tls", Transport: "tcp", UsedEarlyMuxerNegotiation: true},
 		{StreamMultiplexer: "yamux", Security: "noise", Transport: "tcp", UsedEarlyMuxerNegotiation: false},
 		{StreamMultiplexer: "", Security: "", Transport: "quic"},
-		{StreamMultiplexer: "mplex", Security: "noise", Transport: "tcp"},
+		{StreamMultiplexer: "another-yamux", Security: "noise", Transport: "tcp"},
 	}
 
 	directions := []network.Direction{network.DirInbound, network.DirOutbound}
