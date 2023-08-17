@@ -20,11 +20,14 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/sec"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
+	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -604,6 +607,79 @@ func TestStreamReadDeadline(t *testing.T) {
 			_, err = s.Read(b)
 			require.Equal(t, "foobar", string(b))
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
+	// extracts the peerID of the dialed peer from the error
+	extractPeerIDFromError := func(inputErr error) (peer.ID, error) {
+		var dialErr *swarm.DialError
+		if !errors.As(inputErr, &dialErr) {
+			return "", inputErr
+		}
+		innerErr := dialErr.DialErrors[0].Cause
+
+		var peerIDMismatchErr sec.ErrPeerIDMismatch
+		if errors.As(innerErr, &peerIDMismatchErr) {
+			return peerIDMismatchErr.Actual, nil
+		}
+
+		return "", inputErr
+	}
+
+	// runs a test to verify we can extract the peer ID from a target with just its address
+	runTest := func(t *testing.T, h host.Host) {
+		t.Helper()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Use a bogus peer ID so that when we connect to the target we get an error telling
+		// us the targets real peer ID
+		bogusPeerId, err := peer.Decode("QmadAdJ3f63JyNs65X7HHzqDwV53ynvCcKtNFvdNaz3nhk")
+		if err != nil {
+			t.Fatal("the hard coded bogus peerID is invalid")
+		}
+
+		ai := &peer.AddrInfo{
+			ID:    bogusPeerId,
+			Addrs: []multiaddr.Multiaddr{h.Addrs()[0]},
+		}
+
+		testHost, err := libp2p.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Try connecting with the bogus peer ID
+		if err := testHost.Connect(ctx, *ai); err != nil {
+			// Extract the actual peer ID from the error
+			newPeerId, err := extractPeerIDFromError(err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ai.ID = newPeerId
+
+			// Make sure the new ID is what we expected
+			if ai.ID != h.ID() {
+				t.Fatalf("peerID mismatch: expected %s, got %s", h.ID(), ai.ID)
+			}
+
+			// and just to double-check try connecting again to make sure it works
+			if err := testHost.Connect(ctx, *ai); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			t.Fatal("somehow we successfully connected to a bogus peerID!")
+		}
+	}
+
+	for _, tc := range transportsToTest {
+		t.Run(tc.Name, func(t *testing.T) {
+			h := tc.HostGenerator(t, TransportTestCaseOpts{})
+			defer h.Close()
+
+			runTest(t, h)
 		})
 	}
 }
