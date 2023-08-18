@@ -214,12 +214,12 @@ func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.D
 		return pbv2.DialStatus_E_ATTEMPT_ERROR
 	}
 
-	// s.Close() here might discard the message because the connection this stream is
-	// running on will be closed immediately after this function returns since we don't
-	// want to keep any connections on the dialer host.
+	// Since the underlying connection is on a separate dialer, it'll be closed after this function returns.
+	// Connection close will drop all the queued writes. To ensure message delivery, do a close write and
+	// wait a second for the peer to Close its end of the stream.
 	s.CloseWrite()
 	s.SetDeadline(as.now().Add(1 * time.Second))
-	b := make([]byte, 1)
+	b := make([]byte, 1) // Read 1 byte here because 0 len reads are free to return (0, nil) immediately
 	s.Read(b)
 
 	return pbv2.DialStatus_OK
