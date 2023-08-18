@@ -24,11 +24,11 @@ message DialDataRequest {
 
 
 enum DialStatus {
-    E_INTERNAL_ERROR = 0;   // Default value to force servers to explicitly set the status
-    E_DIAL_REFUSED   = 100;
-    E_DIAL_ERROR     = 101;
-    E_ATTEMPT_ERROR  = 102;
-    OK               = 200;
+    E_INTERNAL_ERROR  = 0;   // Default value to force servers to explicitly set the status
+    E_DIAL_REFUSED    = 100;
+    E_DIAL_ERROR      = 101;
+    E_DIAL_BACK_ERROR = 102;
+    OK                = 200;
 }
 
 
@@ -50,6 +50,6 @@ message DialDataResponse {
 }
 
 
-message DialAttempt {
+message DialBack {
     fixed64 nonce = 1;
 }

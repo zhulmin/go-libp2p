@@ -25,13 +25,13 @@ type Client struct {
 	dialData []byte
 
 	mu sync.Mutex
-	// attemptQueues maps nonce to the channel for providing the local multiaddr of the connection
+	// dialBackQueues maps nonce to the channel for providing the local multiaddr of the connection
 	// the nonce was received on
-	attemptQueues map[uint64]chan ma.Multiaddr
+	dialBackQueues map[uint64]chan ma.Multiaddr
 }
 
 func NewClient(h host.Host) *Client {
-	return &Client{host: h, dialData: make([]byte, 4096), attemptQueues: make(map[uint64]chan ma.Multiaddr)}
+	return &Client{host: h, dialData: make([]byte, 4096), dialBackQueues: make(map[uint64]chan ma.Multiaddr)}
 }
 
 // CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide dial data for dialing high
@@ -62,11 +62,11 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	nonce := rand.Uint64()
 	ch := make(chan ma.Multiaddr, 1)
 	ac.mu.Lock()
-	ac.attemptQueues[nonce] = ch
+	ac.dialBackQueues[nonce] = ch
 	ac.mu.Unlock()
 	defer func() {
 		ac.mu.Lock()
-		delete(ac.attemptQueues, nonce)
+		delete(ac.dialBackQueues, nonce)
 		ac.mu.Unlock()
 	}()
 
@@ -121,21 +121,21 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 		return nil, fmt.Errorf("dial request failed: received invalid dial status 0")
 	}
 
-	var attempt ma.Multiaddr
+	var dialBackAddr ma.Multiaddr
 	if resp.GetDialStatus() == pbv2.DialStatus_OK && int(resp.AddrIdx) < len(highPriorityAddrs)+len(lowPriorityAddrs) {
-		timer := time.NewTimer(attemptStreamTimeout)
+		timer := time.NewTimer(dialBackStreamTimeout)
 		select {
 		case at := <-ch:
-			attempt = at
+			dialBackAddr = at
 		case <-ctx.Done():
 		case <-timer.C:
 		}
 		timer.Stop()
 	}
-	return ac.newResults(resp, highPriorityAddrs, lowPriorityAddrs, attempt)
+	return ac.newResults(resp, highPriorityAddrs, lowPriorityAddrs, dialBackAddr)
 }
 
-func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, attempt ma.Multiaddr) (*Result, error) {
+func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, dialBackAddr ma.Multiaddr) (*Result, error) {
 	if resp.DialStatus == pbv2.DialStatus_E_DIAL_REFUSED {
 		return &Result{Idx: -1, Reachability: network.ReachabilityUnknown, Status: pbv2.DialStatus_E_DIAL_REFUSED}, nil
 	}
@@ -155,10 +155,10 @@ func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Mul
 	status := resp.DialStatus
 	switch status {
 	case pbv2.DialStatus_OK:
-		if areAddrsConsistent(attempt, addr) {
+		if areAddrsConsistent(dialBackAddr, addr) {
 			rch = network.ReachabilityPublic
 		} else {
-			status = pbv2.DialStatus_E_ATTEMPT_ERROR
+			status = pbv2.DialStatus_E_DIAL_BACK_ERROR
 		}
 	case pbv2.DialStatus_E_DIAL_ERROR:
 		rch = network.ReachabilityPrivate
@@ -212,10 +212,10 @@ func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce ui
 }
 
 func (ac *Client) Register() {
-	ac.host.SetStreamHandler(AttemptProtocol, ac.handleDialAttempt)
+	ac.host.SetStreamHandler(DialBackProtocol, ac.handleDialBack)
 }
 
-func (ac *Client) handleDialAttempt(s network.Stream) {
+func (ac *Client) handleDialBack(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)
 		s.Reset()
@@ -223,26 +223,26 @@ func (ac *Client) handleDialAttempt(s network.Stream) {
 	}
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
-		log.Debugf("failed to reserve memory for stream %s: %w", AttemptProtocol, err)
+		log.Debugf("failed to reserve memory for stream %s: %w", DialBackProtocol, err)
 		s.Reset()
 		return
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
 
-	s.SetDeadline(time.Now().Add(attemptStreamTimeout))
+	s.SetDeadline(time.Now().Add(dialBackStreamTimeout))
 	defer s.Close()
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
-	var msg pbv2.DialAttempt
+	var msg pbv2.DialBack
 	if err := r.ReadMsg(&msg); err != nil {
-		log.Debugf("failed to read dial attempt msg from %s: %s", s.Conn().RemotePeer(), err)
+		log.Debugf("failed to read dialback msg from %s: %s", s.Conn().RemotePeer(), err)
 		s.Reset()
 		return
 	}
 	nonce := msg.GetNonce()
 
 	ac.mu.Lock()
-	ch := ac.attemptQueues[nonce]
+	ch := ac.dialBackQueues[nonce]
 	ac.mu.Unlock()
 	select {
 	case ch <- s.Conn().LocalMultiaddr():

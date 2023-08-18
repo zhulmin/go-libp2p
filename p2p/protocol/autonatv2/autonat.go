@@ -20,14 +20,14 @@ import (
 )
 
 const (
-	ServiceName     = "libp2p.autonatv2"
-	AttemptProtocol = "/libp2p/autonat/2/attempt"
-	DialProtocol    = "/libp2p/autonat/2"
+	ServiceName      = "libp2p.autonatv2"
+	DialBackProtocol = "/libp2p/autonat/2/dial-back"
+	DialProtocol     = "/libp2p/autonat/2/dial-request"
 
-	maxMsgSize           = 8192
-	streamTimeout        = time.Minute
-	attemptStreamTimeout = 5 * time.Second
-	attemptDialTimeout   = 30 * time.Second
+	maxMsgSize            = 8192
+	streamTimeout         = time.Minute
+	dialBackStreamTimeout = 5 * time.Second
+	dialBackDialTimeout   = 30 * time.Second
 )
 
 var (

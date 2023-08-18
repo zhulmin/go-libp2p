@@ -259,7 +259,7 @@ func TestClientDataRequest(t *testing.T) {
 	}
 }
 
-func TestClientDialAttempts(t *testing.T) {
+func TestClientDialBacks(t *testing.T) {
 	an := newAutoNAT(t, nil, allowAll)
 	addrs := an.host.Addrs()
 
@@ -304,14 +304,14 @@ func TestClientDialAttempts(t *testing.T) {
 				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
 				defer hh.Close()
 				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), AttemptProtocol)
+				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
 				if err != nil {
 					t.Error("failed to open stream", err)
 					s.Reset()
 					return
 				}
 				w := pbio.NewDelimitedWriter(as)
-				w.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce})
+				w.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce})
 				as.CloseWrite()
 
 				w = pbio.NewDelimitedWriter(s)
@@ -338,7 +338,7 @@ func TestClientDialAttempts(t *testing.T) {
 				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
 				defer hh.Close()
 				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), AttemptProtocol)
+				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
 				as.SetDeadline(time.Now().Add(5 * time.Second))
 				if err != nil {
 					t.Error("failed to open stream", err)
@@ -346,7 +346,7 @@ func TestClientDialAttempts(t *testing.T) {
 					return
 				}
 				ww := pbio.NewDelimitedWriter(as)
-				if err := ww.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce - 1}); err != nil {
+				if err := ww.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce - 1}); err != nil {
 					s.Reset()
 					as.Reset()
 					return
@@ -383,7 +383,7 @@ func TestClientDialAttempts(t *testing.T) {
 				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
 				defer hh.Close()
 				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), AttemptProtocol)
+				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
 				if err != nil {
 					t.Error("failed to open stream", err)
 					s.Reset()
@@ -391,7 +391,7 @@ func TestClientDialAttempts(t *testing.T) {
 				}
 
 				w := pbio.NewDelimitedWriter(as)
-				if err := w.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce}); err != nil {
+				if err := w.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce}); err != nil {
 					t.Error("failed to write nonce", err)
 					s.Reset()
 					as.Reset()
@@ -430,7 +430,7 @@ func TestClientDialAttempts(t *testing.T) {
 				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
 				defer hh.Close()
 				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), AttemptProtocol)
+				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
 				if err != nil {
 					t.Error("failed to open stream", err)
 					s.Reset()
@@ -438,7 +438,7 @@ func TestClientDialAttempts(t *testing.T) {
 				}
 
 				w := pbio.NewDelimitedWriter(as)
-				if err := w.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce}); err != nil {
+				if err := w.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce}); err != nil {
 					t.Error("failed to write nonce", err)
 					s.Reset()
 					as.Reset()

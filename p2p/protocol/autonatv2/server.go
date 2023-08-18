@@ -152,7 +152,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 			return
 		}
 	}
-	status := as.attemptDial(s.Conn().RemotePeer(), dialAddr, nonce)
+	status := as.dialBack(s.Conn().RemotePeer(), dialAddr, nonce)
 	msg = pbv2.Message{
 		Msg: &pbv2.Message_DialResponse{
 			DialResponse: &pbv2.DialResponse{
@@ -206,8 +206,8 @@ func getDialData(w pbio.Writer, r pbio.Reader, msg *pbv2.Message, addrIdx int) e
 	return nil
 }
 
-func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.DialStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), attemptDialTimeout)
+func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.DialStatus {
+	ctx, cancel := context.WithTimeout(context.Background(), dialBackDialTimeout)
 	as.dialer.Peerstore().AddAddr(p, addr, peerstore.TempAddrTTL)
 	defer func() {
 		cancel()
@@ -215,17 +215,17 @@ func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.D
 		as.dialer.Peerstore().ClearAddrs(p)
 		as.dialer.Peerstore().RemovePeer(p)
 	}()
-	s, err := as.dialer.NewStream(ctx, p, AttemptProtocol)
+	s, err := as.dialer.NewStream(ctx, p, DialBackProtocol)
 	if err != nil {
 		return pbv2.DialStatus_E_DIAL_ERROR
 	}
 	defer s.Close()
-	s.SetDeadline(as.now().Add(attemptStreamTimeout))
+	s.SetDeadline(as.now().Add(dialBackStreamTimeout))
 
 	w := pbio.NewDelimitedWriter(s)
-	if err := w.WriteMsg(&pbv2.DialAttempt{Nonce: nonce}); err != nil {
+	if err := w.WriteMsg(&pbv2.DialBack{Nonce: nonce}); err != nil {
 		s.Reset()
-		return pbv2.DialStatus_E_ATTEMPT_ERROR
+		return pbv2.DialStatus_E_DIAL_BACK_ERROR
 	}
 
 	// Since the underlying connection is on a separate dialer, it'll be closed after this function returns.
