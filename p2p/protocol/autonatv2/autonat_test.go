@@ -66,7 +66,7 @@ func waitForPeer(t *testing.T, a *AutoNAT) {
 	require.Eventually(t, func() bool {
 		a.mx.Lock()
 		defer a.mx.Unlock()
-		return len(a.peers) > 0
+		return a.peers.GetRand() != ""
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
@@ -227,6 +227,25 @@ func TestClientDataRequest(t *testing.T) {
 			s.Reset()
 			done <- true
 		}},
+		{handler: func(s network.Stream) {
+			r := pbio.NewDelimitedReader(s, maxMsgSize)
+			var msg pbv2.Message
+			r.ReadMsg(&msg)
+			w := pbio.NewDelimitedWriter(s)
+			w.WriteMsg(&pbv2.Message{
+				Msg: &pbv2.Message_DialDataRequest{
+					DialDataRequest: &pbv2.DialDataRequest{
+						AddrIdx:  0,
+						NumBytes: 1000_000,
+					},
+				}},
+			)
+			if err := r.ReadMsg(&msg); err == nil {
+				t.Errorf("expected to reject request for 1MB dial data")
+			}
+			s.Reset()
+			done <- true
+		}},
 	}
 
 	for i, tc := range tests {
@@ -251,6 +270,7 @@ func TestClientDialAttempts(t *testing.T) {
 	tests := []struct {
 		handler func(network.Stream)
 		success bool
+		isError bool
 	}{
 		{
 			handler: func(s network.Stream) {
@@ -399,17 +419,71 @@ func TestClientDialAttempts(t *testing.T) {
 			},
 			success: true,
 		},
+		{
+			handler: func(s network.Stream) {
+				r := pbio.NewDelimitedReader(s, maxMsgSize)
+				var msg pbv2.Message
+				r.ReadMsg(&msg)
+				req := msg.GetDialRequest()
+				addrs := parseAddrs(t, &msg)
+
+				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
+				defer hh.Close()
+				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
+				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), AttemptProtocol)
+				if err != nil {
+					t.Error("failed to open stream", err)
+					s.Reset()
+					return
+				}
+
+				w := pbio.NewDelimitedWriter(as)
+				if err := w.WriteMsg(&pbv2.DialAttempt{Nonce: req.Nonce}); err != nil {
+					t.Error("failed to write nonce", err)
+					s.Reset()
+					as.Reset()
+					return
+				}
+				as.CloseWrite()
+				defer func() {
+					data := make([]byte, 1)
+					as.Read(data)
+					as.Close()
+				}()
+
+				w = pbio.NewDelimitedWriter(s)
+
+				w.WriteMsg(&pbv2.Message{
+					Msg: &pbv2.Message_DialResponse{
+						DialResponse: &pbv2.DialResponse{
+							Status:     pbv2.DialResponse_ResponseStatus_OK,
+							DialStatus: pbv2.DialStatus_OK,
+							AddrIdx:    10,
+						},
+					},
+				})
+				s.Close()
+			},
+			success: false,
+			isError: true,
+		},
 	}
 
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
 			p.SetStreamHandler(DialProtocol, tc.handler)
 			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
-			require.NoError(t, err)
 			if !tc.success {
-				require.Equal(t, res.Reachability, network.ReachabilityUnknown)
-				require.NotEqual(t, res.Status, pbv2.DialStatus_OK, "got: %d", res.Status)
+				if tc.isError {
+					require.Nil(t, res)
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, res.Reachability, network.ReachabilityUnknown)
+					require.NotEqual(t, res.Status, pbv2.DialStatus_OK, "got: %d", res.Status)
+				}
 			} else {
+				require.NoError(t, err)
 				require.Equal(t, res.Reachability, network.ReachabilityPublic)
 				require.Equal(t, res.Status, pbv2.DialStatus_OK)
 			}
@@ -430,27 +504,54 @@ func TestEventSubscription(t *testing.T) {
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 1
+		return len(an.peers.peers) == 1
 	}, 5*time.Second, 100*time.Millisecond)
 
 	idAndConnect(t, an.host, c)
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 2
+		return len(an.peers.peers) == 2
 	}, 5*time.Second, 100*time.Millisecond)
 
 	an.host.Network().ClosePeer(b.ID())
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 1
+		return len(an.peers.peers) == 1
 	}, 5*time.Second, 100*time.Millisecond)
 
 	an.host.Network().ClosePeer(c.ID())
 	require.Eventually(t, func() bool {
 		an.mx.Lock()
 		defer an.mx.Unlock()
-		return len(an.peers) == 0
+		return len(an.peers.peers) == 0
 	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func TestPeersMap(t *testing.T) {
+	p := newPeersMap()
+	emptyPeerID := peer.ID("")
+	require.Equal(t, emptyPeerID, p.GetRand())
+
+	allPeers := make(map[peer.ID]bool)
+	for i := 0; i < 20; i++ {
+		pid := peer.ID(fmt.Sprintf("peer-%d", i))
+		allPeers[pid] = true
+		p.Put(pid)
+	}
+	foundPeers := make(map[peer.ID]bool)
+	for i := 0; i < 1000; i++ {
+		pid := p.GetRand()
+		require.NotEqual(t, emptyPeerID, p)
+		require.True(t, allPeers[pid])
+		foundPeers[pid] = true
+		if len(foundPeers) == len(allPeers) {
+			break
+		}
+	}
+	for pid := range allPeers {
+		p.Remove(pid)
+	}
+	require.Equal(t, emptyPeerID, p.GetRand())
 }

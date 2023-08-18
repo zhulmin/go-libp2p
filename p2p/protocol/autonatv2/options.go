@@ -5,17 +5,20 @@ import "time"
 type autoNATSettings struct {
 	allowAllAddrs     bool
 	serverRPM         int
-	serverRPMPerPeer  int
+	serverPerPeerRPM  int
+	serverDialDataRPM int
 	dataRequestPolicy dataRequestPolicyFunc
 	now               func() time.Time
 }
 
 func defaultSettings() *autoNATSettings {
 	return &autoNATSettings{
-		allowAllAddrs:     false,
+		allowAllAddrs: false,
+		// TODO: confirm rate limiting defaults
 		serverRPM:         20,
-		serverRPMPerPeer:  2,
-		dataRequestPolicy: defaultDataRequestPolicy,
+		serverPerPeerRPM:  2,
+		serverDialDataRPM: 5,
+		dataRequestPolicy: amplificationAttackPrevention,
 		now:               time.Now,
 	}
 }
@@ -27,10 +30,11 @@ func allowAll(s *autoNATSettings) error {
 	return nil
 }
 
-func WithServerRateLimit(rpm, rpmPerPeer int) AutoNATOption {
+func WithServerRateLimit(rpm, perPeerRPM, dialDataRPM int) AutoNATOption {
 	return func(s *autoNATSettings) error {
 		s.serverRPM = rpm
-		s.serverRPMPerPeer = rpmPerPeer
+		s.serverPerPeerRPM = perPeerRPM
+		s.serverDialDataRPM = dialDataRPM
 		return nil
 	}
 }

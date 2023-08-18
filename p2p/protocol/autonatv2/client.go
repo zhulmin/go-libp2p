@@ -19,10 +19,10 @@ import (
 //go:generate protoc --go_out=. --go_opt=Mpbv2/autonat.proto=./pbv2 pbv2/autonat.proto
 
 // Client implements the client for making dial requests for AutoNAT v2. It verifies successful
-// dials and provides an option to send data for amplification attack prevention.
+// dials and provides an option to send data for dial requests.
 type Client struct {
-	host       host.Host
-	dialCharge []byte
+	host     host.Host
+	dialData []byte
 
 	mu sync.Mutex
 	// attemptQueues maps nonce to the channel for providing the local multiaddr of the connection
@@ -31,7 +31,7 @@ type Client struct {
 }
 
 func NewClient(h host.Host) *Client {
-	return &Client{host: h, dialCharge: make([]byte, 4096), attemptQueues: make(map[uint64]chan ma.Multiaddr)}
+	return &Client{host: h, dialData: make([]byte, 4096), attemptQueues: make(map[uint64]chan ma.Multiaddr)}
 }
 
 // CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide dial data for dialing high
@@ -87,10 +87,13 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	case msg.GetDialResponse() != nil:
 		break
 	case msg.GetDialDataRequest() != nil:
-		req := msg.GetDialDataRequest()
-		if int(req.AddrIdx) >= len(highPriorityAddrs) {
+		if int(msg.GetDialDataRequest().AddrIdx) >= len(highPriorityAddrs) {
 			s.Reset()
 			return nil, fmt.Errorf("dial data requested for low priority address")
+		}
+		if msg.GetDialDataRequest().NumBytes > maxHandshakeSizeBytes {
+			s.Reset()
+			return nil, fmt.Errorf("dial data requested too high: %d", msg.GetDialDataRequest().NumBytes)
 		}
 		if err := ac.sendDialData(msg.GetDialDataRequest(), w, &msg); err != nil {
 			s.Reset()
@@ -170,7 +173,7 @@ func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Mul
 
 func (ac *Client) sendDialData(req *pbv2.DialDataRequest, w pbio.Writer, msg *pbv2.Message) error {
 	nb := req.GetNumBytes()
-	ddResp := &pbv2.DialDataResponse{Data: ac.dialCharge}
+	ddResp := &pbv2.DialDataResponse{Data: ac.dialData}
 	*msg = pbv2.Message{
 		Msg: &pbv2.Message_DialDataResponse{
 			DialDataResponse: ddResp,
@@ -178,8 +181,8 @@ func (ac *Client) sendDialData(req *pbv2.DialDataRequest, w pbio.Writer, msg *pb
 	}
 	for remain := int(nb); remain > 0; {
 		end := remain
-		if end > len(ac.dialCharge) {
-			end = len(ac.dialCharge)
+		if end > len(ac.dialData) {
+			end = len(ac.dialData)
 		}
 		ddResp.Data = ddResp.Data[:end]
 		if err := w.WriteMsg(msg); err != nil {

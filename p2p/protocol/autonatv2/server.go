@@ -26,24 +26,25 @@ const (
 )
 
 type Server struct {
-	dialer            host.Host
-	host              host.Host
-	dataRequestPolicy dataRequestPolicyFunc
-	allowAllAddrs     bool
-	limiter           *rateLimiter
-	now               func() time.Time // for tests
+	dialer                host.Host
+	host                  host.Host
+	dialDataRequestPolicy dataRequestPolicyFunc
+	allowAllAddrs         bool
+	limiter               *rateLimiter
+	now                   func() time.Time // for tests
 }
 
 func NewServer(host, dialer host.Host, s *autoNATSettings) *Server {
 	return &Server{
-		dialer:            dialer,
-		host:              host,
-		dataRequestPolicy: s.dataRequestPolicy,
-		allowAllAddrs:     s.allowAllAddrs,
+		dialer:                dialer,
+		host:                  host,
+		dialDataRequestPolicy: s.dataRequestPolicy,
+		allowAllAddrs:         s.allowAllAddrs,
 		limiter: &rateLimiter{
-			RPM:        s.serverRPM,
-			RPMPerPeer: s.serverRPMPerPeer,
-			now:        s.now,
+			RPM:         s.serverRPM,
+			PerPeerRPM:  s.serverPerPeerRPM,
+			DialDataRPM: s.serverDialDataRPM,
+			now:         s.now,
 		},
 		now: s.now,
 	}
@@ -87,11 +88,6 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		log.Debugf("invalid message type from %s: %T", p, msg.Msg)
 		return
 	}
-	if !as.limiter.Accept(p) {
-		s.Reset()
-		log.Debugf("rejecting request from %s: rate limit exceeded", p)
-		return
-	}
 
 	nonce := msg.GetDialRequest().Nonce
 	var dialAddr ma.Multiaddr
@@ -130,8 +126,26 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		return
 	}
 
-	if as.dataRequestPolicy(s, dialAddr) {
-		err := runAmplificationAttackPrevention(w, r, &msg, addrIdx)
+	isDialDataRequired := as.dialDataRequestPolicy(s, dialAddr)
+	if !as.limiter.Accept(p, isDialDataRequired) {
+		msg = pbv2.Message{
+			Msg: &pbv2.Message_DialResponse{
+				DialResponse: &pbv2.DialResponse{
+					Status: pbv2.DialResponse_E_REQUEST_REJECTED,
+				},
+			},
+		}
+		if err := w.WriteMsg(&msg); err != nil {
+			s.Reset()
+			log.Debugf("failed to write response to %s: %s", p, err)
+			return
+		}
+		log.Debugf("rejecting request from %s: rate limit exceeded", p)
+		return
+	}
+
+	if isDialDataRequired {
+		err := getDialData(w, r, &msg, addrIdx)
 		if err != nil {
 			s.Reset()
 			log.Debugf("%s refused dial data request: %s", p, err)
@@ -155,9 +169,9 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 }
 
-// defaultDataRequestPolicy requests data when the peer's observed IP address is different
-// from the dial back IP address, thus preventing amplification attacks
-func defaultDataRequestPolicy(s network.Stream, dialAddr ma.Multiaddr) bool {
+// amplificationAttackPrevention requests data when the peer's observed IP address is different
+// from the dial back IP address
+func amplificationAttackPrevention(s network.Stream, dialAddr ma.Multiaddr) bool {
 	connIP, err := manet.ToIP(s.Conn().RemoteMultiaddr())
 	if err != nil {
 		return true
@@ -166,7 +180,7 @@ func defaultDataRequestPolicy(s network.Stream, dialAddr ma.Multiaddr) bool {
 	return !connIP.Equal(dialIP)
 }
 
-func runAmplificationAttackPrevention(w pbio.Writer, r pbio.Reader, msg *pbv2.Message, addrIdx int) error {
+func getDialData(w pbio.Writer, r pbio.Reader, msg *pbv2.Message, addrIdx int) error {
 	numBytes := minHandshakeSizeBytes + rand.Intn(maxHandshakeSizeBytes-minHandshakeSizeBytes)
 	*msg = pbv2.Message{
 		Msg: &pbv2.Message_DialDataRequest{
@@ -227,16 +241,18 @@ func (as *Server) attemptDial(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.D
 
 // rateLimiter implements a sliding window rate limit of requests per minute.
 type rateLimiter struct {
-	RPMPerPeer int
-	RPM        int
+	PerPeerRPM  int
+	RPM         int
+	DialDataRPM int
 
-	mu       sync.Mutex
-	reqs     []time.Time
-	peerReqs map[peer.ID][]time.Time
-	now      func() time.Time // for tests
+	mu           sync.Mutex
+	reqs         []time.Time
+	peerReqs     map[peer.ID][]time.Time
+	dialDataReqs []time.Time
+	now          func() time.Time // for tests
 }
 
-func (r *rateLimiter) Accept(p peer.ID) bool {
+func (r *rateLimiter) Accept(p peer.ID, requiresData bool) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.peerReqs == nil {
@@ -246,11 +262,17 @@ func (r *rateLimiter) Accept(p peer.ID) bool {
 	nw := r.now()
 	r.cleanup(p, nw)
 
-	if len(r.reqs) >= r.RPM || len(r.peerReqs[p]) >= r.RPMPerPeer {
+	if len(r.reqs) >= r.RPM || len(r.peerReqs[p]) >= r.PerPeerRPM {
+		return false
+	}
+	if requiresData && len(r.dialDataReqs) >= r.DialDataRPM {
 		return false
 	}
 	r.reqs = append(r.reqs, nw)
 	r.peerReqs[p] = append(r.peerReqs[p], nw)
+	if requiresData {
+		r.dialDataReqs = append(r.dialDataReqs, nw)
+	}
 	return true
 }
 
@@ -267,6 +289,15 @@ func (r *rateLimiter) cleanup(p peer.ID, now time.Time) {
 		}
 	}
 	r.reqs = r.reqs[idx:]
+
+	idx = len(r.dialDataReqs)
+	for i, t := range r.dialDataReqs {
+		if now.Sub(t) < time.Minute {
+			idx = i
+			break
+		}
+	}
+	r.dialDataReqs = r.dialDataReqs[idx:]
 
 	idx = len(r.peerReqs[p])
 	for i, t := range r.peerReqs[p] {

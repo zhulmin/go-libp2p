@@ -60,7 +60,7 @@ func TestServerDataRequest(t *testing.T) {
 			}
 			return false
 		}),
-		WithServerRateLimit(10, 10),
+		WithServerRateLimit(10, 10, 10),
 	)
 	an.srv.Enable()
 	defer an.host.Close()
@@ -96,7 +96,7 @@ func TestServerDataRequest(t *testing.T) {
 }
 
 func TestServerDial(t *testing.T) {
-	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10), allowAll)
+	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10), allowAll)
 	defer an.host.Close()
 	an.srv.Enable()
 
@@ -129,22 +129,31 @@ func TestServerDial(t *testing.T) {
 
 func TestRateLimiter(t *testing.T) {
 	cl := test.NewMockClock()
-	r := rateLimiter{RPM: 3, RPMPerPeer: 2, now: cl.Now}
+	r := rateLimiter{RPM: 3, PerPeerRPM: 2, DialDataRPM: 1, now: cl.Now}
 
-	require.True(t, r.Accept("peer1"))
-
-	cl.AdvanceBy(10 * time.Second)
-	require.True(t, r.Accept("peer1"))
+	require.True(t, r.Accept("peer1", false))
 
 	cl.AdvanceBy(10 * time.Second)
-	require.False(t, r.Accept("peer1"))
+	require.True(t, r.Accept("peer1", false))
 
 	cl.AdvanceBy(10 * time.Second)
-	require.True(t, r.Accept("peer2"))
+	require.False(t, r.Accept("peer1", false))
 
 	cl.AdvanceBy(10 * time.Second)
-	require.False(t, r.Accept("peer3"))
+	require.True(t, r.Accept("peer2", false))
+
+	cl.AdvanceBy(10 * time.Second)
+	require.False(t, r.Accept("peer3", false))
 
 	cl.AdvanceBy(21 * time.Second) // first request expired
-	require.True(t, r.Accept("peer1"))
+	require.True(t, r.Accept("peer1", false))
+
+	cl.AdvanceBy(10 * time.Second)
+	require.True(t, r.Accept("peer3", true))
+
+	cl.AdvanceBy(50 * time.Second)
+	require.False(t, r.Accept("peer3", true))
+
+	cl.AdvanceBy(11 * time.Second)
+	require.True(t, r.Accept("peer3", true))
 }

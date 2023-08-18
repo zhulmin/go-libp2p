@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
+	"golang.org/x/exp/rand"
 	"golang.org/x/exp/slices"
 )
 
@@ -46,7 +47,7 @@ type AutoNAT struct {
 	srv           *Server
 	cli           *Client
 	mx            sync.Mutex
-	peers         map[peer.ID]struct{}
+	peers         *peersMap
 	allowAllAddrs bool // for testing
 }
 
@@ -57,6 +58,20 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 			return nil, fmt.Errorf("failed to apply option: %w", err)
 		}
 	}
+	// We are listening on event.EvtPeerProtocolsUpdated, event.EvtPeerConnectednessChanged
+	// event.EvtPeerIdentificationCompleted to maintain our set of autonat supporting peers.
+	//
+	// We listen on event.EvtLocalReachabilityChanged to Disable the server if we are not
+	// publicly reachable. Currently this event is sent by the AutoNAT v1 module. During the
+	// transition period from AutoNAT v1 to v2, there won't be enough v2 servers on the network
+	// and most clients will be unable to discover a peer which supports AutoNAT v2. So, we use
+	// v1 to determine reachability for the transition period.
+	//
+	// Once there are enough v2 servers on the network for nodes to determine their reachability
+	// using AutoNAT v2, we'll use Address Pipeline
+	// (https://github.com/libp2p/go-libp2p/issues/2229)(to be implemented in a future release)
+	// to determine reachability using v2 client and send this event from Address Pipeline, if
+	// we are publicly reachable.
 	sub, err := h.EventBus().Subscribe([]interface{}{
 		new(event.EvtLocalReachabilityChanged),
 		new(event.EvtPeerProtocolsUpdated),
@@ -76,7 +91,7 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 		srv:           NewServer(h, dialer, s),
 		cli:           NewClient(h),
 		allowAllAddrs: s.allowAllAddrs,
-		peers:         make(map[peer.ID]struct{}),
+		peers:         newPeersMap(),
 	}
 	an.cli.Register()
 
@@ -96,19 +111,6 @@ func (an *AutoNAT) background() {
 		case e := <-an.sub.Out():
 			switch evt := e.(type) {
 			case event.EvtLocalReachabilityChanged:
-				// Enable the server only if we're publicly reachable.
-				//
-				// Currently this event is sent by the AutoNAT v1 module. During the
-				// transition period from AutoNAT v1 to v2, there won't be enough v2 servers
-				// on the network and most clients will be unable to discover a peer which
-				// supports AutoNAT v2. So, we use v1 to determine reachability for the
-				// transition period.
-				//
-				// Once there are enough v2 servers on the network for nodes to determine
-				// their reachability using AutoNAT v2, we'll use Address Pipeline
-				// (https://github.com/libp2p/go-libp2p/issues/2229)(to be implemented in a
-				// future release) to determine reachability using v2 client and send this
-				// event from Address Pipeline, if we are publicly reachable.
 				if evt.Reachability == network.ReachabilityPrivate {
 					an.srv.Disable()
 				} else {
@@ -157,7 +159,7 @@ func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma
 			}
 		}
 	}
-	p := an.validPeer()
+	p := an.peers.GetRand()
 	if p == "" {
 		return nil, ErrNoValidPeers
 	}
@@ -171,16 +173,6 @@ func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma
 	return res, nil
 }
 
-func (an *AutoNAT) validPeer() peer.ID {
-	an.mx.Lock()
-	defer an.mx.Unlock()
-	// TODO: improve randomness here. map is not sufficiently random
-	for p := range an.peers {
-		return p
-	}
-	return ""
-}
-
 func (an *AutoNAT) updatePeer(p peer.ID) {
 	an.mx.Lock()
 	defer an.mx.Unlock()
@@ -188,8 +180,48 @@ func (an *AutoNAT) updatePeer(p peer.ID) {
 	protos, err := an.host.Peerstore().SupportsProtocols(p, DialProtocol)
 	connectedness := an.host.Network().Connectedness(p)
 	if err == nil && slices.Contains(protos, DialProtocol) && connectedness == network.Connected {
-		an.peers[p] = struct{}{}
+		an.peers.Put(p)
 	} else {
-		delete(an.peers, p)
+		an.peers.Remove(p)
 	}
+}
+
+// peersMap provides random access to a set of peers. This is useful when the map iteration order is
+// not sufficiently random.
+type peersMap struct {
+	peerIdx map[peer.ID]int
+	peers   []peer.ID
+}
+
+func newPeersMap() *peersMap {
+	return &peersMap{
+		peerIdx: make(map[peer.ID]int),
+		peers:   make([]peer.ID, 0),
+	}
+}
+
+func (p *peersMap) GetRand() peer.ID {
+	if len(p.peers) == 0 {
+		return ""
+	}
+	return p.peers[rand.Intn(len(p.peers))]
+}
+
+func (p *peersMap) Put(pid peer.ID) {
+	if _, ok := p.peerIdx[pid]; ok {
+		return
+	}
+	p.peers = append(p.peers, pid)
+	p.peerIdx[pid] = len(p.peers) - 1
+}
+
+func (p *peersMap) Remove(pid peer.ID) {
+	idx, ok := p.peerIdx[pid]
+	if !ok {
+		return
+	}
+	delete(p.peerIdx, pid)
+	p.peers[idx] = p.peers[len(p.peers)-1]
+	p.peerIdx[p.peers[idx]] = idx
+	p.peers = p.peers[:len(p.peers)-1]
 }
