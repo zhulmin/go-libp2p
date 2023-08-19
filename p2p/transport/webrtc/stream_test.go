@@ -149,6 +149,7 @@ func TestStreamPartialReads(t *testing.T) {
 	require.Zero(t, n)
 	b := make([]byte, 3)
 	n, err = clientStr.Read(b)
+	require.Equal(t, 3, n)
 	require.NoError(t, err)
 	require.Equal(t, []byte("foo"), b)
 	b, err = io.ReadAll(clientStr)
