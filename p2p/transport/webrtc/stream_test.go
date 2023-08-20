@@ -83,13 +83,13 @@ func getDetachedDataChannels(t *testing.T) (detachedChan, detachedChan) {
 	// Now, create an offer
 	offer, err := offerPC.CreateOffer(nil)
 	require.NoError(t, err)
-	require.NoError(t, offerPC.SetLocalDescription(offer))
 	require.NoError(t, answerPC.SetRemoteDescription(offer))
+	require.NoError(t, offerPC.SetLocalDescription(offer))
 
 	answer, err := answerPC.CreateAnswer(nil)
 	require.NoError(t, err)
-	require.NoError(t, answerPC.SetLocalDescription(answer))
 	require.NoError(t, offerPC.SetRemoteDescription(answer))
+	require.NoError(t, answerPC.SetLocalDescription(answer))
 
 	return <-answerChan, detachedChan{rwc: <-offerRWCChan, dc: offerDC}
 }
