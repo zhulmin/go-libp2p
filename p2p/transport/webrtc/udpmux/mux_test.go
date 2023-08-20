@@ -47,7 +47,7 @@ func (dummyPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return 0, nil
 }
 
-func hasConn(m *udpMux, ufrag string, isIPv6 bool) bool {
+func hasConn(m *UDPMux, ufrag string, isIPv6 bool) bool {
 	m.storage.Lock()
 	_, ok := m.storage.ufragMap[ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}]
 	m.storage.Unlock()

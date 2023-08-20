@@ -18,12 +18,12 @@ type muxedConnection struct {
 	onClose func()
 	pq      *packetQueue
 	addr    net.Addr
-	mux     *udpMux
+	mux     *UDPMux
 }
 
 var _ net.PacketConn = (*muxedConnection)(nil)
 
-func newMuxedConnection(mux *udpMux, onClose func(), addr net.Addr) *muxedConnection {
+func newMuxedConnection(mux *UDPMux, onClose func(), addr net.Addr) *muxedConnection {
 	ctx, cancel := context.WithCancel(mux.ctx)
 	return &muxedConnection{
 		ctx:     ctx,

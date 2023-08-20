@@ -111,7 +111,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	}
 
 	l.ctx, l.cancel = context.WithCancel(context.Background())
-	l.mux = udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {
+	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {
 		select {
 		case <-inFlightQueueCh:
 			// we have space to accept, Yihaa
@@ -149,6 +149,8 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 
 		return true
 	})
+	l.mux = mux
+	mux.Start()
 
 	return l, err
 }
