@@ -476,6 +476,8 @@ func TestMoreStreamsThanOurLimits(t *testing.T) {
 									time.Sleep(50 * time.Millisecond)
 									continue
 								}
+								t.Logf("opening stream failed: %v", err)
+								return
 							}
 							err = func(s network.Stream) error {
 								defer s.Close()
