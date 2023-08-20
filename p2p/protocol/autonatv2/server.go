@@ -111,10 +111,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		msg = pbv2.Message{
 			Msg: &pbv2.Message_DialResponse{
 				DialResponse: &pbv2.DialResponse{
-					Status:     pbv2.DialResponse_ResponseStatus_OK,
-					DialStatus: pbv2.DialStatus_E_DIAL_REFUSED,
-					// send an invalid index to prevent accidental misuse
-					AddrIdx: uint32(len(msg.GetDialRequest().Addrs)),
+					Status: pbv2.DialResponse_E_DIAL_REFUSED,
 				},
 			},
 		}

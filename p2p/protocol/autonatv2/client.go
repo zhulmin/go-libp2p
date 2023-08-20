@@ -36,23 +36,23 @@ func NewClient(h host.Host) *Client {
 
 // CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide dial data for dialing high
 // priority addresses and not for low priority addresses.
-func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (*Result, error) {
+func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 
 	s, err := ac.host.NewStream(ctx, p, DialProtocol)
 	if err != nil {
-		return nil, fmt.Errorf("open %s stream: %w", DialProtocol, err)
+		return Result{}, fmt.Errorf("open %s stream: %w", DialProtocol, err)
 	}
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("attach stream %s to service %s: %w", DialProtocol, ServiceName, err)
+		return Result{}, fmt.Errorf("attach stream %s to service %s: %w", DialProtocol, ServiceName, err)
 	}
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("failed to reserve memory for stream %s: %w", DialProtocol, err)
+		return Result{}, fmt.Errorf("failed to reserve memory for stream %s: %w", DialProtocol, err)
 	}
 	defer s.Scope().ReleaseMemory(maxMsgSize)
 
@@ -74,13 +74,13 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	w := pbio.NewDelimitedWriter(s)
 	if err := w.WriteMsg(&msg); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("dial request write: %w", err)
+		return Result{}, fmt.Errorf("dial request write: %w", err)
 	}
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	if err := r.ReadMsg(&msg); err != nil {
 		s.Reset()
-		return nil, fmt.Errorf("dial msg read: %w", err)
+		return Result{}, fmt.Errorf("dial msg read: %w", err)
 	}
 
 	switch {
@@ -89,36 +89,40 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	case msg.GetDialDataRequest() != nil:
 		if int(msg.GetDialDataRequest().AddrIdx) >= len(highPriorityAddrs) {
 			s.Reset()
-			return nil, fmt.Errorf("dial data requested for low priority address")
+			return Result{}, fmt.Errorf("dial data requested for low priority address")
 		}
 		if msg.GetDialDataRequest().NumBytes > maxHandshakeSizeBytes {
 			s.Reset()
-			return nil, fmt.Errorf("dial data requested too high: %d", msg.GetDialDataRequest().NumBytes)
+			return Result{}, fmt.Errorf("dial data requested too high: %d", msg.GetDialDataRequest().NumBytes)
 		}
 		if err := ac.sendDialData(msg.GetDialDataRequest(), w, &msg); err != nil {
 			s.Reset()
-			return nil, fmt.Errorf("dial data send: %w", err)
+			return Result{}, fmt.Errorf("dial data send: %w", err)
 		}
 		if err := r.ReadMsg(&msg); err != nil {
 			s.Reset()
-			return nil, fmt.Errorf("dial response read: %w", err)
+			return Result{}, fmt.Errorf("dial response read: %w", err)
 		}
 		if msg.GetDialResponse() == nil {
 			s.Reset()
-			return nil, fmt.Errorf("invalid response type: %T", msg.Msg)
+			return Result{}, fmt.Errorf("invalid response type: %T", msg.Msg)
 		}
 	default:
 		s.Reset()
-		return nil, fmt.Errorf("invalid msg type: %T", msg.Msg)
+		return Result{}, fmt.Errorf("invalid msg type: %T", msg.Msg)
 	}
 
 	resp := msg.GetDialResponse()
 	if resp.GetStatus() != pbv2.DialResponse_ResponseStatus_OK {
-		return nil, fmt.Errorf("dial request failed: status %d %s", resp.GetStatus(),
+		// server couldn't dial any requested address
+		if resp.GetStatus() == pbv2.DialResponse_E_DIAL_REFUSED {
+			return Result{}, fmt.Errorf("dial request: %w", ErrDialRefused)
+		}
+		return Result{}, fmt.Errorf("dial request: status %d %s", resp.GetStatus(),
 			pbv2.DialStatus_name[int32(resp.GetStatus())])
 	}
-	if resp.GetDialStatus() == pbv2.DialStatus_E_INTERNAL_ERROR {
-		return nil, fmt.Errorf("dial request failed: received invalid dial status 0")
+	if resp.GetDialStatus() == pbv2.DialStatus_UNUSED {
+		return Result{}, fmt.Errorf("dial request failed: received invalid dial status 0")
 	}
 
 	var dialBackAddr ma.Multiaddr
@@ -135,12 +139,9 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	return ac.newResults(resp, highPriorityAddrs, lowPriorityAddrs, dialBackAddr)
 }
 
-func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, dialBackAddr ma.Multiaddr) (*Result, error) {
-	if resp.DialStatus == pbv2.DialStatus_E_DIAL_REFUSED {
-		return &Result{Idx: -1, Reachability: network.ReachabilityUnknown, Status: pbv2.DialStatus_E_DIAL_REFUSED}, nil
-	}
+func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, dialBackAddr ma.Multiaddr) (Result, error) {
 	if int(resp.AddrIdx) >= len(highPriorityAddrs)+len(lowPriorityAddrs) {
-		return nil, fmt.Errorf("addrIdx out of range: %d 0-%d", resp.AddrIdx, len(highPriorityAddrs)+len(lowPriorityAddrs)-1)
+		return Result{}, fmt.Errorf("addrIdx out of range: %d 0-%d", resp.AddrIdx, len(highPriorityAddrs)+len(lowPriorityAddrs)-1)
 	}
 
 	idx := int(resp.AddrIdx)
@@ -163,7 +164,7 @@ func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Mul
 	case pbv2.DialStatus_E_DIAL_ERROR:
 		rch = network.ReachabilityPrivate
 	}
-	return &Result{
+	return Result{
 		Idx:          idx,
 		Addr:         addr,
 		Reachability: rch,

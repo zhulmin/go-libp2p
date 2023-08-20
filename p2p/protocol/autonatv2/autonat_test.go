@@ -79,7 +79,7 @@ func identify(t *testing.T, cli *AutoNAT, srv *AutoNAT) {
 func TestAutoNATPrivateAddr(t *testing.T) {
 	an := newAutoNAT(t, nil)
 	res, err := an.CheckReachability(context.Background(), []ma.Multiaddr{ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")}, nil)
-	require.Nil(t, res)
+	require.Equal(t, res, Result{})
 	require.NotNil(t, err)
 }
 
@@ -116,7 +116,7 @@ func TestClientRequest(t *testing.T) {
 	waitForPeer(t, an)
 
 	res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
-	require.Nil(t, res)
+	require.Equal(t, res, Result{})
 	require.NotNil(t, err)
 	require.True(t, gotReq.Load())
 }
@@ -161,7 +161,7 @@ func TestClientServerError(t *testing.T) {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
 			p.SetStreamHandler(DialProtocol, tc.handler)
 			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
-			require.Nil(t, res)
+			require.Equal(t, res, Result{})
 			require.NotNil(t, err)
 			<-done
 		})
@@ -252,7 +252,7 @@ func TestClientDataRequest(t *testing.T) {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
 			p.SetStreamHandler(DialProtocol, tc.handler)
 			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
-			require.Nil(t, res)
+			require.Equal(t, res, Result{})
 			require.NotNil(t, err)
 			<-done
 		})
@@ -475,7 +475,7 @@ func TestClientDialBacks(t *testing.T) {
 			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
 			if !tc.success {
 				if tc.isError {
-					require.Nil(t, res)
+					require.Equal(t, res, Result{})
 					require.Error(t, err)
 				} else {
 					require.NoError(t, err)

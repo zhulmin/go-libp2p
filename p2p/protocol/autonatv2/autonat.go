@@ -32,6 +32,7 @@ const (
 
 var (
 	ErrNoValidPeers = errors.New("no valid peers for autonat v2")
+	ErrDialRefused  = errors.New("dial refused")
 )
 
 var (
@@ -146,28 +147,28 @@ type Result struct {
 
 // CheckReachability makes a single dial request for checking reachability. For highPriorityAddrs dial charge is paid
 // if the server asks for it. For lowPriorityAddrs dial charge is rejected.
-func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (*Result, error) {
+func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (Result, error) {
 	if !an.allowAllAddrs {
 		for _, a := range highPriorityAddrs {
 			if !manet.IsPublicAddr(a) {
-				return nil, fmt.Errorf("private address cannot be verified by autonatv2: %s", a)
+				return Result{}, fmt.Errorf("private address cannot be verified by autonatv2: %s", a)
 			}
 		}
 		for _, a := range lowPriorityAddrs {
 			if !manet.IsPublicAddr(a) {
-				return nil, fmt.Errorf("private address cannot be verified by autonatv2: %s", a)
+				return Result{}, fmt.Errorf("private address cannot be verified by autonatv2: %s", a)
 			}
 		}
 	}
 	p := an.peers.GetRand()
 	if p == "" {
-		return nil, ErrNoValidPeers
+		return Result{}, ErrNoValidPeers
 	}
 
 	res, err := an.cli.CheckReachability(ctx, p, highPriorityAddrs, lowPriorityAddrs)
 	if err != nil {
 		log.Debugf("reachability check with %s failed, err: %s", p, err)
-		return nil, fmt.Errorf("reachability check with %s failed: %w", p, err)
+		return Result{}, fmt.Errorf("reachability check with %s failed: %w", p, err)
 	}
 	log.Debugf("reachability check with %s successful", p)
 	return res, nil

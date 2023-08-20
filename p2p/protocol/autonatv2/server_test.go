@@ -28,9 +28,8 @@ func TestServerAllAddrsInvalid(t *testing.T) {
 	identify(t, c, an)
 
 	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
-	require.NoError(t, err)
-	require.Equal(t, res.Reachability, network.ReachabilityUnknown)
-	require.Equal(t, res.Status, pbv2.DialStatus_E_DIAL_REFUSED)
+	require.ErrorIs(t, err, ErrDialRefused)
+	require.Equal(t, Result{}, res)
 }
 
 func TestServerPrivateRejected(t *testing.T) {
@@ -46,9 +45,8 @@ func TestServerPrivateRejected(t *testing.T) {
 	identify(t, c, an)
 
 	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
-	require.NoError(t, err)
-	require.Equal(t, res.Status, pbv2.DialStatus_E_DIAL_REFUSED)
-	require.Equal(t, res.Reachability, network.ReachabilityUnknown)
+	require.ErrorIs(t, err, ErrDialRefused)
+	require.Equal(t, Result{}, res)
 }
 
 func TestServerDataRequest(t *testing.T) {
@@ -87,12 +85,12 @@ func TestServerDataRequest(t *testing.T) {
 	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{quicAddr}, []ma.Multiaddr{tcpAddr})
 	require.NoError(t, err)
 
-	require.Equal(t, res, &Result{
+	require.Equal(t, Result{
 		Idx:          0,
 		Addr:         quicAddr,
 		Reachability: network.ReachabilityPublic,
 		Status:       pbv2.DialStatus_OK,
-	})
+	}, res)
 }
 
 func TestServerDial(t *testing.T) {
@@ -110,7 +108,7 @@ func TestServerDial(t *testing.T) {
 	hostAddrs := c.host.Addrs()
 	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{randAddr}, hostAddrs)
 	require.NoError(t, err)
-	require.Equal(t, &Result{
+	require.Equal(t, Result{
 		Idx:          0,
 		Addr:         randAddr,
 		Reachability: network.ReachabilityPrivate,
@@ -119,7 +117,7 @@ func TestServerDial(t *testing.T) {
 
 	res, err = c.CheckReachability(context.Background(), nil, c.host.Addrs())
 	require.NoError(t, err)
-	require.Equal(t, &Result{
+	require.Equal(t, Result{
 		Idx:          0,
 		Addr:         hostAddrs[0],
 		Reachability: network.ReachabilityPublic,
