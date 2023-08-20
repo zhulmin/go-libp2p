@@ -196,12 +196,12 @@ func TestStreamReadReturnsOnClose(t *testing.T) {
 	client, _ := getDetachedDataChannels(t)
 
 	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
-	// serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
 	errChan := make(chan error, 1)
 	go func() {
 		_, err := clientStr.Read([]byte{0})
 		errChan <- err
 	}()
+	time.Sleep(50 * time.Millisecond) // give the Read call some time to hit the loop
 	require.NoError(t, clientStr.Close())
 	select {
 	case err := <-errChan:

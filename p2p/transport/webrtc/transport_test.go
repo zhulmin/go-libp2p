@@ -562,38 +562,6 @@ func TestTransportWebRTC_Close(t *testing.T) {
 
 	tr1, connectingPeer := getTransport(t)
 
-	t.Run("StreamCanCloseWhenReadActive", func(t *testing.T) {
-		done := make(chan struct{})
-
-		go func() {
-			lconn, err := listener.Accept()
-			require.NoError(t, err)
-			t.Logf("listener accepted connection")
-			require.Equal(t, connectingPeer, lconn.RemotePeer())
-			done <- struct{}{}
-		}()
-
-		conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
-		require.NoError(t, err)
-		t.Logf("dialer opened connection")
-		stream, err := conn.OpenStream(context.Background())
-		require.NoError(t, err)
-
-		time.AfterFunc(100*time.Millisecond, func() {
-			err := stream.Close()
-			require.NoError(t, err)
-		})
-
-		_, err = stream.Read(make([]byte, 19))
-		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			t.Fatal("timed out")
-		}
-	})
-
 	t.Run("RemoteClosesStream", func(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)

@@ -44,6 +44,9 @@ func (s *stream) Read(b []byte) (int, error) {
 					// There's little we can do here
 					return 0, errors.New("didn't receive final state for stream")
 				}
+				if s.receiveState == receiveStateReset {
+					return 0, network.ErrReset
+				}
 				return 0, err
 			}
 			s.mx.Lock()
