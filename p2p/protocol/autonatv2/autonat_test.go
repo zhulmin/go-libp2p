@@ -15,7 +15,7 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -38,7 +38,7 @@ func newAutoNAT(t *testing.T, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 	return an
 }
 
-func parseAddrs(t *testing.T, msg *pbv2.Message) []ma.Multiaddr {
+func parseAddrs(t *testing.T, msg *pb.Message) []ma.Multiaddr {
 	t.Helper()
 	req := msg.GetDialRequest()
 	addrs := make([]ma.Multiaddr, 0)
@@ -93,7 +93,7 @@ func TestClientRequest(t *testing.T) {
 	p.SetStreamHandler(DialProtocol, func(s network.Stream) {
 		gotReq.Store(true)
 		r := pbio.NewDelimitedReader(s, maxMsgSize)
-		var msg pbv2.Message
+		var msg pb.Message
 		if err := r.ReadMsg(&msg); err != nil {
 			t.Error(err)
 			return
@@ -139,12 +139,12 @@ func TestClientServerError(t *testing.T) {
 		}},
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pbv2.Message
+			var msg pb.Message
 			r.ReadMsg(&msg)
 			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pbv2.Message{
-				Msg: &pbv2.Message_DialRequest{
-					DialRequest: &pbv2.DialRequest{
+			w.WriteMsg(&pb.Message{
+				Msg: &pb.Message_DialRequest{
+					DialRequest: &pb.DialRequest{
 						Addrs: [][]byte{},
 						Nonce: 0,
 					},
@@ -182,12 +182,12 @@ func TestClientDataRequest(t *testing.T) {
 	}{
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pbv2.Message
+			var msg pb.Message
 			r.ReadMsg(&msg)
 			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pbv2.Message{
-				Msg: &pbv2.Message_DialDataRequest{
-					DialDataRequest: &pbv2.DialDataRequest{
+			w.WriteMsg(&pb.Message{
+				Msg: &pb.Message_DialDataRequest{
+					DialDataRequest: &pb.DialDataRequest{
 						AddrIdx:  0,
 						NumBytes: 10000,
 					},
@@ -210,12 +210,12 @@ func TestClientDataRequest(t *testing.T) {
 		}},
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pbv2.Message
+			var msg pb.Message
 			r.ReadMsg(&msg)
 			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pbv2.Message{
-				Msg: &pbv2.Message_DialDataRequest{
-					DialDataRequest: &pbv2.DialDataRequest{
+			w.WriteMsg(&pb.Message{
+				Msg: &pb.Message_DialDataRequest{
+					DialDataRequest: &pb.DialDataRequest{
 						AddrIdx:  1,
 						NumBytes: 10000,
 					},
@@ -229,12 +229,12 @@ func TestClientDataRequest(t *testing.T) {
 		}},
 		{handler: func(s network.Stream) {
 			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pbv2.Message
+			var msg pb.Message
 			r.ReadMsg(&msg)
 			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pbv2.Message{
-				Msg: &pbv2.Message_DialDataRequest{
-					DialDataRequest: &pbv2.DialDataRequest{
+			w.WriteMsg(&pb.Message{
+				Msg: &pb.Message_DialDataRequest{
+					DialDataRequest: &pb.DialDataRequest{
 						AddrIdx:  0,
 						NumBytes: 1000_000,
 					},
@@ -275,18 +275,18 @@ func TestClientDialBacks(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pbv2.Message
+				var msg pb.Message
 				if err := r.ReadMsg(&msg); err != nil {
 					t.Error(err)
 				}
-				resp := &pbv2.DialResponse{
-					Status:     pbv2.DialResponse_ResponseStatus_OK,
-					DialStatus: pbv2.DialStatus_OK,
+				resp := &pb.DialResponse{
+					Status:     pb.DialResponse_OK,
+					DialStatus: pb.DialStatus_OK,
 					AddrIdx:    0,
 				}
 				w := pbio.NewDelimitedWriter(s)
-				w.WriteMsg(&pbv2.Message{
-					Msg: &pbv2.Message_DialResponse{
+				w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialResponse{
 						DialResponse: resp,
 					},
 				})
@@ -297,7 +297,7 @@ func TestClientDialBacks(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pbv2.Message
+				var msg pb.Message
 				r.ReadMsg(&msg)
 				req := msg.GetDialRequest()
 				addrs := parseAddrs(t, &msg)
@@ -311,15 +311,15 @@ func TestClientDialBacks(t *testing.T) {
 					return
 				}
 				w := pbio.NewDelimitedWriter(as)
-				w.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce})
+				w.WriteMsg(&pb.DialBack{Nonce: req.Nonce})
 				as.CloseWrite()
 
 				w = pbio.NewDelimitedWriter(s)
-				w.WriteMsg(&pbv2.Message{
-					Msg: &pbv2.Message_DialResponse{
-						DialResponse: &pbv2.DialResponse{
-							Status:     pbv2.DialResponse_ResponseStatus_OK,
-							DialStatus: pbv2.DialStatus_OK,
+				w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialResponse{
+						DialResponse: &pb.DialResponse{
+							Status:     pb.DialResponse_OK,
+							DialStatus: pb.DialStatus_OK,
 							AddrIdx:    0,
 						},
 					},
@@ -331,7 +331,7 @@ func TestClientDialBacks(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pbv2.Message
+				var msg pb.Message
 				r.ReadMsg(&msg)
 				req := msg.GetDialRequest()
 				addrs := parseAddrs(t, &msg)
@@ -346,7 +346,7 @@ func TestClientDialBacks(t *testing.T) {
 					return
 				}
 				ww := pbio.NewDelimitedWriter(as)
-				if err := ww.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce - 1}); err != nil {
+				if err := ww.WriteMsg(&pb.DialBack{Nonce: req.Nonce - 1}); err != nil {
 					s.Reset()
 					as.Reset()
 					return
@@ -359,11 +359,11 @@ func TestClientDialBacks(t *testing.T) {
 				}()
 
 				w := pbio.NewDelimitedWriter(s)
-				w.WriteMsg(&pbv2.Message{
-					Msg: &pbv2.Message_DialResponse{
-						DialResponse: &pbv2.DialResponse{
-							Status:     pbv2.DialResponse_ResponseStatus_OK,
-							DialStatus: pbv2.DialStatus_OK,
+				w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialResponse{
+						DialResponse: &pb.DialResponse{
+							Status:     pb.DialResponse_OK,
+							DialStatus: pb.DialStatus_OK,
 							AddrIdx:    0,
 						},
 					},
@@ -375,7 +375,7 @@ func TestClientDialBacks(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pbv2.Message
+				var msg pb.Message
 				r.ReadMsg(&msg)
 				req := msg.GetDialRequest()
 				addrs := parseAddrs(t, &msg)
@@ -391,7 +391,7 @@ func TestClientDialBacks(t *testing.T) {
 				}
 
 				w := pbio.NewDelimitedWriter(as)
-				if err := w.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce}); err != nil {
+				if err := w.WriteMsg(&pb.DialBack{Nonce: req.Nonce}); err != nil {
 					t.Error("failed to write nonce", err)
 					s.Reset()
 					as.Reset()
@@ -406,11 +406,11 @@ func TestClientDialBacks(t *testing.T) {
 
 				w = pbio.NewDelimitedWriter(s)
 
-				w.WriteMsg(&pbv2.Message{
-					Msg: &pbv2.Message_DialResponse{
-						DialResponse: &pbv2.DialResponse{
-							Status:     pbv2.DialResponse_ResponseStatus_OK,
-							DialStatus: pbv2.DialStatus_OK,
+				w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialResponse{
+						DialResponse: &pb.DialResponse{
+							Status:     pb.DialResponse_OK,
+							DialStatus: pb.DialStatus_OK,
 							AddrIdx:    1,
 						},
 					},
@@ -422,7 +422,7 @@ func TestClientDialBacks(t *testing.T) {
 		{
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pbv2.Message
+				var msg pb.Message
 				r.ReadMsg(&msg)
 				req := msg.GetDialRequest()
 				addrs := parseAddrs(t, &msg)
@@ -438,7 +438,7 @@ func TestClientDialBacks(t *testing.T) {
 				}
 
 				w := pbio.NewDelimitedWriter(as)
-				if err := w.WriteMsg(&pbv2.DialBack{Nonce: req.Nonce}); err != nil {
+				if err := w.WriteMsg(&pb.DialBack{Nonce: req.Nonce}); err != nil {
 					t.Error("failed to write nonce", err)
 					s.Reset()
 					as.Reset()
@@ -453,11 +453,11 @@ func TestClientDialBacks(t *testing.T) {
 
 				w = pbio.NewDelimitedWriter(s)
 
-				w.WriteMsg(&pbv2.Message{
-					Msg: &pbv2.Message_DialResponse{
-						DialResponse: &pbv2.DialResponse{
-							Status:     pbv2.DialResponse_ResponseStatus_OK,
-							DialStatus: pbv2.DialStatus_OK,
+				w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialResponse{
+						DialResponse: &pb.DialResponse{
+							Status:     pb.DialResponse_OK,
+							DialStatus: pb.DialStatus_OK,
 							AddrIdx:    10,
 						},
 					},
@@ -480,12 +480,12 @@ func TestClientDialBacks(t *testing.T) {
 				} else {
 					require.NoError(t, err)
 					require.Equal(t, res.Reachability, network.ReachabilityUnknown)
-					require.NotEqual(t, res.Status, pbv2.DialStatus_OK, "got: %d", res.Status)
+					require.NotEqual(t, res.Status, pb.DialStatus_OK, "got: %d", res.Status)
 				}
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, res.Reachability, network.ReachabilityPublic)
-				require.Equal(t, res.Status, pbv2.DialStatus_OK)
+				require.Equal(t, res.Status, pb.DialStatus_OK)
 			}
 		})
 	}

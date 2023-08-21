@@ -9,14 +9,14 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/rand"
 	"golang.org/x/exp/slices"
 )
 
-//go:generate protoc --go_out=. --go_opt=Mpbv2/autonat.proto=./pbv2 pbv2/autonat.proto
+//go:generate protoc --go_out=. --go_opt=Mpb/autonatv2.proto=./pb pb/autonatv2.proto
 
 // Client implements the client for making dial requests for AutoNAT v2. It verifies successful
 // dials and provides an option to send data for dial requests.
@@ -113,20 +113,20 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	}
 
 	resp := msg.GetDialResponse()
-	if resp.GetStatus() != pbv2.DialResponse_ResponseStatus_OK {
+	if resp.GetStatus() != pb.DialResponse_OK {
 		// server couldn't dial any requested address
-		if resp.GetStatus() == pbv2.DialResponse_E_DIAL_REFUSED {
+		if resp.GetStatus() == pb.DialResponse_E_DIAL_REFUSED {
 			return Result{}, fmt.Errorf("dial request: %w", ErrDialRefused)
 		}
 		return Result{}, fmt.Errorf("dial request: status %d %s", resp.GetStatus(),
-			pbv2.DialStatus_name[int32(resp.GetStatus())])
+			pb.DialStatus_name[int32(resp.GetStatus())])
 	}
-	if resp.GetDialStatus() == pbv2.DialStatus_UNUSED {
+	if resp.GetDialStatus() == pb.DialStatus_UNUSED {
 		return Result{}, fmt.Errorf("dial request failed: received invalid dial status 0")
 	}
 
 	var dialBackAddr ma.Multiaddr
-	if resp.GetDialStatus() == pbv2.DialStatus_OK && int(resp.AddrIdx) < len(highPriorityAddrs)+len(lowPriorityAddrs) {
+	if resp.GetDialStatus() == pb.DialStatus_OK && int(resp.AddrIdx) < len(highPriorityAddrs)+len(lowPriorityAddrs) {
 		timer := time.NewTimer(dialBackStreamTimeout)
 		select {
 		case at := <-ch:
@@ -139,7 +139,7 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 	return ac.newResults(resp, highPriorityAddrs, lowPriorityAddrs, dialBackAddr)
 }
 
-func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, dialBackAddr ma.Multiaddr) (Result, error) {
+func (ac *Client) newResults(resp *pb.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, dialBackAddr ma.Multiaddr) (Result, error) {
 	if int(resp.AddrIdx) >= len(highPriorityAddrs)+len(lowPriorityAddrs) {
 		return Result{}, fmt.Errorf("addrIdx out of range: %d 0-%d", resp.AddrIdx, len(highPriorityAddrs)+len(lowPriorityAddrs)-1)
 	}
@@ -155,13 +155,13 @@ func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Mul
 	rch := network.ReachabilityUnknown
 	status := resp.DialStatus
 	switch status {
-	case pbv2.DialStatus_OK:
+	case pb.DialStatus_OK:
 		if areAddrsConsistent(dialBackAddr, addr) {
 			rch = network.ReachabilityPublic
 		} else {
-			status = pbv2.DialStatus_E_DIAL_BACK_ERROR
+			status = pb.DialStatus_E_DIAL_BACK_ERROR
 		}
-	case pbv2.DialStatus_E_DIAL_ERROR:
+	case pb.DialStatus_E_DIAL_ERROR:
 		rch = network.ReachabilityPrivate
 	}
 	return Result{
@@ -172,11 +172,11 @@ func (ac *Client) newResults(resp *pbv2.DialResponse, highPriorityAddrs []ma.Mul
 	}, nil
 }
 
-func (ac *Client) sendDialData(req *pbv2.DialDataRequest, w pbio.Writer, msg *pbv2.Message) error {
+func (ac *Client) sendDialData(req *pb.DialDataRequest, w pbio.Writer, msg *pb.Message) error {
 	nb := req.GetNumBytes()
-	ddResp := &pbv2.DialDataResponse{Data: ac.dialData}
-	*msg = pbv2.Message{
-		Msg: &pbv2.Message_DialDataResponse{
+	ddResp := &pb.DialDataResponse{Data: ac.dialData}
+	*msg = pb.Message{
+		Msg: &pb.Message_DialDataResponse{
 			DialDataResponse: ddResp,
 		},
 	}
@@ -194,7 +194,7 @@ func (ac *Client) sendDialData(req *pbv2.DialDataRequest, w pbio.Writer, msg *pb
 	return nil
 }
 
-func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce uint64) pbv2.Message {
+func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce uint64) pb.Message {
 	addrbs := make([][]byte, len(highPriorityAddrs)+len(lowPriorityAddrs))
 	for i, a := range highPriorityAddrs {
 		addrbs[i] = a.Bytes()
@@ -202,9 +202,9 @@ func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce ui
 	for i, a := range lowPriorityAddrs {
 		addrbs[len(highPriorityAddrs)+i] = a.Bytes()
 	}
-	return pbv2.Message{
-		Msg: &pbv2.Message_DialRequest{
-			DialRequest: &pbv2.DialRequest{
+	return pb.Message{
+		Msg: &pb.Message_DialRequest{
+			DialRequest: &pb.DialRequest{
 				Addrs: addrbs,
 				Nonce: nonce,
 			},
@@ -234,7 +234,7 @@ func (ac *Client) handleDialBack(s network.Stream) {
 	defer s.Close()
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
-	var msg pbv2.DialBack
+	var msg pb.DialBack
 	if err := r.ReadMsg(&msg); err != nil {
 		log.Debugf("failed to read dialback msg from %s: %s", s.Conn().RemotePeer(), err)
 		s.Reset()

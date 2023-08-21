@@ -12,7 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"golang.org/x/exp/rand"
@@ -28,6 +28,9 @@ const (
 	streamTimeout         = time.Minute
 	dialBackStreamTimeout = 5 * time.Second
 	dialBackDialTimeout   = 30 * time.Second
+	maxHandshakeSizeBytes = 100_000
+	minHandshakeSizeBytes = 30_000
+	maxPeerAddresses      = 50
 )
 
 var (
@@ -142,7 +145,7 @@ type Result struct {
 	// Reachability of the dialed address
 	Reachability network.Reachability
 	// Status is the outcome of the dialback
-	Status pbv2.DialStatus
+	Status pb.DialStatus
 }
 
 // CheckReachability makes a single dial request for checking reachability. For highPriorityAddrs dial charge is paid

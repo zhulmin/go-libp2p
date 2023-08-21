@@ -9,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/test"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
@@ -89,7 +89,7 @@ func TestServerDataRequest(t *testing.T) {
 		Idx:          0,
 		Addr:         quicAddr,
 		Reachability: network.ReachabilityPublic,
-		Status:       pbv2.DialStatus_OK,
+		Status:       pb.DialStatus_OK,
 	}, res)
 }
 
@@ -112,7 +112,7 @@ func TestServerDial(t *testing.T) {
 		Idx:          0,
 		Addr:         randAddr,
 		Reachability: network.ReachabilityPrivate,
-		Status:       pbv2.DialStatus_E_DIAL_ERROR,
+		Status:       pb.DialStatus_E_DIAL_ERROR,
 	}, res)
 
 	res, err = c.CheckReachability(context.Background(), nil, c.host.Addrs())
@@ -121,7 +121,7 @@ func TestServerDial(t *testing.T) {
 		Idx:          0,
 		Addr:         hostAddrs[0],
 		Reachability: network.ReachabilityPublic,
-		Status:       pbv2.DialStatus_OK,
+		Status:       pb.DialStatus_OK,
 	}, res)
 }
 

@@ -10,7 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pbv2"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2/pb"
 	"github.com/libp2p/go-msgio/pbio"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -19,11 +19,6 @@ import (
 )
 
 type dataRequestPolicyFunc = func(s network.Stream, dialAddr ma.Multiaddr) bool
-
-const (
-	maxHandshakeSizeBytes = 100_000
-	minHandshakeSizeBytes = 30_000
-)
 
 type Server struct {
 	dialer                host.Host
@@ -77,7 +72,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 
 	p := s.Conn().RemotePeer()
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
-	var msg pbv2.Message
+	var msg pb.Message
 	if err := r.ReadMsg(&msg); err != nil {
 		s.Reset()
 		log.Debugf("failed to read request from %s: %s", p, err)
@@ -93,6 +88,9 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	var dialAddr ma.Multiaddr
 	var addrIdx int
 	for i, ab := range msg.GetDialRequest().GetAddrs() {
+		if i >= maxPeerAddresses {
+			break
+		}
 		a, err := ma.NewMultiaddrBytes(ab)
 		if err != nil {
 			continue
@@ -108,10 +106,10 @@ func (as *Server) handleDialRequest(s network.Stream) {
 
 	w := pbio.NewDelimitedWriter(s)
 	if dialAddr == nil {
-		msg = pbv2.Message{
-			Msg: &pbv2.Message_DialResponse{
-				DialResponse: &pbv2.DialResponse{
-					Status: pbv2.DialResponse_E_DIAL_REFUSED,
+		msg = pb.Message{
+			Msg: &pb.Message_DialResponse{
+				DialResponse: &pb.DialResponse{
+					Status: pb.DialResponse_E_DIAL_REFUSED,
 				},
 			},
 		}
@@ -125,10 +123,10 @@ func (as *Server) handleDialRequest(s network.Stream) {
 
 	isDialDataRequired := as.dialDataRequestPolicy(s, dialAddr)
 	if !as.limiter.Accept(p, isDialDataRequired) {
-		msg = pbv2.Message{
-			Msg: &pbv2.Message_DialResponse{
-				DialResponse: &pbv2.DialResponse{
-					Status: pbv2.DialResponse_E_REQUEST_REJECTED,
+		msg = pb.Message{
+			Msg: &pb.Message_DialResponse{
+				DialResponse: &pb.DialResponse{
+					Status: pb.DialResponse_E_REQUEST_REJECTED,
 				},
 			},
 		}
@@ -150,10 +148,10 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		}
 	}
 	status := as.dialBack(s.Conn().RemotePeer(), dialAddr, nonce)
-	msg = pbv2.Message{
-		Msg: &pbv2.Message_DialResponse{
-			DialResponse: &pbv2.DialResponse{
-				Status:     pbv2.DialResponse_ResponseStatus_OK,
+	msg = pb.Message{
+		Msg: &pb.Message_DialResponse{
+			DialResponse: &pb.DialResponse{
+				Status:     pb.DialResponse_OK,
 				DialStatus: status,
 				AddrIdx:    uint32(addrIdx),
 			},
@@ -177,11 +175,11 @@ func amplificationAttackPrevention(s network.Stream, dialAddr ma.Multiaddr) bool
 	return !connIP.Equal(dialIP)
 }
 
-func getDialData(w pbio.Writer, r pbio.Reader, msg *pbv2.Message, addrIdx int) error {
+func getDialData(w pbio.Writer, r pbio.Reader, msg *pb.Message, addrIdx int) error {
 	numBytes := minHandshakeSizeBytes + rand.Intn(maxHandshakeSizeBytes-minHandshakeSizeBytes)
-	*msg = pbv2.Message{
-		Msg: &pbv2.Message_DialDataRequest{
-			DialDataRequest: &pbv2.DialDataRequest{
+	*msg = pb.Message{
+		Msg: &pb.Message_DialDataRequest{
+			DialDataRequest: &pb.DialDataRequest{
 				AddrIdx:  uint32(addrIdx),
 				NumBytes: uint64(numBytes),
 			},
@@ -203,7 +201,7 @@ func getDialData(w pbio.Writer, r pbio.Reader, msg *pbv2.Message, addrIdx int) e
 	return nil
 }
 
-func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.DialStatus {
+func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialStatus {
 	ctx, cancel := context.WithTimeout(context.Background(), dialBackDialTimeout)
 	as.dialer.Peerstore().AddAddr(p, addr, peerstore.TempAddrTTL)
 	defer func() {
@@ -214,15 +212,15 @@ func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.Dial
 	}()
 	s, err := as.dialer.NewStream(ctx, p, DialBackProtocol)
 	if err != nil {
-		return pbv2.DialStatus_E_DIAL_ERROR
+		return pb.DialStatus_E_DIAL_ERROR
 	}
 	defer s.Close()
 	s.SetDeadline(as.now().Add(dialBackStreamTimeout))
 
 	w := pbio.NewDelimitedWriter(s)
-	if err := w.WriteMsg(&pbv2.DialBack{Nonce: nonce}); err != nil {
+	if err := w.WriteMsg(&pb.DialBack{Nonce: nonce}); err != nil {
 		s.Reset()
-		return pbv2.DialStatus_E_DIAL_BACK_ERROR
+		return pb.DialStatus_E_DIAL_BACK_ERROR
 	}
 
 	// Since the underlying connection is on a separate dialer, it'll be closed after this function returns.
@@ -233,7 +231,7 @@ func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pbv2.Dial
 	b := make([]byte, 1) // Read 1 byte here because 0 len reads are free to return (0, nil) immediately
 	s.Read(b)
 
-	return pbv2.DialStatus_OK
+	return pb.DialStatus_OK
 }
 
 // rateLimiter implements a sliding window rate limit of requests per minute.
