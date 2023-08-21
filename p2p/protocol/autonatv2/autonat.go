@@ -167,8 +167,7 @@ func (an *AutoNAT) Close() {
 	an.wg.Wait()
 }
 
-// CheckReachability makes a single dial request for checking reachability. For highPriorityAddrs dial charge is paid
-// if the server asks for it. For lowPriorityAddrs dial charge is rejected.
+// CheckReachability makes a single dial request for checking reachability for requested addresses
 func (an *AutoNAT) CheckReachability(ctx context.Context, reqs []Request) (Result, error) {
 	if !an.allowAllAddrs {
 		for _, r := range reqs {
