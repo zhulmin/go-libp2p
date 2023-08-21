@@ -1,5 +1,3 @@
-//go:build !go1.21
-
 /*
  *
  * The MIT License (MIT)

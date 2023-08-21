@@ -1,5 +1,3 @@
-//go:build !go1.21
-
 package main
 
 import (
@@ -18,7 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
-	"github.com/libp2p/go-libp2p/p2p/muxer/mplex"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -48,10 +45,7 @@ func main() {
 		libp2p.Transport(websocket.New),
 	)
 
-	muxers := libp2p.ChainOptions(
-		libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport),
-		libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport),
-	)
+	muxers := libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport)
 
 	security := libp2p.Security(tls.ID, tls.New)
 
