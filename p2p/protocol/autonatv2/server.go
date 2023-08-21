@@ -188,8 +188,7 @@ func getDialData(w pbio.Writer, r pbio.Reader, msg *pb.Message, addrIdx int) err
 	if err := w.WriteMsg(msg); err != nil {
 		return fmt.Errorf("dial data write: %w", err)
 	}
-	remain := numBytes
-	for remain > 0 {
+	for remain := numBytes; remain > 0; {
 		if err := r.ReadMsg(msg); err != nil {
 			return fmt.Errorf("dial data read: %w", err)
 		}

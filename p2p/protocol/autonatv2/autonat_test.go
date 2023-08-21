@@ -34,7 +34,7 @@ func newAutoNAT(t *testing.T, dialer host.Host, opts ...AutoNATOption) *AutoNAT 
 		t.Error(err)
 	}
 	an.srv.Enable()
-	an.cli.Register()
+	an.cli.RegisterDialBack()
 	return an
 }
 
@@ -78,7 +78,7 @@ func identify(t *testing.T, cli *AutoNAT, srv *AutoNAT) {
 
 func TestAutoNATPrivateAddr(t *testing.T) {
 	an := newAutoNAT(t, nil)
-	res, err := an.CheckReachability(context.Background(), []ma.Multiaddr{ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")}, nil)
+	res, err := an.CheckReachability(context.Background(), []Request{{Addr: ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")}})
 	require.Equal(t, res, Result{})
 	require.NotNil(t, err)
 }
@@ -115,7 +115,12 @@ func TestClientRequest(t *testing.T) {
 	idAndConnect(t, an.host, p)
 	waitForPeer(t, an)
 
-	res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
+	res, err := an.CheckReachability(
+		context.Background(),
+		[]Request{
+			{Addr: addrs[0], SendDialData: true},
+			{Addr: addrs[1]},
+		})
 	require.Equal(t, res, Result{})
 	require.NotNil(t, err)
 	require.True(t, gotReq.Load())
@@ -160,7 +165,12 @@ func TestClientServerError(t *testing.T) {
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
 			p.SetStreamHandler(DialProtocol, tc.handler)
-			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
+			res, err := an.CheckReachability(
+				context.Background(),
+				[]Request{
+					{Addr: addrs[0], SendDialData: true},
+					{Addr: addrs[1]},
+				})
 			require.Equal(t, res, Result{})
 			require.NotNil(t, err)
 			<-done
@@ -251,7 +261,12 @@ func TestClientDataRequest(t *testing.T) {
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
 			p.SetStreamHandler(DialProtocol, tc.handler)
-			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
+			res, err := an.CheckReachability(
+				context.Background(),
+				[]Request{
+					{Addr: addrs[0], SendDialData: true},
+					{Addr: addrs[1]},
+				})
 			require.Equal(t, res, Result{})
 			require.NotNil(t, err)
 			<-done
@@ -472,7 +487,12 @@ func TestClientDialBacks(t *testing.T) {
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
 			p.SetStreamHandler(DialProtocol, tc.handler)
-			res, err := an.CheckReachability(context.Background(), addrs[:1], addrs[1:])
+			res, err := an.CheckReachability(
+				context.Background(),
+				[]Request{
+					{Addr: addrs[0], SendDialData: true},
+					{Addr: addrs[1]},
+				})
 			if !tc.success {
 				if tc.isError {
 					require.Equal(t, res, Result{})
@@ -530,28 +550,41 @@ func TestEventSubscription(t *testing.T) {
 }
 
 func TestPeersMap(t *testing.T) {
-	p := newPeersMap()
 	emptyPeerID := peer.ID("")
-	require.Equal(t, emptyPeerID, p.GetRand())
 
-	allPeers := make(map[peer.ID]bool)
-	for i := 0; i < 20; i++ {
-		pid := peer.ID(fmt.Sprintf("peer-%d", i))
-		allPeers[pid] = true
-		p.Put(pid)
-	}
-	foundPeers := make(map[peer.ID]bool)
-	for i := 0; i < 1000; i++ {
-		pid := p.GetRand()
-		require.NotEqual(t, emptyPeerID, p)
-		require.True(t, allPeers[pid])
-		foundPeers[pid] = true
-		if len(foundPeers) == len(allPeers) {
-			break
+	t.Run("single_item", func(t *testing.T) {
+		p := newPeersMap()
+		p.Put("peer1")
+		p.Delete("peer1")
+		p.Put("peer1")
+		require.Equal(t, peer.ID("peer1"), p.GetRand())
+		p.Delete("peer1")
+		require.Equal(t, emptyPeerID, p.GetRand())
+	})
+
+	t.Run("multiple_items", func(t *testing.T) {
+		p := newPeersMap()
+		require.Equal(t, emptyPeerID, p.GetRand())
+
+		allPeers := make(map[peer.ID]bool)
+		for i := 0; i < 20; i++ {
+			pid := peer.ID(fmt.Sprintf("peer-%d", i))
+			allPeers[pid] = true
+			p.Put(pid)
 		}
-	}
-	for pid := range allPeers {
-		p.Remove(pid)
-	}
-	require.Equal(t, emptyPeerID, p.GetRand())
+		foundPeers := make(map[peer.ID]bool)
+		for i := 0; i < 1000; i++ {
+			pid := p.GetRand()
+			require.NotEqual(t, emptyPeerID, p)
+			require.True(t, allPeers[pid])
+			foundPeers[pid] = true
+			if len(foundPeers) == len(allPeers) {
+				break
+			}
+		}
+		for pid := range allPeers {
+			p.Delete(pid)
+		}
+		require.Equal(t, emptyPeerID, p.GetRand())
+	})
 }

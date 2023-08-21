@@ -14,6 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newTestRequests(addrs []ma.Multiaddr, sendDialData bool) (reqs []Request) {
+	reqs = make([]Request, len(addrs))
+	for i := 0; i < len(addrs); i++ {
+		reqs[i] = Request{Addr: addrs[i], SendDialData: sendDialData}
+	}
+	return
+}
+
 func TestServerAllAddrsInvalid(t *testing.T) {
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.OptDisableTCP))
 	an := newAutoNAT(t, dialer, allowAll)
@@ -27,7 +35,7 @@ func TestServerAllAddrsInvalid(t *testing.T) {
 
 	identify(t, c, an)
 
-	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
+	res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), true))
 	require.ErrorIs(t, err, ErrDialRefused)
 	require.Equal(t, Result{}, res)
 }
@@ -44,7 +52,7 @@ func TestServerPrivateRejected(t *testing.T) {
 
 	identify(t, c, an)
 
-	res, err := c.CheckReachability(context.Background(), c.host.Addrs(), nil)
+	res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), true))
 	require.ErrorIs(t, err, ErrDialRefused)
 	require.Equal(t, Result{}, res)
 }
@@ -79,10 +87,10 @@ func TestServerDataRequest(t *testing.T) {
 		}
 	}
 
-	_, err := c.CheckReachability(context.Background(), []ma.Multiaddr{tcpAddr}, []ma.Multiaddr{quicAddr})
+	_, err := c.CheckReachability(context.Background(), []Request{{Addr: tcpAddr, SendDialData: true}, {Addr: quicAddr}})
 	require.Error(t, err)
 
-	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{quicAddr}, []ma.Multiaddr{tcpAddr})
+	res, err := c.CheckReachability(context.Background(), []Request{{Addr: quicAddr, SendDialData: true}, {Addr: tcpAddr}})
 	require.NoError(t, err)
 
 	require.Equal(t, Result{
@@ -106,7 +114,8 @@ func TestServerDial(t *testing.T) {
 
 	randAddr := ma.StringCast("/ip4/1.2.3.4/tcp/2")
 	hostAddrs := c.host.Addrs()
-	res, err := c.CheckReachability(context.Background(), []ma.Multiaddr{randAddr}, hostAddrs)
+	res, err := c.CheckReachability(context.Background(),
+		append([]Request{{Addr: randAddr, SendDialData: true}}, newTestRequests(hostAddrs, false)...))
 	require.NoError(t, err)
 	require.Equal(t, Result{
 		Idx:          0,
@@ -115,7 +124,7 @@ func TestServerDial(t *testing.T) {
 		Status:       pb.DialStatus_E_DIAL_ERROR,
 	}, res)
 
-	res, err = c.CheckReachability(context.Background(), nil, c.host.Addrs())
+	res, err = c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), false))
 	require.NoError(t, err)
 	require.Equal(t, Result{
 		Idx:          0,

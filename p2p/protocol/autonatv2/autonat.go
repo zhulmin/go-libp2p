@@ -19,6 +19,8 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+//go:generate protoc --go_out=. --go_opt=Mpb/autonatv2.proto=./pb pb/autonatv2.proto
+
 const (
 	ServiceName      = "libp2p.autonatv2"
 	DialBackProtocol = "/libp2p/autonat/2/dial-back"
@@ -28,33 +30,62 @@ const (
 	streamTimeout         = time.Minute
 	dialBackStreamTimeout = 5 * time.Second
 	dialBackDialTimeout   = 30 * time.Second
+	minHandshakeSizeBytes = 30_000 // for amplification attack prevention
 	maxHandshakeSizeBytes = 100_000
-	minHandshakeSizeBytes = 30_000
-	maxPeerAddresses      = 50
+	// maxPeerAddresses is the number of addresses in a dial request the server
+	// will inspect, rest are ignored.
+	maxPeerAddresses = 50
 )
 
 var (
 	ErrNoValidPeers = errors.New("no valid peers for autonat v2")
 	ErrDialRefused  = errors.New("dial refused")
-)
 
-var (
 	log = logging.Logger("autonatv2")
 )
 
+// Request is the request to verify reachability of a single address
+type Request struct {
+	// Addr is the multiaddr to verify
+	Addr ma.Multiaddr
+	// SendDialData indicates whether to send dial data if the server requests it for Addr
+	SendDialData bool
+}
+
+// Result is the result of the CheckReachability call
+type Result struct {
+	// Idx is the index of the dialed address
+	Idx int
+	// Addr is the dialed address
+	Addr ma.Multiaddr
+	// Reachability of the dialed address
+	Reachability network.Reachability
+	// Status is the outcome of the dialback
+	Status pb.DialStatus
+}
+
+// AutoNAT implements the AutoNAT v2 client and server. Users can check reachability
+// for their addresses using the CheckReachability method.
 type AutoNAT struct {
-	host          host.Host
-	sub           event.Subscription
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	srv           *Server
-	cli           *Client
-	mx            sync.Mutex
-	peers         *peersMap
+	host host.Host
+	sub  event.Subscription
+
+	// for cleanly closing
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+
+	srv *Server
+	cli *client
+
+	mx    sync.Mutex
+	peers *peersMap
+
 	allowAllAddrs bool // for testing
 }
 
+// New returns a new AutoNAT instance. The returned instance runs the server when the provided host
+// is publicly reachable.
 func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error) {
 	s := defaultSettings()
 	for _, o := range opts {
@@ -83,21 +114,21 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 		new(event.EvtPeerIdentificationCompleted),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("event subscription failed: %w", err)
+		return nil, fmt.Errorf("event subscription: %w", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 
+	ctx, cancel := context.WithCancel(context.Background())
 	an := &AutoNAT{
 		host:          h,
 		ctx:           ctx,
 		cancel:        cancel,
 		sub:           sub,
 		srv:           NewServer(h, dialer, s),
-		cli:           NewClient(h),
+		cli:           newClient(h),
 		allowAllAddrs: s.allowAllAddrs,
 		peers:         newPeersMap(),
 	}
-	an.cli.Register()
+	an.cli.RegisterDialBack()
 
 	an.wg.Add(1)
 	go an.background()
@@ -136,30 +167,13 @@ func (an *AutoNAT) Close() {
 	an.wg.Wait()
 }
 
-// Result is the result of the CheckReachability call
-type Result struct {
-	// Idx is the index of the dialed address
-	Idx int
-	// Addr is the dialed address
-	Addr ma.Multiaddr
-	// Reachability of the dialed address
-	Reachability network.Reachability
-	// Status is the outcome of the dialback
-	Status pb.DialStatus
-}
-
 // CheckReachability makes a single dial request for checking reachability. For highPriorityAddrs dial charge is paid
 // if the server asks for it. For lowPriorityAddrs dial charge is rejected.
-func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (Result, error) {
+func (an *AutoNAT) CheckReachability(ctx context.Context, reqs []Request) (Result, error) {
 	if !an.allowAllAddrs {
-		for _, a := range highPriorityAddrs {
-			if !manet.IsPublicAddr(a) {
-				return Result{}, fmt.Errorf("private address cannot be verified by autonatv2: %s", a)
-			}
-		}
-		for _, a := range lowPriorityAddrs {
-			if !manet.IsPublicAddr(a) {
-				return Result{}, fmt.Errorf("private address cannot be verified by autonatv2: %s", a)
+		for _, r := range reqs {
+			if !manet.IsPublicAddr(r.Addr) {
+				return Result{}, fmt.Errorf("private address cannot be verified by autonatv2: %s", r.Addr)
 			}
 		}
 	}
@@ -168,7 +182,7 @@ func (an *AutoNAT) CheckReachability(ctx context.Context, highPriorityAddrs []ma
 		return Result{}, ErrNoValidPeers
 	}
 
-	res, err := an.cli.CheckReachability(ctx, p, highPriorityAddrs, lowPriorityAddrs)
+	res, err := an.cli.CheckReachability(ctx, p, reqs)
 	if err != nil {
 		log.Debugf("reachability check with %s failed, err: %s", p, err)
 		return Result{}, fmt.Errorf("reachability check with %s failed: %w", p, err)
@@ -181,12 +195,14 @@ func (an *AutoNAT) updatePeer(p peer.ID) {
 	an.mx.Lock()
 	defer an.mx.Unlock()
 
+	// There are no ordering gurantees between identify and swarm events. Check peerstore
+	// and swarm for the current state
 	protos, err := an.host.Peerstore().SupportsProtocols(p, DialProtocol)
 	connectedness := an.host.Network().Connectedness(p)
 	if err == nil && slices.Contains(protos, DialProtocol) && connectedness == network.Connected {
 		an.peers.Put(p)
 	} else {
-		an.peers.Remove(p)
+		an.peers.Delete(p)
 	}
 }
 
@@ -219,13 +235,13 @@ func (p *peersMap) Put(pid peer.ID) {
 	p.peerIdx[pid] = len(p.peers) - 1
 }
 
-func (p *peersMap) Remove(pid peer.ID) {
+func (p *peersMap) Delete(pid peer.ID) {
 	idx, ok := p.peerIdx[pid]
 	if !ok {
 		return
 	}
-	delete(p.peerIdx, pid)
 	p.peers[idx] = p.peers[len(p.peers)-1]
 	p.peerIdx[p.peers[idx]] = idx
 	p.peers = p.peers[:len(p.peers)-1]
+	delete(p.peerIdx, pid)
 }

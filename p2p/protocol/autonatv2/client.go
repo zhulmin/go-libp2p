@@ -13,14 +13,13 @@ import (
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/rand"
-	"golang.org/x/exp/slices"
 )
 
 //go:generate protoc --go_out=. --go_opt=Mpb/autonatv2.proto=./pb pb/autonatv2.proto
 
-// Client implements the client for making dial requests for AutoNAT v2. It verifies successful
+// client implements the client for making dial requests for AutoNAT v2. It verifies successful
 // dials and provides an option to send data for dial requests.
-type Client struct {
+type client struct {
 	host     host.Host
 	dialData []byte
 
@@ -30,24 +29,29 @@ type Client struct {
 	dialBackQueues map[uint64]chan ma.Multiaddr
 }
 
-func NewClient(h host.Host) *Client {
-	return &Client{host: h, dialData: make([]byte, 4096), dialBackQueues: make(map[uint64]chan ma.Multiaddr)}
+func newClient(h host.Host) *client {
+	return &client{host: h, dialData: make([]byte, 4096), dialBackQueues: make(map[uint64]chan ma.Multiaddr)}
+}
+
+// RegisterDialBack registers the client to receive DialBack streams initiated by the server to send the nonce.
+func (ac *client) RegisterDialBack() {
+	ac.host.SetStreamHandler(DialBackProtocol, ac.handleDialBack)
 }
 
 // CheckReachability verifies address reachability with a AutoNAT v2 server p. It'll provide dial data for dialing high
 // priority addresses and not for low priority addresses.
-func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr) (Result, error) {
+func (ac *client) CheckReachability(ctx context.Context, p peer.ID, reqs []Request) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 
 	s, err := ac.host.NewStream(ctx, p, DialProtocol)
 	if err != nil {
-		return Result{}, fmt.Errorf("open %s stream: %w", DialProtocol, err)
+		return Result{}, fmt.Errorf("open %s stream failed: %w", DialProtocol, err)
 	}
 
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		s.Reset()
-		return Result{}, fmt.Errorf("attach stream %s to service %s: %w", DialProtocol, ServiceName, err)
+		return Result{}, fmt.Errorf("attach stream %s to service %s failed: %w", DialProtocol, ServiceName, err)
 	}
 
 	if err := s.Scope().ReserveMemory(maxMsgSize, network.ReservationPriorityAlways); err != nil {
@@ -70,38 +74,46 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 		ac.mu.Unlock()
 	}()
 
-	msg := newDialRequest(highPriorityAddrs, lowPriorityAddrs, nonce)
+	msg := newDialRequest(reqs, nonce)
 	w := pbio.NewDelimitedWriter(s)
 	if err := w.WriteMsg(&msg); err != nil {
 		s.Reset()
-		return Result{}, fmt.Errorf("dial request write: %w", err)
+		return Result{}, fmt.Errorf("dial request write failed: %w", err)
 	}
 
 	r := pbio.NewDelimitedReader(s, maxMsgSize)
 	if err := r.ReadMsg(&msg); err != nil {
 		s.Reset()
-		return Result{}, fmt.Errorf("dial msg read: %w", err)
+		return Result{}, fmt.Errorf("dial msg read failed: %w", err)
 	}
 
 	switch {
 	case msg.GetDialResponse() != nil:
 		break
+	// provide dial data if appropriate
 	case msg.GetDialDataRequest() != nil:
-		if int(msg.GetDialDataRequest().AddrIdx) >= len(highPriorityAddrs) {
+		idx := int(msg.GetDialDataRequest().AddrIdx)
+		if idx >= len(reqs) { // invalid address index
 			s.Reset()
-			return Result{}, fmt.Errorf("dial data requested for low priority address")
+			return Result{}, fmt.Errorf("dial data: addr index out of range: %d [0-%d)", idx, len(reqs))
 		}
-		if msg.GetDialDataRequest().NumBytes > maxHandshakeSizeBytes {
+		if msg.GetDialDataRequest().NumBytes > maxHandshakeSizeBytes { // data request is too high
 			s.Reset()
 			return Result{}, fmt.Errorf("dial data requested too high: %d", msg.GetDialDataRequest().NumBytes)
 		}
+		if !reqs[idx].SendDialData { // low priority addr
+			s.Reset()
+			return Result{}, fmt.Errorf("dial data requested for low priority addr: %s index %d", reqs[idx].Addr, idx)
+		}
+
+		// dial data request is valid and we want to send data
 		if err := ac.sendDialData(msg.GetDialDataRequest(), w, &msg); err != nil {
 			s.Reset()
-			return Result{}, fmt.Errorf("dial data send: %w", err)
+			return Result{}, fmt.Errorf("dial data send failed: %w", err)
 		}
 		if err := r.ReadMsg(&msg); err != nil {
 			s.Reset()
-			return Result{}, fmt.Errorf("dial response read: %w", err)
+			return Result{}, fmt.Errorf("dial response read failed: %w", err)
 		}
 		if msg.GetDialResponse() == nil {
 			s.Reset()
@@ -114,19 +126,24 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 
 	resp := msg.GetDialResponse()
 	if resp.GetStatus() != pb.DialResponse_OK {
-		// server couldn't dial any requested address
+		// E_DIAL_REFUSED has implication for deciding future address verificiation priorities
+		// wrap a distinct error for convenient errors.Is usage
 		if resp.GetStatus() == pb.DialResponse_E_DIAL_REFUSED {
-			return Result{}, fmt.Errorf("dial request: %w", ErrDialRefused)
+			return Result{}, fmt.Errorf("dial request failed: %w", ErrDialRefused)
 		}
-		return Result{}, fmt.Errorf("dial request: status %d %s", resp.GetStatus(),
+		return Result{}, fmt.Errorf("dial request failed: response status %d %s", resp.GetStatus(),
 			pb.DialStatus_name[int32(resp.GetStatus())])
 	}
 	if resp.GetDialStatus() == pb.DialStatus_UNUSED {
-		return Result{}, fmt.Errorf("dial request failed: received invalid dial status 0")
+		return Result{}, fmt.Errorf("invalid response: invalid dial status UNUSED")
+	}
+	if int(resp.AddrIdx) >= len(reqs) {
+		return Result{}, fmt.Errorf("invalid response: addr index out of range: %d [0-%d)", resp.AddrIdx, len(reqs))
 	}
 
+	// wait for nonce from the server
 	var dialBackAddr ma.Multiaddr
-	if resp.GetDialStatus() == pb.DialStatus_OK && int(resp.AddrIdx) < len(highPriorityAddrs)+len(lowPriorityAddrs) {
+	if resp.GetDialStatus() == pb.DialStatus_OK {
 		timer := time.NewTimer(dialBackStreamTimeout)
 		select {
 		case at := <-ch:
@@ -136,21 +153,12 @@ func (ac *Client) CheckReachability(ctx context.Context, p peer.ID, highPriority
 		}
 		timer.Stop()
 	}
-	return ac.newResults(resp, highPriorityAddrs, lowPriorityAddrs, dialBackAddr)
+	return ac.newResult(resp, reqs, dialBackAddr), nil
 }
 
-func (ac *Client) newResults(resp *pb.DialResponse, highPriorityAddrs []ma.Multiaddr, lowPriorityAddrs []ma.Multiaddr, dialBackAddr ma.Multiaddr) (Result, error) {
-	if int(resp.AddrIdx) >= len(highPriorityAddrs)+len(lowPriorityAddrs) {
-		return Result{}, fmt.Errorf("addrIdx out of range: %d 0-%d", resp.AddrIdx, len(highPriorityAddrs)+len(lowPriorityAddrs)-1)
-	}
-
+func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr ma.Multiaddr) Result {
 	idx := int(resp.AddrIdx)
-	var addr ma.Multiaddr
-	if idx < len(highPriorityAddrs) {
-		addr = highPriorityAddrs[idx]
-	} else {
-		addr = lowPriorityAddrs[idx-len(highPriorityAddrs)]
-	}
+	addr := reqs[idx].Addr
 
 	rch := network.ReachabilityUnknown
 	status := resp.DialStatus
@@ -164,15 +172,16 @@ func (ac *Client) newResults(resp *pb.DialResponse, highPriorityAddrs []ma.Multi
 	case pb.DialStatus_E_DIAL_ERROR:
 		rch = network.ReachabilityPrivate
 	}
+
 	return Result{
 		Idx:          idx,
 		Addr:         addr,
 		Reachability: rch,
 		Status:       status,
-	}, nil
+	}
 }
 
-func (ac *Client) sendDialData(req *pb.DialDataRequest, w pbio.Writer, msg *pb.Message) error {
+func (ac *client) sendDialData(req *pb.DialDataRequest, w pbio.Writer, msg *pb.Message) error {
 	nb := req.GetNumBytes()
 	ddResp := &pb.DialDataResponse{Data: ac.dialData}
 	*msg = pb.Message{
@@ -182,8 +191,8 @@ func (ac *Client) sendDialData(req *pb.DialDataRequest, w pbio.Writer, msg *pb.M
 	}
 	for remain := int(nb); remain > 0; {
 		end := remain
-		if end > len(ac.dialData) {
-			end = len(ac.dialData)
+		if end > len(ddResp.Data) {
+			end = len(ddResp.Data)
 		}
 		ddResp.Data = ddResp.Data[:end]
 		if err := w.WriteMsg(msg); err != nil {
@@ -194,13 +203,10 @@ func (ac *Client) sendDialData(req *pb.DialDataRequest, w pbio.Writer, msg *pb.M
 	return nil
 }
 
-func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce uint64) pb.Message {
-	addrbs := make([][]byte, len(highPriorityAddrs)+len(lowPriorityAddrs))
-	for i, a := range highPriorityAddrs {
-		addrbs[i] = a.Bytes()
-	}
-	for i, a := range lowPriorityAddrs {
-		addrbs[len(highPriorityAddrs)+i] = a.Bytes()
+func newDialRequest(reqs []Request, nonce uint64) pb.Message {
+	addrbs := make([][]byte, len(reqs))
+	for i, r := range reqs {
+		addrbs[i] = r.Addr.Bytes()
 	}
 	return pb.Message{
 		Msg: &pb.Message_DialRequest{
@@ -212,11 +218,7 @@ func newDialRequest(highPriorityAddrs, lowPriorityAddrs []ma.Multiaddr, nonce ui
 	}
 }
 
-func (ac *Client) Register() {
-	ac.host.SetStreamHandler(DialBackProtocol, ac.handleDialBack)
-}
-
-func (ac *Client) handleDialBack(s network.Stream) {
+func (ac *client) handleDialBack(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)
 		s.Reset()
@@ -251,12 +253,28 @@ func (ac *Client) handleDialBack(s network.Stream) {
 	}
 }
 
-func areAddrsConsistent(a, b ma.Multiaddr) bool {
-	if a == nil || b == nil {
+func areAddrsConsistent(local, external ma.Multiaddr) bool {
+	if local == nil || external == nil {
 		return false
 	}
-	// TODO: handle NAT64
-	aprotos := a.Protocols()
-	bprotos := b.Protocols()
-	return slices.EqualFunc(aprotos, bprotos, func(p1, p2 ma.Protocol) bool { return p1.Code == p2.Code })
+
+	localProtos := local.Protocols()
+	externalProtos := external.Protocols()
+	if len(localProtos) != len(externalProtos) {
+		return false
+	}
+	for i := 0; i < len(localProtos); i++ {
+		if i == 0 {
+			if localProtos[i].Code == externalProtos[i].Code ||
+				localProtos[i].Code == ma.P_IP6 && externalProtos[i].Code == ma.P_IP4 /* NAT64 */ {
+				continue
+			}
+			return false
+		} else {
+			if localProtos[i].Code != externalProtos[i].Code {
+				return false
+			}
+		}
+	}
+	return true
 }
