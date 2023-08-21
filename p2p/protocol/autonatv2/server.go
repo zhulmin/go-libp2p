@@ -20,18 +20,26 @@ import (
 
 type dataRequestPolicyFunc = func(s network.Stream, dialAddr ma.Multiaddr) bool
 
-type Server struct {
-	dialer                host.Host
-	host                  host.Host
+// server implements the AutoNATv2 server.
+//
+// It rate limits requests on a global level, per peer level and on whether the request requires dial data.
+type server struct {
+	host       host.Host
+	dialerHost host.Host
+	limiter    *rateLimiter
+
+	// dialDataRequestPolicy is used to determine whether dialing the address requires receiving dial data.
+	// It is set to amplification attack prevention by default.
 	dialDataRequestPolicy dataRequestPolicyFunc
-	allowAllAddrs         bool
-	limiter               *rateLimiter
-	now                   func() time.Time // for tests
+
+	// for tests
+	now           func() time.Time
+	allowAllAddrs bool
 }
 
-func NewServer(host, dialer host.Host, s *autoNATSettings) *Server {
-	return &Server{
-		dialer:                dialer,
+func newServer(host, dialer host.Host, s *autoNATSettings) *server {
+	return &server{
+		dialerHost:            dialer,
 		host:                  host,
 		dialDataRequestPolicy: s.dataRequestPolicy,
 		allowAllAddrs:         s.allowAllAddrs,
@@ -45,15 +53,15 @@ func NewServer(host, dialer host.Host, s *autoNATSettings) *Server {
 	}
 }
 
-func (as *Server) Enable() {
+func (as *server) Enable() {
 	as.host.SetStreamHandler(DialProtocol, as.handleDialRequest)
 }
 
-func (as *Server) Disable() {
+func (as *server) Disable() {
 	as.host.RemoveStreamHandler(DialProtocol)
 }
 
-func (as *Server) handleDialRequest(s network.Stream) {
+func (as *server) handleDialRequest(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		s.Reset()
 		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)
@@ -85,6 +93,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 
 	nonce := msg.GetDialRequest().Nonce
+	// parse peer's addresses
 	var dialAddr ma.Multiaddr
 	var addrIdx int
 	for i, ab := range msg.GetDialRequest().GetAddrs() {
@@ -96,7 +105,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 			continue
 		}
 		if (!as.allowAllAddrs && !manet.IsPublicAddr(a)) ||
-			(!as.dialer.Network().CanDial(a)) {
+			(!as.dialerHost.Network().CanDial(a)) {
 			continue
 		}
 		dialAddr = a
@@ -105,6 +114,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 
 	w := pbio.NewDelimitedWriter(s)
+	// No dialable address
 	if dialAddr == nil {
 		msg = pb.Message{
 			Msg: &pb.Message_DialResponse{
@@ -122,6 +132,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 
 	isDialDataRequired := as.dialDataRequestPolicy(s, dialAddr)
+
 	if !as.limiter.Accept(p, isDialDataRequired) {
 		msg = pb.Message{
 			Msg: &pb.Message_DialResponse{
@@ -138,21 +149,23 @@ func (as *Server) handleDialRequest(s network.Stream) {
 		log.Debugf("rejecting request from %s: rate limit exceeded", p)
 		return
 	}
+	defer as.limiter.CompleteRequest(p)
 
 	if isDialDataRequired {
-		err := getDialData(w, r, &msg, addrIdx)
-		if err != nil {
+		if err := getDialData(w, r, &msg, addrIdx); err != nil {
 			s.Reset()
 			log.Debugf("%s refused dial data request: %s", p, err)
 			return
 		}
 	}
-	status := as.dialBack(s.Conn().RemotePeer(), dialAddr, nonce)
+
+	dialStatus := as.dialBack(s.Conn().RemotePeer(), dialAddr, nonce)
+
 	msg = pb.Message{
 		Msg: &pb.Message_DialResponse{
 			DialResponse: &pb.DialResponse{
 				Status:     pb.DialResponse_OK,
-				DialStatus: status,
+				DialStatus: dialStatus,
 				AddrIdx:    uint32(addrIdx),
 			},
 		},
@@ -164,17 +177,7 @@ func (as *Server) handleDialRequest(s network.Stream) {
 	}
 }
 
-// amplificationAttackPrevention requests data when the peer's observed IP address is different
-// from the dial back IP address
-func amplificationAttackPrevention(s network.Stream, dialAddr ma.Multiaddr) bool {
-	connIP, err := manet.ToIP(s.Conn().RemoteMultiaddr())
-	if err != nil {
-		return true
-	}
-	dialIP, _ := manet.ToIP(s.Conn().LocalMultiaddr()) // must be an IP multiaddr
-	return !connIP.Equal(dialIP)
-}
-
+// getDialData gets data from the client for dialing the address
 func getDialData(w pbio.Writer, r pbio.Reader, msg *pb.Message, addrIdx int) error {
 	numBytes := minHandshakeSizeBytes + rand.Intn(maxHandshakeSizeBytes-minHandshakeSizeBytes)
 	*msg = pb.Message{
@@ -200,16 +203,16 @@ func getDialData(w pbio.Writer, r pbio.Reader, msg *pb.Message, addrIdx int) err
 	return nil
 }
 
-func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialStatus {
+func (as *server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialStatus {
 	ctx, cancel := context.WithTimeout(context.Background(), dialBackDialTimeout)
-	as.dialer.Peerstore().AddAddr(p, addr, peerstore.TempAddrTTL)
+	as.dialerHost.Peerstore().AddAddr(p, addr, peerstore.TempAddrTTL)
 	defer func() {
 		cancel()
-		as.dialer.Network().ClosePeer(p)
-		as.dialer.Peerstore().ClearAddrs(p)
-		as.dialer.Peerstore().RemovePeer(p)
+		as.dialerHost.Network().ClosePeer(p)
+		as.dialerHost.Peerstore().ClearAddrs(p)
+		as.dialerHost.Peerstore().RemovePeer(p)
 	}()
-	s, err := as.dialer.NewStream(ctx, p, DialBackProtocol)
+	s, err := as.dialerHost.NewStream(ctx, p, DialBackProtocol)
 	if err != nil {
 		return pb.DialStatus_E_DIAL_ERROR
 	}
@@ -223,7 +226,7 @@ func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialSt
 	}
 
 	// Since the underlying connection is on a separate dialer, it'll be closed after this function returns.
-	// Connection close will drop all the queued writes. To ensure message delivery, do a close write and
+	// Connection close will drop all the queued writes. To ensure message delivery, do a CloseWrite and
 	// wait a second for the peer to Close its end of the stream.
 	s.CloseWrite()
 	s.SetDeadline(as.now().Add(1 * time.Second))
@@ -233,7 +236,8 @@ func (as *Server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialSt
 	return pb.DialStatus_OK
 }
 
-// rateLimiter implements a sliding window rate limit of requests per minute.
+// rateLimiter implements a sliding window rate limit of requests per minute. It allows 1 concurrent request
+// per peer. It rate limits requests globally, at a peer level and depending on whether it requires dial data.
 type rateLimiter struct {
 	PerPeerRPM  int
 	RPM         int
@@ -243,7 +247,9 @@ type rateLimiter struct {
 	reqs         []time.Time
 	peerReqs     map[peer.ID][]time.Time
 	dialDataReqs []time.Time
-	now          func() time.Time // for tests
+	ongoingReqs  map[peer.ID]struct{}
+
+	now func() time.Time // for tests
 }
 
 func (r *rateLimiter) Accept(p peer.ID, requiresData bool) bool {
@@ -251,17 +257,23 @@ func (r *rateLimiter) Accept(p peer.ID, requiresData bool) bool {
 	defer r.mu.Unlock()
 	if r.peerReqs == nil {
 		r.peerReqs = make(map[peer.ID][]time.Time)
+		r.ongoingReqs = make(map[peer.ID]struct{})
 	}
 
 	nw := r.now()
 	r.cleanup(p, nw)
 
+	if _, ok := r.ongoingReqs[p]; ok {
+		return false
+	}
 	if len(r.reqs) >= r.RPM || len(r.peerReqs[p]) >= r.PerPeerRPM {
 		return false
 	}
 	if requiresData && len(r.dialDataReqs) >= r.DialDataRPM {
 		return false
 	}
+
+	r.ongoingReqs[p] = struct{}{}
 	r.reqs = append(r.reqs, nw)
 	r.peerReqs[p] = append(r.peerReqs[p], nw)
 	if requiresData {
@@ -301,4 +313,22 @@ func (r *rateLimiter) cleanup(p peer.ID, now time.Time) {
 		}
 	}
 	r.peerReqs[p] = r.peerReqs[p][idx:]
+}
+
+func (r *rateLimiter) CompleteRequest(p peer.ID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.ongoingReqs, p)
+}
+
+// amplificationAttackPrevention is a dialDataRequestPolicy which requests data when the peer's observed
+// IP address is different from the dial back IP address
+func amplificationAttackPrevention(s network.Stream, dialAddr ma.Multiaddr) bool {
+	connIP, err := manet.ToIP(s.Conn().RemoteMultiaddr())
+	if err != nil {
+		return true
+	}
+	dialIP, _ := manet.ToIP(s.Conn().LocalMultiaddr()) // must be an IP multiaddr
+	return !connIP.Equal(dialIP)
 }

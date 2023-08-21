@@ -24,12 +24,12 @@ func newTestRequests(addrs []ma.Multiaddr, sendDialData bool) (reqs []Request) {
 
 func TestServerAllAddrsInvalid(t *testing.T) {
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.OptDisableTCP))
-	an := newAutoNAT(t, dialer, allowAll)
+	an := newAutoNAT(t, dialer, allowAllAddrs)
 	defer an.Close()
 	defer an.host.Close()
 	an.srv.Enable()
 
-	c := newAutoNAT(t, nil, allowAll)
+	c := newAutoNAT(t, nil, allowAllAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -46,7 +46,7 @@ func TestServerPrivateRejected(t *testing.T) {
 	defer an.host.Close()
 	an.srv.Enable()
 
-	c := newAutoNAT(t, nil, allowAll)
+	c := newAutoNAT(t, nil, allowAllAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -59,7 +59,7 @@ func TestServerPrivateRejected(t *testing.T) {
 
 func TestServerDataRequest(t *testing.T) {
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
-	an := newAutoNAT(t, dialer, allowAll, WithDataRequestPolicy(
+	an := newAutoNAT(t, dialer, allowAllAddrs, WithDataRequestPolicy(
 		func(s network.Stream, dialAddr ma.Multiaddr) bool {
 			if _, err := dialAddr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 				return true
@@ -102,11 +102,11 @@ func TestServerDataRequest(t *testing.T) {
 }
 
 func TestServerDial(t *testing.T) {
-	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10), allowAll)
+	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10), allowAllAddrs)
 	defer an.host.Close()
 	an.srv.Enable()
 
-	c := newAutoNAT(t, nil, allowAll)
+	c := newAutoNAT(t, nil, allowAllAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
@@ -141,22 +141,29 @@ func TestRateLimiter(t *testing.T) {
 	require.True(t, r.Accept("peer1", false))
 
 	cl.AdvanceBy(10 * time.Second)
+	require.False(t, r.Accept("peer1", false)) // first request is still active
+	r.CompleteRequest("peer1")
+
 	require.True(t, r.Accept("peer1", false))
+	r.CompleteRequest("peer1")
 
 	cl.AdvanceBy(10 * time.Second)
 	require.False(t, r.Accept("peer1", false))
 
 	cl.AdvanceBy(10 * time.Second)
 	require.True(t, r.Accept("peer2", false))
+	r.CompleteRequest("peer2")
 
 	cl.AdvanceBy(10 * time.Second)
 	require.False(t, r.Accept("peer3", false))
 
 	cl.AdvanceBy(21 * time.Second) // first request expired
 	require.True(t, r.Accept("peer1", false))
+	r.CompleteRequest("peer1")
 
 	cl.AdvanceBy(10 * time.Second)
 	require.True(t, r.Accept("peer3", true))
+	r.CompleteRequest("peer3")
 
 	cl.AdvanceBy(50 * time.Second)
 	require.False(t, r.Accept("peer3", true))

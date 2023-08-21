@@ -75,7 +75,7 @@ type AutoNAT struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	srv *Server
+	srv *server
 	cli *client
 
 	mx    sync.Mutex
@@ -123,7 +123,7 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 		ctx:           ctx,
 		cancel:        cancel,
 		sub:           sub,
-		srv:           NewServer(h, dialer, s),
+		srv:           newServer(h, dialer, s),
 		cli:           newClient(h),
 		allowAllAddrs: s.allowAllAddrs,
 		peers:         newPeersMap(),

@@ -84,7 +84,7 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 }
 
 func TestClientRequest(t *testing.T) {
-	an := newAutoNAT(t, nil, allowAll)
+	an := newAutoNAT(t, nil, allowAllAddrs)
 
 	addrs := an.host.Addrs()
 
@@ -127,7 +127,7 @@ func TestClientRequest(t *testing.T) {
 }
 
 func TestClientServerError(t *testing.T) {
-	an := newAutoNAT(t, nil, allowAll)
+	an := newAutoNAT(t, nil, allowAllAddrs)
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -179,7 +179,7 @@ func TestClientServerError(t *testing.T) {
 }
 
 func TestClientDataRequest(t *testing.T) {
-	an := newAutoNAT(t, nil, allowAll)
+	an := newAutoNAT(t, nil, allowAllAddrs)
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
@@ -275,7 +275,7 @@ func TestClientDataRequest(t *testing.T) {
 }
 
 func TestClientDialBacks(t *testing.T) {
-	an := newAutoNAT(t, nil, allowAll)
+	an := newAutoNAT(t, nil, allowAllAddrs)
 	addrs := an.host.Addrs()
 
 	p := bhost.NewBlankHost(swarmt.GenSwarm(t))

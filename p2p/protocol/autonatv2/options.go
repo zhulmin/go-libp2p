@@ -2,6 +2,7 @@ package autonatv2
 
 import "time"
 
+// autoNATSettings is used to configure AutoNAT
 type autoNATSettings struct {
 	allowAllAddrs     bool
 	serverRPM         int
@@ -25,11 +26,6 @@ func defaultSettings() *autoNATSettings {
 
 type AutoNATOption func(s *autoNATSettings) error
 
-func allowAll(s *autoNATSettings) error {
-	s.allowAllAddrs = true
-	return nil
-}
-
 func WithServerRateLimit(rpm, perPeerRPM, dialDataRPM int) AutoNATOption {
 	return func(s *autoNATSettings) error {
 		s.serverRPM = rpm
@@ -46,9 +42,7 @@ func WithDataRequestPolicy(drp dataRequestPolicyFunc) AutoNATOption {
 	}
 }
 
-func WithNow(now func() time.Time) AutoNATOption {
-	return func(s *autoNATSettings) error {
-		s.now = now
-		return nil
-	}
+func allowAllAddrs(s *autoNATSettings) error {
+	s.allowAllAddrs = true
+	return nil
 }
