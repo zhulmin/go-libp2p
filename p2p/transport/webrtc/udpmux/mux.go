@@ -36,7 +36,7 @@ const ReceiveMTU = 1500
 // callback is called.
 type UDPMux struct {
 	socket               net.PacketConn
-	unknownUfragCallback func(string, net.Addr) bool
+	unknownUfragCallback func(string, net.Addr) error
 
 	storage *udpMuxStorage
 
@@ -48,7 +48,7 @@ type UDPMux struct {
 
 var _ ice.UDPMux = &UDPMux{}
 
-func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr) bool) *UDPMux {
+func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr) error) *UDPMux {
 	ctx, cancel := context.WithCancel(context.Background())
 	mux := &UDPMux{
 		ctx:                  ctx,
@@ -185,9 +185,12 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 	}
 
 	connCreated, conn := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, udpAddr)
-	if connCreated && !mux.unknownUfragCallback(ufrag, udpAddr) {
-		conn.Close()
-		return false
+	if connCreated {
+		if err := mux.unknownUfragCallback(ufrag, udpAddr); err != nil {
+			log.Debugf("creating connection failed: %w", err)
+			conn.Close()
+			return false
+		}
 	}
 
 	if err := conn.Push(buf); err != nil {

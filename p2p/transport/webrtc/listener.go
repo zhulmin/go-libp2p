@@ -111,13 +111,12 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 	}
 
 	l.ctx, l.cancel = context.WithCancel(context.Background())
-	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) bool {
+	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) error {
 		select {
 		case <-inFlightQueueCh:
 			// we have space to accept, Yihaa
 		default:
-			log.Debug("candidate chan full, dropping incoming candidate")
-			return false
+			return errors.New("candidate chan full, dropping incoming candidate")
 		}
 
 		go func() {
@@ -147,7 +146,7 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 			}
 		}()
 
-		return true
+		return nil
 	})
 	l.mux = mux
 	mux.Start()
