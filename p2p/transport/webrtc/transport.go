@@ -1,3 +1,8 @@
+// Package libp2pwebrtc implements the WebRTC transport for go-libp2p,
+// as officially described in https://github.com/libp2p/specs/tree/master/webrtc.
+//
+// The udpmux subpackage contains the logic for multiplexing multiple WebRTC (ICE)
+// connections over a single UDP socket.
 package libp2pwebrtc
 
 import (
