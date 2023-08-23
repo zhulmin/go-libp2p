@@ -12,10 +12,13 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"time"
+
+	mrand "golang.org/x/exp/rand"
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -419,11 +422,12 @@ func genUfrag() string {
 		uFragLength   = uFragIdOffset + uFragIdLength
 	)
 
+	seed := [8]byte{}
+	rand.Read(seed[:])
+	r := mrand.New(mrand.NewSource(binary.BigEndian.Uint64(seed[:])))
 	b := make([]byte, uFragLength)
-	copy(b[:], uFragPrefix[:])
-	rand.Read(b[uFragIdOffset:])
 	for i := uFragIdOffset; i < uFragLength; i++ {
-		b[i] = uFragAlphabet[int(b[i])%len(uFragAlphabet)]
+		b[i] = uFragAlphabet[r.Intn(len(uFragAlphabet))]
 	}
 	return string(b)
 }
