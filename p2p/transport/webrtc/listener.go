@@ -13,9 +13,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
-
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
@@ -24,6 +23,7 @@ import (
 	"github.com/pion/ice/v2"
 	pionlogger "github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
+	"go.uber.org/zap/zapcore"
 )
 
 type connMultiaddrs struct {
@@ -202,9 +202,20 @@ func (l *listener) setupConnection(
 
 	settingEngine := webrtc.SettingEngine{}
 
-	// suppress pion logs
 	loggerFactory := pionlogger.NewDefaultLoggerFactory()
-	loggerFactory.DefaultLogLevel = pionlogger.LogLevelWarn
+	pionLogLevel := pionlogger.LogLevelDisabled
+	switch log.Level() {
+	case zapcore.DebugLevel:
+		pionLogLevel = pionlogger.LogLevelDebug
+	case zapcore.InfoLevel:
+		pionLogLevel = pionlogger.LogLevelInfo
+	case zapcore.WarnLevel:
+		pionLogLevel = pionlogger.LogLevelWarn
+	case zapcore.ErrorLevel:
+		pionLogLevel = pionlogger.LogLevelError
+	}
+	fmt.Println("log level", pionLogLevel)
+	loggerFactory.DefaultLogLevel = pionLogLevel
 	settingEngine.LoggerFactory = loggerFactory
 
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
