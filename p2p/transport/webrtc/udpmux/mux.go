@@ -21,18 +21,19 @@ const ReceiveMTU = 1500
 // UDPMux multiplexes multiple ICE connections over a single net.PacketConn,
 // generally a UDP socket.
 //
-// The connections are indexed by (ufrag, IP address family)
-// and by remote address from which the connection has received valid STUN/RTC
-// packets.
+// The connections are indexed by (ufrag, IP address family) and by remote
+// address from which the connection has received valid STUN/RTC packets.
 //
 // When a new packet is received on the underlying net.PacketConn, we
 // first check the address map to see if there is a connection associated with the
-// remote address. If found we forward the packet to the connection. If an associated
-// connection is not found, we check to see if the packet is a STUN packet. We then
-// fetch the ufrag of the remote from the STUN packet and use it to check if there
-// is a connection associated with the (ufrag, IP address family) pair. If found
-// we add the association to the address map. If not found, it is a previously
-// unseen IP address and the `unknownUfragCallback` callback is invoked.
+// remote address:
+// If found, we pass the packet to that connection.
+// Otherwise, we check to see if the packet is a STUN packet.
+// If it is, we read the ufrag from the STUN packet and use it to check if there
+// is a connection associated with the (ufrag, IP address family) pair.
+// If found we add the association to the address map.
+// Otherwise, this is a previously unseen IP address and the unknownUfragCallback
+// callback is called.
 type UDPMux struct {
 	socket               net.PacketConn
 	unknownUfragCallback func(string, net.Addr) bool
