@@ -35,7 +35,7 @@ func WithServerRateLimit(rpm, perPeerRPM, dialDataRPM int) AutoNATOption {
 	}
 }
 
-func WithDataRequestPolicy(drp dataRequestPolicyFunc) AutoNATOption {
+func withDataRequestPolicy(drp dataRequestPolicyFunc) AutoNATOption {
 	return func(s *autoNATSettings) error {
 		s.dataRequestPolicy = drp
 		return nil

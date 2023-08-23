@@ -22,44 +22,42 @@ func newTestRequests(addrs []ma.Multiaddr, sendDialData bool) (reqs []Request) {
 	return
 }
 
-func TestServerAllAddrsInvalid(t *testing.T) {
-	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.OptDisableTCP))
-	an := newAutoNAT(t, dialer, allowAllAddrs)
-	defer an.Close()
-	defer an.host.Close()
-	an.srv.Enable()
-
+func TestServerInvalidAddrsRejected(t *testing.T) {
 	c := newAutoNAT(t, nil, allowAllAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
-	identify(t, c, an)
+	t.Run("no transport", func(t *testing.T) {
+		dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableQUIC, swarmt.OptDisableTCP))
+		an := newAutoNAT(t, dialer, allowAllAddrs)
+		defer an.Close()
+		defer an.host.Close()
 
-	res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), true))
-	require.ErrorIs(t, err, ErrDialRefused)
-	require.Equal(t, Result{}, res)
-}
+		idAndWait(t, c, an)
 
-func TestServerPrivateRejected(t *testing.T) {
-	an := newAutoNAT(t, nil)
-	defer an.Close()
-	defer an.host.Close()
-	an.srv.Enable()
+		res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), true))
+		require.ErrorIs(t, err, ErrDialRefused)
+		require.Equal(t, Result{}, res)
+	})
 
-	c := newAutoNAT(t, nil, allowAllAddrs)
-	defer c.Close()
-	defer c.host.Close()
+	t.Run("private addrs", func(t *testing.T) {
+		an := newAutoNAT(t, nil)
+		defer an.Close()
+		defer an.host.Close()
 
-	identify(t, c, an)
+		idAndWait(t, c, an)
 
-	res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), true))
-	require.ErrorIs(t, err, ErrDialRefused)
-	require.Equal(t, Result{}, res)
+		res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), true))
+		require.ErrorIs(t, err, ErrDialRefused)
+		require.Equal(t, Result{}, res)
+	})
 }
 
 func TestServerDataRequest(t *testing.T) {
+	// server will skip all tcp addresses
 	dialer := bhost.NewBlankHost(swarmt.GenSwarm(t, swarmt.OptDisableTCP))
-	an := newAutoNAT(t, dialer, allowAllAddrs, WithDataRequestPolicy(
+	// ask for dial data for quic address
+	an := newAutoNAT(t, dialer, allowAllAddrs, withDataRequestPolicy(
 		func(s network.Stream, dialAddr ma.Multiaddr) bool {
 			if _, err := dialAddr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
 				return true
@@ -68,15 +66,14 @@ func TestServerDataRequest(t *testing.T) {
 		}),
 		WithServerRateLimit(10, 10, 10),
 	)
-	an.srv.Enable()
+	defer an.Close()
 	defer an.host.Close()
 
-	c := newAutoNAT(t, nil)
-	c.allowAllAddrs = true
+	c := newAutoNAT(t, nil, allowAllAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
-	identify(t, c, an)
+	idAndWait(t, c, an)
 
 	var quicAddr, tcpAddr ma.Multiaddr
 	for _, a := range c.host.Addrs() {
@@ -103,35 +100,52 @@ func TestServerDataRequest(t *testing.T) {
 
 func TestServerDial(t *testing.T) {
 	an := newAutoNAT(t, nil, WithServerRateLimit(10, 10, 10), allowAllAddrs)
+	defer an.Close()
 	defer an.host.Close()
-	an.srv.Enable()
 
 	c := newAutoNAT(t, nil, allowAllAddrs)
 	defer c.Close()
 	defer c.host.Close()
 
-	identify(t, c, an)
+	idAndWait(t, c, an)
 
-	randAddr := ma.StringCast("/ip4/1.2.3.4/tcp/2")
+	unreachableAddr := ma.StringCast("/ip4/1.2.3.4/tcp/2")
 	hostAddrs := c.host.Addrs()
-	res, err := c.CheckReachability(context.Background(),
-		append([]Request{{Addr: randAddr, SendDialData: true}}, newTestRequests(hostAddrs, false)...))
-	require.NoError(t, err)
-	require.Equal(t, Result{
-		Idx:          0,
-		Addr:         randAddr,
-		Reachability: network.ReachabilityPrivate,
-		Status:       pb.DialStatus_E_DIAL_ERROR,
-	}, res)
 
-	res, err = c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), false))
-	require.NoError(t, err)
-	require.Equal(t, Result{
-		Idx:          0,
-		Addr:         hostAddrs[0],
-		Reachability: network.ReachabilityPublic,
-		Status:       pb.DialStatus_OK,
-	}, res)
+	t.Run("unreachable addr", func(t *testing.T) {
+		res, err := c.CheckReachability(context.Background(),
+			append([]Request{{Addr: unreachableAddr, SendDialData: true}}, newTestRequests(hostAddrs, false)...))
+		require.NoError(t, err)
+		require.Equal(t, Result{
+			Idx:          0,
+			Addr:         unreachableAddr,
+			Reachability: network.ReachabilityPrivate,
+			Status:       pb.DialStatus_E_DIAL_ERROR,
+		}, res)
+	})
+
+	t.Run("reachable addr", func(t *testing.T) {
+		res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), false))
+		require.NoError(t, err)
+		require.Equal(t, Result{
+			Idx:          0,
+			Addr:         hostAddrs[0],
+			Reachability: network.ReachabilityPublic,
+			Status:       pb.DialStatus_OK,
+		}, res)
+	})
+
+	t.Run("dialback error", func(t *testing.T) {
+		c.host.RemoveStreamHandler(DialBackProtocol)
+		res, err := c.CheckReachability(context.Background(), newTestRequests(c.host.Addrs(), false))
+		require.NoError(t, err)
+		require.Equal(t, Result{
+			Idx:          0,
+			Addr:         hostAddrs[0],
+			Reachability: network.ReachabilityUnknown,
+			Status:       pb.DialStatus_E_DIAL_BACK_ERROR,
+		}, res)
+	})
 }
 
 func TestRateLimiter(t *testing.T) {

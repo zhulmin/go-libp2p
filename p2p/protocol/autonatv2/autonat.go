@@ -64,8 +64,9 @@ type Result struct {
 	Status pb.DialStatus
 }
 
-// AutoNAT implements the AutoNAT v2 client and server. Users can check reachability
-// for their addresses using the CheckReachability method.
+// AutoNAT implements the AutoNAT v2 client and server.
+// Users can check reachability for their addresses using the CheckReachability method.
+// The server provides amplification attack prevention and rate limiting.
 type AutoNAT struct {
 	host host.Host
 	sub  event.Subscription
@@ -140,6 +141,7 @@ func (an *AutoNAT) background() {
 		select {
 		case <-an.ctx.Done():
 			an.srv.Disable()
+			an.srv.Close()
 			an.peers = nil
 			an.wg.Done()
 			return

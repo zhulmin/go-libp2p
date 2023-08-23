@@ -21,7 +21,7 @@ import (
 type dataRequestPolicyFunc = func(s network.Stream, dialAddr ma.Multiaddr) bool
 
 // server implements the AutoNATv2 server.
-//
+// It can ask client to provide dial data before attempting the requested dial.
 // It rate limits requests on a global level, per peer level and on whether the request requires dial data.
 type server struct {
 	host       host.Host
@@ -53,14 +53,21 @@ func newServer(host, dialer host.Host, s *autoNATSettings) *server {
 	}
 }
 
+// Enable attaches the stream handler to the host.
 func (as *server) Enable() {
 	as.host.SetStreamHandler(DialProtocol, as.handleDialRequest)
 }
 
+// Disable removes the stream handles from the host.
 func (as *server) Disable() {
 	as.host.RemoveStreamHandler(DialProtocol)
 }
 
+func (as *server) Close() {
+	as.dialerHost.Close()
+}
+
+// handleDialRequest is the dial-request protocol stream handler
 func (as *server) handleDialRequest(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		s.Reset()
@@ -160,7 +167,6 @@ func (as *server) handleDialRequest(s network.Stream) {
 	}
 
 	dialStatus := as.dialBack(s.Conn().RemotePeer(), dialAddr, nonce)
-
 	msg = pb.Message{
 		Msg: &pb.Message_DialResponse{
 			DialResponse: &pb.DialResponse{
@@ -205,6 +211,7 @@ func getDialData(w pbio.Writer, r pbio.Reader, msg *pb.Message, addrIdx int) err
 
 func (as *server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialStatus {
 	ctx, cancel := context.WithTimeout(context.Background(), dialBackDialTimeout)
+	ctx = network.WithForceDirectDial(ctx, "autonatv2")
 	as.dialerHost.Peerstore().AddAddr(p, addr, peerstore.TempAddrTTL)
 	defer func() {
 		cancel()
@@ -212,10 +219,17 @@ func (as *server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialSt
 		as.dialerHost.Peerstore().ClearAddrs(p)
 		as.dialerHost.Peerstore().RemovePeer(p)
 	}()
-	s, err := as.dialerHost.NewStream(ctx, p, DialBackProtocol)
+
+	err := as.dialerHost.Connect(ctx, peer.AddrInfo{ID: p})
 	if err != nil {
 		return pb.DialStatus_E_DIAL_ERROR
 	}
+
+	s, err := as.dialerHost.NewStream(ctx, p, DialBackProtocol)
+	if err != nil {
+		return pb.DialStatus_E_DIAL_BACK_ERROR
+	}
+
 	defer s.Close()
 	s.SetDeadline(as.now().Add(dialBackStreamTimeout))
 
@@ -239,15 +253,20 @@ func (as *server) dialBack(p peer.ID, addr ma.Multiaddr, nonce uint64) pb.DialSt
 // rateLimiter implements a sliding window rate limit of requests per minute. It allows 1 concurrent request
 // per peer. It rate limits requests globally, at a peer level and depending on whether it requires dial data.
 type rateLimiter struct {
-	PerPeerRPM  int
-	RPM         int
+	// PerPeerRPM is the rate limit per peer
+	PerPeerRPM int
+	// RPM is the global rate limit
+	RPM int
+	// DialDataRPM is the rate limit for requests that require dial data
 	DialDataRPM int
 
 	mu           sync.Mutex
 	reqs         []time.Time
 	peerReqs     map[peer.ID][]time.Time
 	dialDataReqs []time.Time
-	ongoingReqs  map[peer.ID]struct{}
+	// ongoingReqs tracks in progress requests. This is used to disallow multiple concurrent requests by the
+	// same peer
+	ongoingReqs map[peer.ID]struct{}
 
 	now func() time.Time // for tests
 }

@@ -30,7 +30,7 @@ type client struct {
 }
 
 func newClient(h host.Host) *client {
-	return &client{host: h, dialData: make([]byte, 4096), dialBackQueues: make(map[uint64]chan ma.Multiaddr)}
+	return &client{host: h, dialData: make([]byte, 8000), dialBackQueues: make(map[uint64]chan ma.Multiaddr)}
 }
 
 // RegisterDialBack registers the client to receive DialBack streams initiated by the server to send the nonce.
@@ -152,32 +152,38 @@ func (ac *client) CheckReachability(ctx context.Context, p peer.ID, reqs []Reque
 		}
 		timer.Stop()
 	}
-	return ac.newResult(resp, reqs, dialBackAddr), nil
+	return ac.newResult(resp, reqs, dialBackAddr)
 }
 
-func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr ma.Multiaddr) Result {
+func (ac *client) newResult(resp *pb.DialResponse, reqs []Request, dialBackAddr ma.Multiaddr) (Result, error) {
 	idx := int(resp.AddrIdx)
 	addr := reqs[idx].Addr
 
-	rch := network.ReachabilityUnknown
-	status := resp.DialStatus
-	switch status {
+	var rch network.Reachability
+	switch resp.DialStatus {
 	case pb.DialStatus_OK:
-		if areAddrsConsistent(dialBackAddr, addr) {
-			rch = network.ReachabilityPublic
-		} else {
-			status = pb.DialStatus_E_DIAL_BACK_ERROR
+		if !areAddrsConsistent(dialBackAddr, addr) {
+			// The server reported a successful dial back but we didn't receive the nonce.
+			// Discard the response and fail.
+			return Result{}, fmt.Errorf("invalid repsonse: no dialback received")
 		}
+		rch = network.ReachabilityPublic
 	case pb.DialStatus_E_DIAL_ERROR:
 		rch = network.ReachabilityPrivate
+	case pb.DialStatus_E_DIAL_BACK_ERROR:
+		rch = network.ReachabilityUnknown
+	default:
+		// Unexpected response code. Discard the response and fail.
+		log.Warnf("invalid status code received in response for addr %s: %d", addr, resp.DialStatus)
+		return Result{}, fmt.Errorf("invalid response: invalid status code for addr %s: %d", addr, resp.DialStatus)
 	}
 
 	return Result{
 		Idx:          idx,
 		Addr:         addr,
 		Reachability: rch,
-		Status:       status,
-	}
+		Status:       resp.DialStatus,
+	}, nil
 }
 
 func (ac *client) sendDialData(req *pb.DialDataRequest, w pbio.Writer, msg *pb.Message) error {
@@ -217,6 +223,7 @@ func newDialRequest(reqs []Request, nonce uint64) pb.Message {
 	}
 }
 
+// handleDialBack receives the nonce on the dial-back stream
 func (ac *client) handleDialBack(s network.Stream) {
 	if err := s.Scope().SetService(ServiceName); err != nil {
 		log.Debugf("failed to attach stream to service %s: %w", ServiceName, err)

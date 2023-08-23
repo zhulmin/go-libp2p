@@ -2,8 +2,8 @@ package autonatv2
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,6 +19,7 @@ import (
 
 	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,6 +53,7 @@ func parseAddrs(t *testing.T, msg *pb.Message) []ma.Multiaddr {
 	return addrs
 }
 
+// idAndConnect identifies b to a and connects them
 func idAndConnect(t *testing.T, a, b host.Host) {
 	a.Peerstore().AddAddrs(b.ID(), b.Addrs(), peerstore.PermanentAddrTTL)
 	a.Peerstore().AddProtocols(b.ID(), DialProtocol)
@@ -60,7 +62,7 @@ func idAndConnect(t *testing.T, a, b host.Host) {
 	require.NoError(t, err)
 }
 
-// waitForPeer waits for a to process all peer events
+// waitForPeer waits for a to have 1 peer in the peerMap
 func waitForPeer(t *testing.T, a *AutoNAT) {
 	t.Helper()
 	require.Eventually(t, func() bool {
@@ -70,8 +72,8 @@ func waitForPeer(t *testing.T, a *AutoNAT) {
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
-// identify provides server address and protocol to client
-func identify(t *testing.T, cli *AutoNAT, srv *AutoNAT) {
+// idAndWait provides server address and protocol to client
+func idAndWait(t *testing.T, cli *AutoNAT, srv *AutoNAT) {
 	idAndConnect(t, cli.host, srv.host)
 	waitForPeer(t, cli)
 }
@@ -80,187 +82,204 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 	an := newAutoNAT(t, nil)
 	res, err := an.CheckReachability(context.Background(), []Request{{Addr: ma.StringCast("/ip4/192.168.0.1/udp/10/quic-v1")}})
 	require.Equal(t, res, Result{})
-	require.NotNil(t, err)
+	require.Contains(t, err.Error(), "private address cannot be verified by autonatv2")
 }
 
 func TestClientRequest(t *testing.T) {
 	an := newAutoNAT(t, nil, allowAllAddrs)
+	defer an.Close()
+	defer an.host.Close()
+
+	b := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer b.Close()
+	idAndConnect(t, an.host, b)
+	waitForPeer(t, an)
 
 	addrs := an.host.Addrs()
+	addrbs := make([][]byte, len(addrs))
+	for i := 0; i < len(addrs); i++ {
+		addrbs[i] = addrs[i].Bytes()
+	}
 
-	var gotReq atomic.Bool
-	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	p.SetStreamHandler(DialProtocol, func(s network.Stream) {
-		gotReq.Store(true)
+	var receivedRequest atomic.Bool
+	b.SetStreamHandler(DialProtocol, func(s network.Stream) {
+		receivedRequest.Store(true)
 		r := pbio.NewDelimitedReader(s, maxMsgSize)
 		var msg pb.Message
-		if err := r.ReadMsg(&msg); err != nil {
-			t.Error(err)
-			return
-		}
-		if msg.GetDialRequest() == nil {
-			t.Errorf("expected message to be of type DialRequest, got %T", msg.Msg)
-			return
-		}
-		addrsb := make([][]byte, len(addrs))
-		for i := 0; i < len(addrs); i++ {
-			addrsb[i] = addrs[i].Bytes()
-		}
-		if !reflect.DeepEqual(addrsb, msg.GetDialRequest().Addrs) {
-			t.Errorf("expected elements to be equal want: %s got: %s", addrsb, msg.GetDialRequest().Addrs)
-		}
+		assert.NoError(t, r.ReadMsg(&msg))
+		assert.NotNil(t, msg.GetDialRequest())
+		assert.Equal(t, addrbs, msg.GetDialRequest().Addrs)
 		s.Reset()
 	})
 
-	idAndConnect(t, an.host, p)
-	waitForPeer(t, an)
-
-	res, err := an.CheckReachability(
-		context.Background(),
-		[]Request{
-			{Addr: addrs[0], SendDialData: true},
-			{Addr: addrs[1]},
-		})
+	res, err := an.CheckReachability(context.Background(), []Request{
+		{Addr: addrs[0], SendDialData: true}, {Addr: addrs[1]},
+	})
 	require.Equal(t, res, Result{})
 	require.NotNil(t, err)
-	require.True(t, gotReq.Load())
+	require.True(t, receivedRequest.Load())
 }
 
 func TestClientServerError(t *testing.T) {
 	an := newAutoNAT(t, nil, allowAllAddrs)
-	addrs := an.host.Addrs()
+	defer an.Close()
+	defer an.host.Close()
 
-	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	idAndConnect(t, an.host, p)
+	b := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer b.Close()
+	idAndConnect(t, an.host, b)
 	waitForPeer(t, an)
 
-	done := make(chan bool)
 	tests := []struct {
-		handler func(network.Stream)
+		handler  func(network.Stream)
+		errorStr string
 	}{
-		{handler: func(s network.Stream) {
-			s.Reset()
-			done <- true
-		}},
-		{handler: func(s network.Stream) {
-			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pb.Message
-			r.ReadMsg(&msg)
-			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pb.Message{
-				Msg: &pb.Message_DialRequest{
-					DialRequest: &pb.DialRequest{
-						Addrs: [][]byte{},
-						Nonce: 0,
-					},
-				},
-			})
-			if err := r.ReadMsg(&msg); err == nil {
-				t.Errorf("expected read to fail: %T", msg.Msg)
-			}
-			done <- true
-		}},
+		{
+			handler: func(s network.Stream) {
+				s.Reset()
+			},
+			errorStr: "stream reset",
+		},
+		{
+			handler: func(s network.Stream) {
+				w := pbio.NewDelimitedWriter(s)
+				assert.NoError(t, w.WriteMsg(
+					&pb.Message{Msg: &pb.Message_DialRequest{DialRequest: &pb.DialRequest{}}}))
+			},
+			errorStr: "invalid msg type",
+		},
+		{
+			handler: func(s network.Stream) {
+				w := pbio.NewDelimitedWriter(s)
+				assert.NoError(t, w.WriteMsg(
+					&pb.Message{Msg: &pb.Message_DialResponse{
+						DialResponse: &pb.DialResponse{
+							Status: pb.DialResponse_E_DIAL_REFUSED,
+						},
+					}},
+				))
+			},
+			errorStr: ErrDialRefused.Error(),
+		},
 	}
 
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
-			p.SetStreamHandler(DialProtocol, tc.handler)
+			b.SetStreamHandler(DialProtocol, tc.handler)
+			addrs := an.host.Addrs()
 			res, err := an.CheckReachability(
 				context.Background(),
-				[]Request{
-					{Addr: addrs[0], SendDialData: true},
-					{Addr: addrs[1]},
-				})
+				newTestRequests(addrs, false))
 			require.Equal(t, res, Result{})
 			require.NotNil(t, err)
-			<-done
+			require.Contains(t, err.Error(), tc.errorStr)
 		})
 	}
 }
 
 func TestClientDataRequest(t *testing.T) {
 	an := newAutoNAT(t, nil, allowAllAddrs)
-	addrs := an.host.Addrs()
+	defer an.Close()
+	defer an.host.Close()
 
-	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	idAndConnect(t, an.host, p)
+	b := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer b.Close()
+	idAndConnect(t, an.host, b)
 	waitForPeer(t, an)
 
-	done := make(chan bool)
 	tests := []struct {
 		handler func(network.Stream)
+		name    string
 	}{
-		{handler: func(s network.Stream) {
-			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pb.Message
-			r.ReadMsg(&msg)
-			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pb.Message{
-				Msg: &pb.Message_DialDataRequest{
-					DialDataRequest: &pb.DialDataRequest{
-						AddrIdx:  0,
-						NumBytes: 10000,
-					},
-				}},
-			)
-			remain := 10000
-			for remain > 0 {
-				if err := r.ReadMsg(&msg); err != nil {
-					t.Errorf("expected a valid data response")
-					break
+		{
+			name: "provides dial data",
+			handler: func(s network.Stream) {
+				r := pbio.NewDelimitedReader(s, maxMsgSize)
+				var msg pb.Message
+				assert.NoError(t, r.ReadMsg(&msg))
+				w := pbio.NewDelimitedWriter(s)
+				if err := w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialDataRequest{
+						DialDataRequest: &pb.DialDataRequest{
+							AddrIdx:  0,
+							NumBytes: 10000,
+						},
+					}},
+				); err != nil {
+					t.Error(err)
+					s.Reset()
+					return
 				}
-				if msg.GetDialDataResponse() == nil {
-					t.Errorf("expected type DialDataResponse got %T", msg.Msg)
-					break
+				var dialData []byte
+				for len(dialData) < 10000 {
+					if err := r.ReadMsg(&msg); err != nil {
+						t.Error(err)
+						s.Reset()
+						return
+					}
+					if msg.GetDialDataResponse() == nil {
+						t.Errorf("expected to receive msg of type DialDataResponse")
+						s.Reset()
+						return
+					}
+					dialData = append(dialData, msg.GetDialDataResponse().Data...)
 				}
-				remain -= len(msg.GetDialDataResponse().Data)
-			}
-			s.Reset()
-			done <- true
-		}},
-		{handler: func(s network.Stream) {
-			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pb.Message
-			r.ReadMsg(&msg)
-			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pb.Message{
-				Msg: &pb.Message_DialDataRequest{
-					DialDataRequest: &pb.DialDataRequest{
-						AddrIdx:  1,
-						NumBytes: 10000,
-					},
-				}},
-			)
-			if err := r.ReadMsg(&msg); err == nil {
-				t.Errorf("expected to reject data request for low priority address")
-			}
-			s.Reset()
-			done <- true
-		}},
-		{handler: func(s network.Stream) {
-			r := pbio.NewDelimitedReader(s, maxMsgSize)
-			var msg pb.Message
-			r.ReadMsg(&msg)
-			w := pbio.NewDelimitedWriter(s)
-			w.WriteMsg(&pb.Message{
-				Msg: &pb.Message_DialDataRequest{
-					DialDataRequest: &pb.DialDataRequest{
-						AddrIdx:  0,
-						NumBytes: 1000_000,
-					},
-				}},
-			)
-			if err := r.ReadMsg(&msg); err == nil {
-				t.Errorf("expected to reject request for 1MB dial data")
-			}
-			s.Reset()
-			done <- true
-		}},
+				s.Reset()
+			},
+		},
+		{
+			name: "low priority addr",
+			handler: func(s network.Stream) {
+				r := pbio.NewDelimitedReader(s, maxMsgSize)
+				var msg pb.Message
+				assert.NoError(t, r.ReadMsg(&msg))
+				w := pbio.NewDelimitedWriter(s)
+				if err := w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialDataRequest{
+						DialDataRequest: &pb.DialDataRequest{
+							AddrIdx:  1,
+							NumBytes: 10000,
+						},
+					}},
+				); err != nil {
+					t.Error(err)
+					s.Reset()
+					return
+				}
+				assert.Error(t, r.ReadMsg(&msg))
+				s.Reset()
+			},
+		},
+		{
+			name: "too high dial data request",
+			handler: func(s network.Stream) {
+				r := pbio.NewDelimitedReader(s, maxMsgSize)
+				var msg pb.Message
+				assert.NoError(t, r.ReadMsg(&msg))
+				w := pbio.NewDelimitedWriter(s)
+				if err := w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialDataRequest{
+						DialDataRequest: &pb.DialDataRequest{
+							AddrIdx:  0,
+							NumBytes: 1 << 32,
+						},
+					}},
+				); err != nil {
+					t.Error(err)
+					s.Reset()
+					return
+				}
+				assert.Error(t, r.ReadMsg(&msg))
+				s.Reset()
+			},
+		},
 	}
 
-	for i, tc := range tests {
-		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
-			p.SetStreamHandler(DialProtocol, tc.handler)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			b.SetStreamHandler(DialProtocol, tc.handler)
+			addrs := an.host.Addrs()
+
 			res, err := an.CheckReachability(
 				context.Background(),
 				[]Request{
@@ -269,30 +288,101 @@ func TestClientDataRequest(t *testing.T) {
 				})
 			require.Equal(t, res, Result{})
 			require.NotNil(t, err)
-			<-done
 		})
 	}
 }
 
 func TestClientDialBacks(t *testing.T) {
 	an := newAutoNAT(t, nil, allowAllAddrs)
-	addrs := an.host.Addrs()
+	defer an.Close()
+	defer an.host.Close()
 
-	p := bhost.NewBlankHost(swarmt.GenSwarm(t))
-	idAndConnect(t, an.host, p)
+	b := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer b.Close()
+	idAndConnect(t, an.host, b)
 	waitForPeer(t, an)
 
+	dialerHost := bhost.NewBlankHost(swarmt.GenSwarm(t))
+	defer dialerHost.Close()
+
+	readReq := func(r pbio.Reader) ([]ma.Multiaddr, uint64, error) {
+		var msg pb.Message
+		if err := r.ReadMsg(&msg); err != nil {
+			return nil, 0, err
+		}
+		if msg.GetDialRequest() == nil {
+			return nil, 0, errors.New("no dial request in msg")
+		}
+		addrs := parseAddrs(t, &msg)
+		return addrs, msg.GetDialRequest().GetNonce(), nil
+	}
+
+	writeNonce := func(addr ma.Multiaddr, nonce uint64) error {
+		pid := an.host.ID()
+		dialerHost.Peerstore().AddAddr(pid, addr, peerstore.PermanentAddrTTL)
+		defer func() {
+			dialerHost.Network().ClosePeer(pid)
+			dialerHost.Peerstore().RemovePeer(pid)
+			dialerHost.Peerstore().ClearAddrs(pid)
+		}()
+		as, err := dialerHost.NewStream(context.Background(), pid, DialBackProtocol)
+		if err != nil {
+			return err
+		}
+		w := pbio.NewDelimitedWriter(as)
+		if err := w.WriteMsg(&pb.DialBack{Nonce: nonce}); err != nil {
+			return err
+		}
+		as.CloseWrite()
+		data := make([]byte, 1)
+		as.Read(data)
+		as.Close()
+		return nil
+	}
+
 	tests := []struct {
+		name    string
 		handler func(network.Stream)
 		success bool
-		isError bool
 	}{
 		{
+			name: "correct dial attempt",
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
-				if err := r.ReadMsg(&msg); err != nil {
+				w := pbio.NewDelimitedWriter(s)
+
+				addrs, nonce, err := readReq(r)
+				if err != nil {
+					s.Reset()
 					t.Error(err)
+					return
+				}
+				if err := writeNonce(addrs[1], nonce); err != nil {
+					s.Reset()
+					t.Error(err)
+					return
+				}
+				w.WriteMsg(&pb.Message{
+					Msg: &pb.Message_DialResponse{
+						DialResponse: &pb.DialResponse{
+							Status:     pb.DialResponse_OK,
+							DialStatus: pb.DialStatus_OK,
+							AddrIdx:    1,
+						},
+					},
+				})
+				s.Close()
+			},
+			success: true,
+		},
+		{
+			name: "no dial attempt",
+			handler: func(s network.Stream) {
+				r := pbio.NewDelimitedReader(s, maxMsgSize)
+				if _, _, err := readReq(r); err != nil {
+					s.Reset()
+					t.Error(err)
+					return
 				}
 				resp := &pb.DialResponse{
 					Status:     pb.DialResponse_OK,
@@ -310,68 +400,21 @@ func TestClientDialBacks(t *testing.T) {
 			success: false,
 		},
 		{
+			name: "invalid reported address",
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
-				r.ReadMsg(&msg)
-				req := msg.GetDialRequest()
-				addrs := parseAddrs(t, &msg)
-				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
-				defer hh.Close()
-				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
+				addrs, nonce, err := readReq(r)
 				if err != nil {
-					t.Error("failed to open stream", err)
 					s.Reset()
+					t.Error(err)
 					return
 				}
-				w := pbio.NewDelimitedWriter(as)
-				w.WriteMsg(&pb.DialBack{Nonce: req.Nonce})
-				as.CloseWrite()
 
-				w = pbio.NewDelimitedWriter(s)
-				w.WriteMsg(&pb.Message{
-					Msg: &pb.Message_DialResponse{
-						DialResponse: &pb.DialResponse{
-							Status:     pb.DialResponse_OK,
-							DialStatus: pb.DialStatus_OK,
-							AddrIdx:    0,
-						},
-					},
-				})
-				s.Close()
-			},
-			success: false,
-		},
-		{
-			handler: func(s network.Stream) {
-				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
-				r.ReadMsg(&msg)
-				req := msg.GetDialRequest()
-				addrs := parseAddrs(t, &msg)
-				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
-				defer hh.Close()
-				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
-				as.SetDeadline(time.Now().Add(5 * time.Second))
-				if err != nil {
-					t.Error("failed to open stream", err)
+				if err := writeNonce(addrs[1], nonce); err != nil {
 					s.Reset()
+					t.Error(err)
 					return
 				}
-				ww := pbio.NewDelimitedWriter(as)
-				if err := ww.WriteMsg(&pb.DialBack{Nonce: req.Nonce - 1}); err != nil {
-					s.Reset()
-					as.Reset()
-					return
-				}
-				as.CloseWrite()
-				defer func() {
-					data := make([]byte, 1)
-					as.Read(data)
-					as.Close()
-				}()
 
 				w := pbio.NewDelimitedWriter(s)
 				w.WriteMsg(&pb.Message{
@@ -388,86 +431,45 @@ func TestClientDialBacks(t *testing.T) {
 			success: false,
 		},
 		{
+			name: "invalid nonce",
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
-				r.ReadMsg(&msg)
-				req := msg.GetDialRequest()
-				addrs := parseAddrs(t, &msg)
-
-				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
-				defer hh.Close()
-				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
+				addrs, nonce, err := readReq(r)
 				if err != nil {
-					t.Error("failed to open stream", err)
 					s.Reset()
+					t.Error(err)
 					return
 				}
-
-				w := pbio.NewDelimitedWriter(as)
-				if err := w.WriteMsg(&pb.DialBack{Nonce: req.Nonce}); err != nil {
-					t.Error("failed to write nonce", err)
+				if err := writeNonce(addrs[0], nonce-1); err != nil {
 					s.Reset()
-					as.Reset()
+					t.Error(err)
 					return
 				}
-				as.CloseWrite()
-				defer func() {
-					data := make([]byte, 1)
-					as.Read(data)
-					as.Close()
-				}()
-
-				w = pbio.NewDelimitedWriter(s)
-
+				w := pbio.NewDelimitedWriter(s)
 				w.WriteMsg(&pb.Message{
 					Msg: &pb.Message_DialResponse{
 						DialResponse: &pb.DialResponse{
 							Status:     pb.DialResponse_OK,
 							DialStatus: pb.DialStatus_OK,
-							AddrIdx:    1,
+							AddrIdx:    0,
 						},
 					},
 				})
 				s.Close()
 			},
-			success: true,
+			success: false,
 		},
 		{
+			name: "invalid addr index",
 			handler: func(s network.Stream) {
 				r := pbio.NewDelimitedReader(s, maxMsgSize)
-				var msg pb.Message
-				r.ReadMsg(&msg)
-				req := msg.GetDialRequest()
-				addrs := parseAddrs(t, &msg)
-
-				hh := bhost.NewBlankHost(swarmt.GenSwarm(t))
-				defer hh.Close()
-				hh.Peerstore().AddAddr(s.Conn().RemotePeer(), addrs[1], peerstore.PermanentAddrTTL)
-				as, err := hh.NewStream(context.Background(), s.Conn().RemotePeer(), DialBackProtocol)
+				_, _, err := readReq(r)
 				if err != nil {
-					t.Error("failed to open stream", err)
 					s.Reset()
+					t.Error(err)
 					return
 				}
-
-				w := pbio.NewDelimitedWriter(as)
-				if err := w.WriteMsg(&pb.DialBack{Nonce: req.Nonce}); err != nil {
-					t.Error("failed to write nonce", err)
-					s.Reset()
-					as.Reset()
-					return
-				}
-				as.CloseWrite()
-				defer func() {
-					data := make([]byte, 1)
-					as.Read(data)
-					as.Close()
-				}()
-
-				w = pbio.NewDelimitedWriter(s)
-
+				w := pbio.NewDelimitedWriter(s)
 				w.WriteMsg(&pb.Message{
 					Msg: &pb.Message_DialResponse{
 						DialResponse: &pb.DialResponse{
@@ -480,13 +482,13 @@ func TestClientDialBacks(t *testing.T) {
 				s.Close()
 			},
 			success: false,
-			isError: true,
 		},
 	}
 
-	for i, tc := range tests {
-		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
-			p.SetStreamHandler(DialProtocol, tc.handler)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addrs := an.host.Addrs()
+			b.SetStreamHandler(DialProtocol, tc.handler)
 			res, err := an.CheckReachability(
 				context.Background(),
 				[]Request{
@@ -494,14 +496,8 @@ func TestClientDialBacks(t *testing.T) {
 					{Addr: addrs[1]},
 				})
 			if !tc.success {
-				if tc.isError {
-					require.Equal(t, res, Result{})
-					require.Error(t, err)
-				} else {
-					require.NoError(t, err)
-					require.Equal(t, res.Reachability, network.ReachabilityUnknown)
-					require.NotEqual(t, res.Status, pb.DialStatus_OK, "got: %d", res.Status)
-				}
+				require.Error(t, err)
+				require.Equal(t, Result{}, res)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, res.Reachability, network.ReachabilityPublic)
@@ -587,4 +583,56 @@ func TestPeersMap(t *testing.T) {
 		}
 		require.Equal(t, emptyPeerID, p.GetRand())
 	})
+}
+
+func TestAreAddrsConsistency(t *testing.T) {
+	tests := []struct {
+		name      string
+		localAddr ma.Multiaddr
+		dialAddr  ma.Multiaddr
+		success   bool
+	}{
+		{
+			name:      "simple match",
+			localAddr: ma.StringCast("/ip4/192.168.0.1/tcp/12345"),
+			dialAddr:  ma.StringCast("/ip4/1.2.3.4/tcp/23232"),
+			success:   true,
+		},
+		{
+			name:      "nat64 match",
+			localAddr: ma.StringCast("/ip6/1::1/tcp/12345"),
+			dialAddr:  ma.StringCast("/ip4/1.2.3.4/tcp/23232"),
+			success:   true,
+		},
+		{
+			name:      "simple mismatch",
+			localAddr: ma.StringCast("/ip4/192.168.0.1/tcp/12345"),
+			dialAddr:  ma.StringCast("/ip4/1.2.3.4/udp/23232/quic-v1"),
+			success:   false,
+		},
+		{
+			name:      "quic-vs-webtransport",
+			localAddr: ma.StringCast("/ip4/192.168.0.1/udp/12345/quic-v1"),
+			dialAddr:  ma.StringCast("/ip4/1.2.3.4/udp/123/quic-v1/webtransport"),
+			success:   false,
+		},
+		{
+			name:      "nat64 mismatch",
+			localAddr: ma.StringCast("/ip4/192.168.0.1/udp/12345/quic-v1"),
+			dialAddr:  ma.StringCast("/ip6/1::1/udp/123/quic-v1/"),
+			success:   false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if areAddrsConsistent(tc.localAddr, tc.dialAddr) != tc.success {
+				wantStr := "match"
+				if !tc.success {
+					wantStr = "mismatch"
+				}
+				t.Errorf("expected %s between\nlocal addr: %s\ndial addr:  %s", wantStr, tc.localAddr, tc.dialAddr)
+			}
+		})
+	}
+
 }
