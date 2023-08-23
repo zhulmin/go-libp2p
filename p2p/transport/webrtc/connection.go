@@ -131,7 +131,7 @@ func newConnection(
 
 // ConnState implements transport.CapableConn
 func (c *connection) ConnState() network.ConnectionState {
-	return network.ConnectionState{Transport: "p2p-webrtc-direct"}
+	return network.ConnectionState{Transport: "webrtc-direct"}
 }
 
 // Close closes the underlying peerconnection.
