@@ -161,7 +161,7 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 	// with it. If yes, we push the received packet to the connection
 	if conn, ok := mux.storage.GetConnByAddr(udpAddr); ok {
 		if err := conn.Push(buf); err != nil {
-			log.Errorf("could not push packet: %v", err)
+			log.Debugf("could not push packet: %v", err)
 			return false
 		}
 		return true
@@ -173,28 +173,32 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 	}
 
 	msg := &stun.Message{Raw: buf}
-	if err := msg.Decode(); err != nil || msg.Type != stun.BindingRequest {
-		log.Debug("incoming message should be a STUN binding request")
+	if err := msg.Decode(); err != nil {
+		log.Debugf("failed to decode STUN message: %s", err)
+		return false
+	}
+	if msg.Type != stun.BindingRequest {
+		log.Debugf("incoming message should be a STUN binding request, got %s", msg.Type)
 		return false
 	}
 
 	ufrag, err := ufragFromSTUNMessage(msg)
 	if err != nil {
-		log.Debug("could not find STUN username: %w", err)
+		log.Debugf("could not find STUN username: %s", err)
 		return false
 	}
 
 	connCreated, conn := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, udpAddr)
 	if connCreated {
 		if err := mux.unknownUfragCallback(ufrag, udpAddr); err != nil {
-			log.Debugf("creating connection failed: %w", err)
+			log.Debugf("creating connection failed: %s", err)
 			conn.Close()
 			return false
 		}
 	}
 
 	if err := conn.Push(buf); err != nil {
-		log.Errorf("could not push packet: %v", err)
+		log.Debugf("could not push packet: %v", err)
 		return false
 	}
 	return true
