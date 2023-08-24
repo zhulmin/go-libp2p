@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
+
 	"github.com/libp2p/go-libp2p/core/network"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
@@ -279,7 +281,7 @@ func (l *listener) setupConnection(
 
 	localMultiaddrWithoutCerthash, _ := ma.SplitFunc(l.localMultiaddr, func(c ma.Component) bool { return c.Protocol().Code == ma.P_CERTHASH })
 
-	handshakeChannel := newStream(rawDatachannel, rwc, l.localAddr, addr.raddr, func() {})
+	handshakeChannel := newStream(rawDatachannel, rwc, func() {})
 	// The connection is instantiated before performing the Noise handshake. This is
 	// to handle the case where the remote is faster and attempts to initiate a stream
 	// before the ondatachannel callback can be set.
@@ -299,18 +301,22 @@ func (l *listener) setupConnection(
 	}
 
 	// we do not yet know A's peer ID so accept any inbound
-	secureConn, err := l.transport.noiseHandshake(ctx, pc, handshakeChannel, "", crypto.SHA256, true)
+	remotePubKey, err := l.transport.noiseHandshake(ctx, pc, handshakeChannel, "", crypto.SHA256, true)
+	if err != nil {
+		return nil, err
+	}
+	remotePeer, err := peer.IDFromPublicKey(remotePubKey)
 	if err != nil {
 		return nil, err
 	}
 
 	// earliest point where we know the remote's peerID
-	if err := scope.SetPeer(secureConn.RemotePeer()); err != nil {
+	if err := scope.SetPeer(remotePeer); err != nil {
 		return nil, err
 	}
 
-	conn.setRemotePeer(secureConn.RemotePeer())
-	conn.setRemotePublicKey(secureConn.RemotePublicKey())
+	conn.setRemotePeer(remotePeer)
+	conn.setRemotePublicKey(remotePubKey)
 
 	return conn, err
 }

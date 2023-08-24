@@ -1,7 +1,6 @@
 package libp2pwebrtc
 
 import (
-	"net"
 	"sync"
 	"time"
 
@@ -86,9 +85,6 @@ type stream struct {
 	id          uint16 // for logging purposes
 	dataChannel *datachannel.DataChannel
 	closeErr    error
-
-	laddr net.Addr
-	raddr net.Addr
 }
 
 var _ network.MuxedStream = &stream{}
@@ -96,7 +92,6 @@ var _ network.MuxedStream = &stream{}
 func newStream(
 	channel *webrtc.DataChannel,
 	rwc datachannel.ReadWriteCloser,
-	laddr, raddr net.Addr,
 	onDone func(),
 ) *stream {
 	s := &stream{
@@ -110,9 +105,6 @@ func newStream(
 		id:          *channel.ID(),
 		dataChannel: rwc.(*datachannel.DataChannel),
 		onDone:      onDone,
-
-		laddr: laddr,
-		raddr: raddr,
 	}
 
 	channel.SetBufferedAmountLowThreshold(bufferedAmountLowThreshold)
@@ -158,9 +150,6 @@ func (s *stream) Reset() error {
 	}
 	return closeReadErr
 }
-
-func (s *stream) LocalAddr() net.Addr  { return s.laddr }
-func (s *stream) RemoteAddr() net.Addr { return s.raddr }
 
 func (s *stream) SetDeadline(t time.Time) error {
 	_ = s.SetReadDeadline(t)

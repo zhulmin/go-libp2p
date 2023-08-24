@@ -371,13 +371,12 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 	if err != nil {
 		return nil, fmt.Errorf("ice connection did not have selected candidate pair: error: %w", err)
 	}
-	laddr := &net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)}
 
-	channel := newStream(rawHandshakeChannel, detached, laddr, raddr, func() {})
+	channel := newStream(rawHandshakeChannel, detached, func() {})
 	// the local address of the selected candidate pair should be the
 	// local address for the connection, since different datachannels
 	// are multiplexed over the same SCTP connection
-	localAddr, err := manet.FromNetAddr(channel.LocalAddr())
+	localAddr, err := manet.FromNetAddr(&net.UDPAddr{IP: net.ParseIP(cp.Local.Address), Port: int(cp.Local.Port)})
 	if err != nil {
 		return nil, err
 	}
@@ -401,15 +400,15 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		return nil, err
 	}
 
-	secConn, err := t.noiseHandshake(ctx, pc, channel, p, remoteHashFunction, false)
+	remotePubKey, err := t.noiseHandshake(ctx, pc, channel, p, remoteHashFunction, false)
 	if err != nil {
 		return conn, err
 	}
 	if t.gater != nil && !t.gater.InterceptSecured(network.DirOutbound, p, conn) {
-		secConn.Close()
+		conn.Close()
 		return nil, fmt.Errorf("secured connection gated")
 	}
-	conn.setRemotePublicKey(secConn.RemotePublicKey())
+	conn.setRemotePublicKey(remotePubKey)
 	return conn, nil
 }
 
@@ -486,7 +485,7 @@ func (t *WebRTCTransport) generateNoisePrologue(pc *webrtc.PeerConnection, hash 
 	return result, nil
 }
 
-func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *stream, peer peer.ID, hash crypto.Hash, inbound bool) (sec.SecureConn, error) {
+func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerConnection, datachannel *stream, peer peer.ID, hash crypto.Hash, inbound bool) (ic.PubKey, error) {
 	prologue, err := t.generateNoisePrologue(pc, hash, inbound)
 	if err != nil {
 		return nil, fmt.Errorf("generate prologue: %w", err)
@@ -500,15 +499,20 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	}
 	var secureConn sec.SecureConn
 	if inbound {
-		secureConn, err = sessionTransport.SecureOutbound(ctx, datachannel, peer)
+		secureConn, err = sessionTransport.SecureOutbound(ctx, fakeStreamConn{datachannel}, peer)
 		if err != nil {
-			return secureConn, fmt.Errorf("failed to secure inbound connection: %w", err)
+			return nil, fmt.Errorf("failed to secure inbound connection: %w", err)
 		}
 	} else {
-		secureConn, err = sessionTransport.SecureInbound(ctx, datachannel, peer)
+		secureConn, err = sessionTransport.SecureInbound(ctx, fakeStreamConn{datachannel}, peer)
 		if err != nil {
-			return secureConn, fmt.Errorf("failed to secure outbound connection: %w", err)
+			return nil, fmt.Errorf("failed to secure outbound connection: %w", err)
 		}
 	}
-	return secureConn, nil
+	return secureConn.RemotePublicKey(), nil
 }
+
+type fakeStreamConn struct{ *stream }
+
+func (fakeStreamConn) LocalAddr() net.Addr  { return nil }
+func (fakeStreamConn) RemoteAddr() net.Addr { return nil }

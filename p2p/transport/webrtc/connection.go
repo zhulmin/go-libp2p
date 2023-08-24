@@ -173,13 +173,7 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 	if err != nil {
 		return nil, fmt.Errorf("open stream: %w", err)
 	}
-	str := newStream(
-		dc,
-		rwc,
-		nil,
-		nil,
-		func() { c.removeStream(streamID) },
-	)
+	str := newStream(dc, rwc, func() { c.removeStream(streamID) })
 	if err := c.addStream(str); err != nil {
 		str.Close()
 		return nil, err
@@ -192,13 +186,7 @@ func (c *connection) AcceptStream() (network.MuxedStream, error) {
 	case <-c.ctx.Done():
 		return nil, c.closeErr
 	case dc := <-c.acceptQueue:
-		str := newStream(
-			dc.channel,
-			dc.stream,
-			nil,
-			nil,
-			func() { c.removeStream(*dc.channel.ID()) },
-		)
+		str := newStream(dc.channel, dc.stream, func() { c.removeStream(*dc.channel.ID()) })
 		if err := c.addStream(str); err != nil {
 			str.Close()
 			return nil, err

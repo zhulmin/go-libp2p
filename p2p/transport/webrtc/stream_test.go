@@ -98,8 +98,8 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	var clientDone, serverDone bool
-	clientStr := newStream(client.dc, client.rwc, nil, nil, func() { clientDone = true })
-	serverStr := newStream(server.dc, server.rwc, nil, nil, func() { serverDone = true })
+	clientStr := newStream(client.dc, client.rwc, func() { clientDone = true })
+	serverStr := newStream(server.dc, server.rwc, func() { serverDone = true })
 
 	// send a foobar from the client
 	n, err := clientStr.Write([]byte("foobar"))
@@ -137,8 +137,8 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 func TestStreamPartialReads(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
-	serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
+	clientStr := newStream(client.dc, client.rwc, func() {})
+	serverStr := newStream(server.dc, server.rwc, func() {})
 
 	_, err := serverStr.Write([]byte("foobar"))
 	require.NoError(t, err)
@@ -160,8 +160,8 @@ func TestStreamPartialReads(t *testing.T) {
 func TestStreamSkipEmptyFrames(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
-	serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
+	clientStr := newStream(client.dc, client.rwc, func() {})
+	serverStr := newStream(server.dc, server.rwc, func() {})
 
 	for i := 0; i < 10; i++ {
 		require.NoError(t, serverStr.writer.WriteMsg(&pb.Message{}))
@@ -195,7 +195,7 @@ func TestStreamSkipEmptyFrames(t *testing.T) {
 func TestStreamReadReturnsOnClose(t *testing.T) {
 	client, _ := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
+	clientStr := newStream(client.dc, client.rwc, func() {})
 	errChan := make(chan error, 1)
 	go func() {
 		_, err := clientStr.Read([]byte{0})
@@ -215,8 +215,8 @@ func TestStreamResets(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
 	var clientDone, serverDone bool
-	clientStr := newStream(client.dc, client.rwc, nil, nil, func() { clientDone = true })
-	serverStr := newStream(server.dc, server.rwc, nil, nil, func() { serverDone = true })
+	clientStr := newStream(client.dc, client.rwc, func() { clientDone = true })
+	serverStr := newStream(server.dc, server.rwc, func() { serverDone = true })
 
 	// send a foobar from the client
 	_, err := clientStr.Write([]byte("foobar"))
@@ -248,8 +248,8 @@ func TestStreamResets(t *testing.T) {
 func TestStreamReadDeadlineAsync(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
-	serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
+	clientStr := newStream(client.dc, client.rwc, func() {})
+	serverStr := newStream(server.dc, server.rwc, func() {})
 
 	timeout := 100 * time.Millisecond
 	if os.Getenv("CI") != "" {
@@ -279,8 +279,8 @@ func TestStreamReadDeadlineAsync(t *testing.T) {
 func TestStreamWriteDeadlineAsync(t *testing.T) {
 	client, server := getDetachedDataChannels(t)
 
-	clientStr := newStream(client.dc, client.rwc, nil, nil, func() {})
-	serverStr := newStream(server.dc, server.rwc, nil, nil, func() {})
+	clientStr := newStream(client.dc, client.rwc, func() {})
+	serverStr := newStream(server.dc, server.rwc, func() {})
 	_ = serverStr
 
 	b := make([]byte, 1024)
