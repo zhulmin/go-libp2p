@@ -355,7 +355,7 @@ func ExampleWellKnownHandler() {
 
 func ExampleHost_NewRoundTripper() {
 
-	serverStreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/50226/quic-v1"))
+	serverStreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/50227/quic-v1"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func ExampleHost_NewRoundTripper() {
 	}
 	rt := client.NewRoundTripper()
 
-	for _, addrToDial := range [...]string{"http://127.0.0.1:50225/hello/1", "multiaddr:/ip4/127.0.0.1/udp/50226/quic-v1/p2p/" + server.PeerID().String() + "/httppath/hello%2f1", "multiaddr:/p2p/" + server.PeerID().String() + "/httppath/hello%2f1"} {
+	for _, addrToDial := range [...]string{"http://127.0.0.1:50225/hello/1", "multiaddr:/ip4/127.0.0.1/udp/50227/quic-v1/p2p/" + server.PeerID().String() + "/httppath/hello%2f1", "multiaddr:/p2p/" + server.PeerID().String() + "/httppath/hello%2f1"} {
 		// Create an http.Roundtripper for the server
 
 		resp, err := (&http.Client{Transport: rt}).Get(addrToDial)
