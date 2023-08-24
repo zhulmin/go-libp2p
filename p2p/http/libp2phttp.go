@@ -22,6 +22,7 @@ import (
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	gostream "github.com/libp2p/go-libp2p/p2p/gostream"
 	ma "github.com/multiformats/go-multiaddr"
@@ -354,12 +355,6 @@ type PeerMetadataGetter interface {
 	GetPeerMetadata() (PeerMeta, error)
 }
 
-type streamRoundTripper struct {
-	server   peer.ID
-	h        host.Host
-	httpHost *Host
-}
-
 type streamReadCloser struct {
 	io.ReadCloser
 	s network.Stream
@@ -368,34 +363,6 @@ type streamReadCloser struct {
 func (s *streamReadCloser) Close() error {
 	s.s.Close()
 	return s.ReadCloser.Close()
-}
-
-func (rt *streamRoundTripper) GetPeerMetadata() (PeerMeta, error) {
-	return rt.httpHost.getAndStorePeerMetadata(rt, rt.server)
-}
-
-// RoundTrip implements http.RoundTripper.
-func (rt *streamRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	s, err := rt.h.NewStream(r.Context(), rt.server, ProtocolIDForMultistreamSelect)
-	if err != nil {
-		return nil, err
-	}
-
-	go func() {
-		defer s.CloseWrite()
-		r.Write(s)
-		if r.Body != nil {
-			r.Body.Close()
-		}
-	}()
-
-	resp, err := http.ReadResponse(bufio.NewReader(s), r)
-	if err != nil {
-		return nil, err
-	}
-	resp.Body = &streamReadCloser{resp.Body, s}
-
-	return resp, nil
 }
 
 // roundTripperForSpecificServer is an http.RoundTripper targets a specific server. Still reuses the underlying RoundTripper for the requests.
@@ -439,6 +406,11 @@ func (rt *roundTripperForSpecificServer) RoundTrip(r *http.Request) (*http.Respo
 	if (r.URL.Scheme != "" && r.URL.Scheme != rt.scheme) || (r.URL.Host != "" && r.URL.Host != rt.targetServerAddr) {
 		return nil, fmt.Errorf("this transport is only for requests to %s://%s", rt.scheme, rt.targetServerAddr)
 	}
+	if rt.scheme == "multiaddr" {
+		// This is a request over a libp2p stream
+		return rt.httpHost.roundTripWithStreamHost(r, rt.server)
+	}
+
 	r.URL.Scheme = rt.scheme
 	r.URL.Host = rt.targetServerAddr
 	r.Host = rt.sni
@@ -523,7 +495,7 @@ func (h *Host) NamespaceRoundTripper(roundtripper http.RoundTripper, p protocol.
 // and namespacing the roundripper yourself, then creating clients from the
 // namespace round tripper.
 func (h *Host) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...RoundTripperOption) (http.Client, error) {
-	rt, err := h.NewConstrainedRoundTripper(server, opts...)
+	rt, err := h.ConstrainRoundTripperToServer(h.NewRoundTripper(), server, opts...)
 	if err != nil {
 		return http.Client{}, err
 	}
@@ -536,10 +508,133 @@ func (h *Host) NamespacedClient(p protocol.ID, server peer.AddrInfo, opts ...Rou
 	return http.Client{Transport: nrt}, nil
 }
 
-// NewConstrainedRoundTripper returns an http.RoundTripper that can fulfill and HTTP
+type libp2pHTTPRoundTripper struct {
+	h             *Host
+	httpTransport *http.Transport
+}
+
+// RoundTrip implements http.RoundTripper.
+func (rt *libp2pHTTPRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Scheme == "http" || r.URL.Scheme == "https" {
+		return rt.httpTransport.RoundTrip(r)
+	}
+
+	if r.URL.Scheme == "libp2p-stream" {
+		// Internal scheme we use when we already know we are going to make a stream based request
+		peerID, err := peer.Decode(r.URL.Host)
+		if err == nil {
+			return rt.h.roundTripWithStreamHost(r, peerID)
+		}
+	}
+
+	if r.URL.Scheme != "multiaddr" {
+		return nil, fmt.Errorf("unknown scheme %s", r.URL.Scheme)
+	}
+
+	// The request is to a multiaddr.
+	m, err := ma.NewMultiaddr(r.URL.RawPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid multiaddr: %w", err)
+	}
+	m, isHTTP := normalizeHTTPMultiaddr(m)
+	parsedMultiaddr := parseMultiaddr(m)
+	if isHTTP {
+		// This is an http multiaddr, lets parse this a standard http(s) request and use the httpTransport
+		if parsedMultiaddr.sni != "" && parsedMultiaddr.sni != parsedMultiaddr.host {
+			return nil, fmt.Errorf("using an SNI different from the host is not currently supported")
+		}
+		host := parsedMultiaddr.host
+		if parsedMultiaddr.port != "" {
+			host += ":" + parsedMultiaddr.port
+		}
+		scheme := "http"
+		if parsedMultiaddr.useHTTPS {
+			scheme = "https"
+		}
+		r.URL, err = url.Parse(scheme + "://" + host)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse multiaddr: %w", err)
+		}
+
+		return rt.httpTransport.RoundTrip(r)
+	}
+
+	// This is a request over a libp2p stream
+
+	if rt.h.StreamHost == nil {
+		return nil, fmt.Errorf("no StreamHost set. Can not make a request with a stream based transport")
+	}
+	serverIDS, err := m.ValueForProtocol(ma.P_P2P)
+	if err != nil {
+		return nil, fmt.Errorf("invalid multiaddr, missing p2p component: %w", err)
+	}
+	serverID, err := peer.Decode(serverIDS)
+	if err != nil {
+		return nil, fmt.Errorf("invalid multiaddr, p2p component failed to decode: %w", err)
+	}
+
+	// Does the multiaddr include a transport?
+	transportAddr, _ := ma.SplitFunc(m, func(c ma.Component) bool {
+		return c.Protocol().Code == ma.P_P2P
+	})
+	if transportAddr != nil && len(transportAddr.Bytes()) > 0 {
+		rt.h.StreamHost.Peerstore().AddAddr(serverID, transportAddr, peerstore.TempAddrTTL)
+	}
+
+	r.URL, err = url.Parse("/" + parsedMultiaddr.path)
+	// We set the host and scheme so relative redirects (on the same server) work
+	r.URL.Host = serverIDS
+	r.URL.Scheme = "libp2p-stream"
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse multiaddr path: %w", err)
+	}
+	return rt.h.roundTripWithStreamHost(r, serverID)
+}
+
+// NewRoundTripper returns an http.RoundTripper that can fulfill HTTP request.
+// It may use an HTTP transport or a libp2p stream based transport.
+// For use over libp2p stream based transports, the request URI must be of the
+// form: `multiaddr:<peer-multiaddr>/httppath/<percent-encoded-path>`. So, for
+// example: `multiaddr:/ip4/1.2.3.4/udp/4321/p2p/qmFoo/httppath/foo%2fbar` would
+// be a valid URI scheme to refer to the `/foo/bar` HTTP resource on the peer with ID
+// `qmFoo`.
+func (h *Host) NewRoundTripper() http.RoundTripper {
+	httpTransport := h.DefaultClientRoundTripper
+	if httpTransport == nil {
+		httpTransport = &http.Transport{}
+	}
+
+	return &libp2pHTTPRoundTripper{h: h, httpTransport: httpTransport}
+}
+
+func (h *Host) roundTripWithStreamHost(r *http.Request, serverID peer.ID) (*http.Response, error) {
+	// Use the stream based transport
+	s, err := h.StreamHost.NewStream(r.Context(), serverID, ProtocolIDForMultistreamSelect)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		defer s.CloseWrite()
+		r.Write(s)
+		if r.Body != nil {
+			r.Body.Close()
+		}
+	}()
+
+	resp, err := http.ReadResponse(bufio.NewReader(s), r)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = &streamReadCloser{resp.Body, s}
+
+	return resp, nil
+}
+
+// ConstrainRoundTripperToServer returns an http.RoundTripper that can fulfill and HTTP
 // request to the given server. It may use an HTTP transport or a stream based
 // transport. It is valid to pass an empty server.ID.
-func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTripperOption) (http.RoundTripper, error) {
+func (h *Host) ConstrainRoundTripperToServer(rt http.RoundTripper, server peer.AddrInfo, opts ...RoundTripperOption) (http.RoundTripper, error) {
 	options := roundTripperOpts{}
 	for _, o := range opts {
 		options = o(options)
@@ -585,19 +680,12 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 				h.DefaultClientRoundTripper = &http.Transport{}
 			}
 		})
-		rt := h.DefaultClientRoundTripper
-		ownRoundtripper := false
-		if parsed.sni != parsed.host {
-			// We have a different host and SNI (e.g. using an IP address but specifying a SNI)
-			// We need to make our own transport to support this.
-			rt = rt.Clone()
-			rt.TLSClientConfig.ServerName = parsed.sni
-			ownRoundtripper = true
+		if parsed.sni != "" && parsed.sni != parsed.host {
+			return nil, fmt.Errorf("using an SNI different from the host is not currently supported")
 		}
 
 		return &roundTripperForSpecificServer{
 			RoundTripper:     rt,
-			ownRoundtripper:  ownRoundtripper,
 			httpHost:         h,
 			server:           server.ID,
 			targetServerAddr: parsed.host + ":" + parsed.port,
@@ -620,13 +708,20 @@ func (h *Host) NewConstrainedRoundTripper(server peer.AddrInfo, opts ...RoundTri
 		}
 	}
 
-	return &streamRoundTripper{h: h.StreamHost, server: server.ID, httpHost: h}, nil
+	return &roundTripperForSpecificServer{
+		RoundTripper:     rt,
+		httpHost:         h,
+		server:           server.ID,
+		targetServerAddr: fmt.Sprintf("multiaddr:/p2p/%s", server.ID),
+		scheme:           "multiaddr",
+	}, nil
 }
 
 type httpMultiaddr struct {
 	useHTTPS bool
 	host     string
 	port     string
+	path     string
 	sni      string
 }
 
@@ -642,9 +737,14 @@ func parseMultiaddr(addr ma.Multiaddr) httpMultiaddr {
 			out.useHTTPS = true
 		case ma.P_SNI:
 			out.sni = c.Value()
-
+		case P_HTTPPATH:
+			var err error
+			out.path, err = url.PathUnescape(c.Value())
+			if err != nil {
+				log.Warnf("failed to unescape path: %s", err)
+			}
 		}
-		return out.host == "" || out.port == "" || !out.useHTTPS || out.sni == ""
+		return out.host == "" || out.port == "" || !out.useHTTPS || out.sni == "" || out.path == ""
 	})
 
 	if out.useHTTPS && out.sni == "" {

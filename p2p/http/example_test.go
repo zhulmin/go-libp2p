@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -257,7 +258,7 @@ func ExampleHost_NamespaceRoundTripper() {
 	defer server.Close()
 
 	// Create an http.Roundtripper for the server
-	rt, err := client.NewConstrainedRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	rt, err := client.ConstrainRoundTripperToServer(client.NewRoundTripper(), peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -283,7 +284,7 @@ func ExampleHost_NamespaceRoundTripper() {
 	// Output: Hello World
 }
 
-func ExampleHost_NewConstrainedRoundTripper() {
+func ExampleHost_ConstrainRoundTripperToServer() {
 	var client libp2phttp.Host
 
 	// Create the server
@@ -301,7 +302,7 @@ func ExampleHost_NewConstrainedRoundTripper() {
 	defer server.Close()
 
 	// Create an http.Roundtripper for the server
-	rt, err := client.NewConstrainedRoundTripper(peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
+	rt, err := client.ConstrainRoundTripperToServer(client.NewRoundTripper(), peer.AddrInfo{ID: server.PeerID(), Addrs: server.Addrs()})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -350,4 +351,61 @@ func ExampleWellKnownHandler() {
 	fmt.Println(string(respBody))
 	// Output: {"/hello/1":{"path":"/hello-path/"}}
 
+}
+
+func ExampleHost_NewRoundTripper() {
+
+	serverStreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/50226/quic-v1"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Create the server
+	server := libp2phttp.Host{
+		InsecureAllowHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50225/http")},
+		StreamHost:        serverStreamHost,
+	}
+
+	var counter atomic.Int32
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		count := counter.Add(1)
+		w.Write([]byte("Hello World: " + fmt.Sprint(count)))
+	}))
+
+	go server.Serve()
+	defer server.Close()
+	// Wait for the server to start listening
+	_ = server.Addrs()
+
+	clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	client := libp2phttp.Host{
+		StreamHost: clientStreamHost,
+	}
+	rt := client.NewRoundTripper()
+
+	for _, addrToDial := range [...]string{"http://127.0.0.1:50225/hello/1", "multiaddr:/ip4/127.0.0.1/udp/50226/quic-v1/p2p/" + server.PeerID().String() + "/httppath/hello%2f1", "multiaddr:/p2p/" + server.PeerID().String() + "/httppath/hello%2f1"} {
+		// Create an http.Roundtripper for the server
+
+		resp, err := (&http.Client{Transport: rt}).Get(addrToDial)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer resp.Body.Close()
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println(string(respBody))
+	}
+
+	// Output: Hello World: 1
+	// Hello World: 2
+	// Hello World: 3
 }

@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -45,14 +46,15 @@ func TestHTTPOverStreams(t *testing.T) {
 	defer httpHost.Close()
 
 	// Start client
-	clientHost, err := libp2p.New(libp2p.NoListenAddrs)
+	clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs)
 	require.NoError(t, err)
-	clientHost.Connect(context.Background(), peer.AddrInfo{
+	clientStreamHost.Connect(context.Background(), peer.AddrInfo{
 		ID:    serverHost.ID(),
 		Addrs: serverHost.Addrs(),
 	})
 
-	clientRT, err := (&libp2phttp.Host{StreamHost: clientHost}).NewConstrainedRoundTripper(peer.AddrInfo{ID: serverHost.ID()})
+	clientHost := libp2phttp.Host{StreamHost: clientStreamHost}
+	clientRT, err := clientHost.ConstrainRoundTripperToServer(clientHost.NewRoundTripper(), peer.AddrInfo{ID: serverHost.ID()})
 	require.NoError(t, err)
 
 	client := &http.Client{Transport: clientRT}
@@ -98,7 +100,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "HTTP preferred",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
-				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
+				rt, err := clientHTTPHost.ConstrainRoundTripperToServer(clientHTTPHost.NewRoundTripper(), peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: serverMultiaddrs,
 				}, libp2phttp.PreferHTTPTransport)
@@ -109,7 +111,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "HTTP first",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
-				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
+				rt, err := clientHTTPHost.ConstrainRoundTripperToServer(clientHTTPHost.NewRoundTripper(), peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHTTPAddr, serverHost.Addrs()[0]},
 				})
@@ -120,7 +122,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "No HTTP transport",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
-				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
+				rt, err := clientHTTPHost.ConstrainRoundTripperToServer(clientHTTPHost.NewRoundTripper(), peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHost.Addrs()[0]},
 				})
@@ -132,7 +134,7 @@ func TestRoundTrippers(t *testing.T) {
 		{
 			name: "Stream transport first",
 			setupRoundTripper: func(t *testing.T, clientStreamHost host.Host, clientHTTPHost *libp2phttp.Host) http.RoundTripper {
-				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
+				rt, err := clientHTTPHost.ConstrainRoundTripperToServer(clientHTTPHost.NewRoundTripper(), peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHost.Addrs()[0], serverHTTPAddr},
 				})
@@ -148,7 +150,7 @@ func TestRoundTrippers(t *testing.T) {
 					ID:    serverHost.ID(),
 					Addrs: serverHost.Addrs(),
 				})
-				rt, err := clientHTTPHost.NewConstrainedRoundTripper(peer.AddrInfo{
+				rt, err := clientHTTPHost.ConstrainRoundTripperToServer(clientHTTPHost.NewRoundTripper(), peer.AddrInfo{
 					ID:    serverHost.ID(),
 					Addrs: []ma.Multiaddr{serverHTTPAddr, serverHost.Addrs()[0]},
 				})
@@ -170,9 +172,10 @@ func TestRoundTrippers(t *testing.T) {
 
 			rt := tc.setupRoundTripper(t, clientStreamHost, clientHttpHost)
 			if tc.expectStreamRoundTripper {
-				// Hack to get the private type of this roundtripper
-				typ := reflect.TypeOf(rt).String()
-				require.Contains(t, typ, "streamRoundTripper", "Expected stream based round tripper")
+				// Hack to get the private field of this roundtripper
+				v := reflect.ValueOf(rt).Elem()
+				scheme := v.FieldByName("scheme").String()
+				require.Equal(t, "multiaddr", scheme, "Expected stream based round tripper")
 			}
 
 			for _, tc := range []bool{true, false} {
@@ -215,6 +218,60 @@ func TestRoundTrippers(t *testing.T) {
 	}
 }
 
+func TestRoundTripperWithDifferentURIs(t *testing.T) {
+	serverStreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/50226/quic-v1"))
+	require.NoError(t, err)
+
+	// Create the server
+	server := libp2phttp.Host{
+		InsecureAllowHTTP: true, // For our example, we'll allow insecure HTTP
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50225/http")},
+		StreamHost:        serverStreamHost,
+	}
+
+	server.SetHTTPHandler("/hello/1", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Hello World"))
+	}))
+
+	go server.Serve()
+	defer server.Close()
+	// Wait for the server to start listening
+	_ = server.Addrs()
+
+	for _, addrToDial := range [...]string{"http://127.0.0.1:50225/hello/1/", "multiaddr:/ip4/127.0.0.1/udp/50226/quic-v1/p2p/" + server.PeerID().String() + "/httppath/hello%2f1", "multiaddr:/p2p/" + server.PeerID().String() + "/httppath/hello%2f1"} {
+		t.Run(addrToDial, func(t *testing.T) {
+			clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs)
+			require.NoError(t, err)
+			defer clientStreamHost.Close()
+
+			if !strings.Contains(addrToDial, "/ip4/") {
+				// This multiaddr doesn't include an address to connect to, so
+				// we'll add that to the stream host manually
+				clientStreamHost.Connect(context.Background(), peer.AddrInfo{ID: serverStreamHost.ID(), Addrs: serverStreamHost.Addrs()})
+			}
+
+			client := libp2phttp.Host{
+				StreamHost: clientStreamHost,
+			}
+			rt := client.NewRoundTripper()
+			// Create an http.Roundtripper for the server
+
+			resp, err := (&http.Client{Transport: rt}).Get(addrToDial)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer resp.Body.Close()
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			require.Equal(t, "Hello World", string(respBody))
+		})
+	}
+}
+
 func TestPlainOldHTTPServer(t *testing.T) {
 	mux := http.NewServeMux()
 	wk := libp2phttp.WellKnownHandler{}
@@ -243,16 +300,16 @@ func TestPlainOldHTTPServer(t *testing.T) {
 		{
 			name: "using libp2phttp",
 			do: func(t *testing.T, request *http.Request) (*http.Response, error) {
-				var clientHttpHost libp2phttp.Host
-				rt, err := clientHttpHost.NewConstrainedRoundTripper(peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
+				var clientHTTPHost libp2phttp.Host
+				rt, err := clientHTTPHost.ConstrainRoundTripperToServer(clientHTTPHost.NewRoundTripper(), peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
 				require.NoError(t, err)
 
 				client := &http.Client{Transport: rt}
 				return client.Do(request)
 			},
 			getWellKnown: func(t *testing.T) (libp2phttp.PeerMeta, error) {
-				var clientHttpHost libp2phttp.Host
-				rt, err := clientHttpHost.NewConstrainedRoundTripper(peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
+				var clientHTTPHost libp2phttp.Host
+				rt, err := clientHTTPHost.ConstrainRoundTripperToServer(clientHTTPHost.NewRoundTripper(), peer.AddrInfo{Addrs: []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/" + serverAddrParts[1] + "/http")}})
 				require.NoError(t, err)
 				return rt.(libp2phttp.PeerMetadataGetter).GetPeerMetadata()
 			},
