@@ -201,8 +201,6 @@ func (l *listener) setupConnection(
 		}
 	}()
 
-	settingEngine := webrtc.SettingEngine{}
-
 	loggerFactory := pionlogger.NewDefaultLoggerFactory()
 	pionLogLevel := pionlogger.LogLevelDisabled
 	switch log.Level() {
@@ -215,10 +213,9 @@ func (l *listener) setupConnection(
 	case zapcore.ErrorLevel:
 		pionLogLevel = pionlogger.LogLevelError
 	}
-	fmt.Println("log level", pionLogLevel)
 	loggerFactory.DefaultLogLevel = pionLogLevel
-	settingEngine.LoggerFactory = loggerFactory
 
+	settingEngine := webrtc.SettingEngine{LoggerFactory: loggerFactory}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
 	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
 	settingEngine.SetLite(true)
@@ -233,7 +230,6 @@ func (l *listener) setupConnection(
 	settingEngine.DetachDataChannels()
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
-
 	pc, err = api.NewPeerConnection(l.config)
 	if err != nil {
 		return nil, err
