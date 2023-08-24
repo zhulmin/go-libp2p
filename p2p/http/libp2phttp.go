@@ -513,9 +513,13 @@ func (rt *libp2pHTTPRoundTripper) RoundTrip(r *http.Request) (*http.Response, er
 	if r.URL.Scheme != "multiaddr" {
 		return nil, fmt.Errorf("unknown scheme %s", r.URL.Scheme)
 	}
+	multiaddrStr := r.URL.RawPath
+	if multiaddrStr == "" {
+		multiaddrStr = r.URL.Path
+	}
 
 	// The request is to a multiaddr.
-	m, err := ma.NewMultiaddr(r.URL.RawPath)
+	m, err := ma.NewMultiaddr(multiaddrStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid multiaddr: %w", err)
 	}
@@ -534,9 +538,9 @@ func (rt *libp2pHTTPRoundTripper) RoundTrip(r *http.Request) (*http.Response, er
 		if parsedMultiaddr.useHTTPS {
 			scheme = "https"
 		}
-		r.URL, err = url.Parse(scheme + "://" + host)
+		r.URL, err = url.Parse(scheme + "://" + host + "/" + parsedMultiaddr.path)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse multiaddr: %w", err)
+			return nil, fmt.Errorf("failed to parse url: %w", err)
 		}
 
 		return rt.httpTransport.RoundTrip(r)

@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -225,7 +226,7 @@ func TestRoundTripperWithDifferentURIs(t *testing.T) {
 	// Create the server
 	server := libp2phttp.Host{
 		InsecureAllowHTTP: true, // For our example, we'll allow insecure HTTP
-		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50225/http")},
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/50325/http")},
 		StreamHost:        serverStreamHost,
 	}
 
@@ -239,7 +240,7 @@ func TestRoundTripperWithDifferentURIs(t *testing.T) {
 	// Wait for the server to start listening
 	_ = server.Addrs()
 
-	for _, addrToDial := range [...]string{"http://127.0.0.1:50225/hello/1/", "multiaddr:/ip4/127.0.0.1/udp/50226/quic-v1/p2p/" + server.PeerID().String() + "/httppath/hello%2f1", "multiaddr:/p2p/" + server.PeerID().String() + "/httppath/hello%2f1"} {
+	for _, addrToDial := range [...]string{"http://127.0.0.1:50325/hello/1/", "multiaddr:/ip4/127.0.0.1/tcp/50325/http/httppath/hello%2f1%2f", "multiaddr:/ip4/127.0.0.1/udp/50226/quic-v1/p2p/" + server.PeerID().String() + "/httppath/hello%2f1", "multiaddr:/p2p/" + server.PeerID().String() + "/httppath/hello%2f1"} {
 		t.Run(addrToDial, func(t *testing.T) {
 			clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs)
 			require.NoError(t, err)
@@ -386,6 +387,35 @@ func TestHostZeroValue(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "hello", string(body), "expected response from server")
+}
+
+func TestRedirectToOtherHost(t *testing.T) {
+	server := libp2phttp.Host{
+		InsecureAllowHTTP: true,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+	server2 := libp2phttp.Host{
+		InsecureAllowHTTP: true,
+		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+	}
+	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "multiaddr:"+server2.Addrs()[0].String()+"/httppath/"+url.PathEscape("hello/2/"), http.StatusMovedPermanently)
+	}))
+	server2.SetHTTPHandlerAtPath("/hello", "/hello/2/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello from server 2")) }))
+	go server.Serve()
+	defer server.Close()
+	go server2.Serve()
+	defer server2.Close()
+
+	c := libp2phttp.Host{}
+	client := http.Client{Transport: c.NewRoundTripper()}
+	resp, err := client.Get("multiaddr:" + server.Addrs()[0].String() + "/httppath/hello%2f")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, "hello from server 2", string(body), "expected response from server")
 }
 
 func TestHTTPS(t *testing.T) {
