@@ -75,14 +75,12 @@ func (mux *UDPMux) GetListenAddresses() []net.Addr {
 }
 
 // GetConn implements ice.UDPMux
-// It creates a net.PacketConn for a given ufrag if an existing
-// one cannot be  found. We differentiate IPv4 and IPv6 addresses
-// as a remote is capable of being reachable through multiple different
-// UDP addresses of the same IP address family (eg. Server-reflexive addresses
-// and peer-reflexive addresses).
+// It creates a net.PacketConn for a given ufrag if an existing one cannot be found.
+// We differentiate IPv4 and IPv6 addresses, since a remote is can be reachable at multiple different
+// UDP addresses of the same IP address family (eg. server-reflexive addresses and peer-reflexive addresses).
 func (mux *UDPMux) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) {
 	a, ok := addr.(*net.UDPAddr)
-	if !ok && addr != nil {
+	if !ok {
 		return nil, fmt.Errorf("unexpected address type: %T", addr)
 	}
 	isIPv6 := ok && a.IP.To4() == nil
