@@ -17,20 +17,20 @@ type muxedConnection struct {
 	cancel  context.CancelFunc
 	onClose func()
 	pq      *packetQueue
-	addr    net.Addr
+	remote  net.Addr
 	mux     *UDPMux
 }
 
-var _ net.PacketConn = (*muxedConnection)(nil)
+var _ net.PacketConn = &muxedConnection{}
 
-func newMuxedConnection(mux *UDPMux, onClose func(), addr net.Addr) *muxedConnection {
+func newMuxedConnection(mux *UDPMux, onClose func(), remote net.Addr) *muxedConnection {
 	ctx, cancel := context.WithCancel(mux.ctx)
 	return &muxedConnection{
 		ctx:     ctx,
 		cancel:  cancel,
 		pq:      newPacketQueue(),
 		onClose: onClose,
-		addr:    addr,
+		remote:  remote,
 		mux:     mux,
 	}
 }
@@ -41,7 +41,7 @@ func (c *muxedConnection) Push(buf []byte) error {
 
 func (c *muxedConnection) ReadFrom(p []byte) (int, net.Addr, error) {
 	n, err := c.pq.Pop(c.ctx, p)
-	return n, c.addr, err
+	return n, c.remote, err
 }
 
 func (c *muxedConnection) WriteTo(p []byte, addr net.Addr) (n int, err error) {
@@ -59,8 +59,8 @@ func (c *muxedConnection) Close() error {
 	return nil
 }
 
-func (c *muxedConnection) LocalAddr() net.Addr { return c.mux.socket.LocalAddr() }
-func (c *muxedConnection) Address() net.Addr   { return c.addr }
+func (c *muxedConnection) LocalAddr() net.Addr  { return c.mux.socket.LocalAddr() }
+func (c *muxedConnection) RemoteAddr() net.Addr { return c.remote }
 
 func (*muxedConnection) SetDeadline(t time.Time) error {
 	// no deadline is desired here

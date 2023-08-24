@@ -252,7 +252,7 @@ func (s *udpMuxStorage) RemoveConnByUfrag(ufrag string) {
 		key := ufragConnKey{ufrag: ufrag, isIPv6: isIPv6}
 		if conn, ok := s.ufragMap[key]; ok {
 			delete(s.ufragMap, key)
-			delete(s.addrMap, conn.Address().String())
+			delete(s.addrMap, conn.RemoteAddr().String())
 		}
 	}
 }
