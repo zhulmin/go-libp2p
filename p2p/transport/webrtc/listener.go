@@ -12,16 +12,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/peer"
-
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
+
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
-
 	"github.com/pion/ice/v2"
 	pionlogger "github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
@@ -244,7 +243,7 @@ func (l *listener) setupConnection(
 		return nil, err
 	}
 
-	errC := awaitPeerConnectionOpen(addr.ufrag, pc)
+	errC := addOnConnectionStateChangeCallback(pc)
 	// Infer the client SDP from the incoming STUN message by setting the ice-ufrag.
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{
 		SDP:  createClientSDP(addr.raddr, addr.ufrag),
@@ -265,7 +264,7 @@ func (l *listener) setupConnection(
 		return nil, ctx.Err()
 	case err := <-errC:
 		if err != nil {
-			return nil, fmt.Errorf("peer connection error: %w", err)
+			return nil, fmt.Errorf("peer connection failed for ufrag: %s", addr.ufrag)
 		}
 
 	}
@@ -343,7 +342,12 @@ func (l *listener) Multiaddr() ma.Multiaddr {
 	return l.localMultiaddr
 }
 
-func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan error {
+// addOnConnectionStateChangeCallback adds the OnConnectionStateChange to the PeerConnection.
+// The channel returned here:
+// * is closed when the state changes to Connection
+// * receives an error when the state changes to Failed
+// * doesn't receive anything (nor is closed) when the state changes to Disconnected
+func addOnConnectionStateChangeCallback(pc *webrtc.PeerConnection) <-chan error {
 	errC := make(chan error, 1)
 	var once sync.Once
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
@@ -352,7 +356,7 @@ func awaitPeerConnectionOpen(ufrag string, pc *webrtc.PeerConnection) <-chan err
 			once.Do(func() { close(errC) })
 		case webrtc.PeerConnectionStateFailed:
 			once.Do(func() {
-				errC <- fmt.Errorf("peerconnection failed: %s", ufrag)
+				errC <- errors.New("peerconnection failed")
 				close(errC)
 			})
 		case webrtc.PeerConnectionStateDisconnected:

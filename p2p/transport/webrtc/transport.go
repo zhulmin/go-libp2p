@@ -315,7 +315,7 @@ func (t *WebRTCTransport) dial(ctx context.Context, scope network.ConnManagement
 		return nil, fmt.Errorf("instantiate peerconnection: %w", err)
 	}
 
-	errC := awaitPeerConnectionOpen(ufrag, pc)
+	errC := addOnConnectionStateChangeCallback(pc)
 	// We need to set negotiated = true for this channel on both
 	// the client and server to avoid DCEP errors.
 	negotiated, id := handshakeChannelNegotiated, handshakeChannelID
