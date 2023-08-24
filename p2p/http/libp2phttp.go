@@ -369,7 +369,6 @@ func (s *streamReadCloser) Close() error {
 // The underlying RoundTripper MUST be an HTTP Transport.
 type roundTripperForSpecificServer struct {
 	http.RoundTripper
-	ownRoundtripper  bool
 	httpHost         *Host
 	server           peer.ID
 	targetServerAddr string
@@ -415,22 +414,6 @@ func (rt *roundTripperForSpecificServer) RoundTrip(r *http.Request) (*http.Respo
 	r.URL.Host = rt.targetServerAddr
 	r.Host = rt.sni
 	return rt.RoundTripper.RoundTrip(r)
-}
-
-func (rt *roundTripperForSpecificServer) CloseIdleConnections() {
-	if rt.ownRoundtripper {
-		// Safe to close idle connections, since we own the RoundTripper. We
-		// aren't closing other's idle connections.
-		type closeIdler interface {
-			CloseIdleConnections()
-		}
-		if tr, ok := rt.RoundTripper.(closeIdler); ok {
-			tr.CloseIdleConnections()
-		}
-	}
-	// No-op, since we don't want users thinking they are closing idle
-	// connections for this server, when in fact they are closing all idle
-	// connections
 }
 
 type namespacedRoundTripper struct {
