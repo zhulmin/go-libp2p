@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"math/big"
@@ -394,12 +395,15 @@ func TestRedirectToOtherHost(t *testing.T) {
 		InsecureAllowHTTP: true,
 		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
 	}
+
+	server2StreamHost, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/udp/0/quic-v1"))
+	require.NoError(t, err)
 	server2 := libp2phttp.Host{
-		InsecureAllowHTTP: true,
-		ListenAddrs:       []ma.Multiaddr{ma.StringCast("/ip4/127.0.0.1/tcp/0/http")},
+		StreamHost: server2StreamHost,
 	}
 	server.SetHTTPHandler("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "multiaddr:"+server2.Addrs()[0].String()+"/httppath/"+url.PathEscape("hello/2/"), http.StatusMovedPermanently)
+		redirectTo := fmt.Sprintf("%s/p2p/%s/httppath/%s", server2.Addrs()[0].String(), server2.PeerID(), url.PathEscape("hello/2/"))
+		http.Redirect(w, r, "multiaddr:"+redirectTo, http.StatusMovedPermanently)
 	}))
 	server2.SetHTTPHandlerAtPath("/hello", "/hello/2/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello from server 2")) }))
 	go server.Serve()
@@ -407,7 +411,9 @@ func TestRedirectToOtherHost(t *testing.T) {
 	go server2.Serve()
 	defer server2.Close()
 
-	c := libp2phttp.Host{}
+	clientStreamHost, err := libp2p.New(libp2p.NoListenAddrs)
+	require.NoError(t, err)
+	c := libp2phttp.Host{StreamHost: clientStreamHost}
 	client := http.Client{Transport: c.NewRoundTripper()}
 	resp, err := client.Get("multiaddr:" + server.Addrs()[0].String() + "/httppath/hello%2f")
 	require.NoError(t, err)
