@@ -65,10 +65,18 @@ var (
 	// ErrGaterDisallowedConnection is returned when the gater prevents us from
 	// forming a connection with a peer.
 	ErrGaterDisallowedConnection = errors.New("gater disallows connection to peer")
-
-	// ErrQUICDraft29 is returned instead of an ErrNoTransport when attempting to dial a QUIC draft-29 address.
-	ErrQUICDraft29 = errors.New("QUIC draft-29 has been removed, QUIC (RFC 9000) is accessible with /quic-v1")
 )
+
+// ErrQUICDraft29 wraps [ErrNoTransport] and provide a more meaningful error message while
+type ErrQUICDraft29 struct{}
+
+func (ErrQUICDraft29) Error() string {
+ return "QUIC draft-29 has been removed, QUIC (RFC 9000) is accessible with /quic-v1"
+}
+
+func (ErrQUICDraft29) Unwrap() error {
+ return ErrNoTransport
+}
 
 // DialAttempts governs how many times a goroutine will try to dial a given peer.
 // Note: this is down to one, as we have _too many dials_ atm. To add back in,
