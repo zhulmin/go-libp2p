@@ -490,12 +490,14 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	if err != nil {
 		return nil, fmt.Errorf("generate prologue: %w", err)
 	}
-	sessionTransport, err := t.noiseTpt.WithSessionOptions(
-		noise.Prologue(prologue),
-		noise.DisablePeerIDCheck(),
-	)
+	opts := make([]noise.SessionOption, 0, 2)
+	opts = append(opts, noise.Prologue(prologue))
+	if peer == "" {
+		opts = append(opts, noise.DisablePeerIDCheck())
+	}
+	sessionTransport, err := t.noiseTpt.WithSessionOptions(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("instantiate transport: %w", err)
+		return nil, fmt.Errorf("failed to instantiate Noise transport: %w", err)
 	}
 	var secureConn sec.SecureConn
 	if inbound {
