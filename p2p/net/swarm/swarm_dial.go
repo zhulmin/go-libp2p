@@ -14,8 +14,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/transport"
+
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	mafmt "github.com/multiformats/go-multiaddr-fmt"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -63,6 +65,9 @@ var (
 	// ErrGaterDisallowedConnection is returned when the gater prevents us from
 	// forming a connection with a peer.
 	ErrGaterDisallowedConnection = errors.New("gater disallows connection to peer")
+
+	// ErrQUICDraft29 is returned instead of an ErrNoTransport when attempting to dial a QUIC draft-29 address.
+	ErrQUICDraft29 = errors.New("QUIC draft-29 has been removed, QUIC (RFC 9000) is accessible with /quic-v1")
 )
 
 // DialAttempts governs how many times a goroutine will try to dial a given peer.
@@ -407,6 +412,8 @@ func (s *Swarm) nonProxyAddr(addr ma.Multiaddr) bool {
 	return !t.Proxy()
 }
 
+var quicDraft29DialMatcher = mafmt.And(mafmt.IP, mafmt.Base(ma.P_UDP), mafmt.Base(ma.P_QUIC))
+
 // filterKnownUndialables takes a list of multiaddrs, and removes those
 // that we definitely don't want to dial: addresses configured to be blocked,
 // IPv6 link-local addresses, addresses without a dial-capable transport,
@@ -435,7 +442,13 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAdd
 	// filter addresses with no transport
 	addrs = ma.FilterAddrs(addrs, func(a ma.Multiaddr) bool {
 		if s.TransportForDialing(a) == nil {
-			addrErrs = append(addrErrs, TransportError{Address: a, Cause: ErrNoTransport})
+			e := ErrNoTransport
+			// We used to support QUIC draft-29 for a long time.
+			// Provide a more useful error when attempting to dial a QUIC draft-29 address.
+			if quicDraft29DialMatcher.Matches(a) {
+				e = ErrQUICDraft29
+			}
+			addrErrs = append(addrErrs, TransportError{Address: a, Cause: e})
 			return false
 		}
 		return true
