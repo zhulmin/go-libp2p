@@ -654,58 +654,41 @@ func TestDiscoverPeerIDFromSecurityNegotiation(t *testing.T) {
 		return "", inputErr
 	}
 
-	// runs a test to verify we can extract the peer ID from a target with just its address
-	runTest := func(t *testing.T, h host.Host) {
-		t.Helper()
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		// Use a bogus peer ID so that when we connect to the target we get an error telling
-		// us the targets real peer ID
-		bogusPeerId, err := peer.Decode("QmadAdJ3f63JyNs65X7HHzqDwV53ynvCcKtNFvdNaz3nhk")
-		if err != nil {
-			t.Fatal("the hard coded bogus peerID is invalid")
-		}
-
-		ai := &peer.AddrInfo{
-			ID:    bogusPeerId,
-			Addrs: []multiaddr.Multiaddr{h.Addrs()[0]},
-		}
-
-		testHost, err := libp2p.New()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Try connecting with the bogus peer ID
-		if err := testHost.Connect(ctx, *ai); err != nil {
-			// Extract the actual peer ID from the error
-			newPeerId, err := extractPeerIDFromError(err)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ai.ID = newPeerId
-
-			// Make sure the new ID is what we expected
-			if ai.ID != h.ID() {
-				t.Fatalf("peerID mismatch: expected %s, got %s", h.ID(), ai.ID)
-			}
-
-			// and just to double-check try connecting again to make sure it works
-			if err := testHost.Connect(ctx, *ai); err != nil {
-				t.Fatal(err)
-			}
-		} else {
-			t.Fatal("somehow we successfully connected to a bogus peerID!")
-		}
-	}
-
 	for _, tc := range transportsToTest {
 		t.Run(tc.Name, func(t *testing.T) {
-			h := tc.HostGenerator(t, TransportTestCaseOpts{})
-			defer h.Close()
+			h1 := tc.HostGenerator(t, TransportTestCaseOpts{})
+			h2 := tc.HostGenerator(t, TransportTestCaseOpts{NoListen: true})
+			defer h1.Close()
+			defer h2.Close()
 
-			runTest(t, h)
+			// runs a test to verify we can extract the peer ID from a target with just its address
+			t.Helper()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Use a bogus peer ID so that when we connect to the target we get an error telling
+			// us the targets real peer ID
+			bogusPeerId, err := peer.Decode("QmadAdJ3f63JyNs65X7HHzqDwV53ynvCcKtNFvdNaz3nhk")
+			require.NoError(t, err, "the hard coded bogus peerID is invalid")
+
+			ai := &peer.AddrInfo{
+				ID:    bogusPeerId,
+				Addrs: []multiaddr.Multiaddr{h1.Addrs()[0]},
+			}
+
+			// Try connecting with the bogus peer ID
+			err = h2.Connect(ctx, *ai)
+			require.Error(t, err, "somehow we successfully connected to a bogus peerID!")
+
+			// Extract the actual peer ID from the error
+			newPeerId, err := extractPeerIDFromError(err)
+			require.NoError(t, err)
+			ai.ID = newPeerId
+			// Make sure the new ID is what we expected
+			require.Equal(t, h1.ID(), ai.ID)
+
+			// and just to double-check try connecting again to make sure it works
+			require.NoError(t, h2.Connect(ctx, *ai))
 		})
 	}
 }
