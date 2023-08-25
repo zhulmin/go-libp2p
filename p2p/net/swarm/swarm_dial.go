@@ -67,7 +67,7 @@ var (
 	ErrGaterDisallowedConnection = errors.New("gater disallows connection to peer")
 )
 
-// ErrQUICDraft29 wraps [ErrNoTransport] and provide a more meaningful error message while
+// ErrQUICDraft29 wraps ErrNoTransport and provide a more meaningful error message
 type ErrQUICDraft29 struct{}
 
 func (ErrQUICDraft29) Error() string {
