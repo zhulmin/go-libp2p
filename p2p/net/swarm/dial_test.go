@@ -648,6 +648,6 @@ func TestDialQUICDraft29(t *testing.T) {
 	id := testutil.RandPeerIDFatal(t)
 	s.Peerstore().AddAddr(id, ma.StringCast("/ip4/127.0.0.1/udp/1234/quic"), time.Hour)
 	_, err := s.DialPeer(context.Background(), id)
-	require.ErrorIs(t, err, swarm.ErrQUICDraft29)
+	require.ErrorIs(t, err, swarm.ErrQUICDraft29{})
 	require.ErrorIs(t, err, swarm.ErrNoTransport)
 }
