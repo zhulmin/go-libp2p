@@ -68,13 +68,15 @@ var (
 )
 
 // ErrQUICDraft29 wraps ErrNoTransport and provide a more meaningful error message
-type ErrQUICDraft29 struct{}
+var ErrQUICDraft29 errQUICDraft29
 
-func (ErrQUICDraft29) Error() string {
+type errQUICDraft29 struct{}
+
+func (errQUICDraft29) Error() string {
 	return "QUIC draft-29 has been removed, QUIC (RFC 9000) is accessible with /quic-v1"
 }
 
-func (ErrQUICDraft29) Unwrap() error {
+func (errQUICDraft29) Unwrap() error {
 	return ErrNoTransport
 }
 
@@ -454,7 +456,7 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAdd
 			// We used to support QUIC draft-29 for a long time.
 			// Provide a more useful error when attempting to dial a QUIC draft-29 address.
 			if quicDraft29DialMatcher.Matches(a) {
-				e = ErrQUICDraft29{}
+				e = ErrQUICDraft29
 			}
 			addrErrs = append(addrErrs, TransportError{Address: a, Cause: e})
 			return false
