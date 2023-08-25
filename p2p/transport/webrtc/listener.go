@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -319,7 +318,7 @@ func (l *listener) setupConnection(
 func (l *listener) Accept() (tpt.CapableConn, error) {
 	select {
 	case <-l.ctx.Done():
-		return nil, os.ErrClosed
+		return nil, tpt.ErrListenerClosed
 	case conn := <-l.acceptQueue:
 		return conn, nil
 	}
