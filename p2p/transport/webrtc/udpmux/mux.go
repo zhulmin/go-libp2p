@@ -18,6 +18,11 @@ var log = logging.Logger("webrtc-udpmux")
 
 const ReceiveMTU = 1500
 
+type Candidate struct {
+	Ufrag string
+	Addr  *net.UDPAddr
+}
+
 // UDPMux multiplexes multiple ICE connections over a single net.PacketConn,
 // generally a UDP socket.
 //
@@ -32,13 +37,11 @@ const ReceiveMTU = 1500
 // If it is, we read the ufrag from the STUN packet and use it to check if there
 // is a connection associated with the (ufrag, IP address family) pair.
 // If found we add the association to the address map.
-// Otherwise, this is a previously unseen IP address and the unknownUfragCallback
-// callback is called.
 type UDPMux struct {
-	socket               net.PacketConn
-	unknownUfragCallback func(string, net.Addr) error
+	socket net.PacketConn
 
 	storage *udpMuxStorage
+	queue   chan Candidate
 
 	// the context controls the lifecycle of the mux
 	wg     sync.WaitGroup
@@ -48,14 +51,14 @@ type UDPMux struct {
 
 var _ ice.UDPMux = &UDPMux{}
 
-func NewUDPMux(socket net.PacketConn, unknownUfragCallback func(string, net.Addr) error) *UDPMux {
+func NewUDPMux(socket net.PacketConn) *UDPMux {
 	ctx, cancel := context.WithCancel(context.Background())
 	mux := &UDPMux{
-		ctx:                  ctx,
-		cancel:               cancel,
-		socket:               socket,
-		unknownUfragCallback: unknownUfragCallback,
-		storage:              newUDPMuxStorage(),
+		ctx:     ctx,
+		cancel:  cancel,
+		socket:  socket,
+		storage: newUDPMuxStorage(),
+		queue:   make(chan Candidate, 32),
 	}
 
 	return mux
@@ -188,8 +191,10 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 
 	connCreated, conn := mux.storage.GetOrCreateConn(ufrag, isIPv6, mux, udpAddr)
 	if connCreated {
-		if err := mux.unknownUfragCallback(ufrag, udpAddr); err != nil {
-			log.Debugf("creating connection failed: %s", err)
+		select {
+		case mux.queue <- Candidate{Addr: udpAddr, Ufrag: ufrag}:
+		default:
+			log.Debugw("queue full, dropping incoming candidate", "ufrag", ufrag, "addr", udpAddr)
 			conn.Close()
 			return false
 		}
@@ -200,6 +205,17 @@ func (mux *UDPMux) processPacket(buf []byte, addr net.Addr) (processed bool) {
 		return false
 	}
 	return true
+}
+
+func (mux *UDPMux) Accept(ctx context.Context) (Candidate, error) {
+	select {
+	case c := <-mux.queue:
+		return c, nil
+	case <-ctx.Done():
+		return Candidate{}, ctx.Err()
+	case <-mux.ctx.Done():
+		return Candidate{}, mux.ctx.Err()
+	}
 }
 
 type ufragConnKey struct {

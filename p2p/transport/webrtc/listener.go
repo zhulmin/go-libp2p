@@ -20,7 +20,6 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
-	"github.com/pion/ice/v2"
 	pionlogger "github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/zap/zapcore"
@@ -40,15 +39,10 @@ const (
 	DefaultMaxInFlightConnections = 10
 )
 
-type candidateAddr struct {
-	ufrag string
-	raddr *net.UDPAddr
-}
-
 type listener struct {
 	transport *WebRTCTransport
 
-	mux ice.UDPMux
+	mux *udpmux.UDPMux
 
 	config                    webrtc.Configuration
 	localFingerprint          webrtc.DTLSFingerprint
@@ -59,14 +53,6 @@ type listener struct {
 
 	// buffered incoming connections
 	acceptQueue chan tpt.CapableConn
-
-	// Accepting a connection requires instantiating a peerconnection
-	// and a noise connection which is expensive. We therefore limit
-	// the number of in-flight connection requests. A connection
-	// is considered to be in flight from the instant it is handled
-	// until it is dequeued by a call to Accept, or errors out in some
-	// way.
-	inFlightInputQueue chan struct{}
 
 	// used to control the lifecycle of the listener
 	ctx    context.Context
@@ -94,11 +80,6 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		return nil, err
 	}
 
-	inFlightQueueCh := make(chan struct{}, transport.maxInFlightConnections)
-	for i := uint32(0); i < transport.maxInFlightConnections; i++ {
-		inFlightQueueCh <- struct{}{}
-	}
-
 	l := &listener{
 		transport:                 transport,
 		config:                    config,
@@ -107,31 +88,54 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 		localMultiaddr:            laddr,
 		localAddr:                 socket.LocalAddr(),
 		acceptQueue:               make(chan tpt.CapableConn),
-		inFlightInputQueue:        inFlightQueueCh,
 	}
 
 	l.ctx, l.cancel = context.WithCancel(context.Background())
-	mux := udpmux.NewUDPMux(socket, func(ufrag string, addr net.Addr) error {
+	mux := udpmux.NewUDPMux(socket)
+	l.mux = mux
+	mux.Start()
+
+	go l.listen()
+
+	return l, err
+}
+
+func (l *listener) listen() {
+	// Accepting a connection requires instantiating a peerconnection
+	// and a noise connection which is expensive. We therefore limit
+	// the number of in-flight connection requests. A connection
+	// is considered to be in flight from the instant it is handled
+	// until it is dequeued by a call to Accept, or errors out in some
+	// way.
+	inFlightQueueCh := make(chan struct{}, l.transport.maxInFlightConnections)
+	for i := uint32(0); i < l.transport.maxInFlightConnections; i++ {
+		inFlightQueueCh <- struct{}{}
+	}
+
+	for {
 		select {
 		case <-inFlightQueueCh:
-			// we have space to accept, Yihaa
-		default:
-			return errors.New("candidate chan full, dropping incoming candidate")
+		case <-l.ctx.Done():
+			return
+		}
+
+		candidate, err := l.mux.Accept(l.ctx)
+		if err != nil {
+			if l.ctx.Err() == nil {
+				log.Debugf("accepting candidate failed: %s", err)
+			}
+			return
 		}
 
 		go func() {
-			defer func() {
-				// free this spot once again
-				inFlightQueueCh <- struct{}{}
-			}()
+			defer func() { inFlightQueueCh <- struct{}{} }() // free this spot once again
 
 			ctx, cancel := context.WithTimeout(l.ctx, candidateSetupTimeout)
 			defer cancel()
 
-			candidateAddr := candidateAddr{ufrag: ufrag, raddr: addr.(*net.UDPAddr)}
-			conn, err := l.handleCandidate(ctx, &candidateAddr)
+			conn, err := l.handleCandidate(ctx, candidate)
 			if err != nil {
-				log.Debugf("could not accept connection: %s: %v", ufrag, err)
+				log.Debugf("could not accept connection: %s: %v", candidate.Ufrag, err)
 				return
 			}
 
@@ -139,23 +143,15 @@ func newListener(transport *WebRTCTransport, laddr ma.Multiaddr, socket net.Pack
 			case <-ctx.Done():
 				log.Warn("could not push connection: ctx done")
 				conn.Close()
-
 			case l.acceptQueue <- conn:
-				// block until the connection is accepted,
-				// or until we are done, this effectively blocks our in flight from continuing to progress
+				// acceptQueue is an unbuffered channel, so this block until the connection is accepted.
 			}
 		}()
-
-		return nil
-	})
-	l.mux = mux
-	mux.Start()
-
-	return l, err
+	}
 }
 
-func (l *listener) handleCandidate(ctx context.Context, addr *candidateAddr) (tpt.CapableConn, error) {
-	remoteMultiaddr, err := manet.FromNetAddr(addr.raddr)
+func (l *listener) handleCandidate(ctx context.Context, candidate udpmux.Candidate) (tpt.CapableConn, error) {
+	remoteMultiaddr, err := manet.FromNetAddr(candidate.Addr)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +167,7 @@ func (l *listener) handleCandidate(ctx context.Context, addr *candidateAddr) (tp
 	if err != nil {
 		return nil, err
 	}
-	conn, err := l.setupConnection(ctx, scope, remoteMultiaddr, addr)
+	conn, err := l.setupConnection(ctx, scope, remoteMultiaddr, candidate)
 	if err != nil {
 		scope.Done()
 		return nil, err
@@ -185,7 +181,7 @@ func (l *listener) handleCandidate(ctx context.Context, addr *candidateAddr) (tp
 
 func (l *listener) setupConnection(
 	ctx context.Context, scope network.ConnManagementScope,
-	remoteMultiaddr ma.Multiaddr, addr *candidateAddr,
+	remoteMultiaddr ma.Multiaddr, candidate udpmux.Candidate,
 ) (tConn tpt.CapableConn, err error) {
 	var pc *webrtc.PeerConnection
 	defer func() {
@@ -215,7 +211,7 @@ func (l *listener) setupConnection(
 
 	settingEngine := webrtc.SettingEngine{LoggerFactory: loggerFactory}
 	settingEngine.SetAnsweringDTLSRole(webrtc.DTLSRoleServer)
-	settingEngine.SetICECredentials(addr.ufrag, addr.ufrag)
+	settingEngine.SetICECredentials(candidate.Ufrag, candidate.Ufrag)
 	settingEngine.SetLite(true)
 	settingEngine.SetICEUDPMux(l.mux)
 	settingEngine.SetIncludeLoopbackCandidate(true)
@@ -245,7 +241,7 @@ func (l *listener) setupConnection(
 	errC := addOnConnectionStateChangeCallback(pc)
 	// Infer the client SDP from the incoming STUN message by setting the ice-ufrag.
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{
-		SDP:  createClientSDP(addr.raddr, addr.ufrag),
+		SDP:  createClientSDP(candidate.Addr, candidate.Ufrag),
 		Type: webrtc.SDPTypeOffer,
 	}); err != nil {
 		return nil, err
@@ -263,9 +259,8 @@ func (l *listener) setupConnection(
 		return nil, ctx.Err()
 	case err := <-errC:
 		if err != nil {
-			return nil, fmt.Errorf("peer connection failed for ufrag: %s", addr.ufrag)
+			return nil, fmt.Errorf("peer connection failed for ufrag: %s", candidate.Ufrag)
 		}
-
 	}
 
 	rwc, err := getDetachedChannel(ctx, rawDatachannel)

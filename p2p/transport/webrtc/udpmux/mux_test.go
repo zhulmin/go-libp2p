@@ -60,7 +60,7 @@ var (
 )
 
 func TestUDPMux_GetConn(t *testing.T) {
-	m := NewUDPMux(dummyPacketConn{}, nil)
+	m := NewUDPMux(dummyPacketConn{})
 	require.False(t, hasConn(m, "test", false))
 	conn, err := m.GetConn("test", &addrV4)
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestUDPMux_GetConn(t *testing.T) {
 }
 
 func TestUDPMux_RemoveConnectionOnClose(t *testing.T) {
-	mux := NewUDPMux(dummyPacketConn{}, nil)
+	mux := NewUDPMux(dummyPacketConn{})
 	conn, err := mux.GetConn("test", &addrV4)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
