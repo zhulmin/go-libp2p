@@ -378,6 +378,8 @@ func TestPeerIDMismatch(t *testing.T) {
 		require.Error(t, err)
 		var mismatchErr sec.ErrPeerIDMismatch
 		require.ErrorAs(t, err, &mismatchErr)
+		require.Equal(t, thirdPartyID, mismatchErr.Expected)
+		require.Equal(t, serverID, mismatchErr.Actual)
 
 		var serverErr error
 		select {
@@ -393,8 +395,8 @@ func TestPeerIDMismatch(t *testing.T) {
 		clientInsecureConn, serverInsecureConn := connect(t)
 
 		errChan := make(chan error)
+		thirdPartyID, _ := createPeer(t)
 		go func() {
-			thirdPartyID, _ := createPeer(t)
 			// expect the wrong peer ID
 			_, err := serverTransport.SecureInbound(context.Background(), serverInsecureConn, thirdPartyID)
 			errChan <- err
@@ -415,6 +417,8 @@ func TestPeerIDMismatch(t *testing.T) {
 		require.Error(t, serverErr)
 		var mismatchErr sec.ErrPeerIDMismatch
 		require.ErrorAs(t, serverErr, &mismatchErr)
+		require.Equal(t, thirdPartyID, mismatchErr.Expected)
+		require.Equal(t, clientTransport.localPeer, mismatchErr.Actual)
 	})
 }
 
