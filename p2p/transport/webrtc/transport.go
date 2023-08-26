@@ -3,7 +3,7 @@
 //
 // At this point, this package is EXPERIMENTAL, and the WebRTC transport is not enabled by default.
 // While we're fairly confident that the implementation correctly implements the specification,
-// we're not making any guarantees regarding the security (especially regarding resource exhaustion attacks).
+// we're not making any guarantees regarding its security (especially regarding resource exhaustion attacks).
 // Fixes, even for security-related issues, will be conducted in the open.
 //
 // Experimentation is encouraged. Please open an issue if you encounter any problems with this transport.
