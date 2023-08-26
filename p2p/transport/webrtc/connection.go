@@ -140,6 +140,8 @@ func (c *connection) Close() error {
 		return nil
 	}
 
+	c.m.Lock()
+	defer c.m.Unlock()
 	c.scope.Done()
 	c.closeErr = errors.New("connection closed")
 	c.cancel()
