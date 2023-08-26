@@ -2,11 +2,14 @@ package udpmux
 
 import (
 	"context"
+	"errors"
 	"net"
 	"time"
 )
 
 var _ net.PacketConn = &muxedConnection{}
+
+const queueLen = 128
 
 // muxedConnection provides a net.PacketConn abstraction
 // over packetQueue and adds the ability to store addresses
@@ -16,7 +19,7 @@ type muxedConnection struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	onClose func()
-	pq      *packetQueue
+	queue   chan []byte
 	remote  net.Addr
 	mux     *UDPMux
 }
@@ -28,7 +31,7 @@ func newMuxedConnection(mux *UDPMux, onClose func(), remote net.Addr) *muxedConn
 	return &muxedConnection{
 		ctx:     ctx,
 		cancel:  cancel,
-		pq:      newPacketQueue(),
+		queue:   make(chan []byte, queueLen),
 		onClose: onClose,
 		remote:  remote,
 		mux:     mux,
@@ -36,12 +39,25 @@ func newMuxedConnection(mux *UDPMux, onClose func(), remote net.Addr) *muxedConn
 }
 
 func (c *muxedConnection) Push(buf []byte) error {
-	return c.pq.Push(buf)
+	select {
+	case c.queue <- buf:
+		return nil
+	default:
+		return errors.New("queue full")
+	}
 }
 
 func (c *muxedConnection) ReadFrom(p []byte) (int, net.Addr, error) {
-	n, err := c.pq.Pop(c.ctx, p)
-	return n, c.remote, err
+	select {
+	case buf := <-c.queue:
+		n := copy(p, buf) // This might discard parts of the packet, if p is too short
+		if n < len(buf) {
+			log.Debugf("short read, had %d, read %d", len(buf), n)
+		}
+		return n, c.remote, nil
+	case <-c.ctx.Done():
+		return 0, nil, c.ctx.Err()
+	}
 }
 
 func (c *muxedConnection) WriteTo(p []byte, addr net.Addr) (n int, err error) {
