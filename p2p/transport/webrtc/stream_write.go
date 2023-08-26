@@ -149,7 +149,9 @@ func (s *stream) availableSendSpace() int {
 	return availableSpace
 }
 
-const controlMsgSize = 100 // TODO: use actual message size
+// There's no way to determine the size of a Protobuf message in the pbio package.
+// Setting the size to 100 works as long as the control messages (incl. the varint prefix) are smaller than that value.
+const controlMsgSize = 100
 
 func (s *stream) sendControlMessage(msg *pb.Message) error {
 	available := s.availableSendSpace()
