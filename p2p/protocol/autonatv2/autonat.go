@@ -87,7 +87,9 @@ type AutoNAT struct {
 
 // New returns a new AutoNAT instance. The returned instance runs the server when the provided host
 // is publicly reachable.
-func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error) {
+// host and dialerHost should have the same dialing capabilities. In case the host doesn't support
+// a transport, dial back requests for address for that transport will be ignored.
+func New(host host.Host, dialerHost host.Host, opts ...AutoNATOption) (*AutoNAT, error) {
 	s := defaultSettings()
 	for _, o := range opts {
 		if err := o(s); err != nil {
@@ -108,7 +110,7 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 	// (https://github.com/libp2p/go-libp2p/issues/2229)(to be implemented in a future release)
 	// to determine reachability using v2 client and send this event from Address Pipeline, if
 	// we are publicly reachable.
-	sub, err := h.EventBus().Subscribe([]interface{}{
+	sub, err := host.EventBus().Subscribe([]interface{}{
 		new(event.EvtLocalReachabilityChanged),
 		new(event.EvtPeerProtocolsUpdated),
 		new(event.EvtPeerConnectednessChanged),
@@ -120,12 +122,12 @@ func New(h host.Host, dialer host.Host, opts ...AutoNATOption) (*AutoNAT, error)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	an := &AutoNAT{
-		host:          h,
+		host:          host,
 		ctx:           ctx,
 		cancel:        cancel,
 		sub:           sub,
-		srv:           newServer(h, dialer, s),
-		cli:           newClient(h),
+		srv:           newServer(host, dialerHost, s),
+		cli:           newClient(host),
 		allowAllAddrs: s.allowAllAddrs,
 		peers:         newPeersMap(),
 	}
