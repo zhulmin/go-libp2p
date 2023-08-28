@@ -224,13 +224,11 @@ func (m *metricsTracer) FailedDialing(addr ma.Multiaddr, dialErr error, cause er
 		e = "deadline"
 	} else if errors.Is(dialErr, context.Canceled) {
 		// dial was cancelled.
-
-		if errors.Is(cause, errParentContextCanceled) {
-			// parent was canceled
-			e = "canceled"
-		} else if errors.Is(cause, context.Canceled) {
-			// another parallel dial succeeded
-			e = "canceled: dial successful"
+		if errors.Is(cause, context.Canceled) {
+			// parent context was canceled
+			e = "application canceled"
+		} else if errors.Is(cause, errConcurrentDialSuccessful) {
+			e = "canceled: concurrent dial successful"
 		} else {
 			// something else
 			e = "canceled: other"
