@@ -2,6 +2,7 @@ package transport_integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,10 +166,20 @@ func TestInterceptAccept(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			// The basic host dials the first connection.
-			connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
-				// remove the certhash component from WebTransport addresses
-				require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
-			})
+			if strings.Contains(tc.Name, "WebRTC") {
+				// In WebRTC, retransmissions of the STUN packet might cause us to create multiple connections,
+				// if the first connection attempt is rejected.
+				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
+					// remove the certhash component from WebTransport addresses
+					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+				}).AnyTimes()
+			} else {
+				connGater.EXPECT().InterceptAccept(gomock.Any()).Do(func(addrs network.ConnMultiaddrs) {
+					// remove the certhash component from WebTransport addresses
+					require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
+				})
+			}
+
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
 			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
 			require.Error(t, err)
