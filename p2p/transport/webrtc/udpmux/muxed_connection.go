@@ -40,6 +40,11 @@ func newMuxedConnection(mux *UDPMux, onClose func(), remote net.Addr) *muxedConn
 
 func (c *muxedConnection) Push(buf []byte) error {
 	select {
+	case <-c.ctx.Done():
+		return errors.New("closed")
+	default:
+	}
+	select {
 	case c.queue <- buf:
 		return nil
 	default:
@@ -72,7 +77,14 @@ func (c *muxedConnection) Close() error {
 	}
 	c.onClose()
 	c.cancel()
-	return nil
+	// drain the packet queue
+	for {
+		select {
+		case <-c.queue:
+		default:
+			return nil
+		}
+	}
 }
 
 func (c *muxedConnection) LocalAddr() net.Addr  { return c.mux.socket.LocalAddr() }
