@@ -135,6 +135,7 @@ func (l *listener) listen() {
 
 			conn, err := l.handleCandidate(ctx, candidate)
 			if err != nil {
+				l.mux.RemoveConnByUfrag(candidate.Ufrag)
 				log.Debugf("could not accept connection: %s: %v", candidate.Ufrag, err)
 				return
 			}
