@@ -164,7 +164,8 @@ func TestInterceptAccept(t *testing.T) {
 				require.Equal(t, stripCertHash(h2.Addrs()[0]), addrs.LocalMultiaddr())
 			})
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
-			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
+			// use two protocols here, so we actually enter multistream negotiation
+			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID, protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
 		})
@@ -195,7 +196,8 @@ func TestInterceptSecuredIncoming(t *testing.T) {
 				}),
 			)
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
-			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
+			// use two protocols here, so we actually enter multistream negotiation
+			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID, protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
 		})
@@ -229,7 +231,8 @@ func TestInterceptUpgradedIncoming(t *testing.T) {
 				}),
 			)
 			h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), time.Hour)
-			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID)
+			// use two protocols here, so we actually enter multistream negotiation
+			_, err := h1.NewStream(ctx, h2.ID(), protocol.TestingID, protocol.TestingID)
 			require.Error(t, err)
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
 		})
