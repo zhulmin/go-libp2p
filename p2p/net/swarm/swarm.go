@@ -131,6 +131,17 @@ func WithIPv6BlackHoleConfig(enabled bool, n, min int) Option {
 	}
 }
 
+// WithReadOnlyBlackHoleDetector configures the swarm to use the black hole detector in
+// read only mode. In Read Only mode dial requests are refused in unknown state and
+// no updates to the detector state are made. This is useful for services like AutoNAT that
+// care about accurately providing reachability info.
+func WithReadOnlyBlackHoleDetector() Option {
+	return func(s *Swarm) error {
+		s.readOnlyBHD = true
+		return nil
+	}
+}
+
 // Swarm is a connection muxer, allowing connections to other peers to
 // be opened and closed, while still using the same Chan for all
 // communication. The Chan sends/receives Messages, which note the
@@ -200,6 +211,7 @@ type Swarm struct {
 	udpBlackHoleConfig  blackHoleConfig
 	ipv6BlackHoleConfig blackHoleConfig
 	bhd                 *blackHoleDetector
+	readOnlyBHD         bool
 }
 
 // NewSwarm constructs a Swarm.
@@ -246,7 +258,7 @@ func NewSwarm(local peer.ID, peers peerstore.Peerstore, eventBus event.Bus, opts
 	s.limiter = newDialLimiter(s.dialAddr)
 	s.backf.init(s.ctx)
 
-	s.bhd = newBlackHoleDetector(s.udpBlackHoleConfig, s.ipv6BlackHoleConfig, s.metricsTracer)
+	s.bhd = newBlackHoleDetector(s.udpBlackHoleConfig, s.ipv6BlackHoleConfig, s.metricsTracer, false)
 
 	return s, nil
 }

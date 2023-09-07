@@ -89,7 +89,7 @@ func TestBlackHoleFilterSuccessFraction(t *testing.T) {
 func TestBlackHoleDetectorInApplicableAddress(t *testing.T) {
 	udpConfig := blackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
 	ipv6Config := blackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
-	bhd := newBlackHoleDetector(udpConfig, ipv6Config, nil)
+	bhd := newBlackHoleDetector(udpConfig, ipv6Config, nil, false)
 	addrs := []ma.Multiaddr{
 		ma.StringCast("/ip4/1.2.3.4/tcp/1234"),
 		ma.StringCast("/ip4/1.2.3.4/tcp/1233"),
@@ -107,7 +107,7 @@ func TestBlackHoleDetectorInApplicableAddress(t *testing.T) {
 
 func TestBlackHoleDetectorUDPDisabled(t *testing.T) {
 	ipv6Config := blackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
-	bhd := newBlackHoleDetector(blackHoleConfig{Enabled: false}, ipv6Config, nil)
+	bhd := newBlackHoleDetector(blackHoleConfig{Enabled: false}, ipv6Config, nil, false)
 	publicAddr := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
 	privAddr := ma.StringCast("/ip4/192.168.1.5/udp/1234/quic-v1")
 	for i := 0; i < 100; i++ {
@@ -123,7 +123,7 @@ func TestBlackHoleDetectorUDPDisabled(t *testing.T) {
 
 func TestBlackHoleDetectorIPv6Disabled(t *testing.T) {
 	udpConfig := blackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
-	bhd := newBlackHoleDetector(udpConfig, blackHoleConfig{Enabled: false}, nil)
+	bhd := newBlackHoleDetector(udpConfig, blackHoleConfig{Enabled: false}, nil, false)
 	publicAddr := ma.StringCast("/ip6/1::1/tcp/1234")
 	privAddr := ma.StringCast("/ip6/::1/tcp/1234")
 	for i := 0; i < 100; i++ {
@@ -210,4 +210,36 @@ func TestBlackHoleDetectorAddrFiltering(t *testing.T) {
 	gotAddrs, gotRemovedAddrs = bhd.FilterAddrs(allInput)
 	require.ElementsMatch(t, bothBlockedOutput, gotAddrs)
 	require.ElementsMatch(t, bothPublicAddrs, gotRemovedAddrs)
+}
+
+func TestBlackHoleDetectorReadOnlyMode(t *testing.T) {
+	udpConfig := blackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
+	ipv6Config := blackHoleConfig{Enabled: true, N: 10, MinSuccesses: 5}
+	bhd := newBlackHoleDetector(udpConfig, ipv6Config, nil, true)
+	publicAddr := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
+	privAddr := ma.StringCast("/ip6/::1/tcp/1234")
+	for i := 0; i < 100; i++ {
+		bhd.RecordResult(publicAddr, true)
+	}
+	allAddr := []ma.Multiaddr{privAddr, publicAddr}
+	// public addr filtered because state is probing
+	wantAddrs := []ma.Multiaddr{privAddr}
+	wantRemovedAddrs := []ma.Multiaddr{publicAddr}
+
+	gotAddrs, gotRemovedAddrs := bhd.FilterAddrs(allAddr)
+	require.ElementsMatch(t, wantAddrs, gotAddrs)
+	require.ElementsMatch(t, wantRemovedAddrs, gotRemovedAddrs)
+
+	// a non readonly shared state black hole detector
+	nbhd := &blackHoleDetector{udp: bhd.udp, ipv6: bhd.ipv6, readOnly: false}
+	for i := 0; i < 100; i++ {
+		nbhd.RecordResult(publicAddr, true)
+	}
+	// no addresses filtered because state is allowed
+	wantAddrs = []ma.Multiaddr{privAddr, publicAddr}
+	wantRemovedAddrs = []ma.Multiaddr{}
+
+	gotAddrs, gotRemovedAddrs = bhd.FilterAddrs(allAddr)
+	require.ElementsMatch(t, wantAddrs, gotAddrs)
+	require.ElementsMatch(t, wantRemovedAddrs, gotRemovedAddrs)
 }

@@ -166,6 +166,9 @@ func (b *blackHoleFilter) info() blackHoleInfo {
 
 // blackHoleDetector provides UDP and IPv6 black hole detection using a `blackHoleFilter` for each.
 // For details of the black hole detection logic see `blackHoleFilter`.
+// In Read Only mode, detector doesn't update the state of underlying filters and refuses requests
+// when black hole state is unknown. This is useful for Swarms made specifically for services like
+// AutoNAT where we care about accurately reporting the reachability of a peer.
 //
 // Black hole filtering is done at a peer dial level to ensure that periodic probes to detect change
 // of the black hole state are actually dialed and are not skipped because of dial prioritisation
@@ -173,6 +176,7 @@ func (b *blackHoleFilter) info() blackHoleInfo {
 type blackHoleDetector struct {
 	udp, ipv6 *blackHoleFilter
 	mt        MetricsTracer
+	readOnly  bool
 }
 
 // FilterAddrs filters the peer's addresses removing black holed addresses
@@ -192,22 +196,14 @@ func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) (valid []ma.Multia
 
 	udpRes := blackHoleStateAllowed
 	if d.udp != nil && hasUDP {
-		udpRes = d.udp.HandleRequest()
-		if d.mt != nil {
-			info := d.udp.info()
-			d.mt.UpdatedBlackHoleFilterState(
-				info.name, info.state, info.nextProbeAfter, info.successFraction)
-		}
+		udpRes = d.getFilterState(d.udp)
+		d.trackMetrics(d.udp)
 	}
 
 	ipv6Res := blackHoleStateAllowed
 	if d.ipv6 != nil && hasIPv6 {
-		ipv6Res = d.ipv6.HandleRequest()
-		if d.mt != nil {
-			info := d.ipv6.info()
-			d.mt.UpdatedBlackHoleFilterState(
-				info.name, info.state, info.nextProbeAfter, info.successFraction)
-		}
+		ipv6Res = d.getFilterState(d.ipv6)
+		d.trackMetrics(d.ipv6)
 	}
 
 	blackHoled = make([]ma.Multiaddr, 0, len(addrs))
@@ -241,36 +237,37 @@ func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) (valid []ma.Multia
 
 // RecordResult updates the state of the relevant blackHoleFilters for addr
 func (d *blackHoleDetector) RecordResult(addr ma.Multiaddr, success bool) {
-	if !manet.IsPublicAddr(addr) {
+	if d.readOnly || !manet.IsPublicAddr(addr) {
 		return
 	}
 	if d.udp != nil && isProtocolAddr(addr, ma.P_UDP) {
 		d.udp.RecordResult(success)
+		d.trackMetrics(d.udp)
 	}
 	if d.ipv6 != nil && isProtocolAddr(addr, ma.P_IP6) {
 		d.ipv6.RecordResult(success)
+		d.trackMetrics(d.ipv6)
 	}
 }
 
-func (d *blackHoleDetector) State(addr ma.Multiaddr) blackHoleState {
-	if !manet.IsPublicAddr(addr) {
+func (d *blackHoleDetector) getFilterState(f *blackHoleFilter) blackHoleState {
+	if d.readOnly {
+		if f.State() != blackHoleStateAllowed {
+			return blackHoleStateBlocked
+		}
 		return blackHoleStateAllowed
 	}
+	return f.HandleRequest()
+}
 
-	if d.udp != nil && isProtocolAddr(addr, ma.P_UDP) {
-		udpState := d.udp.State()
-		if udpState != blackHoleStateAllowed {
-			return udpState
-		}
+func (d *blackHoleDetector) trackMetrics(f *blackHoleFilter) {
+	if d.readOnly || d.mt == nil {
+		return
 	}
-
-	if d.ipv6 != nil && isProtocolAddr(addr, ma.P_IP6) {
-		ipv6State := d.ipv6.State()
-		if ipv6State != blackHoleStateAllowed {
-			return ipv6State
-		}
-	}
-	return blackHoleStateAllowed
+	// Track metrics only in non readOnly state
+	info := f.info()
+	d.mt.UpdatedBlackHoleFilterState(
+		info.name, info.state, info.nextProbeAfter, info.successFraction)
 }
 
 // blackHoleConfig is the config used for black hole detection
@@ -284,8 +281,8 @@ type blackHoleConfig struct {
 	MinSuccesses int
 }
 
-func newBlackHoleDetector(udpConfig, ipv6Config blackHoleConfig, mt MetricsTracer) *blackHoleDetector {
-	d := &blackHoleDetector{mt: mt}
+func newBlackHoleDetector(udpConfig, ipv6Config blackHoleConfig, mt MetricsTracer, readOnly bool) *blackHoleDetector {
+	d := &blackHoleDetector{mt: mt, readOnly: readOnly}
 
 	if udpConfig.Enabled {
 		d.udp = &blackHoleFilter{
