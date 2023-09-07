@@ -29,14 +29,6 @@ func (st blackHoleState) String() string {
 	}
 }
 
-type blackHoleResult int
-
-const (
-	blackHoleResultAllowed blackHoleResult = iota
-	blackHoleResultProbing
-	blackHoleResultBlocked
-)
-
 // blackHoleFilter provides black hole filtering for dials. This filter should be used in
 // concert with a UDP of IPv6 address filter to detect UDP or IPv6 black hole. In a black
 // holed environments dial requests are blocked and only periodic probes to check the
@@ -104,7 +96,7 @@ func (b *blackHoleFilter) RecordResult(success bool) {
 }
 
 // HandleRequest returns the result of applying the black hole filter for the request.
-func (b *blackHoleFilter) HandleRequest() blackHoleResult {
+func (b *blackHoleFilter) HandleRequest() blackHoleState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -113,11 +105,11 @@ func (b *blackHoleFilter) HandleRequest() blackHoleResult {
 	b.trackMetrics()
 
 	if b.state == blackHoleStateAllowed {
-		return blackHoleResultAllowed
+		return blackHoleStateAllowed
 	} else if b.state == blackHoleStateProbing || b.requests%b.n == 0 {
-		return blackHoleResultProbing
+		return blackHoleStateProbing
 	} else {
-		return blackHoleResultBlocked
+		return blackHoleStateBlocked
 	}
 }
 
@@ -199,12 +191,12 @@ func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) (valid []ma.Multia
 		}
 	}
 
-	udpRes := blackHoleResultAllowed
+	udpRes := blackHoleStateAllowed
 	if d.udp != nil && hasUDP {
 		udpRes = d.udp.HandleRequest()
 	}
 
-	ipv6Res := blackHoleResultAllowed
+	ipv6Res := blackHoleStateAllowed
 	if d.ipv6 != nil && hasIPv6 {
 		ipv6Res = d.ipv6.HandleRequest()
 	}
@@ -217,19 +209,19 @@ func (d *blackHoleDetector) FilterAddrs(addrs []ma.Multiaddr) (valid []ma.Multia
 				return true
 			}
 			// allow all UDP addresses while probing irrespective of IPv6 black hole state
-			if udpRes == blackHoleResultProbing && isProtocolAddr(a, ma.P_UDP) {
+			if udpRes == blackHoleStateProbing && isProtocolAddr(a, ma.P_UDP) {
 				return true
 			}
 			// allow all IPv6 addresses while probing irrespective of UDP black hole state
-			if ipv6Res == blackHoleResultProbing && isProtocolAddr(a, ma.P_IP6) {
+			if ipv6Res == blackHoleStateProbing && isProtocolAddr(a, ma.P_IP6) {
 				return true
 			}
 
-			if udpRes == blackHoleResultBlocked && isProtocolAddr(a, ma.P_UDP) {
+			if udpRes == blackHoleStateBlocked && isProtocolAddr(a, ma.P_UDP) {
 				blackHoled = append(blackHoled, a)
 				return false
 			}
-			if ipv6Res == blackHoleResultBlocked && isProtocolAddr(a, ma.P_IP6) {
+			if ipv6Res == blackHoleStateBlocked && isProtocolAddr(a, ma.P_IP6) {
 				blackHoled = append(blackHoled, a)
 				return false
 			}
