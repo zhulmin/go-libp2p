@@ -29,23 +29,23 @@ func (st blackHoleState) String() string {
 	}
 }
 
-// blackHoleFilter provides black hole filtering for dials. This filter should be used in concert
+// BlackHoleFilter provides black hole filtering for dials. This filter should be used in concert
 // with a UDP or IPv6 address filter to detect UDP or IPv6 black hole. In a black holed environment,
-// dial requests are refused Requests are blocked if the number of successes in the last n dials is
-// less than minSuccesses.
-// If a request succeeds in Blocked state, the filter state is reset and n subsequent requests are
+// dial requests are refused Requests are blocked if the number of successes in the last N dials is
+// less than MinSuccesses.
+// If a request succeeds in Blocked state, the filter state is reset and N subsequent requests are
 // allowed before reevaluating black hole state. Dials cancelled when some other concurrent dial
-// succeeded are counted as failures. A sufficiently large n prevents false negatives in such cases.
-type blackHoleFilter struct {
-	// n serves the dual purpose of being the minimum number of completed dials required before
+// succeeded are counted as failures. A sufficiently large N prevents false negatives in such cases.
+type BlackHoleFilter struct {
+	// N serves the dual purpose of being the minimum number of completed dials required before
 	// evaluating black hole state and the minimum number of requests after which we probe the
 	// state of the black hole in blocked state
-	n int
-	// minSuccesses is the minimum number of Success required in the last n dials
+	N int
+	// MinSuccesses is the minimum number of Success required in the last n dials
 	// to consider we are not blocked.
-	minSuccesses int
-	// name for the detector.
-	name string
+	MinSuccesses int
+	// Name for the detector.
+	Name string
 
 	mu sync.Mutex
 	// requests counts number of dial requests to peers. We handle request at a peer
@@ -62,7 +62,7 @@ type blackHoleFilter struct {
 // RecordResult records the outcome of a dial. A successful dial in Blocked state will change the
 // state of the filter to Probing. A failed dial only blocks subsequent requests if the success
 // fraction over the last n outcomes is less than the minSuccessFraction of the filter.
-func (b *blackHoleFilter) RecordResult(success bool) {
+func (b *BlackHoleFilter) RecordResult(success bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -79,7 +79,7 @@ func (b *blackHoleFilter) RecordResult(success bool) {
 	}
 	b.dialResults = append(b.dialResults, success)
 
-	if len(b.dialResults) > b.n {
+	if len(b.dialResults) > b.N {
 		if b.dialResults[0] {
 			b.successes--
 		}
@@ -90,7 +90,7 @@ func (b *blackHoleFilter) RecordResult(success bool) {
 }
 
 // HandleRequest returns the result of applying the black hole filter for the request.
-func (b *blackHoleFilter) HandleRequest() blackHoleState {
+func (b *BlackHoleFilter) HandleRequest() blackHoleState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -98,37 +98,37 @@ func (b *blackHoleFilter) HandleRequest() blackHoleState {
 
 	if b.state == blackHoleStateAllowed {
 		return blackHoleStateAllowed
-	} else if b.state == blackHoleStateProbing || b.requests%b.n == 0 {
+	} else if b.state == blackHoleStateProbing || b.requests%b.N == 0 {
 		return blackHoleStateProbing
 	} else {
 		return blackHoleStateBlocked
 	}
 }
 
-func (b *blackHoleFilter) reset() {
+func (b *BlackHoleFilter) reset() {
 	b.successes = 0
 	b.dialResults = b.dialResults[:0]
 	b.requests = 0
 	b.updateState()
 }
 
-func (b *blackHoleFilter) updateState() {
+func (b *BlackHoleFilter) updateState() {
 	st := b.state
 
-	if len(b.dialResults) < b.n {
+	if len(b.dialResults) < b.N {
 		b.state = blackHoleStateProbing
-	} else if b.successes >= b.minSuccesses {
+	} else if b.successes >= b.MinSuccesses {
 		b.state = blackHoleStateAllowed
 	} else {
 		b.state = blackHoleStateBlocked
 	}
 
 	if st != b.state {
-		log.Debugf("%s blackHoleDetector state changed from %s to %s", b.name, st, b.state)
+		log.Debugf("%s blackHoleDetector state changed from %s to %s", b.Name, st, b.state)
 	}
 }
 
-func (b *blackHoleFilter) State() blackHoleState {
+func (b *BlackHoleFilter) State() blackHoleState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -142,13 +142,13 @@ type blackHoleInfo struct {
 	successFraction float64
 }
 
-func (b *blackHoleFilter) info() blackHoleInfo {
+func (b *BlackHoleFilter) info() blackHoleInfo {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	nextProbeAfter := 0
 	if b.state == blackHoleStateBlocked {
-		nextProbeAfter = b.n - (b.requests % b.n)
+		nextProbeAfter = b.N - (b.requests % b.N)
 	}
 
 	successFraction := 0.0
@@ -157,7 +157,7 @@ func (b *blackHoleFilter) info() blackHoleInfo {
 	}
 
 	return blackHoleInfo{
-		name:            b.name,
+		name:            b.Name,
 		state:           b.state,
 		nextProbeAfter:  nextProbeAfter,
 		successFraction: successFraction,
@@ -174,7 +174,7 @@ func (b *blackHoleFilter) info() blackHoleInfo {
 // of the black hole state are actually dialed and are not skipped because of dial prioritisation
 // logic.
 type blackHoleDetector struct {
-	udp, ipv6 *blackHoleFilter
+	udp, ipv6 *BlackHoleFilter
 	mt        MetricsTracer
 	readOnly  bool
 }
@@ -250,7 +250,7 @@ func (d *blackHoleDetector) RecordResult(addr ma.Multiaddr, success bool) {
 	}
 }
 
-func (d *blackHoleDetector) getFilterState(f *blackHoleFilter) blackHoleState {
+func (d *blackHoleDetector) getFilterState(f *BlackHoleFilter) blackHoleState {
 	if d.readOnly {
 		if f.State() != blackHoleStateAllowed {
 			return blackHoleStateBlocked
@@ -260,44 +260,11 @@ func (d *blackHoleDetector) getFilterState(f *blackHoleFilter) blackHoleState {
 	return f.HandleRequest()
 }
 
-func (d *blackHoleDetector) trackMetrics(f *blackHoleFilter) {
+func (d *blackHoleDetector) trackMetrics(f *BlackHoleFilter) {
 	if d.readOnly || d.mt == nil {
 		return
 	}
 	// Track metrics only in non readOnly state
 	info := f.info()
-	d.mt.UpdatedBlackHoleFilterState(
-		info.name, info.state, info.nextProbeAfter, info.successFraction)
-}
-
-// blackHoleConfig is the config used for black hole detection
-type blackHoleConfig struct {
-	// Enabled enables black hole detection
-	Enabled bool
-	// N is the size of the sliding window used to evaluate black hole state
-	N int
-	// MinSuccesses is the minimum number of successes out of N required to not
-	// block requests
-	MinSuccesses int
-}
-
-func newBlackHoleDetector(udpConfig, ipv6Config blackHoleConfig, mt MetricsTracer, readOnly bool) *blackHoleDetector {
-	d := &blackHoleDetector{mt: mt, readOnly: readOnly}
-
-	if udpConfig.Enabled {
-		d.udp = &blackHoleFilter{
-			n:            udpConfig.N,
-			minSuccesses: udpConfig.MinSuccesses,
-			name:         "UDP",
-		}
-	}
-
-	if ipv6Config.Enabled {
-		d.ipv6 = &blackHoleFilter{
-			n:            ipv6Config.N,
-			minSuccesses: ipv6Config.MinSuccesses,
-			name:         "IPv6",
-		}
-	}
-	return d
+	d.mt.UpdatedBlackHoleFilterState(info.name, info.state, info.nextProbeAfter, info.successFraction)
 }
