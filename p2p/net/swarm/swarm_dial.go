@@ -475,6 +475,14 @@ func (s *Swarm) filterKnownUndialables(p peer.ID, addrs []ma.Multiaddr) (goodAdd
 	}
 
 	return ma.FilterAddrs(addrs,
+		// Linux and BSD treat an unspecified address when dialing as a localhost address.
+		// Windows doesn't support this. We filter all such addresses out because peers
+		// listening on unspecified addresses will advertise more specific addresses.
+		// https://unix.stackexchange.com/a/419881
+		// https://superuser.com/a/1755455
+		func(addr ma.Multiaddr) bool {
+			return !manet.IsIPUnspecified(addr)
+		},
 		func(addr ma.Multiaddr) bool {
 			if ma.Contains(ourAddrs, addr) {
 				addrErrs = append(addrErrs, TransportError{Address: addr, Cause: ErrDialToSelf})
