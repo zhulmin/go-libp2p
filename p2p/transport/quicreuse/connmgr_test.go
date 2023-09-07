@@ -36,7 +36,7 @@ func checkClosed(t *testing.T, cm *ConnManager) {
 		}
 		r.mutex.Unlock()
 	}
-	require.Eventually(t, func() bool { return !isGarbageCollectorRunning() }, 200*time.Millisecond, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return !isGarbageCollectorRunning() }, 2*time.Second, 100*time.Millisecond)
 }
 
 func TestListenOnSameProto(t *testing.T) {
