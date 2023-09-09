@@ -378,10 +378,14 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 		return false
 	}
 
+	log.Debugw("shouldRecordObservation", "observed", observed, "step", 0)
+
 	// Provided by NAT64 peers, these addresses are specific to the peer and not publicly routable
 	if manet.IsNAT64IPv4ConvertedIPv6Addr(observed) {
 		return false
 	}
+
+	log.Debugw("shouldRecordObservation", "observed", observed, "step", 1)
 
 	// we should only use ObservedAddr when our connection's LocalAddr is one
 	// of our ListenAddrs. If we Dial out using an ephemeral addr, knowing that
@@ -413,6 +417,8 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 		}
 	}
 
+	log.Debugw("shouldRecordObservation", "observed", observed, "step", 2)
+
 	if !ma.Contains(ifaceaddrs, local) && !ma.Contains(listenAddrs, local) {
 		// not in our list
 		return false
@@ -425,6 +431,8 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 		}
 	}
 
+	log.Debugw("shouldRecordObservation", "observed", observed, "step", 3)
+
 	// We should reject the connection if the observation doesn't match the
 	// transports of one of our advertised addresses.
 	if !HasConsistentTransport(observed, hostAddrs) &&
@@ -436,6 +444,8 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 		)
 		return false
 	}
+
+	log.Debugw("shouldRecordObservation", "observed", observed, "step", 4)
 
 	return true
 }
