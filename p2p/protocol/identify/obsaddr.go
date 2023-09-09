@@ -419,6 +419,8 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 
 	log.Debugw("shouldRecordObservation", "observed", observed, "step", 2)
 
+	log.Debugw("shouldRecordObservation", "local", local, "ifaceaddrs", ifaceaddrs, "listenAddrs", listenAddrs)
+
 	if !ma.Contains(ifaceaddrs, local) && !ma.Contains(listenAddrs, local) {
 		// not in our list
 		return false
