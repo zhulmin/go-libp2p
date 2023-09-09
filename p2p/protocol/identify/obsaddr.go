@@ -442,6 +442,7 @@ func shouldRecordObservation(host addrsProvider, network listenAddrsProvider, co
 
 func (oas *ObservedAddrManager) maybeRecordObservation(conn network.Conn, observed ma.Multiaddr) {
 	shouldRecord := shouldRecordObservation(oas.host, oas.host.Network(), conn, observed)
+	log.Debugw("maybeRecordObs", "observed", observed, "should record", shouldRecord)
 	if shouldRecord {
 		// Ok, the observation is good, record it.
 		log.Debugw("added own observed listen addr", "observed", observed)
