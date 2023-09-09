@@ -152,6 +152,7 @@ func (hp *holePuncher) directConnect(rp peer.ID) error {
 			}
 			hp.tracer.StartHolePunch(rp, addrs, rtt)
 			hp.tracer.HolePunchAttempt(pi.ID)
+			log.Debugw("punching hole", "peer", rp, "addrs", addrs, "rtt", rtt)
 			err := holePunchConnect(hp.ctx, hp.host, pi, true)
 			dt := time.Since(start)
 			hp.tracer.EndHolePunch(rp, dt, err)
