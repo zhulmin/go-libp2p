@@ -41,12 +41,6 @@ const maxInlineKeyLength = 42
 // hash output as a multihash. See IDFromPublicKey for details.
 type ID string
 
-// Pretty returns a base58-encoded string representation of the ID.
-// Deprecated: use String() instead.
-func (id ID) Pretty() string {
-	return id.String()
-}
-
 // Loggable returns a pretty peer ID string in loggable JSON format.
 func (id ID) Loggable() map[string]interface{} {
 	return map[string]interface{}{

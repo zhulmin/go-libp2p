@@ -3,9 +3,9 @@ package peer_test
 import (
 	"testing"
 
-	ma "github.com/multiformats/go-multiaddr"
-
 	. "github.com/libp2p/go-libp2p/core/peer"
+
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var (
@@ -115,7 +115,7 @@ func TestAddrInfosFromP2pAddrs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, info := range infos {
-		exaddrs, ok := expected[info.ID.Pretty()]
+		exaddrs, ok := expected[info.ID.String()]
 		if !ok {
 			t.Fatalf("didn't expect peer %s", info.ID)
 		}
@@ -129,7 +129,7 @@ func TestAddrInfosFromP2pAddrs(t *testing.T) {
 				t.Fatalf("expected %s, got %s", exaddrs[i], addr)
 			}
 		}
-		delete(expected, info.ID.Pretty())
+		delete(expected, info.ID.String())
 	}
 }
 
@@ -144,7 +144,7 @@ func TestAddrInfoJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if addrInfo.ID != testID {
-		t.Fatalf("expected ID to equal %s, got %s", testID.Pretty(), addrInfo.ID.Pretty())
+		t.Fatalf("expected ID to equal %s, got %s", testID, addrInfo.ID)
 	}
 	if len(addrInfo.Addrs) != 1 || !addrInfo.Addrs[0].Equal(maddrFull) {
 		t.Fatalf("expected addrs to match %v, got %v", maddrFull, addrInfo.Addrs)
