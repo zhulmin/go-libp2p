@@ -145,16 +145,6 @@ func Decode(s string) (ID, error) {
 	return FromCid(c)
 }
 
-// Encode encodes a peer ID as a string.
-//
-// At the moment, it base58 encodes the peer ID but, in the future, it will
-// switch to encoding it as a CID by default.
-//
-// Deprecated: use id.String instead.
-func Encode(id ID) string {
-	return id.String()
-}
-
 // FromCid converts a CID to a peer ID, if possible.
 func FromCid(c cid.Cid) (ID, error) {
 	code := mc.Code(c.Type())
