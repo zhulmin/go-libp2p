@@ -337,7 +337,7 @@ func (t *decayingTag) Remove(p peer.ID) error {
 	default:
 		return fmt.Errorf(
 			"unable to remove decaying tag for peer %s, tag %s; queue full (len=%d)",
-			p.String(), t.name, len(t.trkr.removeTagCh))
+			p, t.name, len(t.trkr.removeTagCh))
 	}
 }
 
