@@ -247,7 +247,7 @@ func TestLotsOfDataManyStreams(t *testing.T) {
 	// 64k buffer
 	const bufSize = 64 << 10
 	sendBuf := [bufSize]byte{}
-	const totalStreams = 512
+	const totalStreams = 500
 	const parallel = 8
 	// Total sends are > 20MiB
 	require.Greater(t, len(sendBuf)*totalStreams, 20<<20)

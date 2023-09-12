@@ -192,7 +192,9 @@ func (s *stream) maybeDeclareStreamDone() {
 		(s.receiveState == receiveStateReset || s.receiveState == receiveStateDataRead) &&
 		len(s.controlMsgQueue) == 0 {
 		_ = s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
-		_ = s.dataChannel.Close()
+		// TODO: we should be closing the underlying datachannel, but this resets the stream
+		// See https://github.com/libp2p/specs/issues/575 for details.
+		// _ = s.dataChannel.Close()
 		// TODO: write for the spawned reader to return
 		s.onDone()
 	}

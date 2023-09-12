@@ -27,6 +27,8 @@ var _ tpt.CapableConn = &connection{}
 
 const maxAcceptQueueLen = 10
 
+const maxDataChannelID = 1 << 10
+
 type errConnectionTimeout struct{}
 
 var _ net.Error = &errConnectionTimeout{}
@@ -108,6 +110,12 @@ func newConnection(
 		if c.IsClosed() {
 			return
 		}
+		// Limit the number of streams, since we're not able to actually properly close them.
+		// See https://github.com/libp2p/specs/issues/575 for details.
+		if *dc.ID() > maxDataChannelID {
+			c.Close()
+			return
+		}
 		dc.OnOpen(func() {
 			rwc, err := dc.Detach()
 			if err != nil {
@@ -166,6 +174,13 @@ func (c *connection) OpenStream(ctx context.Context) (network.MuxedStream, error
 	if id > math.MaxUint16 {
 		return nil, errors.New("exhausted stream ID space")
 	}
+	// Limit the number of streams, since we're not able to actually properly close them.
+	// See https://github.com/libp2p/specs/issues/575 for details.
+	if id > maxDataChannelID {
+		c.Close()
+		return c.OpenStream(ctx)
+	}
+
 	streamID := uint16(id)
 	dc, err := c.pc.CreateDataChannel("", &webrtc.DataChannelInit{ID: &streamID})
 	if err != nil {
