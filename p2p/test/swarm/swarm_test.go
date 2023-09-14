@@ -55,6 +55,7 @@ func TestDialPeerTransientConnection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn1)
 
+	// Test that repeated calls return the same connection.
 	conn2, err := h1.Network().DialPeer(context.Background(), h2.ID())
 	require.NoError(t, err)
 	require.NotNil(t, conn2)

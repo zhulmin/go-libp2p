@@ -428,7 +428,8 @@ func (s *Swarm) StreamHandler() network.StreamHandler {
 }
 
 // NewStream creates a new stream on any available connection to peer, dialing
-// if necessary. Use network.WithUseTransient to open a stream over a transient(relayed)
+// if necessary.
+// Use network.WithUseTransient to open a stream over a transient(relayed)
 // connection.
 func (s *Swarm) NewStream(ctx context.Context, p peer.ID) (network.Stream, error) {
 	log.Debugf("[%s] opening stream to peer [%s]", s.local, p)
@@ -546,9 +547,9 @@ func (s *Swarm) bestConnToPeer(p peer.ID) *Conn {
 	return best
 }
 
-// bestAcceptableConnToPeer returns the best acceptable connection in the ctx passed. If
-// network.WithForceDirectDial is used, it'll only returns a direct connection ignoring
-// any transient(relayed) connections to the peer.
+// bestAcceptableConnToPeer returns the best acceptable connection, considering the passed in ctx.
+// If network.WithForceDirectDial is used, it only returns a direct connections, ignoring
+// any transient (relayed) connections to the peer.
 func (s *Swarm) bestAcceptableConnToPeer(ctx context.Context, p peer.ID) *Conn {
 	conn := s.bestConnToPeer(p)
 
