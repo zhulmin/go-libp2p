@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"time"
+
+	pool "github.com/libp2p/go-buffer-pool"
 )
 
 var _ net.PacketConn = &muxedConnection{}
@@ -59,6 +61,7 @@ func (c *muxedConnection) ReadFrom(p []byte) (int, net.Addr, error) {
 		if n < len(buf) {
 			log.Debugf("short read, had %d, read %d", len(buf), n)
 		}
+		pool.Put(buf)
 		return n, c.remote, nil
 	case <-c.ctx.Done():
 		return 0, nil, c.ctx.Err()
