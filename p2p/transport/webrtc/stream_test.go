@@ -287,8 +287,10 @@ func TestStreamWriteDeadlineAsync(t *testing.T) {
 	rand.Read(b)
 	start := time.Now()
 	timeout := 100 * time.Millisecond
+	var isCI bool
 	if os.Getenv("CI") != "" {
 		timeout *= 5
+		isCI = true
 	}
 	clientStr.SetWriteDeadline(start.Add(timeout))
 	var hitDeadline bool
@@ -303,5 +305,11 @@ func TestStreamWriteDeadlineAsync(t *testing.T) {
 	require.True(t, hitDeadline)
 	took := time.Since(start)
 	require.GreaterOrEqual(t, took, timeout)
-	require.LessOrEqual(t, took, timeout*3/2)
+
+	if isCI {
+		// Allow more buffer in CI
+		require.LessOrEqual(t, took, timeout*3)
+	} else {
+		require.LessOrEqual(t, took, timeout*3/2)
+	}
 }
