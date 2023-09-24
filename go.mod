@@ -57,7 +57,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/fx v1.20.0
 	go.uber.org/goleak v1.2.0
-	go.uber.org/mock v0.2.0
+	go.uber.org/mock v0.3.0
 	go.uber.org/zap v1.25.0
 	golang.org/x/crypto v0.12.0
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
