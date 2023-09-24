@@ -123,10 +123,9 @@ type reuse struct {
 	globalDialers map[int]*refcountedTransport
 
 	statelessResetKey *quic.StatelessResetKey
-	metricsTracer     *metricsTracer
 }
 
-func newReuse(srk *quic.StatelessResetKey, mt *metricsTracer) *reuse {
+func newReuse(srk *quic.StatelessResetKey) *reuse {
 	r := &reuse{
 		unicast:           make(map[string]map[int]*refcountedTransport),
 		globalListeners:   make(map[int]*refcountedTransport),
@@ -134,7 +133,6 @@ func newReuse(srk *quic.StatelessResetKey, mt *metricsTracer) *reuse {
 		closeChan:         make(chan struct{}),
 		gcStopChan:        make(chan struct{}),
 		statelessResetKey: srk,
-		metricsTracer:     mt,
 	}
 	go r.gc()
 	return r
@@ -271,9 +269,6 @@ func (r *reuse) transportForDialLocked(network string, source *net.IP) (*refcoun
 		Conn:              conn,
 		StatelessResetKey: r.statelessResetKey,
 	}, packetConn: conn}
-	if r.metricsTracer != nil {
-		tr.Transport.Tracer = r.metricsTracer
-	}
 	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = tr
 	return tr, nil
 }
@@ -317,14 +312,13 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		return nil, err
 	}
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	tr := &refcountedTransport{Transport: quic.Transport{
-		Conn:              conn,
-		StatelessResetKey: r.statelessResetKey,
-	}, packetConn: conn}
-	if r.metricsTracer != nil {
-		tr.Transport.Tracer = r.metricsTracer
+	tr := &refcountedTransport{
+		Transport: quic.Transport{
+			Conn:              conn,
+			StatelessResetKey: r.statelessResetKey,
+		},
+		packetConn: conn,
 	}
-
 	tr.IncreaseCount()
 
 	// Deal with listen on a global address
