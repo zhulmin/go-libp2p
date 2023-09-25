@@ -47,7 +47,6 @@ func newWebRTCHost(t *testing.T) *webrtcHost {
 	upg := swarmt.GenUpgrader(t, as, nil)
 	err := client.AddTransport(a, upg)
 	require.NoError(t, err)
-
 	ta, err := newTransport(a, nil, nil)
 	require.NoError(t, err)
 	return &webrtcHost{
