@@ -80,7 +80,7 @@ func (p *PingService) PingHandler(s network.Stream) {
 			errCh <- err
 			return
 		}
-
+		//		time.Sleep(5 * time.Second)
 		_, err = s.Write(buf)
 		if err != nil {
 			errCh <- err

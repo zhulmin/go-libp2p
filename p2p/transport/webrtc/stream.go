@@ -123,23 +123,7 @@ func newStream(
 			}
 		}
 
-		if s.isDone() {
-			// onDone removes the stream from the connection and requires the connection lock.
-			// This callback(onBufferedAmountLow) is executing in the sctp readLoop goroutine.
-			// If Connection.Close is called concurrently, the closing goroutine will acquire
-			// the connection lock and wait for sctp readLoop to exit, the sctp readLoop will
-			// wait for the connection lock before exiting, causing a deadlock.
-			// Run this in a different goroutine to avoid the deadlock.
-			go func() {
-				s.mx.Lock()
-				defer s.mx.Unlock()
-				// TODO: we should be closing the underlying datachannel, but this resets the stream
-				// See https://github.com/libp2p/specs/issues/575 for details.
-				// _ = s.dataChannel.Close()
-				// TODO: write for the spawned reader to return
-				s.onDone()
-			}()
-		}
+		s.maybeDeclareStreamDone()
 
 		select {
 		case s.writeAvailable <- struct{}{}:
@@ -211,6 +195,7 @@ func (s *stream) maybeDeclareStreamDone() {
 		// See https://github.com/libp2p/specs/issues/575 for details.
 		// _ = s.dataChannel.Close()
 		// TODO: write for the spawned reader to return
+		s.dataChannel.Close()
 		s.onDone()
 	}
 }
