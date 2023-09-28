@@ -66,7 +66,7 @@ func (p *PingService) PingHandler(s network.Stream) {
 			log.Debug("ping timeout")
 		case err, ok := <-errCh:
 			if ok {
-				log.Debug(err)
+				log.Error("ping exit:", err)
 			} else {
 				log.Error("ping loop failed without error")
 			}
