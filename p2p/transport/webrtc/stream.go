@@ -170,6 +170,7 @@ func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 		if s.receiveState == receiveStateReceiving {
 			s.receiveState = receiveStateDataRead
 		}
+		log.Errorln("received FIN", s.id)
 	case pb.Message_STOP_SENDING:
 		if s.sendState == sendStateSending {
 			s.sendState = sendStateReset

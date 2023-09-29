@@ -54,41 +54,29 @@ func (p *PingService) PingHandler(s network.Stream) {
 
 	buf := pool.Get(PingSize)
 	defer pool.Put(buf)
+	defer s.Close()
 
 	errCh := make(chan error, 1)
 	defer close(errCh)
-	timer := time.NewTimer(pingTimeout)
-	defer timer.Stop()
-
-	go func() {
-		select {
-		case <-timer.C:
-			log.Debug("ping timeout")
-		case err, ok := <-errCh:
-			if ok {
-				log.Error("ping exit:", err)
-			} else {
-				log.Error("ping loop failed without error")
-			}
-		}
-		s.Close()
-	}()
-
-	for {
-		_, err := io.ReadFull(s, buf)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		//		time.Sleep(5 * time.Second)
-		_, err = s.Write(buf)
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		timer.Reset(pingTimeout)
+	_, err := io.ReadFull(s, buf)
+	if err != nil {
+		errCh <- err
+		return
 	}
+	log.Errorln("first read done")
+	st := time.Now()
+	_, err = io.ReadFull(s, buf)
+	if err != nil {
+		log.Errorln("exiting", err, time.Since(st))
+		return
+	}
+
+	_, err = s.Write(buf)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	time.Sleep(5 * time.Second)
 }
 
 // Result is a result of a ping attempt, either an RTT or an error.
