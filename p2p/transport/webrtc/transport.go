@@ -576,6 +576,56 @@ func (t *WebRTCTransport) RemoveMux(mux *udpmux.UDPMux) {
 	t.v6Reuse.Delete(mux)
 }
 
+func (t *WebRTCTransport) AddCertHashes(addr ma.Multiaddr) (ma.Multiaddr, bool) {
+	listenerFingerprint, err := t.getCertificateFingerprint()
+	if err != nil {
+		return nil, false
+	}
+
+	encodedLocalFingerprint, err := encodeDTLSFingerprint(listenerFingerprint)
+	if err != nil {
+		return nil, false
+	}
+
+	certComp, err := ma.NewComponent(ma.ProtocolWithCode(ma.P_CERTHASH).Name, encodedLocalFingerprint)
+	if err != nil {
+		return nil, false
+	}
+
+	return addr.Encapsulate(certComp), true
+}
+
+// IsWebRTCDirectMultiaddr returns whether addr is a /webrtc-direct multiaddr and the number of
+// certhashes found
+func IsWebRTCDirectMultiaddr(addr ma.Multiaddr) (bool, int) {
+	const (
+		init = iota
+		foundUDP
+		foundWebRTCDirect
+	)
+	state := init
+	certhashCount := 0
+
+	ma.ForEach(addr, func(c ma.Component) bool {
+		switch c.Protocol().Code {
+		case ma.P_UDP:
+			if state == init {
+				state = foundUDP
+			}
+		case ma.P_WEBRTC_DIRECT:
+			if state == foundUDP {
+				state = foundWebRTCDirect
+			}
+		case ma.P_CERTHASH:
+			if state == foundWebRTCDirect {
+				certhashCount++
+			}
+		}
+		return true
+	})
+	return state == foundWebRTCDirect, certhashCount
+}
+
 type fakeStreamConn struct{ *stream }
 
 func (fakeStreamConn) LocalAddr() net.Addr  { return nil }
