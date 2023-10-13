@@ -27,7 +27,6 @@ const (
 	KeyType_Ed25519   KeyType = 1
 	KeyType_Secp256k1 KeyType = 2
 	KeyType_ECDSA     KeyType = 3
-	KeyType_ECDSB     KeyType = 4
 )
 
 // Enum value maps for KeyType.
