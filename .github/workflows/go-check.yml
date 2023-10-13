@@ -16,5 +16,3 @@ concurrency:
 jobs:
   go-check:
     uses: pl-strflt/uci/.github/workflows/go-check.yml@templates-strip-version-comments
-    with:
-      go-generate-ignore-protoc-version-comments: false
