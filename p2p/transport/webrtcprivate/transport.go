@@ -34,6 +34,7 @@ import (
 const (
 	name                = "webrtcprivate"
 	maxMsgSize          = 4096
+	receiveMTU          = 1500
 	connectTimeout      = time.Minute
 	SignalingProtocol   = "/webrtc-signaling"
 	disconnectedTimeout = 20 * time.Second
@@ -458,6 +459,7 @@ func (t *transport) NewPeerConnection() (*webrtc.PeerConnection, error) {
 	s.SetICETimeouts(disconnectedTimeout, failedTimeout, keepaliveTimeout)
 	s.DetachDataChannels()
 	s.SetIncludeLoopbackCandidate(true)
+	s.SetReceiveMTU(receiveMTU)
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(s))
 	return api.NewPeerConnection(t.webrtcConfig)
 }
