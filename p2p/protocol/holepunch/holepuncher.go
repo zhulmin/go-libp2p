@@ -180,7 +180,10 @@ func (hp *holePuncher) maybeDialWebRTC(p peer.ID) {
 	for _, a := range addrs {
 		if _, err := a.ValueForProtocol(ma.P_WEBRTC); err == nil {
 			ctx := network.WithForceDirectDial(hp.ctx, "webrtc holepunch")
-			hp.host.Connect(ctx, peer.AddrInfo{ID: p}) // address is already in peerstore
+			err := hp.host.Connect(ctx, peer.AddrInfo{ID: p}) // address is already in peerstore
+			if err != nil {
+				log.Debugf("holepunch attempt to %s over /webrtc failed: %s", p, err)
+			}
 			return
 		}
 	}

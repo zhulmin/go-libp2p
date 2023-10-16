@@ -310,7 +310,10 @@ func (s *Service) Connected(_ network.Network, conn network.Conn) {
 			for _, addr := range s.host.Peerstore().Addrs(p) {
 				if _, err := addr.ValueForProtocol(ma.P_WEBRTC); err == nil {
 					ctx := network.WithForceDirectDial(s.ctx, "webrtc holepunch")
-					s.host.Connect(ctx, peer.AddrInfo{ID: p}) // address is already in peerstore
+					err := s.host.Connect(ctx, peer.AddrInfo{ID: p}) // address is already in peerstore
+					if err != nil {
+						log.Debugf("holepunch attempt to %s over /webrtc failed: %s", p, err)
+					}
 					return
 				}
 			}
