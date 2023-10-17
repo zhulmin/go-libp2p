@@ -25,6 +25,7 @@ type detachedChan struct {
 func getDetachedDataChannels(t *testing.T) (detachedChan, detachedChan) {
 	s := webrtc.SettingEngine{}
 	s.DetachDataChannels()
+	s.SetIncludeLoopbackCandidate(true)
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(s))
 
 	offerPC, err := api.NewPeerConnection(webrtc.Configuration{})
@@ -304,4 +305,30 @@ func TestStreamWriteDeadlineAsync(t *testing.T) {
 	took := time.Since(start)
 	require.GreaterOrEqual(t, took, timeout)
 	require.LessOrEqual(t, took, timeout*3/2)
+}
+
+func TestStreamReadAfterClose(t *testing.T) {
+	client, server := getDetachedDataChannels(t)
+
+	clientStr := newStream(client.dc, client.rwc, func() {})
+	serverStr := newStream(server.dc, server.rwc, func() {})
+
+	serverStr.Close()
+	b := make([]byte, 1)
+	_, err := clientStr.Read(b)
+	require.Equal(t, io.EOF, err)
+	_, err = clientStr.Read(nil)
+	require.Equal(t, io.EOF, err)
+
+	client, server = getDetachedDataChannels(t)
+
+	clientStr = newStream(client.dc, client.rwc, func() {})
+	serverStr = newStream(server.dc, server.rwc, func() {})
+
+	serverStr.Reset()
+	b = make([]byte, 1)
+	_, err = clientStr.Read(b)
+	require.ErrorIs(t, err, network.ErrReset)
+	_, err = clientStr.Read(nil)
+	require.ErrorIs(t, err, network.ErrReset)
 }

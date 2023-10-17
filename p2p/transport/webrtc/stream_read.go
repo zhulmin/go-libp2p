@@ -10,10 +10,6 @@ import (
 )
 
 func (s *stream) Read(b []byte) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
-
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
@@ -27,6 +23,9 @@ func (s *stream) Read(b []byte) (int, error) {
 		return 0, network.ErrReset
 	}
 
+	if len(b) == 0 {
+		return 0, nil
+	}
 	var read int
 	for {
 		if s.nextMessage == nil {
