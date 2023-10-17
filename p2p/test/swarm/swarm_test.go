@@ -2,6 +2,8 @@ package swarm_test
 
 import (
 	"context"
+	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	ma "github.com/multiformats/go-multiaddr"
@@ -159,4 +162,84 @@ func TestNewStreamTransientConnection(t *testing.T) {
 
 	<-done
 	<-done
+}
+
+func TestLimitStreamsWhenHangingHandlers(t *testing.T) {
+	var partial rcmgr.PartialLimitConfig
+	const streamLimit = 10
+	partial.System.Streams = streamLimit
+	mgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(partial.Build(rcmgr.InfiniteLimits)))
+	require.NoError(t, err)
+
+	maddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/0/quic-v1")
+	require.NoError(t, err)
+
+	receiver, err := libp2p.New(
+		libp2p.ResourceManager(mgr),
+		libp2p.ListenAddrs(maddr),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { receiver.Close() })
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	const pid = "/test"
+	receiver.SetStreamHandler(pid, func(s network.Stream) {
+		defer s.Close()
+		s.Write([]byte{42})
+		wg.Wait()
+	})
+
+	// Open streamLimit streams
+	success := 0
+	// we make a lot of tries because identify and identify push take up a few streams
+	for i := 0; i < 1000 && success < streamLimit; i++ {
+		mgr, err = rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.InfiniteLimits))
+		require.NoError(t, err)
+
+		sender, err := libp2p.New(libp2p.ResourceManager(mgr))
+		require.NoError(t, err)
+		t.Cleanup(func() { sender.Close() })
+
+		sender.Peerstore().AddAddrs(receiver.ID(), receiver.Addrs(), peerstore.PermanentAddrTTL)
+
+		s, err := sender.NewStream(context.Background(), receiver.ID(), pid)
+		if err != nil {
+			continue
+		}
+
+		var b [1]byte
+		_, err = io.ReadFull(s, b[:])
+		if err == nil {
+			success++
+		}
+		sender.Close()
+	}
+	require.Equal(t, streamLimit, success)
+	// We have the maximum number of streams open. Next call should fail.
+	mgr, err = rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.InfiniteLimits))
+	require.NoError(t, err)
+
+	sender, err := libp2p.New(libp2p.ResourceManager(mgr))
+	require.NoError(t, err)
+	t.Cleanup(func() { sender.Close() })
+
+	sender.Peerstore().AddAddrs(receiver.ID(), receiver.Addrs(), peerstore.PermanentAddrTTL)
+
+	_, err = sender.NewStream(context.Background(), receiver.ID(), pid)
+	require.Error(t, err)
+
+	// Close the open streams
+	wg.Done()
+
+	// Next call should succeed
+	require.Eventually(t, func() bool {
+		s, err := sender.NewStream(context.Background(), receiver.ID(), pid)
+		if err == nil {
+			s.Close()
+			return true
+		}
+		return false
+	}, 5*time.Second, 100*time.Millisecond)
 }

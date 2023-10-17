@@ -137,6 +137,7 @@ func (c *Conn) start() {
 				if h := c.swarm.StreamHandler(); h != nil {
 					h(s)
 				}
+				s.completeAcceptStreamGoroutine()
 			}()
 		}
 	}()
@@ -238,7 +239,8 @@ func (c *Conn) addStream(ts network.MuxedStream, dir network.Direction, scope ne
 			Direction: dir,
 			Opened:    time.Now(),
 		},
-		id: atomic.AddUint64(&c.swarm.nextStreamID, 1),
+		id:                             atomic.AddUint64(&c.swarm.nextStreamID, 1),
+		acceptStreamGoroutineCompleted: dir != network.DirInbound,
 	}
 	c.stat.NumStreams++
 	c.streams.m[s] = struct{}{}
