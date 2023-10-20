@@ -144,7 +144,14 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (re
 	if err != nil {
 		return nil, err
 	}
-	return &singleOwnerTransport{Transport: quic.Transport{Conn: conn, StatelessResetKey: &c.srk}, packetConn: conn}, nil
+	return &singleOwnerTransport{
+		packetConn: conn,
+		Transport: quic.Transport{
+			Conn:              conn,
+			StatelessResetKey: &c.srk,
+			TokenGeneratorKey: &c.tokenKey,
+		},
+	}, nil
 }
 
 func (c *ConnManager) DialQUIC(ctx context.Context, raddr ma.Multiaddr, tlsConf *tls.Config, allowWindowIncrease func(conn quic.Connection, delta uint64) bool) (quic.Connection, error) {
