@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -239,7 +238,7 @@ func (c *Conn) addStream(ts network.MuxedStream, dir network.Direction, scope ne
 			Direction: dir,
 			Opened:    time.Now(),
 		},
-		id:                             atomic.AddUint64(&c.swarm.nextStreamID, 1),
+		id:                             c.swarm.nextStreamID.Add(1),
 		acceptStreamGoroutineCompleted: dir != network.DirInbound,
 	}
 	c.stat.NumStreams++

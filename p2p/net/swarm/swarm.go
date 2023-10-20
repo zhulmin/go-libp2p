@@ -137,8 +137,8 @@ func WithIPv6BlackHoleConfig(enabled bool, n, min int) Option {
 // communication. The Chan sends/receives Messages, which note the
 // destination or source Peer.
 type Swarm struct {
-	nextConnID   uint64 // guarded by atomic
-	nextStreamID uint64 // guarded by atomic
+	nextConnID   atomic.Uint64
+	nextStreamID atomic.Uint64
 
 	// Close refcount. This allows us to fully wait for the swarm to be torn
 	// down before continuing.
@@ -350,7 +350,7 @@ func (s *Swarm) addConn(tc transport.CapableConn, dir network.Direction) (*Conn,
 		conn:  tc,
 		swarm: s,
 		stat:  stat,
-		id:    atomic.AddUint64(&s.nextConnID, 1),
+		id:    s.nextConnID.Add(1),
 	}
 
 	// we ONLY check upgraded connections here so we can send them a Disconnect message.
