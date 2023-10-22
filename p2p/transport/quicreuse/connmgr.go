@@ -61,8 +61,8 @@ func NewConnManager(statelessResetKey quic.StatelessResetKey, tokenKey quic.Toke
 	cm.clientConfig = quicConf
 	cm.serverConfig = serverConfig
 	if cm.enableReuseport {
-		cm.reuseUDP4 = newReuse(&statelessResetKey)
-		cm.reuseUDP6 = newReuse(&statelessResetKey)
+		cm.reuseUDP4 = newReuse(&statelessResetKey, &tokenKey)
+		cm.reuseUDP6 = newReuse(&statelessResetKey, &tokenKey)
 	}
 	return cm, nil
 }

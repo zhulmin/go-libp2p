@@ -123,9 +123,10 @@ type reuse struct {
 	globalDialers map[int]*refcountedTransport
 
 	statelessResetKey *quic.StatelessResetKey
+	tokenGeneratorKey *quic.TokenGeneratorKey
 }
 
-func newReuse(srk *quic.StatelessResetKey) *reuse {
+func newReuse(srk *quic.StatelessResetKey, tokenKey *quic.TokenGeneratorKey) *reuse {
 	r := &reuse{
 		unicast:           make(map[string]map[int]*refcountedTransport),
 		globalListeners:   make(map[int]*refcountedTransport),
@@ -133,6 +134,7 @@ func newReuse(srk *quic.StatelessResetKey) *reuse {
 		closeChan:         make(chan struct{}),
 		gcStopChan:        make(chan struct{}),
 		statelessResetKey: srk,
+		tokenGeneratorKey: tokenKey,
 	}
 	go r.gc()
 	return r
@@ -268,6 +270,7 @@ func (r *reuse) transportForDialLocked(network string, source *net.IP) (*refcoun
 	tr := &refcountedTransport{Transport: quic.Transport{
 		Conn:              conn,
 		StatelessResetKey: r.statelessResetKey,
+		TokenGeneratorKey: r.tokenGeneratorKey,
 	}, packetConn: conn}
 	r.globalDialers[conn.LocalAddr().(*net.UDPAddr).Port] = tr
 	return tr, nil
