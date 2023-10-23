@@ -1,7 +1,6 @@
 package libp2pwebrtc
 
 import (
-	"errors"
 	"io"
 	"time"
 
@@ -43,7 +42,7 @@ func (s *stream) Read(b []byte) (int, error) {
 					}
 					// This case occurs when the remote node closes the stream without writing a FIN message
 					// There's little we can do here
-					return 0, errors.New("didn't receive final state for stream")
+					s.receiveState = receiveStateReset
 				}
 				if s.receiveState == receiveStateReset {
 					return 0, network.ErrReset
@@ -61,7 +60,6 @@ func (s *stream) Read(b []byte) (int, error) {
 			s.nextMessage.Message = s.nextMessage.Message[n:]
 			return read, nil
 		}
-
 		// process flags on the message after reading all the data
 		s.processIncomingFlag(s.nextMessage.Flag)
 		s.nextMessage = nil
@@ -91,12 +89,10 @@ func (s *stream) CloseRead() error {
 	var err error
 	if s.receiveState == receiveStateReceiving && s.closeErr == nil {
 		err = s.sendControlMessage(&pb.Message{Flag: pb.Message_STOP_SENDING.Enum()})
+		s.receiveState = receiveStateReset
 	}
-	s.receiveState = receiveStateReset
-	s.maybeDeclareStreamDone()
-
 	// make any calls to Read blocking on ReadMsg return immediately
-	s.dataChannel.SetReadDeadline(time.Now())
+	s.dataChannel.SetReadDeadline(time.Now().Add(-1 * time.Hour))
 
 	return err
 }

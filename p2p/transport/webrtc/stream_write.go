@@ -181,7 +181,6 @@ func (s *stream) cancelWrite() error {
 	if err := s.sendControlMessage(&pb.Message{Flag: pb.Message_RESET.Enum()}); err != nil {
 		return err
 	}
-	s.maybeDeclareStreamDone()
 	return nil
 }
 
@@ -196,6 +195,5 @@ func (s *stream) CloseWrite() error {
 	if err := s.sendControlMessage(&pb.Message{Flag: pb.Message_FIN.Enum()}); err != nil {
 		return err
 	}
-	s.maybeDeclareStreamDone()
 	return nil
 }

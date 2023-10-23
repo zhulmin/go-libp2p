@@ -337,7 +337,6 @@ func SetupDataChannelQueue(pc *webrtc.PeerConnection, queueLen int) chan Detache
 				rwc.Close()
 			}
 		})
-
 	})
 	return queue
 }

@@ -2,6 +2,7 @@ package libp2pwebrtc
 
 import (
 	"errors"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -46,7 +47,7 @@ type receiveState uint8
 const (
 	receiveStateReceiving receiveState = iota
 	receiveStateDataRead               // received and read the FIN
-	receiveStateReset                  // either by calling CloseRead locally, or by receiving
+	receiveStateReset                  // by calling CloseRead locally or receiving RESET
 )
 
 type sendState uint8
@@ -129,7 +130,6 @@ func newStream(
 				return
 			}
 		}
-		s.maybeDeclareStreamDone()
 		select {
 		case s.writeAvailable <- struct{}{}:
 		default:
@@ -139,50 +139,43 @@ func newStream(
 }
 
 func (s *stream) Close() error {
-	// Close read before write to ensure that the STOP_SENDING message is delivered before
-	// we close the data channel
-	closeReadErr := s.CloseRead()
 	closeWriteErr := s.CloseWrite()
-	if closeWriteErr != nil {
+	closeReadErr := s.CloseRead()
+	if closeWriteErr != nil || closeReadErr != nil {
 		// writing FIN failed, reset the stream
 		s.Reset()
 		return closeWriteErr
 	}
-	s.waitForFINACK()
-	s.mx.Lock()
-	defer s.mx.Unlock()
-	s.maybeDeclareStreamDone()
-	return errors.Join(closeWriteErr, closeReadErr)
+	s.processPendingMessages()
+	s.declareStreamDone()
+	return nil
 }
 
 func (s *stream) AsyncClose(onDone func()) error {
-	// Close read before write to ensure that the STOP_SENDING message is delivered before
-	// we close the data channel
-	closeReadErr := s.CloseRead()
 	closeWriteErr := s.CloseWrite()
-	if closeWriteErr != nil {
-		// writing FIN failed, reset the stream
+	closeReadErr := s.CloseRead()
+	if closeWriteErr != nil || closeReadErr != nil {
 		s.Reset()
-		onDone()
-		return closeWriteErr
+		if onDone != nil {
+			onDone()
+		}
+		return errors.Join(closeWriteErr, closeReadErr)
 	}
 	go func() {
-		s.waitForFINACK()
-		s.mx.Lock()
-		defer s.mx.Unlock()
-		s.maybeDeclareStreamDone()
-		onDone()
+		s.processPendingMessages()
+		s.declareStreamDone()
+		if onDone != nil {
+			onDone()
+		}
 	}()
-	return errors.Join(closeWriteErr, closeReadErr)
+	return nil
 }
 
 func (s *stream) Reset() error {
 	cancelWriteErr := s.cancelWrite()
 	closeReadErr := s.CloseRead()
 	dcCloseErr := s.dataChannel.Close()
-	s.mx.Lock()
-	defer s.mx.Unlock()
-	s.maybeDeclareStreamDone()
+	s.declareStreamDone()
 	return errors.Join(cancelWriteErr, closeReadErr, dcCloseErr)
 }
 
@@ -191,37 +184,30 @@ func (s *stream) SetDeadline(t time.Time) error {
 	return s.SetWriteDeadline(t)
 }
 
-func (s *stream) waitForFINACK() {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-	// Only wait for FIN_ACK if we are waiting for FIN_ACK and we have stopped reading from the stream
-	if s.sendState != sendStateDataSent || s.receiveState == receiveStateReceiving {
-		return
-	}
+func (s *stream) processPendingMessages() {
 	// First wait for any existing readers to exit
-	s.SetReadDeadline(time.Now().Add(-1 * time.Minute))
+	s.SetReadDeadline(time.Now().Add(-1 * time.Hour))
+
 	s.readerMx.Lock()
+	defer s.readerMx.Unlock()
+
+	s.mx.Lock()
+	sendState := s.sendState
+	s.mx.Unlock()
 	s.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var msg pb.Message
-	for {
-		s.mx.Unlock()
+	for sendState == sendStateDataSent {
 		if err := s.reader.ReadMsg(&msg); err != nil {
-			s.readerMx.Unlock()
-			s.mx.Lock()
 			// 10 seconds is enough time for the message to be delivered. The peer just hasn't responded
 			// with FIN_ACK
-			if errors.Is(err, os.ErrDeadlineExceeded) {
-				s.sendState = sendStateDataReceived
+			if errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, io.EOF) {
+				break
 			}
-			break
 		}
-		s.readerMx.Unlock()
 		s.mx.Lock()
 		s.processIncomingFlag(msg.Flag)
-		if s.sendState != sendStateDataSent {
-			break
-		}
-		s.readerMx.Lock()
+		sendState = s.sendState
+		s.mx.Unlock()
 	}
 }
 
@@ -236,7 +222,7 @@ func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 
 	switch *flag {
 	case pb.Message_FIN:
-		if s.receiveState == receiveStateReceiving {
+		if s.receiveState == receiveStateReceiving || s.receiveState == receiveStateReset {
 			s.receiveState = receiveStateDataRead
 		}
 		if err := s.sendControlMessage(&pb.Message{Flag: pb.Message_FIN_ACK.Enum()}); err != nil {
@@ -259,21 +245,13 @@ func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 			s.sendState = sendStateDataReceived
 		}
 	}
-	s.maybeDeclareStreamDone()
 }
 
-// maybeDeclareStreamDone is used to force reset a stream. It must be called with mx acquired
-func (s *stream) maybeDeclareStreamDone() {
-	if (s.sendState == sendStateReset || s.sendState == sendStateDataReceived) &&
-		(s.receiveState == receiveStateReset || s.receiveState == receiveStateDataRead) &&
-		len(s.controlMsgQueue) == 0 {
-
-		s.mx.Unlock()
-		defer s.mx.Lock()
-		_ = s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
-		s.dataChannel.Close()
-		s.onDone()
-	}
+// declareStreamDone cleansup the stream
+func (s *stream) declareStreamDone() {
+	_ = s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
+	s.dataChannel.Close()
+	s.onDone()
 }
 
 func (s *stream) setCloseError(e error) {

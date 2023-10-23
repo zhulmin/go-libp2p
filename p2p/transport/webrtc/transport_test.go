@@ -470,17 +470,17 @@ func TestTransportWebRTC_RemoteReadsAfterClose(t *testing.T) {
 			done <- err
 			return
 		}
-		stream, err := lconn.AcceptStream()
+		s, err := lconn.AcceptStream()
 		if err != nil {
 			done <- err
 			return
 		}
-		_, err = stream.Write([]byte{1, 2, 3, 4})
+		_, err = s.Write([]byte{1, 2, 3, 4})
 		if err != nil {
 			done <- err
 			return
 		}
-		err = stream.Close()
+		err = s.(*stream).AsyncClose(nil)
 		if err != nil {
 			done <- err
 			return
@@ -541,12 +541,12 @@ func TestTransportWebRTC_RemoteReadsAfterClose2(t *testing.T) {
 
 	conn, err := tr1.Dial(context.Background(), listener.Multiaddr(), listeningPeer)
 	require.NoError(t, err)
-	// create a stream
-	stream, err := conn.OpenStream(context.Background())
+	// create a s
+	s, err := conn.OpenStream(context.Background())
 	require.NoError(t, err)
-	_, err = stream.Write([]byte{1, 2, 3, 4})
+	_, err = s.Write([]byte{1, 2, 3, 4})
 	require.NoError(t, err)
-	err = stream.Close()
+	err = s.(*stream).AsyncClose(nil)
 	require.NoError(t, err)
 	// signal stream closure
 	close(awaitStreamClosure)
