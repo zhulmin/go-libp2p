@@ -32,7 +32,9 @@ func (s *stream) Read(b []byte) (int, error) {
 			// load the next message
 			s.mx.Unlock()
 			var msg pb.Message
+			s.readerMx.Lock()
 			if err := s.reader.ReadMsg(&msg); err != nil {
+				s.readerMx.Unlock()
 				s.mx.Lock()
 				if err == io.EOF {
 					// if the channel was properly closed, return EOF
@@ -48,6 +50,7 @@ func (s *stream) Read(b []byte) (int, error) {
 				}
 				return 0, err
 			}
+			s.readerMx.Unlock()
 			s.mx.Lock()
 			s.nextMessage = &msg
 		}

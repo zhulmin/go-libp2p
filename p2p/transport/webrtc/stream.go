@@ -1,6 +1,8 @@
 package libp2pwebrtc
 
 import (
+	"errors"
+	"os"
 	"sync"
 	"time"
 
@@ -53,12 +55,17 @@ const (
 	sendStateSending sendState = iota
 	sendStateDataSent
 	sendStateReset
+	sendStateDataReceived
 )
 
 // Package pion detached data channel into a net.Conn
 // and then a network.MuxedStream
 type stream struct {
 	mx sync.Mutex
+
+	// readerMx ensures there's only a single goroutine reading from reader as the underlying SCTP reader
+	// doesn't support multiple readers
+	readerMx sync.Mutex
 	// pbio.Reader is not thread safe,
 	// and while our Read is not promised to be thread safe,
 	// we ourselves internally read from multiple routines...
@@ -132,26 +139,90 @@ func newStream(
 }
 
 func (s *stream) Close() error {
-	closeWriteErr := s.CloseWrite()
+	// Close read before write to ensure that the STOP_SENDING message is delivered before
+	// we close the data channel
 	closeReadErr := s.CloseRead()
+	closeWriteErr := s.CloseWrite()
 	if closeWriteErr != nil {
+		// writing FIN failed, reset the stream
+		s.Reset()
 		return closeWriteErr
 	}
-	return closeReadErr
+	s.waitForFINACK()
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	s.maybeDeclareStreamDone()
+	return errors.Join(closeWriteErr, closeReadErr)
+}
+
+func (s *stream) AsyncClose(onDone func()) error {
+	// Close read before write to ensure that the STOP_SENDING message is delivered before
+	// we close the data channel
+	closeReadErr := s.CloseRead()
+	closeWriteErr := s.CloseWrite()
+	if closeWriteErr != nil {
+		// writing FIN failed, reset the stream
+		s.Reset()
+		onDone()
+		return closeWriteErr
+	}
+	go func() {
+		s.waitForFINACK()
+		s.mx.Lock()
+		defer s.mx.Unlock()
+		s.maybeDeclareStreamDone()
+		onDone()
+	}()
+	return errors.Join(closeWriteErr, closeReadErr)
 }
 
 func (s *stream) Reset() error {
 	cancelWriteErr := s.cancelWrite()
 	closeReadErr := s.CloseRead()
-	if cancelWriteErr != nil {
-		return cancelWriteErr
-	}
-	return closeReadErr
+	dcCloseErr := s.dataChannel.Close()
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	s.maybeDeclareStreamDone()
+	return errors.Join(cancelWriteErr, closeReadErr, dcCloseErr)
 }
 
 func (s *stream) SetDeadline(t time.Time) error {
 	_ = s.SetReadDeadline(t)
 	return s.SetWriteDeadline(t)
+}
+
+func (s *stream) waitForFINACK() {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	// Only wait for FIN_ACK if we are waiting for FIN_ACK and we have stopped reading from the stream
+	if s.sendState != sendStateDataSent || s.receiveState == receiveStateReceiving {
+		return
+	}
+	// First wait for any existing readers to exit
+	s.SetReadDeadline(time.Now().Add(-1 * time.Minute))
+	s.readerMx.Lock()
+	s.SetReadDeadline(time.Now().Add(10 * time.Second))
+	var msg pb.Message
+	for {
+		s.mx.Unlock()
+		if err := s.reader.ReadMsg(&msg); err != nil {
+			s.readerMx.Unlock()
+			s.mx.Lock()
+			// 10 seconds is enough time for the message to be delivered. The peer just hasn't responded
+			// with FIN_ACK
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				s.sendState = sendStateDataReceived
+			}
+			break
+		}
+		s.readerMx.Unlock()
+		s.mx.Lock()
+		s.processIncomingFlag(msg.Flag)
+		if s.sendState != sendStateDataSent {
+			break
+		}
+		s.readerMx.Lock()
+	}
 }
 
 // processIncomingFlag process the flag on an incoming message
@@ -168,6 +239,9 @@ func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 		if s.receiveState == receiveStateReceiving {
 			s.receiveState = receiveStateDataRead
 		}
+		if err := s.sendControlMessage(&pb.Message{Flag: pb.Message_FIN_ACK.Enum()}); err != nil {
+			log.Debugf("failed to send FIN_ACK:", err)
+		}
 	case pb.Message_STOP_SENDING:
 		if s.sendState == sendStateSending {
 			s.sendState = sendStateReset
@@ -180,24 +254,24 @@ func (s *stream) processIncomingFlag(flag *pb.Message_Flag) {
 		if s.receiveState == receiveStateReceiving {
 			s.receiveState = receiveStateReset
 		}
+	case pb.Message_FIN_ACK:
+		if s.sendState == sendStateDataSent {
+			s.sendState = sendStateDataReceived
+		}
 	}
 	s.maybeDeclareStreamDone()
 }
 
 // maybeDeclareStreamDone is used to force reset a stream. It must be called with mx acquired
 func (s *stream) maybeDeclareStreamDone() {
-	if (s.sendState == sendStateReset || s.sendState == sendStateDataSent) &&
+	if (s.sendState == sendStateReset || s.sendState == sendStateDataReceived) &&
 		(s.receiveState == receiveStateReset || s.receiveState == receiveStateDataRead) &&
 		len(s.controlMsgQueue) == 0 {
 
 		s.mx.Unlock()
 		defer s.mx.Lock()
 		_ = s.SetReadDeadline(time.Now().Add(-1 * time.Hour)) // pion ignores zero times
-		// TODO: we should be closing the underlying datachannel, but this resets the stream
-		// See https://github.com/libp2p/specs/issues/575 for details.
-		// _ = s.dataChannel.Close()
-		// TODO: write for the spawned reader to return
-
+		s.dataChannel.Close()
 		s.onDone()
 	}
 }

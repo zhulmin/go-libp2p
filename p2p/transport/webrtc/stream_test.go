@@ -126,13 +126,15 @@ func TestStreamSimpleReadWriteClose(t *testing.T) {
 	_, err = serverStr.Write([]byte("lorem ipsum"))
 	require.NoError(t, err)
 	require.NoError(t, serverStr.CloseWrite())
-	require.True(t, serverDone)
 	// and read it at the client
 	require.False(t, clientDone)
 	b, err = io.ReadAll(clientStr)
 	require.NoError(t, err)
 	require.Equal(t, []byte("lorem ipsum"), b)
 	require.True(t, clientDone)
+	// Need to call Close for cleanup. Otherwise the FIN_ACK is never read
+	require.NoError(t, serverStr.Close())
+	require.True(t, serverDone)
 }
 
 func TestStreamPartialReads(t *testing.T) {
@@ -331,4 +333,33 @@ func TestStreamReadAfterClose(t *testing.T) {
 	require.ErrorIs(t, err, network.ErrReset)
 	_, err = clientStr.Read(nil)
 	require.ErrorIs(t, err, network.ErrReset)
+}
+
+func TestStreamCloseAfterFINACK(t *testing.T) {
+	client, server := getDetachedDataChannels(t)
+
+	done := make(chan bool, 1)
+	clientStr := newStream(client.dc, client.rwc, func() { done <- true })
+	serverStr := newStream(server.dc, server.rwc, func() {})
+
+	go func() {
+		done <- true
+		clientStr.Close()
+	}()
+	<-done
+
+	select {
+	case <-done:
+		t.Fatalf("Close should not have completed without processing FIN_ACK")
+	case <-time.After(3 * time.Second):
+	}
+
+	b := make([]byte, 1)
+	_, err := serverStr.Read(b)
+	require.Error(t, err)
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("Close should have completed")
+	}
 }
