@@ -197,16 +197,9 @@ func TestAddrResolution(t *testing.T) {
 }
 
 func TestAddrResolutionRecursive(t *testing.T) {
-	ctx := context.Background()
+	p1 := test.RandPeerIDFatal(t)
+	p2 := test.RandPeerIDFatal(t)
 
-	p1, err := test.RandPeerID()
-	if err != nil {
-		t.Error(err)
-	}
-	p2, err := test.RandPeerID()
-	if err != nil {
-		t.Error(err)
-	}
 	addr1 := ma.StringCast("/dnsaddr/example.com")
 	addr2 := ma.StringCast("/ip4/192.0.2.1/tcp/123")
 	p2paddr1 := ma.StringCast("/dnsaddr/example.com/p2p/" + p1.String())
@@ -221,25 +214,19 @@ func TestAddrResolutionRecursive(t *testing.T) {
 				"dnsaddr=" + p2paddr1i.String(),
 				"dnsaddr=" + p2paddr2i.String(),
 			},
-			"_dnsaddr.foo.example.com": {
-				"dnsaddr=" + p2paddr1f.String(),
-			},
-			"_dnsaddr.bar.example.com": {
-				"dnsaddr=" + p2paddr2i.String(),
-			},
+			"_dnsaddr.foo.example.com": {"dnsaddr=" + p2paddr1f.String()},
+			"_dnsaddr.bar.example.com": {"dnsaddr=" + p2paddr2i.String()},
 		},
 	}
 	resolver, err := madns.NewResolver(madns.WithDefaultResolver(backend))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	s := newTestSwarmWithResolver(t, resolver)
 
 	pi1, err := peer.AddrInfoFromP2pAddr(p2paddr1)
 	require.NoError(t, err)
 
-	tctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
+	tctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
 	s.Peerstore().AddAddrs(pi1.ID, pi1.Addrs, peerstore.TempAddrTTL)
 	_, _, err = s.addrsForDial(tctx, p1)
@@ -261,6 +248,34 @@ func TestAddrResolutionRecursive(t *testing.T) {
 	addrs2 := s.Peerstore().Addrs(pi2.ID)
 	require.Len(t, addrs2, 1)
 	require.Contains(t, addrs2, addr1)
+}
+
+// see https://github.com/libp2p/go-libp2p/issues/2562
+func TestAddrResolutionRecursiveTransportSpecific(t *testing.T) {
+	p := test.RandPeerIDFatal(t)
+
+	backend := &madns.MockResolver{
+		IP: map[string][]net.IPAddr{
+			"sub.example.com": {net.IPAddr{IP: net.IPv4(1, 2, 3, 4)}},
+		},
+		TXT: map[string][]string{
+			"_dnsaddr.example.com": {"dnsaddr=/dns4/sub.example.com/tcp/443/wss/p2p/" + p.String()},
+		},
+	}
+	resolver, err := madns.NewResolver(madns.WithDefaultResolver(backend))
+	require.NoError(t, err)
+
+	s := newTestSwarmWithResolver(t, resolver)
+	pi1, err := peer.AddrInfoFromP2pAddr(ma.StringCast("/dnsaddr/example.com/p2p/" + p.String()))
+	require.NoError(t, err)
+
+	tctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
+	s.Peerstore().AddAddrs(pi1.ID, pi1.Addrs, peerstore.TempAddrTTL)
+	addrs, _, err := s.addrsForDial(tctx, p)
+	require.NoError(t, err)
+	require.Len(t, addrs, 1)
+	require.Equal(t, addrs[0].String(), "/ip4/1.2.3.4/tcp/443/tls/sni/sub.example.com/ws")
 }
 
 func TestAddrsForDialFiltering(t *testing.T) {
