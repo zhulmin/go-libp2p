@@ -151,7 +151,9 @@ func TestRemoveConnByUfrag(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		mc1, err := m.GetConn(ufrag, conns[i].LocalAddr())
 		require.NoError(t, err)
-		require.Equal(t, mc1, mc)
+		if mc1 != mc {
+			t.Fatalf("expected the two muxed connections to be same")
+		}
 	}
 
 	// Now remove the ufrag
@@ -167,13 +169,17 @@ func TestRemoveConnByUfrag(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		mc1, err := m.GetConn(ufrag, conns[i].LocalAddr())
 		require.NoError(t, err)
-		require.Equal(t, mc1, mc)
+		if mc1 != mc {
+			t.Fatalf("expected the two muxed connections to be same")
+		}
 	}
 
 	// Should be different even if the address is the same
 	mc1, err := m.GetConn("a", conns[0].LocalAddr())
 	require.NoError(t, err)
-	require.NotEqual(t, mc1, mc)
+	if mc1 == mc {
+		t.Fatalf("expected the two connections to be different")
+	}
 }
 
 func TestMuxedConnection(t *testing.T) {
