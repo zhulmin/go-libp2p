@@ -844,8 +844,10 @@ func TestIncomingIDStreamsTimeout(t *testing.T) {
 func TestOutOfOrderConnectedNotifs(t *testing.T) {
 	h1, err := libp2p.New(libp2p.NoListenAddrs)
 	require.NoError(t, err)
+	defer h1.Close()
 	h2, err := libp2p.New(libp2p.ListenAddrs(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1")))
 	require.NoError(t, err)
+	defer h2.Close()
 
 	doneCh := make(chan struct{})
 	errCh := make(chan error)
