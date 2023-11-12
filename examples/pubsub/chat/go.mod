@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/gdamore/tcell/v2 v2.5.2
 	github.com/libp2p/go-libp2p v0.32.0
-	github.com/libp2p/go-libp2p-pubsub v0.9.4-0.20230914081111-d13e24ddc9f2
+	github.com/libp2p/go-libp2p-pubsub v0.10.0
 	github.com/rivo/tview v0.0.0-20220307222120-9994674d60a8
 )
 
