@@ -4,3 +4,4 @@
 *.sqlog
 *.qlog.zst
 *.sqlog.zst
+__debug_*

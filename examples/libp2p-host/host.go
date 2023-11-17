@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"log"
 	"time"
 
@@ -31,7 +32,10 @@ func run() {
 	if err != nil {
 		panic(err)
 	}
-	defer h.Close()
+	f := func() {
+		err = h.Close()
+	}
+	defer f()
 
 	log.Printf("Hello World, my hosts ID is %s\n", h.ID())
 
@@ -44,6 +48,10 @@ func run() {
 		crypto.Ed25519, // Select your key type. Ed25519 are nice short
 		-1,             // Select key length when possible (i.e. RSA).
 	)
+
+	log.Println(priv.Raw())
+	log.Println(priv.GetPublic())
+	//log.Println("Public key\n ${privy.GetPublic()}")
 	if err != nil {
 		panic(err)
 	}
@@ -90,24 +98,30 @@ func run() {
 		// performance issues.
 		libp2p.EnableNATService(),
 	)
+
 	if err != nil {
 		panic(err)
 	}
-	defer h2.Close()
+
+	defer func(h host.Host) {
+		err = h.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(h)
 
 	// The last step to get fully up and running would be to connect to
 	// bootstrap peers (or any other peers). We leave this commented as
 	// this is an example and the peer will die as soon as it finishes, so
 	// it is unnecessary to put strain on the network.
 
-	/*
-		// This connects to public bootstrappers
-		for _, addr := range dht.DefaultBootstrapPeers {
-			pi, _ := peer.AddrInfoFromP2pAddr(addr)
-			// We ignore errors as some bootstrap peers may be down
-			// and that is fine.
-			h2.Connect(ctx, *pi)
-		}
-	*/
+	// This connects to public bootstrappers
+	for _, addr := range dht.DefaultBootstrapPeers {
+		pi, _ := peer.AddrInfoFromP2pAddr(addr)
+		// We ignore errors as some bootstrap peers may be down
+		// and that is fine.
+		h2.Connect(ctx, *pi)
+	}
+
 	log.Printf("Hello World, my second hosts ID is %s\n", h2.ID())
 }

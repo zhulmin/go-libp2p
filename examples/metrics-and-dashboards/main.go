@@ -12,10 +12,8 @@ import (
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	// rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 )
 
 const ClientCount = 32
@@ -27,18 +25,19 @@ func main() {
 		log.Fatal(http.ListenAndServe(":5001", nil))
 	}()
 
-	rcmgr.MustRegisterWith(prometheus.DefaultRegisterer)
+	// rcmgr.MustRegisterWith(prometheus.DefaultRegisterer)
 
-	str, err := rcmgr.NewStatsTraceReporter()
-	if err != nil {
-		log.Fatal(err)
-	}
+	// str, err := rcmgr.NewStatsTraceReporter()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	rmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(str))
-	if err != nil {
-		log.Fatal(err)
-	}
-	server, err := libp2p.New(libp2p.ResourceManager(rmgr))
+	// rmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(str))
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// server, err := libp2p.New(libp2p.ResourceManager(rmgr))
+	server, err := libp2p.New()
 	if err != nil {
 		log.Fatal(err)
 	}
