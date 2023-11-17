@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"os"
 
 	"log"
 	"net/http"
@@ -11,28 +12,12 @@ import (
 
 	// We need to import libp2p's libraries that we use in this project.
 	"github.com/libp2p/go-libp2p"
-	
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	ma "github.com/multiformats/go-multiaddr"
-
-		"github.com/libp2p/go-libp2p/core/connmgr"
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/net/swarm"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
-	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
-
-	ma "github.com/multiformats/go-multiaddr"
-	"github.com/stretchr/testify/require"
 )
 
 // Protocol defines the libp2p protocol that we will use for the libp2p proxy
@@ -158,12 +143,28 @@ func main() {
 	p2pport := flag.Int("l", 12000, "libp2p listen port")
 	flag.Parse()
 
-	priv, _, err := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	priv.GetPublic()
-	priv.GetPublic().Raw()
-	peerId, err := peer.IDFromPrivateKey(priv)
+	privByte, err := os.ReadFile("./nas_private_key")
+	// base64.Encoding(privByte)
 
-	options := []libp2p.Option{libp2p.Identity(priv),libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", *p2pport))}
+	var priv crypto.PrivKey
+	if err != nil {
+		priv, _, err = crypto.GenerateKeyPair(crypto.RSA, 2048)
+
+		byte, err := crypto.MarshalPrivateKey(priv)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// 将字节数组写入文件
+		// QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE
+		err = os.WriteFile("./nas_private_key", byte, 0644)
+	} else {
+		priv, _ = crypto.UnmarshalPrivateKey(privByte)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+
+	options := []libp2p.Option{libp2p.Identity(priv), libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", *p2pport))}
 	host, err := libp2p.New(options...)
 	if err != nil {
 		log.Fatalln(err)

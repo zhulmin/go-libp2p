@@ -12,7 +12,6 @@ import (
 
 	// We need to import libp2p's libraries that we use in this project.
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -252,7 +251,7 @@ func addAddrToPeerstore(h host.Host, addr string) peer.ID {
 func main() {
 
 	// Parse some flags
-	destPeer := "/ip4/127.0.0.1/tcp/12000/p2p/12D3KooWAXxXrUAGUU3QWr28cqmtykovLpLZsy2L1FCJhNoF5Y6p"
+	destPeer := "/ip4/127.0.0.1/tcp/12000/p2p/QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE"
 	p2pport := flag.Int("l", 12000, "libp2p listen port")
 	port := flag.Int("p", 9900, "proxy port")
 	flag.Parse()
