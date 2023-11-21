@@ -3,15 +3,20 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 
 	// We need to import libp2p's libraries that we use in this project.
+
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -25,17 +30,7 @@ import (
 // service that we are going to provide. This will tag the streams used for
 // this service. Streams are multiplexed and their protocol tag helps
 // libp2p handle them to the right handler functions.
-const Protocol = "/proxy-example/0.0.1"
-
-// makeRandomHost creates a libp2p host with a randomly generated identity.
-// This step is described in depth in other tutorials.
-func makeRandomHost(port int) host.Host {
-	host, err := libp2p.New(libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port)))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return host
-}
+const Protocol = "/yole.app/0.0.1"
 
 // ProxyService provides HTTP proxying on top of libp2p by launching an
 // HTTP server which tunnels the requests to a destination peer running
@@ -77,12 +72,6 @@ func NewProxyService(h host.Host, proxyAddr ma.Multiaddr, dest peer.ID) *ProxySe
 	}
 }
 
-// streamHandler is our function to handle any libp2p-net streams that belong
-// to our protocol. The streams should contain an HTTP request which we need
-// to parse, make on behalf of the original node, and then write the response
-// on the stream, before closing it.
-// z: 11.stream handle处理进入的stream, 第二个节点要处理stream
-// z: 11.第二个节点走这里, 真正的处理http请求,第一个节点不走这里, streamHandler是处理发送过来的stream并返回, 第一个发起节点不需要处理.
 func streamHandler(stream network.Stream) {
 	// Remember to close the stream when we are done.
 	defer stream.Close()
@@ -251,13 +240,35 @@ func addAddrToPeerstore(h host.Host, addr string) peer.ID {
 func main() {
 
 	// Parse some flags
-	destPeer := "/ip4/127.0.0.1/tcp/12000/p2p/QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE"
-	p2pport := flag.Int("l", 12000, "libp2p listen port")
+
+	privPath := "./mobile_private_key"
+	privByte, err := os.ReadFile(privPath)
+	// base64.Encoding(privByte)
+
+	var priv crypto.PrivKey
+	if err != nil {
+		priv, _, err = crypto.GenerateKeyPair(crypto.RSA, 2048)
+
+		byte, err := crypto.MarshalPrivateKey(priv)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		err = os.WriteFile(privPath, byte, 0644)
+	} else {
+		priv, _ = crypto.UnmarshalPrivateKey(privByte)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+
 	port := flag.Int("p", 9900, "proxy port")
 	flag.Parse()
 	// We use p2pport+1 in order to not collide if the user
 	// is running the remote peer locally on that port
-	host := makeRandomHost(*p2pport + 1)
+	p2pport := 12003
+	destPeer := "/ip4/127.0.0.1/tcp/12002/p2p/QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE"
+	options := []libp2p.Option{libp2p.Identity(priv), libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", p2pport))}
+	host, err := libp2p.New(options...)
 	// Make sure our host knows how to reach destPeer
 	destPeerID := addAddrToPeerstore(host, destPeer)
 	//转换监听http请求地址
@@ -269,6 +280,81 @@ func main() {
 
 	//监听http并发送到destPeer, NewMultiaddr格式的地址, 建立http监听
 	proxy := NewProxyService(host, proxyAddr, destPeerID)
+
+	ctx := context.Background()
+
+	dhts := convertPeers([]string{
+		// "/ip4/127.0.0.1/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
+		"/ip4/47.108.135.254/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
+		
+	})
+	bootstrapConnect(ctx, host, dhts)
+
+	host.SetStreamHandler(Protocol, streamHandler)
+
 	proxy.Serve() // serve hangs forever
 
+}
+
+// This code is borrowed from the go-ipfs bootstrap process
+func bootstrapConnect(ctx context.Context, ph host.Host, peers []peer.AddrInfo) error {
+	if len(peers) < 1 {
+		return errors.New("not enough bootstrap peers")
+	}
+
+	errs := make(chan error, len(peers))
+	var wg sync.WaitGroup
+	for _, p := range peers {
+
+		// performed asynchronously because when performed synchronously, if
+		// one `Connect` call hangs, subsequent calls are more likely to
+		// fail/abort due to an expiring context.
+		// Also, performed asynchronously for dial speed.
+
+		wg.Add(1)
+		go func(p peer.AddrInfo) {
+			defer wg.Done()
+			defer log.Println(ctx, "bootstrapDial", ph.ID(), p.ID)
+			log.Printf("%s bootstrapping to %s", ph.ID(), p.ID)
+
+			ph.Peerstore().AddAddrs(p.ID, p.Addrs, peerstore.PermanentAddrTTL)
+			if err := ph.Connect(ctx, p); err != nil {
+				log.Println(ctx, "bootstrapDialFailed", p.ID)
+				log.Printf("failed to bootstrap with %v: %s", p.ID, err)
+				errs <- err
+				return
+			}
+			log.Println(ctx, "bootstrapDialSuccess", p.ID)
+			log.Printf("bootstrapped with %v", p.ID)
+		}(p)
+	}
+	wg.Wait()
+
+	// our failure condition is when no connection attempt succeeded.
+	// So drain the errs channel, counting the results.
+	close(errs)
+	count := 0
+	var err error
+	for err = range errs {
+		if err != nil {
+			count++
+		}
+	}
+	if count == len(peers) {
+		return fmt.Errorf("failed to bootstrap. %s", err)
+	}
+	return nil
+}
+
+func convertPeers(peers []string) []peer.AddrInfo {
+	pinfos := make([]peer.AddrInfo, len(peers))
+	for i, addr := range peers {
+		maddr := ma.StringCast(addr)
+		p, err := peer.AddrInfoFromP2pAddr(maddr)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		pinfos[i] = *p
+	}
+	return pinfos
 }

@@ -12,14 +12,41 @@
             // "args": ["-sp", "3001"], 
             "showLog": true
         },
-       {
-            "name": "Mobile",
+        {
+            "name": "routed-echo",
             "type": "go",
             "request": "launch",
             "mode": "debug",
-            "program": "${workspaceRoot}/examples/http-proxy/mobile/mobile.go",
-            // "args": ["-d", "/ip4/127.0.0.1/tcp/3001/p2p/QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE"], 
+            "program": "${workspaceRoot}/examples/routed-echo",
+            "args": ["-l", "10000","-global","true"], 
+            "showLog": true
+        },
+        {
+            "name": " http-proxy-dht",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceRoot}/examples/http-proxy/dht",
+            "showLog": true
+        },
+              {
+            "name": " http-proxy-nas",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceRoot}/examples/http-proxy/nas",
+            "showLog": true
+        },
+                      {
+            "name": " http-proxy-mobile",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceRoot}/examples/http-proxy/mobile",
             "showLog": true
         }
+       
+       
+      
     ]
 }

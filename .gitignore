@@ -5,3 +5,4 @@
 *.qlog.zst
 *.sqlog.zst
 __debug_*
+.DS_Store
