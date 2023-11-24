@@ -71,6 +71,10 @@ func makeRoutedHost(listenPort int, randseed int64, bootstrapPeers []peer.AddrIn
 	routedHost := rhost.Wrap(basicHost, dht)
 
 	// connect to the chosen ipfs nodes
+	bootstrapPeers = convertPeers([]string{
+		// "/ip4/127.0.0.1/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
+		"/ip4/47.108.135.254/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
+	})
 	err = bootstrapConnect(ctx, routedHost, bootstrapPeers)
 	if err != nil {
 		return nil, err

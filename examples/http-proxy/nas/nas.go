@@ -13,13 +13,18 @@ import (
 	"strings"
 
 	// We need to import libp2p's libraries that we use in this project.
+	ds "github.com/ipfs/go-datastore"
+	dsync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	ma "github.com/multiformats/go-multiaddr"
+
+	rhost "github.com/libp2p/go-libp2p/p2p/host/routed"
 )
 
 const Protocol = "/yole.app/0.0.1"
@@ -70,9 +75,7 @@ func streamHandler(stream network.Stream) {
 	resp.Write(stream)
 }
 
-func main() {
-
-	privPath := "./nas_private_key"
+func createPrivKeyIfNoExist(privPath string) crypto.PrivKey {
 	privByte, err := os.ReadFile(privPath)
 	// base64.Encoding(privByte)
 
@@ -93,29 +96,110 @@ func main() {
 			log.Fatalln(err)
 		}
 	}
-	p2pport := 12002
-	options := []libp2p.Option{libp2p.Identity(priv), libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", p2pport))}
-	host, err := libp2p.New(options...)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	for _, a := range host.Addrs() {
-		///ip4/127.0.0.1/tcp/12000/p2p/QmddTrQXhA9AkCpXPTkcY7e22NK73TwkUms3a44DhTKJTD
-		fmt.Printf("%s/p2p/%s\n", a, host.ID())
-	}
+	return priv
+}
 
-	ctx := context.Background()
+func main() {
+
+	priv := createPrivKeyIfNoExist("./nas_private_key")
+	p2pport := 12002
 
 	dhts := convertPeers([]string{
 		// "/ip4/127.0.0.1/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
 		"/ip4/47.108.135.254/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
 	})
-	bootstrapConnect(ctx, host, dhts)
+	basicHost, err := makeRoutedHost(p2pport, dhts, priv)
+	if err != nil {
+		log.Panic(err)
+	}
+	// options := []libp2p.Option{libp2p.Identity(priv), libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", p2pport))}
+	// basicHost, err := libp2p.New(options...)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
 
-	host.SetStreamHandler(Protocol, streamHandler)
+	// // Construct a datastore (needed by the DHT). This is just a simple, in-memory thread-safe datastore.
+	// dstore := dsync.MutexWrap(ds.NewMapDatastore())
+
+	// // Make the DHT
+	// dht := dht.NewDHT(ctx, basicHost, dstore)
+
+	// // Make the routed host
+	// routedHost := rhost.Wrap(basicHost, dht)
+
+	// // connect to the chosen ipfs nodes
+	// err = bootstrapConnect(ctx, routedHost, dhts)
+	// if err != nil {
+	// 	log.Panic(err)
+	// }
+
+	// // Bootstrap the host
+	// err = dht.Bootstrap(ctx)
+	// if err != nil {
+	// 	log.Panic(err)
+	// }
+
+	basicHost.SetStreamHandler(Protocol, streamHandler)
 
 	<-make(chan struct{}) // hang forever
 
+}
+
+// makeRoutedHost creates a LibP2P host with a random peer ID listening on the
+// given multiaddress. It will bootstrap using the provided PeerInfo.
+func makeRoutedHost(listenPort int, bootstrapPeers []peer.AddrInfo, priv crypto.PrivKey) (host.Host, error) {
+
+	opts := []libp2p.Option{
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", listenPort)),
+		libp2p.Identity(priv),
+		libp2p.DefaultTransports,
+		libp2p.DefaultMuxers,
+		libp2p.DefaultSecurity,
+		libp2p.NATPortMap(),
+	}
+
+	ctx := context.Background()
+
+	basicHost, err := libp2p.New(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Construct a datastore (needed by the DHT). This is just a simple, in-memory thread-safe datastore.
+	dstore := dsync.MutexWrap(ds.NewMapDatastore())
+
+	// Make the DHT
+	dht := dht.NewDHT(ctx, basicHost, dstore)
+
+	// Make the routed host
+	routedHost := rhost.Wrap(basicHost, dht)
+
+	// connect to the chosen ipfs nodes
+	err = bootstrapConnect(ctx, routedHost, bootstrapPeers)
+	if err != nil {
+		return nil, err
+	}
+
+	// Bootstrap the host
+	err = dht.Bootstrap(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build host multiaddress
+	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", routedHost.ID()))
+
+	// Now we can build a full multiaddress to reach this host
+	// by encapsulating both addresses:
+	// addr := routedHost.Addrs()[0]
+	addrs := routedHost.Addrs()
+	log.Printf("\n")
+	log.Println("I can be reached at:")
+	for _, addr := range addrs {
+		log.Println(addr.Encapsulate(hostAddr))
+	}
+
+	return routedHost, nil
 }
 
 // This code is borrowed from the go-ipfs bootstrap process

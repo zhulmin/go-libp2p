@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -15,13 +14,16 @@ import (
 
 	// We need to import libp2p's libraries that we use in this project.
 
+	ds "github.com/ipfs/go-datastore"
+	dsync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-
+	rhost "github.com/libp2p/go-libp2p/p2p/host/routed"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -127,7 +129,7 @@ func streamHandler(stream network.Stream) {
 // allows to set the listening address as http proxy.
 func (p *ProxyService) Serve() {
 	_, serveArgs, _ := manet.DialArgs(p.proxyAddr)
-	fmt.Println("proxy listening on ", serveArgs)
+	fmt.Println("proxy listening on ", serveArgs, p.dest)
 	if p.dest != "" {
 		http.ListenAndServe(serveArgs, p)
 	}
@@ -149,13 +151,9 @@ func (p *ProxyService) Serve() {
 // z: 1. 第一个节点走这里, 第二个节点不走这里
 func (p *ProxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("proxying request for %s to peer %s\n", r.URL, p.dest)
-	// We need to send the request to the remote libp2p peer, so
-	// we open a stream to it
 
-	// z: 2.新建一个新的传输通道(如果之前有可能用之前的), 如果之前没有创建p2p连接,则会创建一个新的连接通道
-	// z: 2.Protocol作为标记, 放在协议头部, 实际似乎ProtocolID?
 	stream, err := p.host.NewStream(context.Background(), p.dest, Protocol)
-	// If an error happens, we write an error for response.
+
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -210,38 +208,25 @@ func (p *ProxyService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // it to the given host's peerstore, so it knows how to
 // contact it. It returns the peer ID of the remote peer.
 func addAddrToPeerstore(h host.Host, addr string) peer.ID {
-	// The following code extracts target's the peer ID from the
-	// given multiaddress
-	ipfsaddr, err := ma.NewMultiaddr(addr)
+	maddr, err := ma.NewMultiaddr(addr)
 	if err != nil {
-		log.Fatalln(err)
-	}
-	pid, err := ipfsaddr.ValueForProtocol(ma.P_IPFS)
-	if err != nil {
-		log.Fatalln(err)
+		log.Println(err)
 	}
 
-	peerid, err := peer.Decode(pid)
+	// Extract the peer ID from the multiaddr.
+	info, err := peer.AddrInfoFromP2pAddr(maddr)
 	if err != nil {
-		log.Fatalln(err)
+		log.Println(err)
 	}
 
-	// Decapsulate the /ipfs/<peerID> part from the target
-	// /ip4/<a.b.c.d>/ipfs/<peer> becomes /ip4/<a.b.c.d>
-	targetPeerAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", peerid))
-	targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
+	// We have a peer ID and a targetAddr, so we add it to the peerstore
+	// so LibP2P knows how to contact it
+	h.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
 
-	// We have a peer ID and a targetAddr, so we add
-	// it to the peerstore so LibP2P knows how to contact it
-	h.Peerstore().AddAddr(peerid, targetAddr, peerstore.PermanentAddrTTL)
-	return peerid
+	return info.ID
 }
 
-func main() {
-
-	// Parse some flags
-
-	privPath := "./mobile_private_key"
+func createPrivKeyIfNoExist(privPath string) crypto.PrivKey {
 	privByte, err := os.ReadFile(privPath)
 	// base64.Encoding(privByte)
 
@@ -253,6 +238,8 @@ func main() {
 		if err != nil {
 			log.Fatalln(err)
 		}
+		// 将字节数组写入文件
+		// QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE
 		err = os.WriteFile(privPath, byte, 0644)
 	} else {
 		priv, _ = crypto.UnmarshalPrivateKey(privByte)
@@ -260,40 +247,102 @@ func main() {
 			log.Fatalln(err)
 		}
 	}
+	return priv
+}
 
-	port := flag.Int("p", 9900, "proxy port")
-	flag.Parse()
-	// We use p2pport+1 in order to not collide if the user
-	// is running the remote peer locally on that port
+func main() {
+
+	priv := createPrivKeyIfNoExist("./mobile_private_key")
 	p2pport := 12003
-	destPeer := "/ip4/127.0.0.1/tcp/12002/p2p/QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE"
-	options := []libp2p.Option{libp2p.Identity(priv), libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", p2pport))}
-	host, err := libp2p.New(options...)
-	// Make sure our host knows how to reach destPeer
-	destPeerID := addAddrToPeerstore(host, destPeer)
-	//转换监听http请求地址
-	proxyAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", *port))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	// Create the proxy service and start the http server
-
-	//监听http并发送到destPeer, NewMultiaddr格式的地址, 建立http监听
-	proxy := NewProxyService(host, proxyAddr, destPeerID)
-
-	ctx := context.Background()
 
 	dhts := convertPeers([]string{
 		// "/ip4/127.0.0.1/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
 		"/ip4/47.108.135.254/tcp/12001/p2p/QmNp9m9D9mxrGrTeKLo3bah31msmgV1kz3VwhiSSdMCDYt",
-		
 	})
-	bootstrapConnect(ctx, host, dhts)
 
-	host.SetStreamHandler(Protocol, streamHandler)
+	basicHost, err := makeRoutedHost(p2pport, dhts, priv)
+	if err != nil {
+		log.Panic(err)
+	}
+	httpPort := 9900
+
+	target := "QmRYd6NaWkwf657X29N7oncdFxSenomNuPnpfSJmuMN8NE"
+
+	destPeerID, err := peer.Decode(target)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	proxyAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", httpPort))
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	proxy := NewProxyService(basicHost, proxyAddr, destPeerID)
+
+	// basicHost.SetStreamHandler(Protocol, streamHandler)
 
 	proxy.Serve() // serve hangs forever
 
+}
+
+// makeRoutedHost creates a LibP2P host with a random peer ID listening on the
+// given multiaddress. It will bootstrap using the provided PeerInfo.
+func makeRoutedHost(listenPort int, bootstrapPeers []peer.AddrInfo, priv crypto.PrivKey) (host.Host, error) {
+
+	opts := []libp2p.Option{
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", listenPort)),
+		libp2p.Identity(priv),
+		libp2p.DefaultTransports,
+		libp2p.DefaultMuxers,
+		libp2p.DefaultSecurity,
+		libp2p.NATPortMap(),
+	}
+
+	ctx := context.Background()
+
+	basicHost, err := libp2p.New(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Construct a datastore (needed by the DHT). This is just a simple, in-memory thread-safe datastore.
+	dstore := dsync.MutexWrap(ds.NewMapDatastore())
+
+	// Make the DHT
+	dht := dht.NewDHT(ctx, basicHost, dstore)
+
+	// Make the routed host
+	routedHost := rhost.Wrap(basicHost, dht)
+
+	// connect to the chosen ipfs nodes
+	err = bootstrapConnect(ctx, routedHost, bootstrapPeers)
+	if err != nil {
+		return nil, err
+	}
+
+	// Bootstrap the host
+	err = dht.Bootstrap(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build host multiaddress
+	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", routedHost.ID()))
+
+	// Now we can build a full multiaddress to reach this host
+	// by encapsulating both addresses:
+	// addr := routedHost.Addrs()[0]
+	addrs := routedHost.Addrs()
+	fmt.Println("")
+	log.Println("I can be reached at:")
+	for _, addr := range addrs {
+		log.Println(addr.Encapsulate(hostAddr))
+	}
+	return routedHost, nil
 }
 
 // This code is borrowed from the go-ipfs bootstrap process
